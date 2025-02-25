@@ -27,7 +27,7 @@ jobs:
         with:
           dotnet-version: 9
       - name: 🧪 Test
-        run: dotnet test --collect:"XPlat Code Coverage"
+        run: dotnet test --collect:"XPlat Code Coverage" --logger "console;verbosity=detailed"
       - name: 📄 Get Coverage Files
         id: get_coverage_files
         if: matrix.os != 'windows-latest'
