@@ -33,8 +33,6 @@ body:
         - [ ] Criteria 1: Describe the first acceptance criterion here.
         - [ ] Criteria 2: Describe the second acceptance criterion here.
         - [ ] Criteria 3: Describe additional criteria as needed.
-
-        Add or remove checklist items as needed. Keep them granular and verifiable.
     validations:
       required: true
 
