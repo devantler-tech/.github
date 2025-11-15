@@ -10,18 +10,6 @@ body:
 
         Use this template to apply the Improvement Kata framework for continuous improvement. Follow the four steps to systematically work toward your target condition.
 
-        **Instructions for use:**
-
-        1. Create a new issue using this template for an improvement kata. One or two is recommended per cycle.
-        2. Assign owners and due dates for the improvement kata.
-        3. The team works on the defined actions toward the target condition over the set timeframe. Owners monitor and and evaluate progress continuously.
-        4. At the end of the timeframe, evaluate whether the target condition was achieved.
-           - If achieved, celebrate success and proceed with new improvement katas as needed.
-           - If not achieved, reflect on learnings, adjust the approach, and define new actions to continue progressing toward the target condition.
-        5. Close the issue when the target condition is achieved.
-
-        If the actions create unintended conflicts or blockers during the timeframe, owners should raise these issues promptly for resolution, and adjust the actions as needed.
-
   - type: textarea
     id: problem
     attributes:
@@ -77,3 +65,21 @@ body:
         - [ ] **Action 3:** ... (Owner: @username, Due: YYYY-MM-DD)
     validations:
       required: true
+
+  - type: markdown
+    attributes:
+      value: |
+        ---
+
+        **Instructions for use:**
+
+        1. Create a new issue using this template for an improvement kata. One or two is recommended per cycle.
+        2. Assign owners and due dates for the improvement kata.
+        3. The team works on the defined actions toward the target condition over the set timeframe. Owners monitor and and evaluate progress continuously.
+        4. At the end of the timeframe, evaluate whether the target condition was achieved.
+           - If achieved, celebrate success and proceed with new improvement katas as needed.
+           - If not achieved, reflect on learnings, adjust the approach, and define new actions to continue progressing toward the target condition.
+        5. Close the issue when the target condition is achieved.
+
+        If the actions create unintended conflicts or blockers during the timeframe, owners should raise these issues promptly for resolution, and adjust the actions as needed.
+
