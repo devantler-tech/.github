@@ -24,8 +24,13 @@ body:
 
         ```mermaid
         graph TD
-          A[Role] --> B[Action/Feature]
-          B --> C[Reason/Benefit]
+          A[Role] --> B[System]
+          B --> C[Action 1 in Feature]
+          C --> D[Action 2 in Feature]
+          D --> E[Action N in Feature]
+          E --> F[Reason/Benefit 1]
+          E --> G[Reason/Benefit 2]
+          E --> H[Reason/Benefit N]
         ```
     validations:
       required: true
