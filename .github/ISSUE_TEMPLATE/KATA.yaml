@@ -56,8 +56,6 @@ body:
       label: Next Target Condition
       description: X weeks from now, what has changed? Define a specific, measurable target condition with a timeframe.
       value: |
-        Timeframe: [X] weeks from now (see due date of the issue)
-
         What will be different:
 
         - ...
