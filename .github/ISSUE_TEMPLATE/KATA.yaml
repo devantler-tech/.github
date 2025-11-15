@@ -60,9 +60,9 @@ body:
       label: "Actions"
       description: List of actions to take toward the target condition. Add three initially, and if needed, add more during evaluation .
       value: |
-        - [ ] **Action 1:** ... (Owner: @username, Due: YYYY-MM-DD)
-        - [ ] **Action 2:** ... (Owner: @username, Due: YYYY-MM-DD)
-        - [ ] **Action 3:** ... (Owner: @username, Due: YYYY-MM-DD)
+        - [ ] **Action 1:** ...
+        - [ ] **Action 2:** ...
+        - [ ] **Action 3:** ...
     validations:
       required: true
 
