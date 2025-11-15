@@ -18,9 +18,15 @@ body:
       label: User Story
       description: Use the standard agile story format.
       value: |
-        As a [role],
-        I want [an action or feature],
-        So that [a reason or benefit].
+        **As a** [role],
+        **I want** [an action or feature],
+        **So that** [a reason or benefit].
+
+        ```mermaid
+        graph TD
+          A[Role] --> B[Action/Feature]
+          B --> C[Reason/Benefit]
+        ```
     validations:
       required: true
 
