@@ -1,6 +1,6 @@
 name: 🥋 Improvement Kata
 description: Use the Improvement Kata framework to drive continuous improvement through structured problem-solving
-title: "[KATA] "
+title: "[kata]: "
 type: Kata
 body:
   - type: markdown
