@@ -1,5 +1,5 @@
 name: 🚀 Feature
-description: A request, idea, or new functionality
+description: Submit a new feature as a user story with acceptance criteria and a definition of done checklist.
 title: "[feature]: "
 type: Feature
 projects:
@@ -33,7 +33,7 @@ body:
         - [ ] Criteria 1: Describe the first acceptance criterion here.
         - [ ] Criteria 2: Describe the second acceptance criterion here.
         - [ ] Criteria 3: Describe additional criteria as needed.
-        
+
         Add or remove checklist items as needed. Keep them granular and verifiable.
 
   - type: checkboxes
