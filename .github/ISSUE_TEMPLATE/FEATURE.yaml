@@ -8,10 +8,42 @@ body:
   - type: markdown
     attributes:
       value: |
-        Please make sure this enhancement hasn't already been submitted by someone else by looking through other open/closed issues.
+        Please ensure this enhancement isn't already requested by searching existing issues.
+
+        Provide a clear user story and define acceptance criteria and the definition of done below.
 
   - type: textarea
-    id: description
+    id: user_story
     attributes:
-      label: Description
-      description: Give a brief description of the enhancement.
+      label: User Story
+      description: Use the standard agile story format.
+      placeholder: |
+        As a [role],
+        I want [an action or feature],
+        So that [a reason or benefit].
+    validations:
+      required: true
+
+  - type: textarea
+    id: acceptance_criteria
+    attributes:
+      label: Acceptance Criteria
+      description: Provide a task list of the conditions that must be satisfied. Each item should be a clear, testable outcome.
+      placeholder: |
+        - [ ] Criteria 1: Describe the first acceptance criterion here.
+        - [ ] Criteria 2: Describe the second acceptance criterion here.
+        - [ ] Criteria 3: Describe additional criteria as needed.
+        
+        Add or remove checklist items as needed. Keep them granular and verifiable.
+
+  - type: checkboxes
+    id: definition_of_done
+    attributes:
+      label: Definition of Done
+      description: All items should be completed for the feature to be considered done.
+      options:
+        - label: All acceptance criteria are met.
+        - label: Code is reviewed and approved.
+        - label: Necessary tests are written and pass.
+        - label: Documentation is updated, if applicable.
+        - label: Feature is deployed to the [environment name].
