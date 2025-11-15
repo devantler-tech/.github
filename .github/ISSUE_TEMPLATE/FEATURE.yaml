@@ -17,7 +17,7 @@ body:
     attributes:
       label: User Story
       description: Use the standard agile story format.
-      placeholder: |
+      value: |
         As a [role],
         I want [an action or feature],
         So that [a reason or benefit].
@@ -29,7 +29,7 @@ body:
     attributes:
       label: Acceptance Criteria
       description: Provide a task list of the conditions that must be satisfied. Each item should be a clear, testable outcome.
-      placeholder: |
+      value: |
         - [ ] Criteria 1: Describe the first acceptance criterion here.
         - [ ] Criteria 2: Describe the second acceptance criterion here.
         - [ ] Criteria 3: Describe additional criteria as needed.
