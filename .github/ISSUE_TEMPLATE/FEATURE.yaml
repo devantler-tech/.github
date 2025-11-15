@@ -35,6 +35,8 @@ body:
         - [ ] Criteria 3: Describe additional criteria as needed.
 
         Add or remove checklist items as needed. Keep them granular and verifiable.
+    validations:
+      required: true
 
   - type: checkboxes
     id: definition_of_done
