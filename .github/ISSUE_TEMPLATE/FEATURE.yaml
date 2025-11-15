@@ -24,7 +24,7 @@ body:
 
         ```mermaid
         graph TD
-          A[Role] --> B[System]
+          A[Role] --> B[System/Interface]
           B --> C[Action 1 in Feature]
           C --> D[Action 2 in Feature]
           D --> E[Action N in Feature]
