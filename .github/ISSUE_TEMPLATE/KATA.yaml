@@ -1,0 +1,81 @@
+name: 🥋 Improvement Kata
+description: Use the Improvement Kata framework to drive continuous improvement through structured problem-solving
+title: "[KATA] "
+type: Kata
+body:
+  - type: markdown
+    attributes:
+      value: |
+        # Improvement Kata
+
+        Use this template to apply the Improvement Kata framework for continuous improvement. Follow the four steps to systematically work toward your target condition.
+
+        **Instructions for use:**
+
+        1. Create a new issue using this template for an improvement kata. One or two is recommended per cycle.
+        2. Assign owners and due dates for the improvement kata.
+        3. The team works on the defined actions toward the target condition over the set timeframe. Owners monitor and and evaluate progress continuously.
+        4. At the end of the timeframe, evaluate whether the target condition was achieved.
+           - If achieved, celebrate success and proceed with new improvement katas as needed.
+           - If not achieved, reflect on learnings, adjust the approach, and define new actions to continue progressing toward the target condition.
+        5. Close the issue when the target condition is achieved.
+
+        If the actions create unintended conflicts or blockers during the timeframe, owners should raise these issues promptly for resolution, and adjust the actions as needed.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: Describe the current situation and why it is problematic. What is not working well? What challenges are we facing?
+      value: |
+        Current situation:
+
+        - ...
+
+        Why this is problematic:
+
+        - ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: definition-of-awesome
+    attributes:
+      label: Definition of Awesome
+      description: How would we like it to be? Describe the ideal state or vision we're working toward.
+      value: |
+        In the ideal state success looks like:
+
+        - ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: next-target-condition
+    attributes:
+      label: Next Target Condition
+      description: X weeks from now, what has changed? Define a specific, measurable target condition with a timeframe.
+      value: |
+        Timeframe: [X] weeks from now (see due date of the issue)
+
+        What will be different:
+
+        - ...
+
+        How we'll measure success:
+
+        - ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: actions
+    attributes:
+      label: "Actions"
+      description: List of actions to take toward the target condition. Add three initially, and if needed, add more during evaluation .
+      value: |
+        - [ ] **Action 1:** ... (Owner: @username, Due: YYYY-MM-DD)
+        - [ ] **Action 2:** ... (Owner: @username, Due: YYYY-MM-DD)
+        - [ ] **Action 3:** ... (Owner: @username, Due: YYYY-MM-DD)
+    validations:
+      required: true
