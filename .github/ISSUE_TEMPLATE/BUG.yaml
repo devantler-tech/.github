@@ -6,10 +6,20 @@ projects:
   - devantler-tech/5
 body:
   - type: textarea
-    id: description
+    id: expected_behavior
     attributes:
-      label: Description
-      description: Give a brief description of the bug.
+      label: Expected Behavior
+      description: Describe what you expected to happen.
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual_behavior
+    attributes:
+      label: Actual Behavior
+      description: Describe what actually happened.
+    validations:
+      required: true
 
   - type: textarea
     id: steps
@@ -20,3 +30,5 @@ body:
         1. Step 1
         2. Step 2
         3. Step 3
+    validations:
+      required: true
