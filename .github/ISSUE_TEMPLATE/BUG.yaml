@@ -10,6 +10,7 @@ body:
     attributes:
       label: Expected Behavior
       description: Describe what you expected to happen.
+      placeholder: "Describe the expected behavior..."
     validations:
       required: true
 
@@ -18,6 +19,7 @@ body:
     attributes:
       label: Actual Behavior
       description: Describe what actually happened.
+      placeholder: "Describe the actual behavior..."
     validations:
       required: true
 

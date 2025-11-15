@@ -10,3 +10,4 @@ body:
     attributes:
       label: Description
       description: Give a brief description of the chore.
+      placeholder: "Describe the chore..."
