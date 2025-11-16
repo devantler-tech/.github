@@ -1,11 +1,12 @@
-Please include a summary of the change and which issue is fixed. Please also include relevant motivation and context.
+Please include a summary of the changes. What? has changed and Why?.
 
-Fixes # (issue)
+Fixes link/#issue
 
 ## Type of change
 
-Please delete options that are not relevant.
+Please delete irrelevant options.
 
+- [ ] Refactor (non-breaking change that improves the internal structure or design of existing code without changing its external behavior.)
 - [ ] Bug fix (non-breaking change which fixes an issue)
 - [ ] New feature (non-breaking change which adds functionality)
 - [ ] Breaking change (fix or feature that would cause existing functionality to not work as expected)
