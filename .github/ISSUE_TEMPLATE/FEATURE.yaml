@@ -46,15 +46,3 @@ body:
         - [ ] Criteria 3: Describe additional criteria as needed.
     validations:
       required: true
-
-  - type: checkboxes
-    id: definition_of_done
-    attributes:
-      label: Definition of Done
-      description: All items should be completed for the feature to be considered done.
-      options:
-        - label: All acceptance criteria are met.
-        - label: Code is reviewed and approved.
-        - label: Necessary tests are written and pass.
-        - label: Documentation is updated, if applicable.
-        - label: Feature is deployed to the [environment name].
