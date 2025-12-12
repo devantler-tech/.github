@@ -1,5 +1,5 @@
 name: 🚀 Feature
-description: Submit a new feature as a user story with acceptance criteria and a definition of done checklist.
+description: Submit a new feature as a user story with acceptance criteria.
 title: "[feature]: "
 type: Feature
 projects:
@@ -8,9 +8,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        Please ensure this enhancement isn't already requested by searching existing issues.
-
-        Provide a clear user story and define acceptance criteria and the definition of done below.
+        Please ensure this feature isn't already requested by searching existing issues.
 
   - type: textarea
     id: user_story
