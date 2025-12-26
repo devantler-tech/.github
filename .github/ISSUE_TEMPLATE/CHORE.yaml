@@ -5,9 +5,31 @@ type: Chore
 projects:
   - devantler-tech/5
 body:
-  - type: textarea
-    id: description
+  - type: markdown
     attributes:
-      label: Description
-      description: Give a brief description of the chore.
-      placeholder: "Describe the chore..."
+      value: |
+        Please ensure this feature isn't already requested by searching existing issues.
+
+  - type: textarea
+    id: user_story
+    attributes:
+      label: User Story
+      description: Use the standard agile story format.
+      value: |
+        **As a** [role],
+        **I want** [an action or a task],
+        **So that** [a reason or benefit].
+    validations:
+      required: true
+
+  - type: textarea
+    id: acceptance_criteria
+    attributes:
+      label: Acceptance Criteria
+      description: Provide a task list of the conditions that must be satisfied. Each item should be a clear, testable outcome.
+      value: |
+        - [ ] Criteria 1: Describe the first acceptance criterion here.
+        - [ ] Criteria 2: Describe the second acceptance criterion here.
+        - [ ] Criteria 3: Describe additional criteria as needed.
+    validations:
+      required: true
