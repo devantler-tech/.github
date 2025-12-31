@@ -22,7 +22,7 @@ jobs:
           private-key: ${{ secrets.APP_PRIVATE_KEY }}
 
       - name: 📑 Checkout
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
 
       - name: 🧹 Identify stale repositories
         uses: github/stale-repos@ed7d69735687683c55afad372bd51d8a1a2567b5 # v4.0.0
