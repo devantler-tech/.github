@@ -23,6 +23,8 @@ jobs:
 
       - name: 📑 Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: true
 
       - name: 🧹 Identify stale repositories
         uses: github/stale-repos@6084a41431c4ce8842a7e879b1a15082b88742ae # v8.0.4
