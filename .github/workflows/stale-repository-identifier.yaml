@@ -48,7 +48,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: 📄 Create or update stale report issue
-        uses: peter-evans/create-issue-from-file@fca9117c27cdc29c6c4db3b86c48e4115a786710 # v6.0.0
+        uses: step-security/create-issue-from-file@7444673975a4ae46c089644f50930db91fc53e4f # v6.0.0
         with:
           issue-number: ${{ env.issue_number }}
           title: 📄 Stale repository report
