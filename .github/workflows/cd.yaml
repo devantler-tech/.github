@@ -1,0 +1,70 @@
+name: 🚀 CD
+
+# Publishes the org's declarative GitHub state (deploy/) as a cosign-signed OCI
+# artifact consumed by the platform cluster's `github-config` tenant. Unlike an
+# application repo, there is NO container image here — only manifests — so this
+# pushes a manifests-only artifact (no docker build). The OCI path is
+# `github-config` rather than the repo name, because `.github` is an invalid OCI
+# path component (leading dot).
+#
+# NOTE: a manifests-only publish is a generic pattern; a follow-up will lift it
+# into a devantler-tech/reusable-workflows reusable workflow. Inline for now.
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+  packages: write # push the OCI artifact to GHCR
+  id-token: write # mint the OIDC token for cosign keyless signing (Fulcio + Rekor)
+
+jobs:
+  publish-manifests:
+    name: 🗳️ Publish manifests
+    runs-on: ubuntu-latest
+    env:
+      OCI_REPO: ghcr.io/devantler-tech/github-config/manifests
+    steps:
+      - name: 📑 Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: ⚙️ Setup Flux
+        # Same Flux setup action the org's reusable gitops workflows use.
+        uses: fluxcd/flux2/action@main
+
+      - name: ⚙️ Install cosign
+        env:
+          # renovate: datasource=github-releases depName=sigstore/cosign extractVersion=^v(?<version>.+)$
+          COSIGN_VERSION: "3.0.6"
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+        with:
+          cosign-release: "v${{ env.COSIGN_VERSION }}"
+
+      - name: 🔐 Configure GHCR auth
+        # Pre-create ~/.docker/config.json so flux push, cosign, and buildx all
+        # resolve GHCR credentials through the standard OCI keychain without an
+        # interactive login (avoids the "credentials stored unencrypted" warning).
+        env:
+          GITHUB_ACTOR: ${{ github.actor }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir -p ~/.docker
+          auth=$(printf '%s:%s' "$GITHUB_ACTOR" "$GITHUB_TOKEN" | base64 -w0)
+          printf '{"auths":{"ghcr.io":{"auth":"%s"}}}\n' "$auth" > ~/.docker/config.json
+
+      - name: 🗳️ Push & sign manifests artifact
+        run: |
+          set -euo pipefail
+          TAG="${{ github.ref_name }}"
+          flux push artifact "oci://${OCI_REPO}:${TAG}" \
+            --path=./deploy \
+            --source="${{ github.repositoryUrl }}" \
+            --revision="${TAG}@sha1:${{ github.sha }}"
+          flux tag artifact "oci://${OCI_REPO}:${TAG}" --tag latest
+          # Resolve the pushed digest and sign by digest (keyless via OIDC).
+          DIGEST=$(docker buildx imagetools inspect "${OCI_REPO}:${TAG}" --format '{{ .Manifest.Digest }}')
+          cosign sign --yes "${OCI_REPO}@${DIGEST}"

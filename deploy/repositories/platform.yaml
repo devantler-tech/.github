@@ -1,0 +1,17 @@
+apiVersion: repo.github.m.upbound.io/v1alpha1
+kind: Repository
+metadata:
+  name: platform
+  annotations:
+    # Binds this resource to the EXISTING devantler-tech/platform repository
+    # (owner comes from the ProviderConfig credentials).
+    crossplane.io/external-name: platform
+spec:
+  # Observe-only while adopting: Crossplane fills status.atProvider and never
+  # writes to GitHub. Backfill forProvider from status.atProvider, then promote
+  # to ["Observe","Create","Update","LateInitialize"] (everything except Delete).
+  managementPolicies: ["Observe"]
+  forProvider: {}
+  providerConfigRef:
+    kind: ProviderConfig
+    name: default
