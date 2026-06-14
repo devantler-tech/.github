@@ -1,0 +1,43 @@
+name: CI
+
+# Validates the declarative GitHub state in deploy/ on every PR, and reports the
+# `CI - Required Checks` status the org ruleset requires before merge. (cd.yaml
+# only runs on v* tags, so without this no PR-time required check is produced and
+# the PR stays merge-BLOCKED.)
+
+on:
+  pull_request:
+  merge_group:
+
+permissions: {}
+
+jobs:
+  validate-manifests:
+    name: 🧹 Validate manifests
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: 📑 Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: 🧹 Validate deploy/ kustomize build
+        # kubectl (with built-in kustomize) is preinstalled on the runner. A
+        # successful build proves the manifests are well-formed; the Crossplane
+        # CRDs are applied/validated on-cluster, not here.
+        run: kubectl kustomize deploy/ > /dev/null
+
+  ci-required-checks:
+    name: CI - Required Checks
+    runs-on: ubuntu-latest
+    needs: [validate-manifests]
+    if: always()
+    permissions: {}
+    steps:
+      - name: 📊 Evaluate job results
+        uses: devantler-tech/actions/aggregate-job-checks@8ce19528eda1ef50f3d028b685c53aebaed6ae62 # v5.4.1
+        with:
+          job-results: >-
+            ${{ needs.validate-manifests.result }}
