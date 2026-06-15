@@ -30,12 +30,11 @@ jobs:
       contents: read # checkout
       packages: write # push the OCI artifact to GHCR
       id-token: write # keyless cosign signing (Fulcio + Rekor via GitHub OIDC)
-    # Pinned to a commit SHA (zizmor blanket policy requires a hash). This is the
-    # reusable-workflows#319 branch head that introduces publish-manifests.yaml;
-    # re-pin to the release commit SHA once #319 merges and cuts a release
-    # (Renovate then manages this pin, as it does for publish-app.yaml elsewhere).
+    # Pinned to the released commit SHA (zizmor blanket policy requires a hash;
+    # the SHA must be reachable from a tag, or zizmor flags it as an impostor).
+    # Renovate manages this pin, as it does for publish-app.yaml elsewhere.
     # The platform verifier matches `@.+$`, so the ref does not affect cosign
     # verification.
-    uses: devantler-tech/reusable-workflows/.github/workflows/publish-manifests.yaml@44742c4f2093025a3dd2261479ccff9c8c893418 # reusable-workflows#319 (pre-release)
+    uses: devantler-tech/reusable-workflows/.github/workflows/publish-manifests.yaml@f974f62a8cb396130fa084d209ad1fc17e99b9fc # v5.6.1
     with:
       oci-name: devantler-tech/github-config
