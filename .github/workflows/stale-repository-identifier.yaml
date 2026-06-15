@@ -20,6 +20,12 @@ jobs:
         with:
           app-id: ${{ vars.APP_ID }}
           private-key: ${{ secrets.APP_PRIVATE_KEY }}
+          # Least-privilege scope (zizmor github-app): without these the token
+          # inherits all of the App's installation permissions. stale-repos only
+          # reads repo/PR/release activity and opens a report issue.
+          permission-contents: read
+          permission-pull-requests: read
+          permission-issues: write
 
       - name: 📑 Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
