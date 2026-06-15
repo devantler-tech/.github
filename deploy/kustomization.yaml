@@ -1,0 +1,10 @@
+# Root of the manifests artifact published to
+# oci://ghcr.io/devantler-tech/github-config/manifests and applied by the
+# platform's `github-config` tenant Kustomization (path: .). It carries the
+# devantler-tech org's desired GitHub state as Crossplane managed resources.
+# The target namespace (github-config) is injected by the platform-side
+# Kustomization's targetNamespace, so manifests here stay namespace-agnostic.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - repositories/

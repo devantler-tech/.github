@@ -1,0 +1,40 @@
+name: 🚀 CD
+
+# Publishes the org's declarative GitHub state (deploy/) as a cosign-signed OCI
+# artifact consumed by the platform cluster's `github-config` tenant. There is
+# NO container image here — only manifests — so it delegates to the shared
+# manifests-only publish workflow in devantler-tech/reusable-workflows (the
+# manifests-only sibling of publish-app.yaml).
+#
+# The OCI path is `github-config` (not the repo name) because `.github` is an
+# invalid OCI path component (leading dot) — hence the oci-name override.
+#
+# Because signing runs INSIDE the reusable workflow, the cosign certificate
+# identity (OIDC subject) is that workflow's path —
+# https://github.com/devantler-tech/reusable-workflows/.github/workflows/publish-manifests.yaml@<ref>
+# — NOT this repo's cd.yaml. The platform `github-config` OCIRepository's
+# verify.matchOIDCIdentity.subject must match that (see
+# k8s/providers/hetzner/github/sync.yaml in devantler-tech/platform).
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions: {}
+
+jobs:
+  publish-manifests:
+    name: 🗳️ Publish manifests
+    permissions:
+      contents: read # checkout
+      packages: write # push the OCI artifact to GHCR
+      id-token: write # keyless cosign signing (Fulcio + Rekor via GitHub OIDC)
+    # Pinned to the released commit SHA (zizmor blanket policy requires a hash;
+    # the SHA must be reachable from a tag, or zizmor flags it as an impostor).
+    # Renovate manages this pin, as it does for publish-app.yaml elsewhere.
+    # The platform verifier matches `@.+$`, so the ref does not affect cosign
+    # verification.
+    uses: devantler-tech/reusable-workflows/.github/workflows/publish-manifests.yaml@f974f62a8cb396130fa084d209ad1fc17e99b9fc # v5.6.1
+    with:
+      oci-name: devantler-tech/github-config
