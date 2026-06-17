@@ -7,4 +7,9 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
+  # Tenant-owned auth wiring: the namespaced ProviderConfig + the GitHub App
+  # credential ExternalSecret (read via the platform-provisioned namespaced
+  # SecretStore). See the platform repo's docs/github-management.md.
+  - external-secret.yaml
+  - provider-config.yaml
   - repositories/
