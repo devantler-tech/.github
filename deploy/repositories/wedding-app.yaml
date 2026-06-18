@@ -1,0 +1,23 @@
+apiVersion: repo.github.m.upbound.io/v1alpha1
+kind: Repository
+metadata:
+  name: wedding-app
+  annotations:
+    crossplane.io/external-name: wedding-app
+spec:
+  # Actively managed (everything except Delete). Merge policy from the shared
+  # patch; LateInitialize adopts every other setting unchanged. PRIVATE repo:
+  # visibility is pinned private explicitly (never left to inference) so
+  # management can never expose it, and archived false so it can't be archived.
+  managementPolicies:
+    - Observe
+    - Create
+    - Update
+    - LateInitialize
+  forProvider:
+    name: wedding-app
+    visibility: private
+    archived: false
+  providerConfigRef:
+    kind: ProviderConfig
+    name: default
