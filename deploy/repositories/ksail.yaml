@@ -7,9 +7,18 @@ metadata:
     # (owner comes from the ProviderConfig credentials).
     crossplane.io/external-name: ksail
 spec:
-  # Observe-only while adopting — see repositories/kustomization.yaml.
-  managementPolicies: ["Observe"]
-  forProvider: {}
+  # Actively managed (everything except Delete). Merge policy from the shared
+  # patch; LateInitialize adopts the rest. visibility pinned public + archived
+  # false so management can never flip visibility or archive this repo.
+  managementPolicies:
+    - Observe
+    - Create
+    - Update
+    - LateInitialize
+  forProvider:
+    name: ksail
+    visibility: public
+    archived: false
   providerConfigRef:
     kind: ProviderConfig
     name: default

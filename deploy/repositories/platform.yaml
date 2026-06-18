@@ -7,11 +7,19 @@ metadata:
     # (owner comes from the ProviderConfig credentials).
     crossplane.io/external-name: platform
 spec:
-  # Observe-only while adopting: Crossplane fills status.atProvider and never
-  # writes to GitHub. Backfill forProvider from status.atProvider, then promote
-  # to ["Observe","Create","Update","LateInitialize"] (everything except Delete).
-  managementPolicies: ["Observe"]
-  forProvider: {}
+  # Actively managed (everything except Delete). The merge policy comes from the
+  # shared patch in kustomization.yaml; LateInitialize adopts every other setting
+  # unchanged. visibility is pinned public and archived false explicitly so
+  # management can never flip visibility or archive this repo.
+  managementPolicies:
+    - Observe
+    - Create
+    - Update
+    - LateInitialize
+  forProvider:
+    name: platform
+    visibility: public
+    archived: false
   providerConfigRef:
     kind: ProviderConfig
     name: default

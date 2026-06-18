@@ -7,10 +7,10 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
-  # Observe-only (read-only mirror) — promoted to managed in a later phase.
+  # Actively managed (managementPolicies all-except-Delete). Every non-archived
+  # org repo; the shared merge-policy patch below applies to all of them.
   - platform.yaml
   - ksail.yaml
-  # Actively managed (managementPolicies all-except-Delete).
   - maintenance.yaml
   - skills.yaml
   - plugins.yaml
@@ -20,11 +20,14 @@ resources:
   - go-template.yaml
   - dotnet-template.yaml
   - homebrew-tap.yaml
+  # Private repos.
+  - ascoachingogvaner.yaml
+  - wedding-app.yaml
+  - fleet-gitops.yaml
 # Org-wide merge policy applied to EVERY Repository: squash-only (merge commits
 # and rebase disabled), auto-merge allowed, head branches auto-deleted, and
 # always-suggest-updating-PR-branches. Keeping it here (not per-file) makes it
-# the single source of truth and auto-applies to every future repo. It is inert
-# on the Observe-only resources (platform/ksail) until they are promoted.
+# the single source of truth and auto-applies to every future repo.
 patches:
   - target:
       group: repo.github.m.upbound.io
