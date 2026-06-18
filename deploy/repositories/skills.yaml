@@ -1,0 +1,22 @@
+apiVersion: repo.github.m.upbound.io/v1alpha1
+kind: Repository
+metadata:
+  name: skills
+  annotations:
+    crossplane.io/external-name: skills
+spec:
+  # Managed (all except Delete). forProvider is intentionally minimal: only the
+  # required name is set here; the org-wide squash-only merge policy comes from
+  # the shared patch in kustomization.yaml, and every other setting is adopted
+  # unchanged from the live repo via LateInitialize. So the only changes this
+  # makes are the merge-policy fields (+ a cosmetic homepage null->"").
+  managementPolicies:
+    - Observe
+    - Create
+    - Update
+    - LateInitialize
+  forProvider:
+    name: skills
+  providerConfigRef:
+    kind: ProviderConfig
+    name: default

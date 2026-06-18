@@ -1,15 +1,51 @@
 # One file per managed repository. Adoption is Observe-first: a repo starts with
 # managementPolicies: ["Observe"] (read-only — Crossplane mirrors live state into
-# status.atProvider and never writes), then forProvider is backfilled and the
-# policy promoted to the full set EXCEPT Delete. Namespaced managed resources
-# have no deletionPolicy; omitting Delete is what guarantees Crossplane can never
-# delete a real GitHub repository. See devantler-tech/platform
-# docs/github-management.md for the full adoption flow.
+# status.atProvider and never writes), then forProvider is set and the policy
+# promoted to the full set EXCEPT Delete. Namespaced managed resources have no
+# deletionPolicy; omitting Delete is what guarantees Crossplane can never delete
+# a real GitHub repository. See devantler-tech/platform docs/github-management.md.
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
+  # Observe-only (read-only mirror) — promoted to managed in a later phase.
   - platform.yaml
   - ksail.yaml
-  # First repo under ACTIVE management (managementPolicies all-except-Delete);
-  # platform + ksail remain Observe-only.
+  # Actively managed (managementPolicies all-except-Delete).
   - maintenance.yaml
+  - skills.yaml
+  - plugins.yaml
+  - unifi.yaml
+  - gitops-tenant-template.yaml
+  - platform-template.yaml
+  - go-template.yaml
+  - dotnet-template.yaml
+  - homebrew-tap.yaml
+# Org-wide merge policy applied to EVERY Repository: squash-only (merge commits
+# and rebase disabled), auto-merge allowed, head branches auto-deleted, and
+# always-suggest-updating-PR-branches. Keeping it here (not per-file) makes it
+# the single source of truth and auto-applies to every future repo. It is inert
+# on the Observe-only resources (platform/ksail) until they are promoted.
+patches:
+  - target:
+      group: repo.github.m.upbound.io
+      version: v1alpha1
+      kind: Repository
+    patch: |-
+      - op: add
+        path: /spec/forProvider/allowSquashMerge
+        value: true
+      - op: add
+        path: /spec/forProvider/allowMergeCommit
+        value: false
+      - op: add
+        path: /spec/forProvider/allowRebaseMerge
+        value: false
+      - op: add
+        path: /spec/forProvider/allowAutoMerge
+        value: true
+      - op: add
+        path: /spec/forProvider/allowUpdateBranch
+        value: true
+      - op: add
+        path: /spec/forProvider/deleteBranchOnMerge
+        value: true
