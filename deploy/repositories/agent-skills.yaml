@@ -1,0 +1,24 @@
+apiVersion: repo.github.m.upbound.io/v1alpha1
+kind: Repository
+metadata:
+  name: agent-skills
+  annotations:
+    # Adopts the agent-skills repo directly (renamed from skills). This is a
+    # fresh MR: the old "skills" MR is pruned (orphans the repo — no Delete in
+    # managementPolicies, never deletes) and this one adopts via the correct
+    # external-name, so the provider observes directly (no rename redirect) and
+    # reconciles cleanly.
+    crossplane.io/external-name: agent-skills
+spec:
+  # Squash-only merge policy + webCommitSignoffRequired come from the shared
+  # patch; everything else is adopted via LateInitialize.
+  managementPolicies:
+    - Observe
+    - Create
+    - Update
+    - LateInitialize
+  forProvider:
+    name: agent-skills
+  providerConfigRef:
+    kind: ProviderConfig
+    name: default

@@ -12,8 +12,8 @@ resources:
   - platform.yaml
   - ksail.yaml
   - maintenance.yaml
-  - skills.yaml
-  - plugins.yaml
+  - agent-skills.yaml
+  - agent-plugins.yaml
   - unifi.yaml
   - gitops-tenant-template.yaml
   - platform-template.yaml
