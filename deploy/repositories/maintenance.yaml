@@ -18,6 +18,9 @@ spec:
     - Update
     - LateInitialize
   forProvider:
+    # Required once managementPolicies includes Create/Update (Observe-only
+    # didn't enforce it); must equal the external-name / repo name.
+    name: maintenance
     description: "CLI tools for GitHub organization maintenance"
     hasIssues: true
     hasWiki: true
