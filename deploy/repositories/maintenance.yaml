@@ -1,0 +1,36 @@
+# First repo brought under ACTIVE management (everything except Delete), as a
+# low-risk pilot. forProvider mirrors the repo's CURRENT settings, so taking over
+# management changes nothing; LateInitialize adopts any unset field (e.g.
+# visibility) from the observed repo, and omitting Delete means deleting this CR
+# orphans — never deletes — the real repository. The high-stakes `visibility`
+# field is intentionally left to LateInitialize (never hard-set here) and
+# `archived` is pinned false so it can never accidentally archive the repo.
+apiVersion: repo.github.m.upbound.io/v1alpha1
+kind: Repository
+metadata:
+  name: maintenance
+  annotations:
+    crossplane.io/external-name: maintenance
+spec:
+  managementPolicies:
+    - Observe
+    - Create
+    - Update
+    - LateInitialize
+  forProvider:
+    description: "CLI tools for GitHub organization maintenance"
+    hasIssues: true
+    hasWiki: true
+    hasProjects: true
+    hasDownloads: true
+    allowMergeCommit: true
+    allowSquashMerge: true
+    allowRebaseMerge: true
+    allowAutoMerge: true
+    allowUpdateBranch: true
+    deleteBranchOnMerge: false
+    isTemplate: false
+    archived: false
+  providerConfigRef:
+    kind: ProviderConfig
+    name: default

@@ -10,3 +10,6 @@ kind: Kustomization
 resources:
   - platform.yaml
   - ksail.yaml
+  # First repo under ACTIVE management (managementPolicies all-except-Delete);
+  # platform + ksail remain Observe-only.
+  - maintenance.yaml
