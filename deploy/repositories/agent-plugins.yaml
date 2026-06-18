@@ -1,15 +1,16 @@
 apiVersion: repo.github.m.upbound.io/v1alpha1
 kind: Repository
 metadata:
-  # NOTE: the k8s resource name stays "plugins" (historical) to avoid a
-  # prune/re-adopt cycle; it manages the renamed agent-plugins repo. external-name
-  # + forProvider.name are both agent-plugins now that the rename has reconciled.
-  name: plugins
+  name: agent-plugins
   annotations:
+    # Adopts the agent-plugins repo directly (renamed from plugins). Fresh MR:
+    # the old "plugins" MR is pruned (orphans the repo — no Delete in
+    # managementPolicies, never deletes) and this one adopts via the correct
+    # external-name, so the provider observes directly and reconciles cleanly.
     crossplane.io/external-name: agent-plugins
 spec:
-  # Manages the agent-plugins repo (renamed from plugins). Squash-only merge
-  # policy comes from the shared patch; everything else is adopted via LateInitialize.
+  # Squash-only merge policy + webCommitSignoffRequired come from the shared
+  # patch; everything else is adopted via LateInitialize.
   managementPolicies:
     - Observe
     - Create
