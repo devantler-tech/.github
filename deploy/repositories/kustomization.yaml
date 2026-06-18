@@ -24,10 +24,15 @@ resources:
   - ascoachingogvaner.yaml
   - wedding-app.yaml
   - fleet-gitops.yaml
-# Org-wide merge policy applied to EVERY Repository: squash-only (merge commits
-# and rebase disabled), auto-merge allowed, head branches auto-deleted, and
-# always-suggest-updating-PR-branches. Keeping it here (not per-file) makes it
-# the single source of truth and auto-applies to every future repo.
+# Org-wide repo settings applied to EVERY Repository, single source of truth
+# (auto-applies to every future repo):
+#  - squash-only merge policy (merge commits + rebase disabled; auto-merge,
+#    auto-delete head branches, always-suggest-updating-PR-branches enabled).
+#  - webCommitSignoffRequired: true — the org ENFORCES commit signoff and it
+#    can't be disabled per-repo, so the provider must always send true (else an
+#    update PATCH gets 422 "Commit signoff is enforced ... and cannot be
+#    disabled"). The 12 already-adopted repos had this true via LateInitialize;
+#    pinning it here makes every repo's update self-consistent and robust.
 patches:
   - target:
       group: repo.github.m.upbound.io
@@ -51,4 +56,7 @@ patches:
         value: true
       - op: add
         path: /spec/forProvider/deleteBranchOnMerge
+        value: true
+      - op: add
+        path: /spec/forProvider/webCommitSignoffRequired
         value: true
