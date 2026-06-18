@@ -5,18 +5,19 @@ metadata:
   annotations:
     crossplane.io/external-name: plugins
 spec:
-  # Managed (all except Delete). forProvider is intentionally minimal: only the
-  # required name is set here; the org-wide squash-only merge policy comes from
-  # the shared patch in kustomization.yaml, and every other setting is adopted
-  # unchanged from the live repo via LateInitialize. So the only changes this
-  # makes are the merge-policy fields (+ a cosmetic homepage null->"").
+  # RENAME plugins -> agent-plugins: forProvider.name is the new name while
+  # external-name stays the current repo ("plugins"), so Crossplane renames the
+  # repo IN PLACE (an Update, not a re-create) — GitHub keeps the old name as a
+  # redirect. external-name is updated to agent-plugins in a follow-up once the
+  # rename has reconciled. Squash-only merge policy still comes from the shared
+  # patch; everything else is adopted via LateInitialize.
   managementPolicies:
     - Observe
     - Create
     - Update
     - LateInitialize
   forProvider:
-    name: plugins
+    name: agent-plugins
   providerConfigRef:
     kind: ProviderConfig
     name: default
