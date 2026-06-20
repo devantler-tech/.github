@@ -1,0 +1,87 @@
+# Issue labels for devantler-tech/.github — the org's declarative source-of-truth
+# repo. `IssueLabels` (provider-upjet-github, terraform github_issue_labels) is
+# AUTHORITATIVE: it manages the repo's COMPLETE label set, so any label not listed
+# here is removed on reconcile (this is the point — it reverts out-of-band label
+# drift, exactly like the rest of deploy/). `.github` currently has only `blocked`
+# (kept below), so first reconcile is purely additive.
+#
+# managementPolicies omit Delete: Crossplane can create/update the label set but
+# can never delete the IssueLabels resource's managed labels wholesale. The label
+# kind `issuelabels.repo.github.m.upbound.io` is already activated in the platform
+# ManagedResourceActivationPolicy and covered by the github-config tenant Role, so
+# no platform-side change is needed.
+#
+# This `label` list is the org's CANONICAL triage/roadmap taxonomy. Bring another
+# repo under management by adding `deploy/labels/<repo>.yaml` with the same
+# taxonomy — but first enumerate that repo's existing labels (incl. any in use on
+# open issues/PRs, and the `dependencies`/ecosystem labels Dependabot/Renovate
+# apply) so the authoritative set doesn't strip a label that's actively used.
+apiVersion: repo.github.m.upbound.io/v1alpha1
+kind: IssueLabels
+metadata:
+  name: dot-github
+  annotations:
+    # Binds to the existing devantler-tech/.github repository (owner comes from
+    # the ProviderConfig credentials); import id for github_issue_labels is the
+    # repository name.
+    crossplane.io/external-name: .github
+spec:
+  managementPolicies:
+    - Observe
+    - Create
+    - Update
+    - LateInitialize
+  forProvider:
+    repository: .github
+    label:
+      # --- triage / roadmap taxonomy (the portfolio-wide convention) ---
+      - name: roadmap
+        color: "0e8a16"
+        description: Epic / theme-level roadmap item
+      - name: enhancement
+        color: "a2eeef"
+        description: New feature or improvement
+      - name: bug
+        color: "d73a4a"
+        description: Something isn't working
+      - name: documentation
+        color: "0075ca"
+        description: Improvements or additions to documentation
+      - name: refactor
+        color: "fbca04"
+        description: Behaviour-preserving code-quality change
+      - name: security
+        color: "d93f0b"
+        description: Security hardening or vulnerability fix
+      - name: performance
+        color: "c5def5"
+        description: Performance improvement or optimisation
+      # --- workflow / external state ---
+      - name: blocked
+        color: "b60205"
+        description: An issue that is blocked by external circumstances
+      - name: dependencies
+        color: "0366d6"
+        description: Dependency updates (Dependabot / Renovate)
+      # --- standard GitHub triage helpers (kept org-wide for consistency) ---
+      - name: duplicate
+        color: "cfd3d7"
+        description: This issue or pull request already exists
+      - name: good first issue
+        color: "7057ff"
+        description: Good for newcomers
+      - name: help wanted
+        color: "008672"
+        description: Extra attention is needed
+      - name: question
+        color: "d876e3"
+        description: Further information is requested
+      - name: invalid
+        color: "e4e669"
+        description: This doesn't seem right
+      - name: wontfix
+        color: "ffffff"
+        description: This will not be worked on
+  providerConfigRef:
+    kind: ProviderConfig
+    name: default

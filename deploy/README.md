@@ -14,6 +14,10 @@ reconcile the live GitHub org to match these manifests — including reverting
 out-of-band changes made in the GitHub UI.
 
 - `repositories/` — one `Repository` per managed repo.
+- `teams/` — the `maintainers` team, its membership, and team → repo access.
+- `labels/` — one `IssueLabels` per managed repo declaring its canonical
+  triage/roadmap label taxonomy (authoritative: out-of-band label drift is
+  reverted).
 
 See the platform repo's
 [`docs/github-management.md`](https://github.com/devantler-tech/platform/blob/main/docs/github-management.md)
