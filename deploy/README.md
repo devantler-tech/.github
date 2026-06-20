@@ -15,9 +15,11 @@ out-of-band changes made in the GitHub UI.
 
 - `repositories/` — one `Repository` per managed repo.
 - `teams/` — the `maintainers` team, its membership, and team → repo access.
-- `labels/` — one `IssueLabels` per managed repo declaring its canonical
-  triage/roadmap label taxonomy (authoritative: out-of-band label drift is
-  reverted).
+- `labels/` — one `IssueLabels` per managed repo. The canonical org label
+  taxonomy lives once in `labels/kustomization.yaml` (a shared patch appended to
+  every repo); each `<repo>.yaml` adds only that repo's Dependabot/Renovate
+  ecosystem extras. Authoritative — out-of-band label drift is reverted. This is
+  the Crossplane replacement for the old EndBug/label-sync workflow.
 
 See the platform repo's
 [`docs/github-management.md`](https://github.com/devantler-tech/platform/blob/main/docs/github-management.md)

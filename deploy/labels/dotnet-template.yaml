@@ -1,14 +1,14 @@
-# Issue labels for devantler-tech/.github. The canonical org taxonomy (22 labels)
+# Issue labels for devantler-tech/dotnet-template. The canonical org taxonomy (22 labels)
 # is appended to every IssueLabels by the shared patch in kustomization.yaml; this
-# file adds only .github's repo-specific extras (the dependency/ecosystem labels
+# file adds only dotnet-template's repo-specific extras (the dependency/ecosystem labels
 # Dependabot/Renovate apply), declared so the authoritative set doesn't churn
 # against the bots. See ../README.md.
 apiVersion: repo.github.m.upbound.io/v1alpha1
 kind: IssueLabels
 metadata:
-  name: dot-github
+  name: dotnet-template
   annotations:
-    crossplane.io/external-name: .github
+    crossplane.io/external-name: dotnet-template
 spec:
   managementPolicies:
     - Observe
@@ -16,9 +16,12 @@ spec:
     - Update
     - LateInitialize
   forProvider:
-    repository: .github
-    # No repo-specific extras; the shared patch supplies the full canonical set.
-    label: []
+    repository: dotnet-template
+    label:
+      - name: "dependencies"
+        color: "0366d6"
+      - name: "github_actions"
+        color: "000000"
   providerConfigRef:
     kind: ProviderConfig
     name: default
