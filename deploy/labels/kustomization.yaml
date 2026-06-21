@@ -1,0 +1,113 @@
+# Declarative issue-label management for the devantler-tech org — the Crossplane
+# replacement for the old EndBug/label-sync mechanism (the `sync-github-labels`
+# action + the daily `.sync-labels.yaml` template-synced workflow + the central
+# `actions/.github/labels.yaml` config). `IssueLabels` (provider-upjet-github,
+# terraform github_issue_labels) is authoritative — it manages each repo's COMPLETE
+# label set and reverts drift — exactly like the old action's `delete-other-labels:
+# true`, so the cutover is behaviour-preserving.
+#
+# One file per managed repo declares only that repo's repo-specific EXTRAS (the
+# Dependabot/Renovate ecosystem labels — `dependencies`, `go`, `docker`, … —
+# declared so the authoritative set doesn't churn against the bots that recreate
+# them). The shared patch below appends the CANONICAL org taxonomy (the 22 labels
+# previously in `actions/.github/labels.yaml`) to every IssueLabels — this patch is
+# now the single source of truth for that taxonomy. Mirrors the org-wide settings
+# patch in ../repositories/kustomization.yaml.
+#
+# Scope = the repos managed in ../repositories/ + this repo (.github). Bring a new
+# repo under management by adding `<repo>.yaml` with its live extras (enumerate
+# them first so the authoritative set doesn't strip a label in use).
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - dot-github.yaml
+  - platform.yaml
+  - ksail.yaml
+  - maintenance.yaml
+  - agent-skills.yaml
+  - agent-plugins.yaml
+  - unifi.yaml
+  - gitops-tenant-template.yaml
+  - platform-template.yaml
+  - go-template.yaml
+  - dotnet-template.yaml
+  - homebrew-tap.yaml
+  # Private repos.
+  - ascoachingogvaner.yaml
+  - wedding-app.yaml
+  - fleet-gitops.yaml
+# Canonical org-wide label taxonomy, appended to EVERY IssueLabels (single source
+# of truth — was actions/.github/labels.yaml). Verbatim names + colours from that
+# file so the switch from label-sync to Crossplane changes no labels.
+patches:
+  - target:
+      group: repo.github.m.upbound.io
+      version: v1alpha1
+      kind: IssueLabels
+    patch: |-
+      - op: add
+        path: /spec/forProvider/label/-
+        value: {name: blocked, color: "d93f0b"}
+      - op: add
+        path: /spec/forProvider/label/-
+        value: {name: released, color: "ededed"}
+      - op: add
+        path: /spec/forProvider/label/-
+        value: {name: next, color: "5d3fd3"}
+      - op: add
+        path: /spec/forProvider/label/-
+        value: {name: roadmap, color: "0e8a16"}
+      - op: add
+        path: /spec/forProvider/label/-
+        value: {name: bug, color: "d73a4a"}
+      - op: add
+        path: /spec/forProvider/label/-
+        value: {name: enhancement, color: "a2eeef"}
+      - op: add
+        path: /spec/forProvider/label/-
+        value: {name: help wanted, color: "008672"}
+      - op: add
+        path: /spec/forProvider/label/-
+        value: {name: good first issue, color: "7057ff"}
+      - op: add
+        path: /spec/forProvider/label/-
+        value: {name: documentation, color: "0075ca"}
+      - op: add
+        path: /spec/forProvider/label/-
+        value: {name: question, color: "d876e3"}
+      - op: add
+        path: /spec/forProvider/label/-
+        value: {name: duplicate, color: "cfd3d7"}
+      - op: add
+        path: /spec/forProvider/label/-
+        value: {name: wontfix, color: "ffffff"}
+      - op: add
+        path: /spec/forProvider/label/-
+        value: {name: spam, color: "e4e669"}
+      - op: add
+        path: /spec/forProvider/label/-
+        value: {name: off topic, color: "e4e669"}
+      - op: add
+        path: /spec/forProvider/label/-
+        value: {name: needs triage, color: "fbca04"}
+      - op: add
+        path: /spec/forProvider/label/-
+        value: {name: needs investigation, color: "fbca04"}
+      - op: add
+        path: /spec/forProvider/label/-
+        value: {name: breaking change, color: "b60205"}
+      - op: add
+        path: /spec/forProvider/label/-
+        value: {name: performance, color: "f9d0c4"}
+      - op: add
+        path: /spec/forProvider/label/-
+        value: {name: security, color: "b60205"}
+      - op: add
+        path: /spec/forProvider/label/-
+        value: {name: refactor, color: "c5def5"}
+      - op: add
+        path: /spec/forProvider/label/-
+        value: {name: automation, color: "bfdadc"}
+      - op: add
+        path: /spec/forProvider/label/-
+        value: {name: repo-assist, color: "bfdadc"}

@@ -1,0 +1,29 @@
+# Issue labels for devantler-tech/maintenance. The canonical org taxonomy (22 labels)
+# is appended to every IssueLabels by the shared patch in kustomization.yaml; this
+# file adds only maintenance's repo-specific extras (the dependency/ecosystem labels
+# Dependabot/Renovate apply), declared so the authoritative set doesn't churn
+# against the bots. See ../README.md.
+apiVersion: repo.github.m.upbound.io/v1alpha1
+kind: IssueLabels
+metadata:
+  name: maintenance
+  annotations:
+    crossplane.io/external-name: maintenance
+spec:
+  managementPolicies:
+    - Observe
+    - Create
+    - Update
+    - LateInitialize
+  forProvider:
+    repository: maintenance
+    label:
+      - name: "dependencies"
+        color: "0366d6"
+      - name: "github_actions"
+        color: "000000"
+      - name: "javascript"
+        color: "168700"
+  providerConfigRef:
+    kind: ProviderConfig
+    name: default

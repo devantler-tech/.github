@@ -1,0 +1,24 @@
+# Issue labels for devantler-tech/.github. The canonical org taxonomy (22 labels)
+# is appended to every IssueLabels by the shared patch in kustomization.yaml; this
+# file adds only .github's repo-specific extras (the dependency/ecosystem labels
+# Dependabot/Renovate apply), declared so the authoritative set doesn't churn
+# against the bots. See ../README.md.
+apiVersion: repo.github.m.upbound.io/v1alpha1
+kind: IssueLabels
+metadata:
+  name: dot-github
+  annotations:
+    crossplane.io/external-name: .github
+spec:
+  managementPolicies:
+    - Observe
+    - Create
+    - Update
+    - LateInitialize
+  forProvider:
+    repository: .github
+    # No repo-specific extras; the shared patch supplies the full canonical set.
+    label: []
+  providerConfigRef:
+    kind: ProviderConfig
+    name: default
