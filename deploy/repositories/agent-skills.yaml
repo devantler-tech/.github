@@ -11,7 +11,8 @@ metadata:
     crossplane.io/external-name: agent-skills
 spec:
   # Squash-only merge policy + webCommitSignoffRequired come from the shared
-  # patch; everything else is adopted via LateInitialize.
+  # patch; description is declared here so the config is AUTHORITATIVE for it
+  # (previously LateInitialized); everything else is adopted via LateInitialize.
   managementPolicies:
     - Observe
     - Create
@@ -19,6 +20,7 @@ spec:
     - LateInitialize
   forProvider:
     name: agent-skills
+    description: "Generic Copilot / agent skills, installable via gh skill"
   providerConfigRef:
     kind: ProviderConfig
     name: default

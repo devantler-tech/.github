@@ -8,9 +8,11 @@ metadata:
     crossplane.io/external-name: platform
 spec:
   # Actively managed (everything except Delete). The merge policy comes from the
-  # shared patch in kustomization.yaml; LateInitialize adopts every other setting
-  # unchanged. visibility is pinned public and archived false explicitly so
-  # management can never flip visibility or archive this repo.
+  # shared patch in kustomization.yaml; visibility is pinned public and archived
+  # false explicitly so management can never flip visibility or archive this
+  # repo. Discoverability metadata (description/topics/homepageUrl) is declared
+  # so the config is AUTHORITATIVE for it (previously LateInitialized from live);
+  # LateInitialize adopts every other setting unchanged.
   managementPolicies:
     - Observe
     - Create
@@ -20,6 +22,9 @@ spec:
     name: platform
     visibility: public
     archived: false
+    description: "DevantlerTech Platform - including deployment artifacts for running the platform in CI/CD and in Talos Omni."
+    homepageUrl: "http://platform.devantler.tech/"
+    topics: ["infrastructure"]
   providerConfigRef:
     kind: ProviderConfig
     name: default
