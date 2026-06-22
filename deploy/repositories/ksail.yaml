@@ -8,8 +8,10 @@ metadata:
     crossplane.io/external-name: ksail
 spec:
   # Actively managed (everything except Delete). Merge policy from the shared
-  # patch; LateInitialize adopts the rest. visibility pinned public + archived
-  # false so management can never flip visibility or archive this repo.
+  # patch; visibility pinned public + archived false so management can never
+  # flip visibility or archive this repo. Discoverability metadata
+  # (description/topics/homepageUrl) is declared so the config is AUTHORITATIVE
+  # for it (previously LateInitialized from live); LateInitialize adopts the rest.
   managementPolicies:
     - Observe
     - Create
@@ -19,6 +21,9 @@ spec:
     name: ksail
     visibility: public
     archived: false
+    description: "All-in-one Kubernetes SDK: create, manage, and operate clusters across distributions (Kind, K3d, Talos, VCluster) with built-in GitOps, secrets, AI assistant, and MCP server. Only requires Docker or a Cloud Provider."
+    homepageUrl: "https://ksail.devantler.tech/"
+    topics: ["argocd", "chat", "cli", "cloud-native", "developer-tool", "devops", "docker", "flux", "github-copilot", "gitops", "helm", "k3s", "kind", "kubernetes", "local-development", "mcp-server", "provisioner", "talos", "tui", "vcluster"]
   providerConfigRef:
     kind: ProviderConfig
     name: default

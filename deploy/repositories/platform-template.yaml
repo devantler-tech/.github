@@ -5,11 +5,11 @@ metadata:
   annotations:
     crossplane.io/external-name: platform-template
 spec:
-  # Managed (all except Delete). forProvider is intentionally minimal: only the
-  # required name is set here; the org-wide squash-only merge policy comes from
-  # the shared patch in kustomization.yaml, and every other setting is adopted
-  # unchanged from the live repo via LateInitialize. So the only changes this
-  # makes are the merge-policy fields (+ a cosmetic homepage null->"").
+  # Managed (all except Delete). forProvider now declares the discoverability
+  # metadata (description/topics) so the config is AUTHORITATIVE for it
+  # (previously LateInitialized from live); the org-wide squash-only merge policy
+  # still comes from the shared patch in kustomization.yaml, and every other
+  # setting is still adopted unchanged from the live repo via LateInitialize.
   managementPolicies:
     - Observe
     - Create
@@ -17,6 +17,8 @@ spec:
     - LateInitialize
   forProvider:
     name: platform-template
+    description: "Opinionated, batteries-included Kubernetes platform (Flux GitOps + KSail + Talos) you instantiate from a template — fully automated bootstrap from GitHub Secrets. Derived from devantler-tech/platform."
+    topics: ["flux", "gitops", "hetzner", "ksail", "kubernetes", "platform", "talos", "template"]
   providerConfigRef:
     kind: ProviderConfig
     name: default
