@@ -9,8 +9,11 @@ kind: Team
 metadata:
   name: maintainers
   annotations:
-    # Adopt the EXISTING devantler-tech/maintainers team (read-only).
-    crossplane.io/external-name: maintainers
+    # Adopt the EXISTING devantler-tech/maintainers team (read-only). provider-github
+    # imports a Team by its NUMERICAL id, not its slug — a slug external-name fails
+    # observe with `Unexpected ID format ("maintainers"), expected numerical ID`. The
+    # team id is stable; `forProvider.name` keeps the slug as the human-readable name.
+    crossplane.io/external-name: "17046606"
 spec:
   managementPolicies: ["Observe"]
   forProvider:
@@ -28,7 +31,8 @@ metadata:
 spec:
   managementPolicies: ["Observe", "Create", "Update", "LateInitialize"]
   forProvider:
-    teamId: maintainers
+    teamIdRef:
+      name: maintainers
     username: devantler
     role: maintainer
   providerConfigRef:
@@ -40,11 +44,12 @@ kind: TeamRepository
 metadata:
   name: maintainers-actions
   annotations:
-    crossplane.io/external-name: maintainers:actions
+    crossplane.io/external-name: "17046606:actions"
 spec:
   managementPolicies: ["Observe"]
   forProvider:
-    teamId: maintainers
+    teamIdRef:
+      name: maintainers
     repository: actions
     permission: maintain
   providerConfigRef:
@@ -56,11 +61,12 @@ kind: TeamRepository
 metadata:
   name: maintainers-dotnet-template
   annotations:
-    crossplane.io/external-name: maintainers:dotnet-template
+    crossplane.io/external-name: "17046606:dotnet-template"
 spec:
   managementPolicies: ["Observe"]
   forProvider:
-    teamId: maintainers
+    teamIdRef:
+      name: maintainers
     repository: dotnet-template
     permission: maintain
   providerConfigRef:
@@ -72,11 +78,12 @@ kind: TeamRepository
 metadata:
   name: maintainers-go-template
   annotations:
-    crossplane.io/external-name: maintainers:go-template
+    crossplane.io/external-name: "17046606:go-template"
 spec:
   managementPolicies: ["Observe"]
   forProvider:
-    teamId: maintainers
+    teamIdRef:
+      name: maintainers
     repository: go-template
     permission: maintain
   providerConfigRef:
@@ -88,11 +95,12 @@ kind: TeamRepository
 metadata:
   name: maintainers-ksail
   annotations:
-    crossplane.io/external-name: maintainers:ksail
+    crossplane.io/external-name: "17046606:ksail"
 spec:
   managementPolicies: ["Observe"]
   forProvider:
-    teamId: maintainers
+    teamIdRef:
+      name: maintainers
     repository: ksail
     permission: maintain
   providerConfigRef:
@@ -104,11 +112,12 @@ kind: TeamRepository
 metadata:
   name: maintainers-monorepo
   annotations:
-    crossplane.io/external-name: maintainers:monorepo
+    crossplane.io/external-name: "17046606:monorepo"
 spec:
   managementPolicies: ["Observe"]
   forProvider:
-    teamId: maintainers
+    teamIdRef:
+      name: maintainers
     repository: monorepo
     permission: maintain
   providerConfigRef:
@@ -120,11 +129,12 @@ kind: TeamRepository
 metadata:
   name: maintainers-platform
   annotations:
-    crossplane.io/external-name: maintainers:platform
+    crossplane.io/external-name: "17046606:platform"
 spec:
   managementPolicies: ["Observe"]
   forProvider:
-    teamId: maintainers
+    teamIdRef:
+      name: maintainers
     repository: platform
     permission: maintain
   providerConfigRef:
@@ -136,11 +146,12 @@ kind: TeamRepository
 metadata:
   name: maintainers-reusable-workflows
   annotations:
-    crossplane.io/external-name: maintainers:reusable-workflows
+    crossplane.io/external-name: "17046606:reusable-workflows"
 spec:
   managementPolicies: ["Observe"]
   forProvider:
-    teamId: maintainers
+    teamIdRef:
+      name: maintainers
     repository: reusable-workflows
     permission: maintain
   providerConfigRef:
@@ -154,7 +165,8 @@ metadata:
 spec:
   managementPolicies: ["Observe", "Create", "Update", "LateInitialize"]
   forProvider:
-    teamId: maintainers
+    teamIdRef:
+      name: maintainers
     repository: gitops-tenant-template
     permission: maintain
   providerConfigRef:
@@ -168,7 +180,8 @@ metadata:
 spec:
   managementPolicies: ["Observe", "Create", "Update", "LateInitialize"]
   forProvider:
-    teamId: maintainers
+    teamIdRef:
+      name: maintainers
     repository: platform-template
     permission: maintain
   providerConfigRef:
@@ -182,7 +195,8 @@ metadata:
 spec:
   managementPolicies: ["Observe", "Create", "Update", "LateInitialize"]
   forProvider:
-    teamId: maintainers
+    teamIdRef:
+      name: maintainers
     repository: unifi
     permission: maintain
   providerConfigRef:
@@ -196,7 +210,8 @@ metadata:
 spec:
   managementPolicies: ["Observe", "Create", "Update", "LateInitialize"]
   forProvider:
-    teamId: maintainers
+    teamIdRef:
+      name: maintainers
     repository: homebrew-tap
     permission: maintain
   providerConfigRef:
