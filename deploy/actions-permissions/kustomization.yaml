@@ -1,0 +1,55 @@
+# Declarative "Require actions to be pinned to a full-length commit SHA" policy
+# for the devantler-tech org — the GitHub Actions `sha_pinning_required` setting
+# (GitHub, 2025-08) expressed as Crossplane `RepositoryPermissions`
+# (provider-upjet-github, terraform `github_actions_repository_permissions`).
+#
+# One file per managed repo binds the policy to that repo; the shared patch below
+# asserts `shaPinningRequired: true` ONCE (single source of truth) on every
+# `RepositoryPermissions` — mirroring the org-wide patches in ../repositories/ and
+# ../labels/. The resource is authoritative for SHA-pinning and reverts
+# out-of-band changes; Observe + LateInitialize (in each resource) adopts the
+# repo's live `enabled`/`allowedActions` first, so turning SHA-pinning on never
+# disturbs them.
+#
+# Scope = every repo managed in ../labels/ EXCEPT `actions`
+# (devantler-tech/actions is intentionally excluded). Bring a new repo under this
+# policy by adding `<repo>.yaml` here.
+#
+# REQUIRES a provider-upjet-github release embedding terraform-provider-github
+# >= 6.11.0 (where `sha_pinning_required` was added). The field is ABSENT in the
+# currently-deployed v0.19.1 (which pins TF provider 6.6.0), so this directory
+# must not be reconciled until that provider bump ships + the
+# `repositorypermissions.actions.github.m.upbound.io` MRD is activated in the
+# platform MRAP. Tracking: crossplane-contrib/provider-upjet-github#288.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - dot-github.yaml
+  - platform.yaml
+  - ksail.yaml
+  - maintenance.yaml
+  - agent-skills.yaml
+  - agent-plugins.yaml
+  - unifi.yaml
+  - gitops-tenant-template.yaml
+  - platform-template.yaml
+  - go-template.yaml
+  - dotnet-template.yaml
+  - homebrew-tap.yaml
+  - reusable-workflows.yaml
+  # Private repos.
+  - ascoachingogvaner.yaml
+  - wedding-app.yaml
+  - fleet-gitops.yaml
+# Require every action to be pinned to a full-length commit SHA on each repo above
+# (single source of truth). Org-wide — every repo added to this directory inherits
+# it. Reusable workflows can still be referenced by tag (GitHub exempts them).
+patches:
+  - target:
+      group: actions.github.m.upbound.io
+      version: v1alpha1
+      kind: RepositoryPermissions
+    patch: |-
+      - op: add
+        path: /spec/forProvider/shaPinningRequired
+        value: true

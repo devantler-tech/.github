@@ -20,6 +20,14 @@ out-of-band changes made in the GitHub UI.
   every repo); each `<repo>.yaml` adds only that repo's Dependabot/Renovate
   ecosystem extras. Authoritative — out-of-band label drift is reverted. This is
   the Crossplane replacement for the old EndBug/label-sync workflow.
+- `actions-permissions/` — one `RepositoryPermissions` per managed repo enforcing
+  **Require actions to be pinned to a full-length commit SHA**
+  (`sha_pinning_required`). The policy is asserted once via a shared patch in
+  `actions-permissions/kustomization.yaml`; scope is every repo in `labels/`
+  **except `actions`**. Requires a provider-upjet-github release embedding
+  terraform-provider-github ≥ 6.11.0 (the field is absent in the deployed v0.19.1)
+  and activation of `repositorypermissions.actions.github.m.upbound.io` in the
+  platform MRAP.
 
 See the platform repo's
 [`docs/github-management.md`](https://github.com/devantler-tech/platform/blob/main/docs/github-management.md)
