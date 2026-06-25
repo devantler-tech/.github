@@ -1,0 +1,21 @@
+# `OrganizationRuleset` resources — one per file, named after the rule (an active verb).
+# 10 existing org rulesets are adopted Observe-first (read-only) and 1 net-new tag ruleset
+# is managed (Create). The 10 org rulesets the provider cannot express remain UI-managed —
+# see ./README.md for the importability matrix and the push/tag/Actions-policy analysis.
+# Repo-scoped rulesets live in ../repository-rulesets/. Included by ../kustomization.yaml.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  # Adopted Observe-first (read-only).
+  - block-force-pushes.yaml
+  - require-pull-request.yaml
+  - require-conversation-resolution.yaml
+  - require-linear-history.yaml
+  - require-signed-commits.yaml
+  - require-status-checks.yaml
+  - restrict-deletions.yaml
+  - restrict-branch-names.yaml
+  - restrict-commit-metadata.yaml
+  - require-workflows-dependency-review.yaml
+  # Net-new, managed (Create).
+  - protect-release-tags.yaml

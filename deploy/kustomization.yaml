@@ -20,3 +20,5 @@ resources:
   - team-memberships/
   - team-repositories/
   - labels/
+  - organization-rulesets/
+  - repository-rulesets/

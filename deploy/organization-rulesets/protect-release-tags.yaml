@@ -1,0 +1,62 @@
+# Protect release tags — the ONE net-new, actually-managed ruleset in deploy/rulesets/.
+#
+# The org ships every product by tagging a `v*` release (each repo's cd.yaml triggers
+# on `v*`), yet had NO tag ruleset — release tags could be deleted or force-moved.
+# This `OrganizationRuleset` (target: tag, ~ALL repos, ~ALL tags) makes release tags
+# immutable and well-formed:
+#   - deletion:        block deleting a tag
+#   - nonFastForward:  block force-updating (re-pointing) a tag
+#   - tagNamePattern:  require `v<semver>` (e.g. v1.2.3, v1.2.3-rc.1)
+# Creating a NEW v-semver tag is still allowed (deletion/nonFastForward only restrict
+# delete/move) so normal releases are unaffected; only tampering is blocked.
+#
+# Unlike everything else in this directory this is NOT an import — it has no
+# external-name and is managed (Observe + Create + Update + LateInitialize, never
+# Delete), so Crossplane CREATES it on first reconcile and then keeps it in sync.
+#
+# No bypassActors on purpose: clean immutability, consistent with the org's other
+# protective rulesets ("Block force pushes", "Restrict branch names", which also have
+# none), and it avoids the OrganizationAdmin bypass actor_id quirk. An org admin can
+# still edit/disable the ruleset itself. If release automation ever needs to move or
+# delete a tag, add a bypassActors entry here (declaratively) rather than in the UI.
+#
+# TIER CAVEAT (tagNamePattern): provider/GitHub docs historically flag the tag name
+# pattern rule as "enterprise only". devantler-tech is on the `team` plan, NOT an
+# enterprise — BUT this same org already runs ACTIVE org-level branch_name_pattern
+# ("Restrict branch names") and commit_message_pattern ("Restrict commit metadata")
+# rulesets, so pattern rules demonstrably work here and tagNamePattern is expected to
+# as well. FALLBACK: if GitHub rejects this ruleset on apply because of the tag name
+# pattern, delete just the `tagNamePattern` block below — `deletion` + `nonFastForward`
+# still deliver immutable release tags and have no tier requirement.
+apiVersion: enterprise.github.m.upbound.io/v1alpha1
+kind: OrganizationRuleset
+metadata:
+  name: protect-release-tags
+spec:
+  managementPolicies:
+    - Observe
+    - Create
+    - Update
+    - LateInitialize
+  forProvider:
+    name: Protect release tags
+    target: tag
+    enforcement: active
+    conditions:
+      - refName:
+          - include: ["~ALL"]
+            exclude: []
+        repositoryName:
+          - include: ["~ALL"]
+            exclude: []
+    rules:
+      - deletion: true
+        nonFastForward: true
+        tagNamePattern:
+          - operator: regex
+            pattern: '^v\d+\.\d+\.\d+(-.+)?$'
+            negate: false
+            name: "Tags must be v<semver> (e.g. v1.2.3 or v1.2.3-rc.1)"
+  providerConfigRef:
+    kind: ProviderConfig
+    name: default
