@@ -1,0 +1,22 @@
+# Existing repository ruleset, adopted Observe-first (read-only). external-name =
+# `<repo>:<ruleset_id>` (cf. the `maintainers:<repo>` convention in
+# ../teams/). Identity-only forProvider — see ./README.md for the convention.
+#
+# ksail's own "Restrict deletions" rule, scoped to refs/heads/benchmark-data (the
+# long-lived benchmark-data branch) — narrower than the org-wide rule.
+apiVersion: repo.github.m.upbound.io/v1alpha1
+kind: RepositoryRuleset
+metadata:
+  name: ksail-restrict-deletions
+  annotations:
+    crossplane.io/external-name: "ksail:14699634"
+spec:
+  managementPolicies: ["Observe"]
+  forProvider:
+    repository: ksail
+    name: Restrict deletions
+    target: branch
+    enforcement: active
+  providerConfigRef:
+    kind: ProviderConfig
+    name: default

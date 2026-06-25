@@ -1,0 +1,23 @@
+# Existing org ruleset, adopted Observe-first (read-only). Identity-only
+# forProvider — don't promote past Observe without backfilling from
+# status.atProvider (lossy round-trip). See ./README.md for the convention.
+#
+# Newer "Require workflows to pass" rule (API type `workflows`, exposed by the
+# provider as `requiredWorkflows`). Only this DependencyReview variant is
+# importable — it conditions on repository_name `~ALL`. The other "Require
+# workflows …" rulesets condition on repository_property and stay UI-managed.
+apiVersion: enterprise.github.m.upbound.io/v1alpha1
+kind: OrganizationRuleset
+metadata:
+  name: require-workflows-dependency-review
+  annotations:
+    crossplane.io/external-name: "17213449" # numeric ruleset id
+spec:
+  managementPolicies: ["Observe"]
+  forProvider:
+    name: Require workflows to pass before merging - DependencyReview
+    target: branch
+    enforcement: active
+  providerConfigRef:
+    kind: ProviderConfig
+    name: default

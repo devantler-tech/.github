@@ -1,0 +1,9 @@
+# `RepositoryRuleset` resources — one per file, named `<verb>-on-<repo>.yaml`, each a
+# repo-scoped rule adopted Observe-first (read-only). external-name = `<repo>:<id>`. See
+# ../organization-rulesets/README.md for the shared adoption convention and the provider
+# importability matrix. Included by ../kustomization.yaml.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - restrict-deletions-on-ksail.yaml
+  - require-merge-queue-on-platform.yaml

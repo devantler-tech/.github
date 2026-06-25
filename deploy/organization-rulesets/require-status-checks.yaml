@@ -1,0 +1,18 @@
+# Existing org ruleset, adopted Observe-first (read-only). Identity-only
+# forProvider — don't promote past Observe without backfilling from
+# status.atProvider (lossy round-trip). See ./README.md for the convention.
+apiVersion: enterprise.github.m.upbound.io/v1alpha1
+kind: OrganizationRuleset
+metadata:
+  name: require-status-checks
+  annotations:
+    crossplane.io/external-name: "14974342" # numeric ruleset id
+spec:
+  managementPolicies: ["Observe"]
+  forProvider:
+    name: Require status checks to pass
+    target: branch
+    enforcement: active
+  providerConfigRef:
+    kind: ProviderConfig
+    name: default

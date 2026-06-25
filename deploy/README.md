@@ -14,12 +14,23 @@ reconcile the live GitHub org to match these manifests — including reverting
 out-of-band changes made in the GitHub UI.
 
 - `repositories/` — one `Repository` per managed repo.
-- `teams/` — the `maintainers` team, its membership, and team → repo access.
+- `teams/` — one `Team` per file (the `maintainers` team, Observe-adopted).
+- `team-memberships/` — one `TeamMembership` per file (`add-<user>-to-<team>.yaml`).
+- `team-repositories/` — one `TeamRepository` per file (`grant-<team>-on-<repo>.yaml`),
+  each granting a team a permission on a repo.
 - `labels/` — one `IssueLabels` per managed repo. The canonical org label
   taxonomy lives once in `labels/kustomization.yaml` (a shared patch appended to
   every repo); each `<repo>.yaml` adds only that repo's Dependabot/Renovate
   ecosystem extras. Authoritative — out-of-band label drift is reverted. This is
   the Crossplane replacement for the old EndBug/label-sync workflow.
+- `organization-rulesets/` — one `OrganizationRuleset` per file (org-wide branch/tag
+  protection). 10 existing org rulesets are adopted **Observe-first** (read-only) + 1
+  net-new `v*` tag-protection ruleset is managed. The 10 org rulesets the provider
+  can't yet express stay UI-managed — see
+  [`organization-rulesets/README.md`](organization-rulesets/README.md) for the full
+  importability matrix and the push/tag/Actions-policy analysis.
+- `repository-rulesets/` — one `RepositoryRuleset` per file (`<verb>-on-<repo>.yaml`),
+  each a repo-scoped rule adopted Observe-first.
 - `repository-permissions/` — one `RepositoryPermissions` per managed repo enforcing
   **Require actions to be pinned to a full-length commit SHA**
   (`sha_pinning_required`). The policy is asserted once via a shared patch in

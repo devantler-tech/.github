@@ -17,5 +17,9 @@ resources:
   - provider-config.yaml
   - repositories/
   - teams/
+  - team-memberships/
+  - team-repositories/
   - labels/
+  - organization-rulesets/
+  - repository-rulesets/
   - repository-permissions/
