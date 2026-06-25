@@ -20,6 +20,11 @@ out-of-band changes made in the GitHub UI.
   every repo); each `<repo>.yaml` adds only that repo's Dependabot/Renovate
   ecosystem extras. Authoritative — out-of-band label drift is reverted. This is
   the Crossplane replacement for the old EndBug/label-sync workflow.
+- `rulesets/` — org & repository rulesets (branch/tag protection). 12 existing
+  rulesets are adopted **Observe-first** (read-only) + 1 net-new `v*` tag-protection
+  ruleset is managed. The 10 org rulesets the provider can't yet express stay
+  UI-managed — see [`rulesets/README.md`](rulesets/README.md) for the full
+  importability matrix and the push/tag/Actions-policy analysis.
 
 See the platform repo's
 [`docs/github-management.md`](https://github.com/devantler-tech/platform/blob/main/docs/github-management.md)

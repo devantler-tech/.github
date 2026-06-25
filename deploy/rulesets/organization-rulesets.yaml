@@ -1,0 +1,189 @@
+# Org-level rulesets — adopted Observe-first (read-only).
+#
+# These bind the org's EXISTING UI-created organization rulesets to Crossplane
+# `OrganizationRuleset` managed resources (provider-upjet-github, terraform
+# github_organization_ruleset). `managementPolicies: ["Observe"]` means Crossplane
+# only MIRRORS live state into status.atProvider — it never writes, never reverts,
+# never deletes. This brings the org's branch-protection posture under GitOps
+# VISIBILITY with zero behaviour change, exactly how repositories/ and teams/ were
+# adopted (see ../README.md and the platform repo's docs/github-management.md).
+#
+# external-name = the numeric ruleset ID (the provider's terraform import id:
+# `terraform import github_organization_ruleset.example <id>`). Find an id with
+# `gh api orgs/devantler-tech/rulesets`.
+#
+# forProvider is intentionally MINIMAL (identity only: name/target/enforcement) —
+# Observe never reads it. Do NOT add the full rules/conditions/bypassActors here
+# and do NOT promote managementPolicies past Observe without FIRST backfilling
+# forProvider from the observed `status.atProvider` (the provider's round-trip is
+# lossy; a partial forProvider under Update would wipe live rules). The rules/
+# README documents this and the importability matrix.
+#
+# Only the 10 org rulesets the provider can FAITHFULLY express live here. The other
+# 10 (repository_property conditions, code_quality/copilot_code_review rule types,
+# and repository-target rulesets) are NOT expressible by provider-upjet-github
+# v0.19.1 and remain UI-managed — see ./README.md and the tracking issue.
+apiVersion: enterprise.github.m.upbound.io/v1alpha1
+kind: OrganizationRuleset
+metadata:
+  name: block-force-pushes
+  annotations:
+    crossplane.io/external-name: "6986186"
+spec:
+  managementPolicies: ["Observe"]
+  forProvider:
+    name: Block force pushes
+    target: branch
+    enforcement: active
+  providerConfigRef:
+    kind: ProviderConfig
+    name: default
+---
+apiVersion: enterprise.github.m.upbound.io/v1alpha1
+kind: OrganizationRuleset
+metadata:
+  name: require-pull-request
+  annotations:
+    crossplane.io/external-name: "4134020"
+spec:
+  managementPolicies: ["Observe"]
+  forProvider:
+    name: Require a pull request before merging
+    target: branch
+    enforcement: active
+  providerConfigRef:
+    kind: ProviderConfig
+    name: default
+---
+apiVersion: enterprise.github.m.upbound.io/v1alpha1
+kind: OrganizationRuleset
+metadata:
+  name: require-conversation-resolution
+  annotations:
+    crossplane.io/external-name: "6986190"
+spec:
+  managementPolicies: ["Observe"]
+  forProvider:
+    name: Require conversation resolution before merging
+    target: branch
+    enforcement: active
+  providerConfigRef:
+    kind: ProviderConfig
+    name: default
+---
+apiVersion: enterprise.github.m.upbound.io/v1alpha1
+kind: OrganizationRuleset
+metadata:
+  name: require-linear-history
+  annotations:
+    crossplane.io/external-name: "6986179"
+spec:
+  managementPolicies: ["Observe"]
+  forProvider:
+    name: Require linear history
+    target: branch
+    enforcement: active
+  providerConfigRef:
+    kind: ProviderConfig
+    name: default
+---
+apiVersion: enterprise.github.m.upbound.io/v1alpha1
+kind: OrganizationRuleset
+metadata:
+  name: require-signed-commits
+  annotations:
+    crossplane.io/external-name: "5397812"
+spec:
+  managementPolicies: ["Observe"]
+  forProvider:
+    name: Require signed commits
+    target: branch
+    enforcement: active
+  providerConfigRef:
+    kind: ProviderConfig
+    name: default
+---
+apiVersion: enterprise.github.m.upbound.io/v1alpha1
+kind: OrganizationRuleset
+metadata:
+  name: require-status-checks
+  annotations:
+    crossplane.io/external-name: "14974342"
+spec:
+  managementPolicies: ["Observe"]
+  forProvider:
+    name: Require status checks to pass
+    target: branch
+    enforcement: active
+  providerConfigRef:
+    kind: ProviderConfig
+    name: default
+---
+apiVersion: enterprise.github.m.upbound.io/v1alpha1
+kind: OrganizationRuleset
+metadata:
+  name: restrict-deletions
+  annotations:
+    crossplane.io/external-name: "6986171"
+spec:
+  managementPolicies: ["Observe"]
+  forProvider:
+    name: Restrict deletions
+    target: branch
+    enforcement: active
+  providerConfigRef:
+    kind: ProviderConfig
+    name: default
+---
+apiVersion: enterprise.github.m.upbound.io/v1alpha1
+kind: OrganizationRuleset
+metadata:
+  name: restrict-branch-names
+  annotations:
+    crossplane.io/external-name: "4133993"
+spec:
+  managementPolicies: ["Observe"]
+  forProvider:
+    name: Restrict branch names
+    target: branch
+    enforcement: active
+  providerConfigRef:
+    kind: ProviderConfig
+    name: default
+---
+apiVersion: enterprise.github.m.upbound.io/v1alpha1
+kind: OrganizationRuleset
+metadata:
+  name: restrict-commit-metadata
+  annotations:
+    crossplane.io/external-name: "4134015"
+spec:
+  managementPolicies: ["Observe"]
+  forProvider:
+    name: Restrict commit metadata
+    target: branch
+    enforcement: active
+  providerConfigRef:
+    kind: ProviderConfig
+    name: default
+---
+# Newer "Require workflows to pass" rule (API rule type `workflows`, exposed by the
+# provider as `requiredWorkflows`). Only the org-wide DependencyReview variant is
+# importable — it conditions on repository_name `~ALL`. The other "Require
+# workflows …" rulesets condition on repository_property (custom properties), which
+# the provider cannot express; they stay UI-managed (see ./README.md).
+apiVersion: enterprise.github.m.upbound.io/v1alpha1
+kind: OrganizationRuleset
+metadata:
+  name: require-workflows-dependency-review
+  annotations:
+    crossplane.io/external-name: "17213449"
+spec:
+  managementPolicies: ["Observe"]
+  forProvider:
+    name: Require workflows to pass before merging - DependencyReview
+    target: branch
+    enforcement: active
+  providerConfigRef:
+    kind: ProviderConfig
+    name: default

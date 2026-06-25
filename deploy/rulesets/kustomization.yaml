@@ -1,0 +1,11 @@
+# Org & repository rulesets as Crossplane managed resources (provider-upjet-github).
+# 12 existing rulesets are adopted Observe-first (read-only) and 1 net-new tag ruleset
+# is managed (Create). The 10 org rulesets the provider cannot express remain
+# UI-managed — see ./README.md for the full importability matrix and the push/tag/
+# Actions-policy analysis. Included by ../kustomization.yaml.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - organization-rulesets.yaml
+  - repository-rulesets.yaml
+  - tag-protection.yaml
