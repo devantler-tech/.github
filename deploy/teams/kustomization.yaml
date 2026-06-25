@@ -1,5 +1,7 @@
-# One file per managed team: the Team (Observe-adopted), its memberships, and its
-# team -> repository access. See ../README.md and the platform repo's
+# The `maintainers` team — the canonical CODEOWNERS owner across the devantler-tech
+# suite (the "teams over individuals" convention), Observe-adopted by numeric id. One
+# `Team` per file. Its membership lives in ../team-memberships/ and its team → repository
+# access in ../team-repositories/. See ../README.md and the platform repo's
 # docs/github-management.md for the Observe-first adoption flow.
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization

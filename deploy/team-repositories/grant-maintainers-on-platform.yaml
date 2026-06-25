@@ -1,0 +1,18 @@
+# Team → repository access, adopted Observe-first (read-only).
+# external-name = `<team_id>:<repository>`.
+apiVersion: team.github.m.upbound.io/v1alpha1
+kind: TeamRepository
+metadata:
+  name: maintainers-platform
+  annotations:
+    crossplane.io/external-name: "17046606:platform"
+spec:
+  managementPolicies: ["Observe"]
+  forProvider:
+    teamIdRef:
+      name: maintainers
+    repository: platform
+    permission: maintain
+  providerConfigRef:
+    kind: ProviderConfig
+    name: default
