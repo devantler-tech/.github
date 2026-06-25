@@ -24,11 +24,13 @@ provider). Reconciled by the platform `github-config` tenant like the rest of `d
 
 ## What is managed here
 
-| File | Rulesets | Policy |
+**One resource per file** (filename = resource name), matching `../repositories/`:
+
+| Files | Rulesets | Policy |
 |---|---|---|
-| `organization-rulesets.yaml` | 10 org rulesets | Observe (read-only import) |
-| `repository-rulesets.yaml` | `ksail` "Restrict deletions", `platform` "Require merge queue" | Observe (read-only import) |
-| `tag-protection.yaml` | **Protect release tags** (net-new) | Managed (Create) — block tag delete + force-move + require `v<semver>` |
+| 10 `OrganizationRuleset` files | the 10 org rulesets below | Observe (read-only import) |
+| `ksail-restrict-deletions.yaml`, `platform-require-merge-queue.yaml` | `ksail` "Restrict deletions", `platform` "Require merge queue" | Observe (read-only import) |
+| `protect-release-tags.yaml` | **Protect release tags** (net-new) | Managed (Create) — block tag delete + force-move + require `v<semver>` |
 
 The 10 imported org rulesets: Block force pushes · Require a pull request before
 merging · Require conversation resolution before merging · Require linear history ·
@@ -72,10 +74,10 @@ here Observe-first once expressible.
 - **Push rulesets** — none exist, and **not adoptable**: the provider supports
   `target: push` (beta) but none of the push-file rule types above, so a push ruleset
   can't be expressed. Tracked in [#69](https://github.com/devantler-tech/.github/issues/69).
-- **Tag rulesets** — none existed; **added** here (`tag-protection.yaml`). Makes release
-  tags immutable (block delete + force-move) and well-formed (`v<semver>`). See that
-  file's header for the team-vs-enterprise tier caveat on the name-pattern rule and its
-  fallback.
+- **Tag rulesets** — none existed; **added** here (`protect-release-tags.yaml`). Makes
+  release tags immutable (block delete + force-move) and well-formed (`v<semver>`). See
+  that file's header for the team-vs-enterprise tier caveat on the name-pattern rule and
+  its fallback.
 - **Actions policies** — the 2026-06-18
   [workflow execution protections](https://github.blog/changelog/2026-06-18-control-who-and-what-triggers-github-actions-workflows/)
   (actor + event allow-lists controlling who/what triggers workflows, delivered as org

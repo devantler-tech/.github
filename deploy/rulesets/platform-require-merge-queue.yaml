@@ -1,0 +1,22 @@
+# Existing repository ruleset, adopted Observe-first (read-only). external-name =
+# `<repo>:<ruleset_id>` (cf. the `maintainers:<repo>` convention in
+# ../teams/). Identity-only forProvider — see ./README.md for the convention.
+#
+# platform's "Require merge queue" rule on the default branch (merge_queue is a
+# repo-only rule type; org rulesets cannot carry it).
+apiVersion: repo.github.m.upbound.io/v1alpha1
+kind: RepositoryRuleset
+metadata:
+  name: platform-require-merge-queue
+  annotations:
+    crossplane.io/external-name: "platform:5275020"
+spec:
+  managementPolicies: ["Observe"]
+  forProvider:
+    repository: platform
+    name: Require merge queue
+    target: branch
+    enforcement: active
+  providerConfigRef:
+    kind: ProviderConfig
+    name: default
