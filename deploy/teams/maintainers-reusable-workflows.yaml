@@ -1,0 +1,18 @@
+# Team → repository access, adopted Observe-first (read-only).
+# external-name = `<team_id>:<repository>`.
+apiVersion: team.github.m.upbound.io/v1alpha1
+kind: TeamRepository
+metadata:
+  name: maintainers-reusable-workflows
+  annotations:
+    crossplane.io/external-name: "17046606:reusable-workflows"
+spec:
+  managementPolicies: ["Observe"]
+  forProvider:
+    teamIdRef:
+      name: maintainers
+    repository: reusable-workflows
+    permission: maintain
+  providerConfigRef:
+    kind: ProviderConfig
+    name: default

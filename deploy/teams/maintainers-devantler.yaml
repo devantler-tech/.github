@@ -1,0 +1,16 @@
+# The maintainer. A team CODEOWNERS with no members would request no reviewer, so
+# the team is given its member here. New desired state (team had no members) → Create.
+apiVersion: team.github.m.upbound.io/v1alpha1
+kind: TeamMembership
+metadata:
+  name: maintainers-devantler
+spec:
+  managementPolicies: ["Observe", "Create", "Update", "LateInitialize"]
+  forProvider:
+    teamIdRef:
+      name: maintainers
+    username: devantler
+    role: maintainer
+  providerConfigRef:
+    kind: ProviderConfig
+    name: default

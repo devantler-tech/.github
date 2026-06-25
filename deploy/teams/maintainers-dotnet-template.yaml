@@ -1,0 +1,18 @@
+# Team → repository access, adopted Observe-first (read-only).
+# external-name = `<team_id>:<repository>`.
+apiVersion: team.github.m.upbound.io/v1alpha1
+kind: TeamRepository
+metadata:
+  name: maintainers-dotnet-template
+  annotations:
+    crossplane.io/external-name: "17046606:dotnet-template"
+spec:
+  managementPolicies: ["Observe"]
+  forProvider:
+    teamIdRef:
+      name: maintainers
+    repository: dotnet-template
+    permission: maintain
+  providerConfigRef:
+    kind: ProviderConfig
+    name: default
