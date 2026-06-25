@@ -1,7 +1,7 @@
 # The `maintainers` team — the canonical CODEOWNERS owner across the devantler-tech
 # suite (the "teams over individuals" convention), adopted Observe-first (read-only).
-# Its membership and team → repository access live one-per-file in the sibling
-# maintainers-*.yaml files.
+# Its membership lives one-per-file in ../team-memberships/ and its team → repository
+# access in ../team-repositories/.
 apiVersion: team.github.m.upbound.io/v1alpha1
 kind: Team
 metadata:

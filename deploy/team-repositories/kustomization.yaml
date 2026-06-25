@@ -1,0 +1,21 @@
+# `TeamRepository` resources — one per file, named `grant-<team>-on-<repo>.yaml`, each
+# granting a team a permission on a repository. Existing access is adopted Observe-first;
+# access the team did not yet hold is Created at `maintain`. Grant a new repo by dropping
+# a `grant-maintainers-on-<repo>.yaml` here and listing it below. See ../README.md and
+# the platform repo's docs/github-management.md.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  # Observe-adopted (access already existed).
+  - grant-maintainers-on-actions.yaml
+  - grant-maintainers-on-dotnet-template.yaml
+  - grant-maintainers-on-go-template.yaml
+  - grant-maintainers-on-ksail.yaml
+  - grant-maintainers-on-monorepo.yaml
+  - grant-maintainers-on-platform.yaml
+  - grant-maintainers-on-reusable-workflows.yaml
+  # Created (grant did not exist yet).
+  - grant-maintainers-on-gitops-tenant-template.yaml
+  - grant-maintainers-on-platform-template.yaml
+  - grant-maintainers-on-unifi.yaml
+  - grant-maintainers-on-homebrew-tap.yaml
