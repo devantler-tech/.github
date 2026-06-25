@@ -18,4 +18,5 @@ resources:
   - repositories/
   - teams/
   - labels/
-  - rulesets/
+  - organization-rulesets/
+  - repository-rulesets/

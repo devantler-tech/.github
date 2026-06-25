@@ -1,10 +1,11 @@
-# `rulesets/` — org & repository rulesets as code
+# `organization-rulesets/` — org rulesets as code
 
-Declarative management of the devantler-tech org's **rulesets** (branch/tag protection
-and policies) as Crossplane managed resources, via
+Declarative management of the devantler-tech org's **`OrganizationRuleset`** resources
+(org-wide branch/tag protection and policies) as Crossplane managed resources, via
 [provider-upjet-github](https://github.com/crossplane-contrib/provider-upjet-github)
-(`OrganizationRuleset` / `RepositoryRuleset`, from the `integrations/github` Terraform
-provider). Reconciled by the platform `github-config` tenant like the rest of `deploy/`.
+(from the `integrations/github` Terraform provider). Repo-scoped `RepositoryRuleset`
+resources live in the sibling [`../repository-rulesets/`](../repository-rulesets/).
+Reconciled by the platform `github-config` tenant like the rest of `deploy/`.
 
 ## How adoption works
 
@@ -24,13 +25,15 @@ provider). Reconciled by the platform `github-config` tenant like the rest of `d
 
 ## What is managed here
 
-**One resource per file** (filename = resource name), matching `../repositories/`:
+**One `OrganizationRuleset` per file**, named after the rule it enforces (an active
+verb — e.g. `require-pull-request.yaml`). Repo-scoped rulesets live next door in
+[`../repository-rulesets/`](../repository-rulesets/) as `<verb>-on-<repo>.yaml`.
 
 | Files | Rulesets | Policy |
 |---|---|---|
 | 10 `OrganizationRuleset` files | the 10 org rulesets below | Observe (read-only import) |
-| `ksail-restrict-deletions.yaml`, `platform-require-merge-queue.yaml` | `ksail` "Restrict deletions", `platform` "Require merge queue" | Observe (read-only import) |
 | `protect-release-tags.yaml` | **Protect release tags** (net-new) | Managed (Create) — block tag delete + force-move + require `v<semver>` |
+| (in `../repository-rulesets/`) `restrict-deletions-on-ksail.yaml`, `require-merge-queue-on-platform.yaml` | `ksail` "Restrict deletions", `platform` "Require merge queue" | Observe (read-only import) |
 
 The 10 imported org rulesets: Block force pushes · Require a pull request before
 merging · Require conversation resolution before merging · Require linear history ·
