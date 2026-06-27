@@ -1,5 +1,8 @@
-# Require CodeRabbit review — a net-new, actually-managed org ruleset (like
-# protect-release-tags.yaml; NOT an Observe import, so it has no external-name).
+# Require status checks to pass - CodeRabbit — a net-new, actually-managed org ruleset
+# (like protect-release-tags.yaml; NOT an Observe import, so it has no external-name).
+# Named/grouped under the "require-status-checks" concern: a dedicated managed ruleset
+# rather than folding into the Observe-only require-status-checks.yaml import (promoting
+# that import is a lossy round-trip — see ./README.md and the bypassActors note below).
 #
 # CodeRabbit (the `coderabbitai` GitHub App, installed org-wide) posts a commit
 # status named `CodeRabbit` once it has reviewed a PR. This `OrganizationRuleset`
@@ -24,7 +27,7 @@
 apiVersion: enterprise.github.m.upbound.io/v1alpha1
 kind: OrganizationRuleset
 metadata:
-  name: require-coderabbit-review
+  name: require-status-checks-coderabbit-review
 spec:
   managementPolicies:
     - Observe
@@ -32,7 +35,7 @@ spec:
     - Update
     - LateInitialize
   forProvider:
-    name: Require CodeRabbit review
+    name: Require status checks to pass - CodeRabbit
     target: branch
     enforcement: active
     conditions:
