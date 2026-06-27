@@ -9,7 +9,11 @@ Org-wide `OrganizationRuleset` resources live in the sibling
 adoption convention and the provider importability matrix.
 
 **One `RepositoryRuleset` per file**, named `<verb>-on-<repo>.yaml` so the rule and its
-target repo are clear from the filename. external-name = `<repo>:<id>`.
+target repo are clear from the filename. external-name = the **bare numeric ruleset id**
+(same as `../organization-rulesets/`; the provider stores `RepositoryRuleset.id`
+from-provider). The Terraform `<repo>:<ruleset_id>` form is the *import* id only — using
+it as the external-name fails the provider's `strconv.ParseInt` so the resource never
+observes.
 
 | File | Repo | Ruleset | Policy |
 |---|---|---|---|

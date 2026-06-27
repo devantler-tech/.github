@@ -1,6 +1,9 @@
 # Existing repository ruleset, adopted Observe-first (read-only). external-name =
-# `<repo>:<ruleset_id>` (cf. the `maintainers:<repo>` convention in
-# ../teams/). Identity-only forProvider — see ./README.md for the convention.
+# the bare numeric ruleset id — the upjet provider stores RepositoryRuleset `id`
+# from-provider, exactly like ../organization-rulesets/. (The Terraform
+# `<repo>:<ruleset_id>` form is the *import* id, NOT the stored external-name; a
+# `<repo>:`-prefixed value fails the provider's strconv.ParseInt and the resource
+# never observes.) Identity-only forProvider — see ./README.md for the convention.
 #
 # platform's "Require merge queue" rule on the default branch (merge_queue is a
 # repo-only rule type; org rulesets cannot carry it).
@@ -9,7 +12,7 @@ kind: RepositoryRuleset
 metadata:
   name: platform-require-merge-queue
   annotations:
-    crossplane.io/external-name: "platform:5275020"
+    crossplane.io/external-name: "5275020" # numeric ruleset id
 spec:
   managementPolicies: ["Observe"]
   forProvider:
