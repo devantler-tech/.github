@@ -1,6 +1,9 @@
 # Existing repository ruleset, adopted Observe-first (read-only). external-name =
-# `<repo>:<ruleset_id>` (cf. the `maintainers:<repo>` convention in
-# ../teams/). Identity-only forProvider — see ./README.md for the convention.
+# the bare numeric ruleset id — the upjet provider stores RepositoryRuleset `id`
+# from-provider, exactly like ../organization-rulesets/. (The Terraform
+# `<repo>:<ruleset_id>` form is the *import* id, NOT the stored external-name; a
+# `<repo>:`-prefixed value fails the provider's strconv.ParseInt and the resource
+# never observes.) Identity-only forProvider — see ./README.md for the convention.
 #
 # ksail's own "Restrict deletions" rule, scoped to refs/heads/benchmark-data (the
 # long-lived benchmark-data branch) — narrower than the org-wide rule.
@@ -9,7 +12,7 @@ kind: RepositoryRuleset
 metadata:
   name: ksail-restrict-deletions
   annotations:
-    crossplane.io/external-name: "ksail:14699634"
+    crossplane.io/external-name: "14699634" # numeric ruleset id
 spec:
   managementPolicies: ["Observe"]
   forProvider:
