@@ -21,9 +21,11 @@
 # on the sibling "Require status checks to pass" ruleset). Kept as an escape hatch: an
 # org-wide required check would otherwise block ALL merges during a CodeRabbit outage,
 # and v0.19.1 cannot express the API's `do_not_enforce_on_create` (so the rule is
-# enforced from branch creation too). Remove this block for a no-bypass gate. To reject
-# a spoofed `CodeRabbit` status from another source, add `integrationId: <coderabbit
-# app id>` under requiredCheck (the sibling ruleset leaves it unpinned, so this does too).
+# enforced from branch creation too). Remove this block for a no-bypass gate.
+#
+# requiredCheck is pinned to the CodeRabbit GitHub App via integrationId 347564 (the
+# `coderabbitai` app id, verified `gh api /apps/coderabbitai`) so only that app's status
+# satisfies the gate — a spoofed `CodeRabbit` status from another source/app cannot.
 apiVersion: enterprise.github.m.upbound.io/v1alpha1
 kind: OrganizationRuleset
 metadata:
@@ -49,6 +51,7 @@ spec:
       - requiredStatusChecks:
           - requiredCheck:
               - context: CodeRabbit
+                integrationId: 347564 # pin to the coderabbitai app (anti-spoofing)
             strictRequiredStatusChecksPolicy: false
     bypassActors:
       - actorId: 0
