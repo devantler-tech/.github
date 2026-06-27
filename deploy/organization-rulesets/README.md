@@ -33,7 +33,7 @@ verb — e.g. `require-pull-request.yaml`). Repo-scoped rulesets live next door 
 |---|---|---|
 | 10 `OrganizationRuleset` files | the 10 org rulesets below | Observe (read-only import) |
 | `protect-release-tags.yaml` | **Protect release tags** (net-new) | Managed (Create) — block tag delete + force-move + require `v<semver>` |
-| (in `../repository-rulesets/`) `restrict-deletions-on-ksail.yaml`, `require-merge-queue-on-platform.yaml` | `ksail` "Restrict deletions", `platform` "Require merge queue" | Observe (read-only import) |
+| (in `../repository-rulesets/`) `require-merge-queue-on-platform.yaml` | `platform` "Require merge queue" | Observe (read-only import) |
 
 The 10 imported org rulesets: Block force pushes · Require a pull request before
 merging · Require conversation resolution before merging · Require linear history ·

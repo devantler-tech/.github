@@ -17,5 +17,4 @@ observes.
 
 | File | Repo | Ruleset | Policy |
 |---|---|---|---|
-| `restrict-deletions-on-ksail.yaml` | `ksail` | Restrict deletions (scoped to `refs/heads/benchmark-data`) | Observe (read-only import) |
 | `require-merge-queue-on-platform.yaml` | `platform` | Require merge queue | Observe (read-only import) |
