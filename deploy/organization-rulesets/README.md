@@ -33,6 +33,7 @@ verb — e.g. `require-pull-request.yaml`). Repo-scoped rulesets live next door 
 |---|---|---|
 | 10 `OrganizationRuleset` files | the 10 org rulesets below | Observe (read-only import) |
 | `protect-release-tags.yaml` | **Protect release tags** (net-new) | Managed (Create) — block tag delete + force-move + require `v<semver>` |
+| `require-status-checks-coderabbit-review.yaml` | **Require status checks to pass - CodeRabbit** (net-new) | Managed (Create) — require the `CodeRabbit` status check on the default branch of every repo |
 | (in `../repository-rulesets/`) `require-merge-queue-on-platform.yaml` | `platform` "Require merge queue" | Observe (read-only import) |
 
 The 10 imported org rulesets: Block force pushes · Require a pull request before

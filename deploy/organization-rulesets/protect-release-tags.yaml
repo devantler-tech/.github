@@ -1,4 +1,5 @@
-# Protect release tags — the ONE net-new, actually-managed ruleset in deploy/rulesets/.
+# Protect release tags — a net-new, actually-managed org ruleset (see also
+# require-status-checks-coderabbit-review.yaml; the rest in this directory are Observe-only imports).
 #
 # The org ships every product by tagging a `v*` release (each repo's cd.yaml triggers
 # on `v*`), yet had NO tag ruleset — release tags could be deleted or force-moved.
