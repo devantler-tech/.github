@@ -33,7 +33,6 @@ verb — e.g. `require-pull-request.yaml`). Repo-scoped rulesets live next door 
 |---|---|---|
 | 10 `OrganizationRuleset` files | the 10 org rulesets below | Observe (read-only import) |
 | `protect-release-tags.yaml` | **Protect release tags** (net-new) | Managed (Create) — block tag delete + force-move + require `v<semver>` |
-| `require-status-checks-coderabbit-review.yaml` | **Require status checks to pass - CodeRabbit** (net-new) | Managed (Create) — require the `CodeRabbit` status check on the default branch of every repo |
 | (in `../repository-rulesets/`) `require-merge-queue-on-platform.yaml` | `platform` "Require merge queue" | Observe (read-only import) |
 
 The 10 imported org rulesets: Block force pushes · Require a pull request before
@@ -72,6 +71,18 @@ So **10 of the 20 org rulesets cannot be faithfully expressed** and remain UI-ma
 These are tracked for re-adoption as the provider gains support in
 [#69](https://github.com/devantler-tech/.github/issues/69) (`roadmap`). Re-home each
 here Observe-first once expressible.
+
+> **⚠️ `required_status_checks` rulesets are expressible but NOT provider-creatable.**
+> A required-status-check org ruleset (requiring the `CodeRabbit` check) was added in
+> [#74](https://github.com/devantler-tech/.github/pull/74) and **reverted** — on create the
+> provider **panics**: `terraform-provider-github` v6.6.0 (`respository_rules_utils.go:343`)
+> does `requiredStatusMap["do_not_enforce_on_create"].(bool)`, but `provider-upjet-github`
+> v0.19.1's CRD doesn't expose `doNotEnforceOnCreate`, so the key is `nil` → `nil.(bool)`
+> panics. The field can't be set from the CR to avoid it, and v0.19.1 is the latest release.
+> So **"Require status checks to pass"** (and any CodeRabbit equivalent) must stay
+> **UI-created + Observe-imported** until the provider is fixed; that is also why the
+> `require-status-checks.yaml` import here is Observe-only. Tracked in
+> [#69](https://github.com/devantler-tech/.github/issues/69).
 
 ## Push / tag / Actions-policy considerations
 
