@@ -1,6 +1,7 @@
 # `OrganizationRuleset` resources — one per file, named after the rule (an active verb).
-# 10 existing org rulesets are adopted Observe-first (read-only) and 1 net-new tag ruleset
-# is managed (Create). The 10 org rulesets the provider cannot express remain UI-managed —
+# 10 existing org rulesets are adopted Observe-first (read-only) and 2 net-new rulesets
+# (1 tag, 1 branch) are managed (Create). The 10 org rulesets the provider cannot express
+# remain UI-managed —
 # see ./README.md for the importability matrix and the push/tag/Actions-policy analysis.
 # Repo-scoped rulesets live in ../repository-rulesets/. Included by ../kustomization.yaml.
 apiVersion: kustomize.config.k8s.io/v1beta1
@@ -19,3 +20,4 @@ resources:
   - require-workflows-dependency-review.yaml
   # Net-new, managed (Create).
   - protect-release-tags.yaml
+  - require-coderabbit-review.yaml
