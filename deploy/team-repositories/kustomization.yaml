@@ -19,3 +19,4 @@ resources:
   - grant-maintainers-on-platform-template.yaml
   - grant-maintainers-on-unifi.yaml
   - grant-maintainers-on-homebrew-tap.yaml
+  - grant-maintainers-on-provider-upjet-unifi.yaml

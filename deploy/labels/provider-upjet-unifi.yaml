@@ -1,0 +1,24 @@
+# Issue labels for devantler-tech/provider-upjet-unifi. The canonical org taxonomy
+# is appended to every IssueLabels by the shared patch in kustomization.yaml. This
+# repo declares no repo-specific extras yet (`label: []`); add this repo's own
+# dependency/ecosystem labels here (the ones Dependabot/Renovate apply) once they
+# exist, so the authoritative set doesn't strip them. See ../README.md.
+apiVersion: repo.github.m.upbound.io/v1alpha1
+kind: IssueLabels
+metadata:
+  name: provider-upjet-unifi
+  annotations:
+    crossplane.io/external-name: provider-upjet-unifi
+spec:
+  managementPolicies:
+    - Observe
+    - Create
+    - Update
+    - LateInitialize
+  forProvider:
+    repository: provider-upjet-unifi
+    # No repo-specific extras; the shared patch supplies the full canonical set.
+    label: []
+  providerConfigRef:
+    kind: ProviderConfig
+    name: default

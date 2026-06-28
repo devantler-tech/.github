@@ -26,6 +26,7 @@ resources:
   - maintenance.yaml
   - agent-skills.yaml
   - agent-plugins.yaml
+  - provider-upjet-unifi.yaml
   - unifi.yaml
   - gitops-tenant-template.yaml
   - platform-template.yaml

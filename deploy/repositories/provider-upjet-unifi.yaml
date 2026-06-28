@@ -1,0 +1,27 @@
+apiVersion: repo.github.m.upbound.io/v1alpha1
+kind: Repository
+metadata:
+  name: provider-upjet-unifi
+  annotations:
+    # NET-NEW repo (not an adoption): the provider CREATEs it from this manifest.
+    # external-name pinned so the create/observe target is unambiguous.
+    crossplane.io/external-name: provider-upjet-unifi
+spec:
+  # Same all-except-Delete policy as every other managed repo (omitting Delete
+  # guarantees Crossplane can never delete a real GitHub repository). Create is
+  # present so the provider provisions this repo if it does not yet exist.
+  managementPolicies:
+    - Observe
+    - Create
+    - Update
+    - LateInitialize
+  forProvider:
+    name: provider-upjet-unifi
+    description: "Crossplane provider for Ubiquiti UniFi, generated with Upjet from ubiquiti-community/terraform-provider-unifi. Manage UniFi networks, WLANs, firewall, VPN/WireGuard, devices and settings as Kubernetes resources."
+    visibility: public
+    hasIssues: true
+    # Shared kustomization patch supplies the squash-only merge policy +
+    # webCommitSignoffRequired; nothing repo-specific needed here.
+  providerConfigRef:
+    kind: ProviderConfig
+    name: default
