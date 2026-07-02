@@ -1,0 +1,21 @@
+# Actions permissions for devantler-tech/platform-template — binds the org-wide
+# shaPinningRequired policy (asserted once in kustomization.yaml) to this repo.
+# Observe+LateInitialize adopts the repo's live enabled/allowedActions so turning
+# on SHA-pinning never disturbs them. See ../README.md.
+apiVersion: actions.github.m.upbound.io/v1alpha1
+kind: RepositoryPermissions
+metadata:
+  name: platform-template
+  annotations:
+    crossplane.io/external-name: platform-template
+spec:
+  managementPolicies:
+    - Observe
+    - Create
+    - Update
+    - LateInitialize
+  forProvider:
+    repository: platform-template
+  providerConfigRef:
+    kind: ProviderConfig
+    name: default
