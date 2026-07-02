@@ -14,13 +14,15 @@
 # now the single source of truth for that taxonomy. Mirrors the org-wide settings
 # patch in ../repositories/kustomization.yaml.
 #
-# Scope = the repos managed in ../repositories/ + this repo (.github). Bring a new
-# repo under management by adding `<repo>.yaml` with its live extras (enumerate
-# them first so the authoritative set doesn't strip a label in use).
+# Scope = the repos managed in ../repositories/ + this repo (.github) + the
+# monorepo (labels-only for now — it is not yet declared in ../repositories/).
+# Bring a new repo under management by adding `<repo>.yaml` with its live extras
+# (enumerate them first so the authoritative set doesn't strip a label in use).
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
   - dot-github.yaml
+  - monorepo.yaml
   - platform.yaml
   - ksail.yaml
   - maintenance.yaml
