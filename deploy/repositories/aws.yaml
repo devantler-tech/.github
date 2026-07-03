@@ -1,0 +1,31 @@
+apiVersion: repo.github.m.upbound.io/v1alpha1
+kind: Repository
+metadata:
+  name: aws
+  annotations:
+    # NET-NEW repo (not an adoption). The provider's create POST cannot send the
+    # org's 5 required custom properties (no CRD field), so it 422s until the
+    # repo is bootstrapped ONCE by an org admin with `gh api -X POST
+    # /orgs/devantler-tech/repos` including `custom_properties` (Type=
+    # Infrastructure + the 4 defaults) — see platform#2325. This CR then
+    # observes + adopts it and manages it declaratively from there on.
+    # external-name pinned so the create/observe target is unambiguous.
+    crossplane.io/external-name: aws
+spec:
+  # Same all-except-Delete policy as every other managed repo (omitting Delete
+  # guarantees Crossplane can never delete a real GitHub repository).
+  managementPolicies:
+    - Observe
+    - Create
+    - Update
+    - LateInitialize
+  forProvider:
+    name: aws
+    description: "Declarative AWS infrastructure for the devantler-tech platform — Crossplane managed resources in deploy/, published as a cosign-signed OCI artifact and reconciled by the platform's aws tenant."
+    visibility: public
+    hasIssues: true
+    # Shared kustomization patch supplies the squash-only merge policy +
+    # webCommitSignoffRequired; nothing repo-specific needed here.
+  providerConfigRef:
+    kind: ProviderConfig
+    name: default

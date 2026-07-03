@@ -16,6 +16,7 @@ resources:
   - agent-plugins.yaml
   - provider-upjet-unifi.yaml
   - unifi.yaml
+  - aws.yaml
   - gitops-tenant-template.yaml
   - platform-template.yaml
   - go-template.yaml
