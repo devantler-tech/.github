@@ -3,7 +3,7 @@ name: 🚀 CD
 # Publishes the org's declarative GitHub state (deploy/) as a cosign-signed OCI
 # artifact consumed by the platform cluster's `github-config` tenant. There is
 # NO container image here — only manifests — so it delegates to the shared
-# manifests-only publish workflow in devantler-tech/reusable-workflows (the
+# manifests-only publish workflow in devantler-tech/actions (the
 # manifests-only sibling of publish-app.yaml).
 #
 # The OCI path is `github-config` (not the repo name) because `.github` is an
@@ -11,10 +11,12 @@ name: 🚀 CD
 #
 # Because signing runs INSIDE the reusable workflow, the cosign certificate
 # identity (OIDC subject) is that workflow's path —
-# https://github.com/devantler-tech/reusable-workflows/.github/workflows/publish-manifests.yaml@<ref>
+# https://github.com/devantler-tech/actions/.github/workflows/publish-manifests.yaml@<ref>
 # — NOT this repo's cd.yaml. The platform `github-config` OCIRepository's
 # verify.matchOIDCIdentity.subject must match that (see
-# k8s/providers/hetzner/github/sync.yaml in devantler-tech/platform).
+# k8s/bases/apps/github-config/oci-repository.yaml in devantler-tech/platform),
+# so this repo's workflow-source swap MUST land only after the platform
+# verifier accepts the devantler-tech/actions subject.
 
 on:
   push:
