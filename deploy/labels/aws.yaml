@@ -1,0 +1,22 @@
+# Issue labels for devantler-tech/aws. The canonical org taxonomy (22 labels)
+# is appended to every IssueLabels by the shared patch in kustomization.yaml; this
+# file adds only aws's repo-specific extras. See ../README.md.
+apiVersion: repo.github.m.upbound.io/v1alpha1
+kind: IssueLabels
+metadata:
+  name: aws
+  annotations:
+    crossplane.io/external-name: aws
+spec:
+  managementPolicies:
+    - Observe
+    - Create
+    - Update
+    - LateInitialize
+  forProvider:
+    repository: aws
+    # No repo-specific extras; the shared patch supplies the full canonical set.
+    label: []
+  providerConfigRef:
+    kind: ProviderConfig
+    name: default
