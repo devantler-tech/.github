@@ -1,0 +1,21 @@
+# Actions permissions for devantler-tech/fleet-gitops — binds the org-wide
+# shaPinningRequired policy (asserted once in kustomization.yaml) to this repo.
+# Observe+LateInitialize adopts the repo's live enabled/allowedActions so turning
+# on SHA-pinning never disturbs them. See ../README.md.
+apiVersion: actions.github.m.upbound.io/v1alpha1
+kind: RepositoryPermissions
+metadata:
+  name: fleet-gitops
+  annotations:
+    crossplane.io/external-name: fleet-gitops
+spec:
+  managementPolicies:
+    - Observe
+    - Create
+    - Update
+    - LateInitialize
+  forProvider:
+    repository: fleet-gitops
+  providerConfigRef:
+    kind: ProviderConfig
+    name: default

@@ -31,6 +31,14 @@ out-of-band changes made in the GitHub UI.
   importability matrix and the push/tag/Actions-policy analysis.
 - `repository-rulesets/` — one `RepositoryRuleset` per file (`<verb>-on-<repo>.yaml`),
   each a repo-scoped rule adopted Observe-first.
+- `repository-permissions/` — one `RepositoryPermissions` per managed repo enforcing
+  **Require actions to be pinned to a full-length commit SHA**
+  (`sha_pinning_required`). The policy is asserted once via a shared patch in
+  `repository-permissions/kustomization.yaml`; scope is every repo in `labels/`
+  **except `actions`**. Requires a provider-upjet-github release embedding
+  terraform-provider-github ≥ 6.11.0 (the field is absent in the deployed v0.19.1)
+  and activation of `repositorypermissions.actions.github.m.upbound.io` in the
+  platform MRAP.
 
 See the platform repo's
 [`docs/github-management.md`](https://github.com/devantler-tech/platform/blob/main/docs/github-management.md)
