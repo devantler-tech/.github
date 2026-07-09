@@ -22,4 +22,16 @@ resources:
   - labels/
   - organization-rulesets/
   - repository-rulesets/
-  - repository-permissions/
+  # repository-permissions/ is intentionally NOT wired in yet — the
+  # `shaPinningRequired` field it patches onto every RepositoryPermissions is
+  # absent from the currently-deployed provider-upjet-github v0.19.1 CRD
+  # schema (it embeds terraform-provider-github 6.6.0; the field landed in
+  # 6.11.0). Applying it makes dry-run reject the patch and the tenant's
+  # `apps` Kustomization health-check times out after 20m, stalling every
+  # prod deploy and kicking PRs out of the merge queue (hit live 2026-07-09,
+  # ~4h after #67 merged and republished as v1.12.0). Re-add once the
+  # provider bump lands — tracked upstream at
+  # crossplane-contrib/provider-upjet-github#288 (own PR, open, blocked on
+  # maintainer review) — and the repository-permissions/kustomization.yaml
+  # header's own gate note confirms the same precondition.
+  # - repository-permissions/
