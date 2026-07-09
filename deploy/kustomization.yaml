@@ -22,4 +22,10 @@ resources:
   - labels/
   - organization-rulesets/
   - repository-rulesets/
-  - repository-permissions/
+  # repository-permissions/ is intentionally NOT wired in yet — its own
+  # kustomization.yaml header documents the precondition (provider-upjet-github
+  # bump for `sha_pinning_required`, crossplane-contrib/provider-upjet-github#288).
+  # Hit live 2026-07-09: publishing it stalled the tenant `apps` Kustomization's
+  # health check for 20m every reconcile, blocking prod deploys and the merge
+  # queue. Re-add once that provider bump lands.
+  # - repository-permissions/
