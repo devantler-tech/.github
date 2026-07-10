@@ -37,7 +37,6 @@ resources:
   - dotnet-template.yaml
   - homebrew-tap.yaml
   - actions.yaml
-  - reusable-workflows.yaml
   # Private repos.
   - ascoachingogvaner.yaml
   - wedding-app.yaml
