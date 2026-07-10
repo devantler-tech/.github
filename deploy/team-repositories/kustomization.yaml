@@ -13,7 +13,6 @@ resources:
   - grant-maintainers-on-ksail.yaml
   - grant-maintainers-on-monorepo.yaml
   - grant-maintainers-on-platform.yaml
-  - grant-maintainers-on-reusable-workflows.yaml
   # Created (grant did not exist yet).
   - grant-maintainers-on-gitops-tenant-template.yaml
   - grant-maintainers-on-platform-template.yaml

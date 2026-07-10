@@ -14,6 +14,11 @@ reconcile the live GitHub org to match these manifests — including reverting
 out-of-band changes made in the GitHub UI.
 
 - `repositories/` — one `Repository` per managed repo.
+- `archived-repositories/` — one `Repository` per archived (or archival-bound)
+  repo, kept outside `repositories/` so its shared merge-policy patch never
+  targets a read-only repo (each patched reconcile would 422). Observe-first,
+  then a single `archived: true` flip; the two-phase lifecycle is documented in
+  that dir's `kustomization.yaml`.
 - `teams/` — one `Team` per file (the `maintainers` team, Observe-adopted).
 - `team-memberships/` — one `TeamMembership` per file (`add-<user>-to-<team>.yaml`).
 - `team-repositories/` — one `TeamRepository` per file (`grant-<team>-on-<repo>.yaml`),

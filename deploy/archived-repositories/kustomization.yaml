@@ -1,0 +1,22 @@
+# Archived (or archival-bound) repositories, kept OUTSIDE ../repositories/ on
+# purpose: that kustomization's shared merge-policy patch (squash-only +
+# webCommitSignoffRequired) targets every Repository it renders, and an archived
+# repo is read-only for settings — each patched reconcile would 422 forever.
+# CRs here get NO shared patches; they carry only what an archived repo can hold.
+#
+# Lifecycle (two-phase, per devantler-tech/actions#425 AC3):
+#   1. Adopt Observe-only (read-only mirror; this phase) and remove the repo's
+#      active management CRs (labels/, repository-permissions/,
+#      team-repositories/) — all omit Delete, so pruning them never touches
+#      live GitHub.
+#   2. After the org required-workflow rulesets are repointed off the repo
+#      (devantler-tech/.github#87), promote to Observe+Update+LateInitialize
+#      with `archived: true` — LateInitialize backfills the remaining live
+#      settings first, so the only write the provider ever sends is the single
+#      archive PATCH; once archived, desired == observed and it stays silent.
+# Delete is omitted everywhere (same guarantee as ../repositories/: a CR/Flux
+# prune can never delete a real repository).
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - reusable-workflows.yaml

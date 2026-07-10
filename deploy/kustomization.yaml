@@ -16,6 +16,7 @@ resources:
   - external-secret.yaml
   - provider-config.yaml
   - repositories/
+  - archived-repositories/
   - teams/
   - team-memberships/
   - team-repositories/
