@@ -45,6 +45,21 @@ out-of-band changes made in the GitHub UI.
   and activation of `repositorypermissions.actions.github.m.upbound.io` in the
   platform MRAP.
 
+## Roadmap
+
+GitHub Issues are the roadmap of record. Epic
+[#56](https://github.com/devantler-tech/.github/issues/56) tracks the current
+GitHub-as-code programme in three phases:
+
+1. **Foundation** — publish the signed artifact and Observe-adopt repositories,
+   teams, and provider credentials without assuming delete ownership (landed).
+2. **Coverage** — extend the declarative source of truth across labels,
+   rulesets, team access, repository metadata, and remaining org settings
+   through the epic's linked children (active).
+3. **Enforcement** — move each supported object from observation to active
+   reconciliation only after its live state matches the manifest; retain the
+   no-`Delete` policy until deletion is explicitly designed and reviewed.
+
 ## Credentials & refresh behavior
 
 The provider authenticates as a GitHub App whose credentials are **not** stored
