@@ -45,6 +45,53 @@ out-of-band changes made in the GitHub UI.
   and activation of `repositorypermissions.actions.github.m.upbound.io` in the
   platform MRAP.
 
+## Roadmap
+
+GitHub Issues are the roadmap of record. Epic
+[#56](https://github.com/devantler-tech/.github/issues/56) tracks the current
+GitHub-as-code programme in three phases:
+
+1. **Foundation** — publish the signed artifact and Observe-adopt repositories,
+   teams, and provider credentials without assuming delete ownership (landed).
+2. **Coverage** — extend the declarative source of truth across labels,
+   rulesets, team access, repository metadata, and remaining org settings
+   through the epic's linked children (active).
+3. **Enforcement** — move each supported object from observation to active
+   reconciliation only after its live state matches the manifest; retain the
+   no-`Delete` policy until deletion is explicitly designed and reviewed.
+
+## Credentials & refresh behavior
+
+The provider authenticates as a GitHub App whose credentials are **not** stored
+here: [`external-secret.yaml`](external-secret.yaml) is an
+[External Secrets](https://external-secrets.io) `ExternalSecret` that syncs them
+from the platform cluster's OpenBao `SecretStore` into the `github-app-credentials`
+Secret consumed by [`provider-config.yaml`](provider-config.yaml), re-reading the
+source every `refreshInterval: 1h`. Two operational consequences:
+
+- **A credential rotated in OpenBao propagates within the hour** — no manifest
+  change or redeploy needed.
+- **OpenBao being unreachable does not break reconciliation immediately**: the
+  ExternalSecret's `Ready` condition goes `False` (typically with reason
+  `SecretSyncedError`) but the last-synced Secret stays in place, so Crossplane
+  keeps reconciling on cached credentials until a refresh succeeds (or the
+  credentials themselves expire). A `Ready=False` refresh error alone is
+  therefore a degraded-refresh signal, not an outage of the github-config tenant.
+
+## Authoring changes
+
+The authoring conventions live in the repo's [`AGENTS.md`](../AGENTS.md) (the
+canonical instructions file, for humans and AI agents alike) — in short:
+declarative-only (never `gh api` writes or UI changes to managed config),
+**Observe-first** adoption of live objects (`crossplane.io/external-name` +
+a management policy excluding `Delete`), team-based ownership, and
+`IssueLabels` declared as a complete superset of a repo's live labels. Validate
+before every PR with exactly what CI runs:
+
+```sh
+kubectl kustomize deploy/ > /dev/null
+```
+
 See the platform repo's
 [`docs/github-management.md`](https://github.com/devantler-tech/platform/blob/main/docs/github-management.md)
 for the architecture, the GitHub App credential setup, and the **Observe-first**
