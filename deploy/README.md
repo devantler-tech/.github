@@ -72,9 +72,10 @@ source every `refreshInterval: 1h`. Two operational consequences:
 - **A credential rotated in OpenBao propagates within the hour** — no manifest
   change or redeploy needed.
 - **OpenBao being unreachable does not break reconciliation immediately**: the
-  ExternalSecret reports `SecretSynced=False` but the last-synced Secret stays in
-  place, so Crossplane keeps reconciling on cached credentials until a refresh
-  succeeds (or the credentials themselves expire). A `SecretSynced=False` alone is
+  ExternalSecret's `Ready` condition goes `False` (typically with reason
+  `SecretSyncedError`) but the last-synced Secret stays in place, so Crossplane
+  keeps reconciling on cached credentials until a refresh succeeds (or the
+  credentials themselves expire). A `Ready=False` refresh error alone is
   therefore a degraded-refresh signal, not an outage of the github-config tenant.
 
 ## Authoring changes
