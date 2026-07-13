@@ -20,3 +20,4 @@ resources:
   - grant-maintainers-on-homebrew-tap.yaml
   - grant-maintainers-on-provider-upjet-unifi.yaml
   - grant-maintainers-on-aws.yaml
+  - grant-maintainers-on-kyverno-policies.yaml
