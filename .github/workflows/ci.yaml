@@ -29,6 +29,9 @@ jobs:
         # CRDs are applied/validated on-cluster, not here.
         run: kubectl kustomize deploy/ > /dev/null
 
+      - name: 🧪 Test default-off Admins policy
+        run: bash tests/admin-team-policy.sh
+
   ci-required-checks:
     name: CI - Required Checks
     runs-on: ubuntu-latest

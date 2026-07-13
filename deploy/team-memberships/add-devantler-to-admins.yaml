@@ -1,0 +1,16 @@
+# Default-off Admins-team membership. Activation lists this file alongside the
+# team and grants in their three production Kustomizations.
+apiVersion: team.github.m.upbound.io/v1alpha1
+kind: TeamMembership
+metadata:
+  name: admins-devantler
+spec:
+  managementPolicies: ["Observe", "Create", "Update", "LateInitialize"]
+  forProvider:
+    teamIdRef:
+      name: admins
+    username: devantler
+    role: maintainer
+  providerConfigRef:
+    kind: ProviderConfig
+    name: default
