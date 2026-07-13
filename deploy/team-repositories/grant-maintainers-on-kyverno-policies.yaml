@@ -1,0 +1,16 @@
+# Team → repository access. No external-name: this grant does not exist yet, so it is
+# Created (full management except Delete) rather than adopted.
+apiVersion: team.github.m.upbound.io/v1alpha1
+kind: TeamRepository
+metadata:
+  name: maintainers-kyverno-policies
+spec:
+  managementPolicies: ["Observe", "Create", "Update", "LateInitialize"]
+  forProvider:
+    teamIdRef:
+      name: maintainers
+    repository: kyverno-policies
+    permission: maintain
+  providerConfigRef:
+    kind: ProviderConfig
+    name: default
