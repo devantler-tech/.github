@@ -1,0 +1,51 @@
+apiVersion: repo.github.m.upbound.io/v1alpha1
+kind: Repository
+metadata:
+  name: kyverno-policies
+  annotations:
+    # NET-NEW repo (not an adoption). The provider's create POST cannot send the
+    # org's 5 required custom properties (no CRD field), so it 422s until the
+    # repo is bootstrapped ONCE by an org admin with `gh api -X POST
+    # /orgs/devantler-tech/repos` including `custom_properties` (Type=
+    # Infrastructure + the 4 defaults) — see platform#2325. This CR then
+    # observes + adopts it and manages it declaratively from there on.
+    # external-name pinned so the create/observe target is unambiguous.
+    crossplane.io/external-name: kyverno-policies
+spec:
+  # Same all-except-Delete policy as every other managed repo (omitting Delete
+  # guarantees Crossplane can never delete a real GitHub repository).
+  managementPolicies:
+    - Observe
+    - Create
+    - Update
+    - LateInitialize
+  forProvider:
+    name: kyverno-policies
+    description: "Shared Kyverno policy library for the devantler-tech platforms — the single source the platform and platform-template consume instead of vendoring per-repo copies."
+    visibility: public
+    hasIssues: true
+    # Shared kustomization patch supplies the squash-only merge policy +
+    # webCommitSignoffRequired; nothing repo-specific needed here.
+  providerConfigRef:
+    kind: ProviderConfig
+    name: default
+---
+apiVersion: repo.github.m.upbound.io/v1alpha1
+kind: DefaultBranch
+metadata:
+  name: kyverno-policies
+  annotations:
+    # The Repository CRD's defaultBranch field is deprecated; manage the
+    # already-existing main branch through the dedicated resource instead.
+    crossplane.io/external-name: kyverno-policies
+spec:
+  managementPolicies:
+    - Observe
+    - Create
+    - Update
+    - LateInitialize
+  forProvider:
+    branch: main
+  providerConfigRef:
+    kind: ProviderConfig
+    name: default

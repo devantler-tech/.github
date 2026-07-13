@@ -17,6 +17,7 @@ resources:
   - provider-upjet-unifi.yaml
   - unifi.yaml
   - aws.yaml
+  - kyverno-policies.yaml
   - gitops-tenant-template.yaml
   - platform-template.yaml
   - go-template.yaml
