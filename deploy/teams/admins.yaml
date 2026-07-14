@@ -1,0 +1,18 @@
+# Default-off feature policy: the separate administrative team chosen for
+# repository-admin grants. This file is intentionally omitted from
+# deploy/teams/kustomization.yaml. Activation lists the team, membership, and
+# grants in their three production Kustomizations.
+apiVersion: team.github.m.upbound.io/v1alpha1
+kind: Team
+metadata:
+  name: admins
+spec:
+  managementPolicies: ["Observe", "Create", "Update", "LateInitialize"]
+  forProvider:
+    createDefaultMaintainer: false
+    description: Repository administrators for the devantler-tech portfolio
+    name: Admins
+    privacy: secret
+  providerConfigRef:
+    kind: ProviderConfig
+    name: default

@@ -1,0 +1,17 @@
+# Default-off Admins-team repository grant. No external-name is set because the
+# separate team and its admin grant do not exist yet; activation creates them
+# without claiming Delete management.
+apiVersion: team.github.m.upbound.io/v1alpha1
+kind: TeamRepository
+metadata:
+  name: admins-ksail
+spec:
+  managementPolicies: ["Observe", "Create", "Update", "LateInitialize"]
+  forProvider:
+    teamIdRef:
+      name: admins
+    repository: ksail
+    permission: admin
+  providerConfigRef:
+    kind: ProviderConfig
+    name: default

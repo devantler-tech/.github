@@ -59,7 +59,10 @@ for the architecture, the GitHub App credential setup, and the Observe-first ado
 | Path | Contents |
 |---|---|
 | `deploy/repositories/<repo>.yaml` | one `Repository` per managed repo (settings, merge/signoff, metadata) |
-| `deploy/teams/` | the `maintainers` team and its `TeamRepository` → repo access bindings |
+| `deploy/teams/` | one `Team` per file; default-off teams remain unlisted until activation |
+| `deploy/team-memberships/` | one explicit user-to-team membership per file |
+| `deploy/team-repositories/` | one team-to-repository permission grant per file |
+| `tests/fixtures/` | validation-only enabled renders for default-off policy slices |
 | `deploy/labels/<repo>.yaml` | one `IssueLabels` per repo; canonical taxonomy in `labels/kustomization.yaml` |
 | `deploy/provider-config.yaml` | the provider-upjet-github `ProviderConfig` (App credentials) |
 | `deploy/external-secret.yaml` | the `ExternalSecret` sourcing the GitHub App credentials |
