@@ -11,9 +11,10 @@
 # repo's live `enabled`/`allowedActions` first, so turning SHA-pinning on never
 # disturbs them.
 #
-# Scope = every repo managed in ../labels/ EXCEPT `actions`
-# (devantler-tech/actions is intentionally excluded). Bring a new repo under this
-# policy by adding `<repo>.yaml` here.
+# Scope = every repo managed in ../labels/. `actions` joined the policy in
+# devantler-tech/actions#426 once its first-party tag-pin accommodations were
+# reverted (actions#541) — it had been excluded only while those tags existed.
+# Bring a new repo under this policy by adding `<repo>.yaml` here.
 #
 # REQUIRES a provider-upjet-github release embedding terraform-provider-github
 # >= 6.11.0 (where `sha_pinning_required` was added). The field is ABSENT in the
@@ -25,6 +26,7 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
   - dot-github.yaml
+  - actions.yaml
   - platform.yaml
   - ksail.yaml
   - maintenance.yaml

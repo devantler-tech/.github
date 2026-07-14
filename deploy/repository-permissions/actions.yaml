@@ -1,0 +1,27 @@
+# Actions permissions for devantler-tech/actions — binds the org-wide
+# shaPinningRequired policy (asserted once in kustomization.yaml) to this repo.
+# Observe+LateInitialize adopts the repo's live enabled/allowedActions so turning
+# on SHA-pinning never disturbs them. See ../README.md.
+#
+# Previously excluded while this repo's first-party self-references were tag-pinned
+# (release-please rewrote them per release). Those accommodations were reverted in
+# devantler-tech/actions#541 — self-references now resolve by local path after a
+# same-commit self-checkout and every remote `uses:` is SHA-pinned — so the repo
+# now joins the org-wide policy (devantler-tech/actions#426).
+apiVersion: actions.github.m.upbound.io/v1alpha1
+kind: RepositoryPermissions
+metadata:
+  name: actions
+  annotations:
+    crossplane.io/external-name: actions
+spec:
+  managementPolicies:
+    - Observe
+    - Create
+    - Update
+    - LateInitialize
+  forProvider:
+    repository: actions
+  providerConfigRef:
+    kind: ProviderConfig
+    name: default

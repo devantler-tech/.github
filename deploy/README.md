@@ -39,11 +39,12 @@ out-of-band changes made in the GitHub UI.
 - `repository-permissions/` — one `RepositoryPermissions` per managed repo enforcing
   **Require actions to be pinned to a full-length commit SHA**
   (`sha_pinning_required`). The policy is asserted once via a shared patch in
-  `repository-permissions/kustomization.yaml`; scope is every repo in `labels/`
-  **except `actions`**. Requires a provider-upjet-github release embedding
-  terraform-provider-github ≥ 6.11.0 (the field is absent in the deployed v0.19.1)
-  and activation of `repositorypermissions.actions.github.m.upbound.io` in the
-  platform MRAP.
+  `repository-permissions/kustomization.yaml`; scope is **every repo in `labels/`**
+  (`actions` included — its former exception was removed once its tag-pins were
+  reverted). Live enforcement is still gated on a provider-upjet-github release
+  embedding terraform-provider-github ≥ 6.11.0 (the field is absent in the deployed
+  v0.19.1) and activation of `repositorypermissions.actions.github.m.upbound.io` in
+  the platform MRAP.
 
 ## Roadmap
 
