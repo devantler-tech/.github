@@ -3,12 +3,12 @@ kind: Repository
 metadata:
   name: kyverno-policies
   annotations:
-    # NET-NEW repo (not an adoption). The provider's create POST cannot send the
-    # org's 5 required custom properties (no CRD field), so it 422s until the
-    # repo is bootstrapped ONCE by an org admin with `gh api -X POST
-    # /orgs/devantler-tech/repos` including `custom_properties` (Type=
-    # Infrastructure + the 4 defaults) — see platform#2325. This CR then
-    # observes + adopts it and manages it declaratively from there on.
+    # Adopted repo. The provider CRD cannot represent the org's 5 required
+    # custom properties, so the initial org-admin bootstrap had to set them
+    # through GitHub's API. The intended classification is Type=Library; see
+    # https://github.com/devantler-tech/.github/issues/97 for the exact
+    # property contract and the remaining provider gap. This CR manages every
+    # representable setting declaratively after adoption.
     # external-name pinned so the create/observe target is unambiguous.
     crossplane.io/external-name: kyverno-policies
 spec:
