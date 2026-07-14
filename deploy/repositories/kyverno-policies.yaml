@@ -5,9 +5,10 @@ metadata:
   annotations:
     # Adopted repo. The provider CRD cannot represent the org's 5 required
     # custom properties, so the initial org-admin bootstrap had to set them
-    # through GitHub's API. The intended classification is Type=Library; see
-    # https://github.com/devantler-tech/.github/issues/97 for the exact
-    # property contract and the remaining provider gap. This CR manages every
+    # through GitHub's API. Type=Library is the intended and current
+    # classification; AutomaticallyRequestCopilotCodeReview=true remains
+    # outstanding. See https://github.com/devantler-tech/.github/issues/97
+    # for the exact property contract and provider gap. This CR manages every
     # representable setting declaratively after adoption.
     # external-name pinned so the create/observe target is unambiguous.
     crossplane.io/external-name: kyverno-policies
