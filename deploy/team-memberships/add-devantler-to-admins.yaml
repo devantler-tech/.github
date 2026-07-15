@@ -1,5 +1,4 @@
-# Default-off Admins-team membership. Activation lists this file alongside the
-# team and grants in their three production Kustomizations.
+# Active Admins-team membership, managed without claiming Delete.
 apiVersion: team.github.m.upbound.io/v1alpha1
 kind: TeamMembership
 metadata:

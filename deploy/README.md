@@ -20,12 +20,11 @@ out-of-band changes made in the GitHub UI.
   then a single `archived: true` flip; the two-phase lifecycle is documented in
   that dir's `kustomization.yaml`.
 - `teams/` — one `Team` per file. `maintainers` is Observe-adopted; the
-  separate `admins` policy remains default-off until its resources are listed.
+  separate `admins` policy actively manages explicit repository-admin grants.
 - `team-memberships/` — one `TeamMembership` per file (`add-<user>-to-<team>.yaml`).
 - `team-repositories/` — one `TeamRepository` per file (`grant-<team>-on-<repo>.yaml`),
-  each granting a team a permission on a repo. A file is inert until its
-  directory Kustomization lists it; the Admins policy uses this as its
-  default-off activation boundary.
+  each granting a team a permission on a repo. The active policy grants
+  `maintain` to Maintainers and `admin` to Admins without claiming Delete.
 - `labels/` — one `IssueLabels` per managed repo. The canonical org label
   taxonomy lives once in `labels/kustomization.yaml` (a shared patch appended to
   every repo); each `<repo>.yaml` adds only that repo's Dependabot/Renovate
@@ -102,24 +101,21 @@ for the architecture, the GitHub App credential setup, and the **Observe-first**
 adoption flow for bringing an existing repository under management without any
 risk of recreating or deleting it.
 
-## Default-off Admins policy
+## Admins policy
 
-Issue [#95](https://github.com/devantler-tech/.github/issues/95) defines the
-separate `Admins` team, its explicit maintainer membership, and `admin`
-grants for the 19 active portfolio repositories. The archived
-`reusable-workflows` repository and not-yet-active `kyverno-policies`
-repository are excluded.
+Issue [#95](https://github.com/devantler-tech/.github/issues/95) and PR
+[#96](https://github.com/devantler-tech/.github/pull/96) defined and validated
+the separate `Admins` team, its explicit maintainer membership, and its
+repository grants in both disabled and enabled states. Issue
+[#102](https://github.com/devantler-tech/.github/issues/102) activates that
+policy for the 20 active portfolio repositories, including `kyverno-policies`.
+The archived `reusable-workflows` repository remains excluded.
 
-The policy files deliberately remain absent from the production
-`teams/`, `team-memberships/`, and `team-repositories/` resource lists.
-Validate both states with:
+The active policy is fully declarative and omits both `Delete` management and
+external names, so it cannot delete teams, memberships, or grants. Validate the
+production render and policy invariants with:
 
 ```sh
 kubectl kustomize deploy/ > /dev/null
-kubectl kustomize tests/fixtures/admin-team-enabled \
-  --load-restrictor LoadRestrictionsNone > /dev/null
 bash tests/admin-team-policy.sh
 ```
-
-Activation is a separate issue-backed change that lists the reviewed policy
-files in those three production Kustomizations.
