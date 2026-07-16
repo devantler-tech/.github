@@ -42,6 +42,7 @@ resources:
   - ascoachingogvaner.yaml
   - wedding-app.yaml
   - fleet-gitops.yaml
+  - world-at-ruin.yaml
 # Canonical org-wide label taxonomy, appended to EVERY IssueLabels (single source
 # of truth — was actions/.github/labels.yaml). Verbatim names + colours from that
 # file so the switch from label-sync to Crossplane changes no labels.

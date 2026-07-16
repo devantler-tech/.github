@@ -1,0 +1,23 @@
+apiVersion: repo.github.m.upbound.io/v1alpha1
+kind: Repository
+metadata:
+  name: world-at-ruin
+  annotations:
+    crossplane.io/external-name: world-at-ruin
+spec:
+  # Adopts the imperatively bootstrapped repo (org custom-property requirement —
+  # see the repo-creation bootstrap pattern). Everything except Delete. PUBLIC:
+  # source-available game; visibility pinned so management can never flip it.
+  managementPolicies:
+    - Observe
+    - Create
+    - Update
+    - LateInitialize
+  forProvider:
+    name: world-at-ruin
+    visibility: public
+    archived: false
+    description: "World at Ruin — a source-available, cloud-native MMORPG built almost entirely by agents."
+  providerConfigRef:
+    kind: ProviderConfig
+    name: default
