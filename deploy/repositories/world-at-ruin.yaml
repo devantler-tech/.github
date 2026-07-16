@@ -5,19 +5,16 @@ metadata:
   annotations:
     crossplane.io/external-name: world-at-ruin
 spec:
-  # Adopts the imperatively bootstrapped repo (org custom-property requirement —
-  # see the repo-creation bootstrap pattern). Everything except Delete. PUBLIC:
-  # source-available game; visibility pinned so management can never flip it.
+  # Observe-only for now: adopts the imperatively bootstrapped repo (org
+  # custom-property requirement — see the repo-creation bootstrap pattern)
+  # without writing to it; the shared merge-policy patch would otherwise apply
+  # before the observed state is reviewed. Promote to the full set except
+  # Delete (and pin visibility/description as authoritative) once Synced/Ready
+  # shows the observed state, per the two-stage flow in kustomization.yaml.
   managementPolicies:
     - Observe
-    - Create
-    - Update
-    - LateInitialize
   forProvider:
     name: world-at-ruin
-    visibility: public
-    archived: false
-    description: "World at Ruin — a source-available, cloud-native MMORPG built almost entirely by agents."
   providerConfigRef:
     kind: ProviderConfig
     name: default
