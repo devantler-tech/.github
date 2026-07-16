@@ -22,4 +22,3 @@ resources:
   - grant-maintainers-on-aws.yaml
   - grant-maintainers-on-kyverno-policies.yaml
   - grant-maintainers-on-world-at-ruin.yaml
-  - grant-admins-on-world-at-ruin.yaml
