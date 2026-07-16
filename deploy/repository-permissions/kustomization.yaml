@@ -38,6 +38,7 @@ resources:
   - go-template.yaml
   - dotnet-template.yaml
   - homebrew-tap.yaml
+  - world-at-ruin.yaml
   # Private repos.
   - ascoachingogvaner.yaml
   - wedding-app.yaml

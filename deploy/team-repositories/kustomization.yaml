@@ -21,6 +21,7 @@ resources:
   - grant-maintainers-on-provider-upjet-unifi.yaml
   - grant-maintainers-on-aws.yaml
   - grant-maintainers-on-kyverno-policies.yaml
+  - grant-maintainers-on-world-at-ruin.yaml
   # Active Admins policy (one admin grant per active repository).
   - grant-admins-on-dot-github.yaml
   - grant-admins-on-actions.yaml
@@ -42,3 +43,4 @@ resources:
   - grant-admins-on-provider-upjet-unifi.yaml
   - grant-admins-on-unifi.yaml
   - grant-admins-on-wedding-app.yaml
+  - grant-admins-on-world-at-ruin.yaml
