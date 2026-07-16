@@ -106,7 +106,7 @@ risk of recreating or deleting it.
 
 Issue [#95](https://github.com/devantler-tech/.github/issues/95) defines the
 separate `Admins` team, its explicit maintainer membership, and `admin`
-grants for the 19 active portfolio repositories. The archived
+grants for the 20 active portfolio repositories. The archived
 `reusable-workflows` repository and not-yet-active `kyverno-policies`
 repository are excluded.
 

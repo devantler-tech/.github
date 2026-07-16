@@ -37,9 +37,9 @@ fi
 
 require_count 1 '^  name: admins$' "$enabled_render"
 require_count 1 '^  name: admins-devantler$' "$enabled_render"
-require_count 20 '^  name: admins-' "$enabled_render"
-require_count 19 '^    permission: admin$' "$enabled_render"
-require_count 20 '^      name: admins$' "$enabled_render"
+require_count 21 '^  name: admins-' "$enabled_render"
+require_count 20 '^    permission: admin$' "$enabled_render"
+require_count 21 '^      name: admins$' "$enabled_render"
 
 grant_files=("$repo_root"/deploy/team-repositories/grant-admins-on-*.yaml)
 policy_files=(
@@ -47,10 +47,10 @@ policy_files=(
   "$repo_root/deploy/team-memberships/add-devantler-to-admins.yaml"
   "${grant_files[@]}"
 )
-[[ "${#grant_files[@]}" == 19 ]] ||
-  fail "expected 19 Admins grants, got ${#grant_files[@]}"
-[[ "${#policy_files[@]}" == 21 ]] ||
-  fail "expected 21 Admins policy files, got ${#policy_files[@]}"
+[[ "${#grant_files[@]}" == 20 ]] ||
+  fail "expected 20 Admins grants, got ${#grant_files[@]}"
+[[ "${#policy_files[@]}" == 22 ]] ||
+  fail "expected 22 Admins policy files, got ${#policy_files[@]}"
 cat "${policy_files[@]}" >"$policy_source"
 
 repositories=(
@@ -73,6 +73,7 @@ repositories=(
   provider-upjet-unifi
   unifi
   wedding-app
+  world-at-ruin
 )
 
 for repository in "${repositories[@]}"; do

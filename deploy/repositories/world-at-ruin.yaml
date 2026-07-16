@@ -1,0 +1,20 @@
+apiVersion: repo.github.m.upbound.io/v1alpha1
+kind: Repository
+metadata:
+  name: world-at-ruin
+  annotations:
+    crossplane.io/external-name: world-at-ruin
+spec:
+  # Observe-only for now: adopts the imperatively bootstrapped repo (org
+  # custom-property requirement — see the repo-creation bootstrap pattern)
+  # without writing to it; the shared merge-policy patch would otherwise apply
+  # before the observed state is reviewed. Promote to the full set except
+  # Delete (and pin visibility/description as authoritative) once Synced/Ready
+  # shows the observed state, per the two-stage flow in kustomization.yaml.
+  managementPolicies:
+    - Observe
+  forProvider:
+    name: world-at-ruin
+  providerConfigRef:
+    kind: ProviderConfig
+    name: default
