@@ -1,6 +1,11 @@
 # Issue labels for devantler-tech/world-at-ruin. The canonical org taxonomy (22 labels)
 # is appended to every IssueLabels by the shared patch in kustomization.yaml; this
 # file adds only world-at-ruin's repo-specific extras (none yet). See ../README.md.
+#
+# Observe-only for now: this CR binds to a pre-existing repo whose live labels it
+# has not yet observed — with Update active from the first deploy it could replace
+# the live label set before adoption. Promote to the full policy set (all except
+# Delete) once Synced/Ready shows the observed state matches the declared one.
 apiVersion: repo.github.m.upbound.io/v1alpha1
 kind: IssueLabels
 metadata:
@@ -10,9 +15,6 @@ metadata:
 spec:
   managementPolicies:
     - Observe
-    - Create
-    - Update
-    - LateInitialize
   forProvider:
     repository: world-at-ruin
     # No repo-specific extras; the shared patch supplies the full canonical set.
