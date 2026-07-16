@@ -26,3 +26,4 @@ resources:
   - ../../../deploy/team-repositories/grant-admins-on-provider-upjet-unifi.yaml
   - ../../../deploy/team-repositories/grant-admins-on-unifi.yaml
   - ../../../deploy/team-repositories/grant-admins-on-wedding-app.yaml
+  - ../../../deploy/team-repositories/grant-admins-on-world-at-ruin.yaml
