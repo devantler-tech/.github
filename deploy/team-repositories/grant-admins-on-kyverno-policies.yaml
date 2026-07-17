@@ -3,13 +3,13 @@
 apiVersion: team.github.m.upbound.io/v1alpha1
 kind: TeamRepository
 metadata:
-  name: admins-dot-github
+  name: admins-kyverno-policies
 spec:
   managementPolicies: ["Observe", "Create", "Update", "LateInitialize"]
   forProvider:
     teamIdRef:
       name: admins
-    repository: .github
+    repository: kyverno-policies
     permission: admin
   providerConfigRef:
     kind: ProviderConfig

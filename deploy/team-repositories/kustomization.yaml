@@ -1,8 +1,8 @@
 # `TeamRepository` resources — one per file, named `grant-<team>-on-<repo>.yaml`, each
-# granting a team a permission on a repository. Existing access is adopted Observe-first;
-# access the team did not yet hold is Created at `maintain`. Grant a new repo by dropping
-# a `grant-maintainers-on-<repo>.yaml` here and listing it below. See ../README.md and
-# the platform repo's docs/github-management.md.
+# granting a team a permission on a repository. Existing Maintainers access is adopted
+# Observe-first; new Maintainers access is Created at `maintain`. Admins grants are
+# Created at `admin` without claiming Delete. See ../README.md and the platform repo's
+# docs/github-management.md.
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
@@ -22,3 +22,25 @@ resources:
   - grant-maintainers-on-aws.yaml
   - grant-maintainers-on-kyverno-policies.yaml
   - grant-maintainers-on-world-at-ruin.yaml
+  # Active Admins policy (one admin grant per active repository).
+  - grant-admins-on-dot-github.yaml
+  - grant-admins-on-actions.yaml
+  - grant-admins-on-agent-plugins.yaml
+  - grant-admins-on-agent-skills.yaml
+  - grant-admins-on-ascoachingogvaner.yaml
+  - grant-admins-on-aws.yaml
+  - grant-admins-on-dotnet-template.yaml
+  - grant-admins-on-fleet-gitops.yaml
+  - grant-admins-on-gitops-tenant-template.yaml
+  - grant-admins-on-go-template.yaml
+  - grant-admins-on-homebrew-tap.yaml
+  - grant-admins-on-ksail.yaml
+  - grant-admins-on-kyverno-policies.yaml
+  - grant-admins-on-maintenance.yaml
+  - grant-admins-on-monorepo.yaml
+  - grant-admins-on-platform.yaml
+  - grant-admins-on-platform-template.yaml
+  - grant-admins-on-provider-upjet-unifi.yaml
+  - grant-admins-on-unifi.yaml
+  - grant-admins-on-wedding-app.yaml
+  - grant-admins-on-world-at-ruin.yaml

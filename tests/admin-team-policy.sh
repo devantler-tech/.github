@@ -3,14 +3,11 @@
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-disabled_render="$(mktemp)"
-enabled_render="$(mktemp)"
+production_render="$(mktemp)"
 policy_source="$(mktemp)"
-trap 'rm -f "$disabled_render" "$enabled_render" "$policy_source"' EXIT
+trap 'rm -f "$production_render" "$policy_source"' EXIT
 
-kubectl kustomize "$repo_root/deploy" >"$disabled_render"
-kubectl kustomize "$repo_root/tests/fixtures/admin-team-enabled" \
-  --load-restrictor LoadRestrictionsNone >"$enabled_render"
+kubectl kustomize "$repo_root/deploy" >"$production_render"
 
 fail() {
   echo "admins-policy test: $*" >&2
@@ -31,15 +28,11 @@ require_fixed_count() {
     fail "expected $expected exact matches for '$value', got $actual"
 }
 
-if grep -Eq '^  name: admins($|-)' "$disabled_render"; then
-  fail "Admins resources must stay disabled in the deploy/ root render"
-fi
-
-require_count 1 '^  name: admins$' "$enabled_render"
-require_count 1 '^  name: admins-devantler$' "$enabled_render"
-require_count 21 '^  name: admins-' "$enabled_render"
-require_count 20 '^    permission: admin$' "$enabled_render"
-require_count 21 '^      name: admins$' "$enabled_render"
+require_count 1 '^  name: admins$' "$production_render"
+require_count 1 '^  name: admins-devantler$' "$production_render"
+require_count 22 '^  name: admins-' "$production_render"
+require_count 21 '^    permission: admin$' "$production_render"
+require_count 22 '^      name: admins$' "$production_render"
 
 grant_files=("$repo_root"/deploy/team-repositories/grant-admins-on-*.yaml)
 policy_files=(
@@ -47,10 +40,10 @@ policy_files=(
   "$repo_root/deploy/team-memberships/add-devantler-to-admins.yaml"
   "${grant_files[@]}"
 )
-[[ "${#grant_files[@]}" == 20 ]] ||
-  fail "expected 20 Admins grants, got ${#grant_files[@]}"
-[[ "${#policy_files[@]}" == 22 ]] ||
-  fail "expected 22 Admins policy files, got ${#policy_files[@]}"
+[[ "${#grant_files[@]}" == 21 ]] ||
+  fail "expected 21 Admins grants, got ${#grant_files[@]}"
+[[ "${#policy_files[@]}" == 23 ]] ||
+  fail "expected 23 Admins policy files, got ${#policy_files[@]}"
 cat "${policy_files[@]}" >"$policy_source"
 
 repositories=(
@@ -66,6 +59,7 @@ repositories=(
   go-template
   homebrew-tap
   ksail
+  kyverno-policies
   maintenance
   monorepo
   platform
@@ -81,15 +75,14 @@ for repository in "${repositories[@]}"; do
 done
 
 require_count 0 '^    repository: reusable-workflows$' "$policy_source"
-require_count 0 '^    repository: kyverno-policies$' "$policy_source"
 
 if grep -Eq '^[[:space:]]*managementPolicies:.*Delete|crossplane.io/external-name' \
   "${policy_files[@]}"; then
   fail "net-new Admins resources must not claim Delete or an external name"
 fi
 
-require_count 1 '^    createDefaultMaintainer: false$' "$enabled_render"
-require_count 1 '^    privacy: secret$' "$enabled_render"
+require_count 1 '^    createDefaultMaintainer: false$' "$production_render"
+require_count 1 '^    privacy: secret$' "$production_render"
 
 for maintainers_grant in "$repo_root"/deploy/team-repositories/grant-maintainers-on-*.yaml; do
   grep -Eq '^    permission: maintain$' "$maintainers_grant" ||

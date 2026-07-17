@@ -1,7 +1,5 @@
-# Default-off feature policy: the separate administrative team chosen for
-# repository-admin grants. This file is intentionally omitted from
-# deploy/teams/kustomization.yaml. Activation lists the team, membership, and
-# grants in their three production Kustomizations.
+# Active administrative team for explicit repository-admin grants. The policy
+# creates and updates the team without claiming Delete.
 apiVersion: team.github.m.upbound.io/v1alpha1
 kind: Team
 metadata:
