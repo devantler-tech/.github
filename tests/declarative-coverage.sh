@@ -37,7 +37,7 @@ dimensions=(
 # instead of silently absent. Prune entries as gaps close; never add one to
 # silence a fresh failure without a tracked reason.
 exemptions=(
-  # Tracked in devantler-tech/.github#114 — pre-existing gaps found when this
+  # Tracked in devantler-tech/.github#115 — pre-existing gaps found when this
   # guard was introduced. Exempted so the guard can land green and ratchet:
   # it fails on any NEW drift while these are closed separately.
   "repositories/actions"
