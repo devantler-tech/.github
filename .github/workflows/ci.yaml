@@ -32,6 +32,9 @@ jobs:
       - name: 🧪 Test active Admins policy
         run: bash tests/admin-team-policy.sh
 
+      - name: 🧪 Test declarative coverage
+        run: bash tests/declarative-coverage.sh
+
   ci-required-checks:
     name: CI - Required Checks
     runs-on: ubuntu-latest
