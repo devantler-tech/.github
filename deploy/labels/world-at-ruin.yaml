@@ -2,10 +2,10 @@
 # is appended to every IssueLabels by the shared patch in kustomization.yaml; this
 # file adds only world-at-ruin's repo-specific extras (none yet). See ../README.md.
 #
-# Observe-only for now: this CR binds to a pre-existing repo whose live labels it
-# has not yet observed — with Update active from the first deploy it could replace
-# the live label set before adoption. Promote to the full policy set (all except
-# Delete) once Synced/Ready shows the observed state matches the declared one.
+# Adopted 2026-07-18: the CR reported Synced/Ready on the live cluster, which is the
+# promotion condition the Observe-only bootstrap set out, so it now carries the same
+# policy set as every other repo. Additive only — no Delete policy is claimed, and the
+# five labels the repo already had are all members of the canonical set.
 apiVersion: repo.github.m.upbound.io/v1alpha1
 kind: IssueLabels
 metadata:
@@ -15,6 +15,9 @@ metadata:
 spec:
   managementPolicies:
     - Observe
+    - Create
+    - Update
+    - LateInitialize
   forProvider:
     repository: world-at-ruin
     # No repo-specific extras; the shared patch supplies the full canonical set.
