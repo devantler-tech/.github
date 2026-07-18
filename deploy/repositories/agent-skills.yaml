@@ -11,8 +11,9 @@ metadata:
     crossplane.io/external-name: agent-skills
 spec:
   # Squash-only merge policy + webCommitSignoffRequired come from the shared
-  # patch; description is declared here so the config is AUTHORITATIVE for it
-  # (previously LateInitialized); everything else is adopted via LateInitialize.
+  # patch; description and topics are declared here so the config is
+  # AUTHORITATIVE for them (description was previously LateInitialized, topics
+  # were unset); everything else is adopted via LateInitialize.
   managementPolicies:
     - Observe
     - Create
@@ -20,7 +21,16 @@ spec:
     - LateInitialize
   forProvider:
     name: agent-skills
-    description: "Generic Copilot / agent skills, installable via gh skill"
+    # De-Copilot-branded: these skills are agent-neutral (agentskills.io spec)
+    # and install into Claude Code, Cursor, Codex and Gemini CLI as well, via
+    # either `gh skill install` or `npx skills add`. The old wording undersold
+    # that and read as Copilot-only.
+    description: "Agent-neutral skills for Claude Code, Copilot, Cursor and Codex — install with `gh skill install` or `npx skills add`"
+    # Discovery surface. `gh skill publish --tag` runs non-interactively in
+    # cd.yaml and therefore SKIPS the interactive "add the agent-skills topic"
+    # step, so the canonical topic was never applied — this declares it instead.
+    # The rest are the terms users actually browse/search by.
+    topics: ["agent-skills", "agent-skill", "ai-agents", "claude-code", "claude-skill", "codex", "cursor", "github-copilot", "gitops", "kubernetes", "skills"]
   providerConfigRef:
     kind: ProviderConfig
     name: default
