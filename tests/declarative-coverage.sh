@@ -58,6 +58,10 @@ exemptions=(
 
 is_exempt() {
   local needle="$1" entry
+  # `"${arr[@]}"` on an empty array is an unbound-variable error under `set -u`
+  # on bash < 4.4. The exemption list is meant to shrink to empty as gaps close,
+  # so that end state has to work everywhere, not just on the CI runner.
+  ((${#exemptions[@]} == 0)) && return 1
   for entry in "${exemptions[@]}"; do
     [[ "$entry" == "$needle" ]] && return 0
   done
@@ -123,7 +127,7 @@ done < <(find "$dimension_repos_file" -maxdepth 1 -type f -print)
 # A stale exemption is as bad as a missing check: it hides the ratchet slipping
 # backwards. If a gap has been closed, the exemption must be removed.
 stale_report=""
-for entry in "${exemptions[@]}"; do
+for entry in ${exemptions[@]+"${exemptions[@]}"}; do
   label="${entry%%/*}"
   repo="${entry#*/}"
   entry_file="$dimension_repos_file/$label"
