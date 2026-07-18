@@ -10,8 +10,9 @@ metadata:
     crossplane.io/external-name: agent-plugins
 spec:
   # Squash-only merge policy + webCommitSignoffRequired come from the shared
-  # patch; description is declared here so the config is AUTHORITATIVE for it
-  # (previously LateInitialized); everything else is adopted via LateInitialize.
+  # patch; description and topics are declared here so the config is
+  # AUTHORITATIVE for them (description was previously LateInitialized, topics
+  # were unset); everything else is adopted via LateInitialize.
   managementPolicies:
     - Observe
     - Create
@@ -19,7 +20,14 @@ spec:
     - LateInitialize
   forProvider:
     name: agent-plugins
-    description: "Industry-standard agent-plugin marketplace — bundles curated skills from devantler-tech/skills into category-based plugins for VS Code, GitHub Copilot CLI, and Claude Code (dual manifests)."
+    # Fixes a stale repo reference: `devantler-tech/skills` was renamed to
+    # `devantler-tech/agent-skills`, so the old description pointed at a name
+    # that no longer exists. Also names the bundled MCP servers and agents —
+    # the marketplace is deliberately not skills-only.
+    description: "Tool-neutral agent-plugin marketplace — bundles curated skills, MCP servers and agents from devantler-tech/agent-skills into category plugins for VS Code, GitHub Copilot CLI, and Claude Code"
+    # Discovery surface — the repo carried no topics at all, so it was invisible
+    # to every topic-based browse and directory crawl.
+    topics: ["agent-plugins", "agent-skills", "ai-agents", "claude-code", "claude-code-marketplace", "claude-code-plugin", "claude-plugin", "github-copilot", "plugin-marketplace", "vscode"]
   providerConfigRef:
     kind: ProviderConfig
     name: default
