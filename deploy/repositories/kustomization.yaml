@@ -32,11 +32,28 @@ resources:
 # (auto-applies to every future repo):
 #  - squash-only merge policy (merge commits + rebase disabled; auto-merge,
 #    auto-delete head branches, always-suggest-updating-PR-branches enabled).
-#  - webCommitSignoffRequired: true — the org ENFORCES commit signoff and it
-#    can't be disabled per-repo, so the provider must always send true (else an
-#    update PATCH gets 422 "Commit signoff is enforced ... and cannot be
-#    disabled"). The 12 already-adopted repos had this true via LateInitialize;
-#    pinning it here makes every repo's update self-consistent and robust.
+#  - webCommitSignoffRequired is deliberately NOT pinned here — see below.
+#
+# webCommitSignoffRequired: DO NOT re-add it to this patch.
+# It used to be pinned to true, on the reasoning that "the org enforces signoff,
+# so the provider must always send true or the update PATCH 422s". That reasoning
+# was never exercised: every repo adopted its settings via LateInitialize, so
+# Crossplane had only ever OBSERVED repo settings and never issued an update
+# PATCH. #110 (declaring topics on agent-skills/agent-plugins) was the first
+# commit to actually change a managed field on an adopted repo, and it proved the
+# reasoning wrong — both MRs went Synced=False within two minutes:
+#
+#   update failed: async update failed: failed to update the resource:
+#   PATCH https://api.github.com/repos/devantler-tech/agent-skills: 422
+#   Commit signoff is enforced by the organization and cannot be disabled
+#
+# with spec.forProvider.webCommitSignoffRequired already true, and the live repo,
+# every sibling repo, and the org all already reporting true. The field is
+# org-controlled, so GitHub rejects a repo-level PATCH that carries it at all —
+# the value is irrelevant. Omitting it lets the provider leave it out of the
+# payload; it stays true because the ORG enforces it, which is the only place it
+# can be set. Removing it cannot make things worse: if the provider still emits a
+# zero-value false, the result is the same 422 we already have.
 patches:
   - target:
       group: repo.github.m.upbound.io
@@ -60,7 +77,4 @@ patches:
         value: true
       - op: add
         path: /spec/forProvider/deleteBranchOnMerge
-        value: true
-      - op: add
-        path: /spec/forProvider/webCommitSignoffRequired
         value: true
