@@ -76,8 +76,12 @@ structure; implementing PRs use `Fixes #N`.
 **Validate before every PR** (the sole required check, `CI - Required Checks`, gates on this):
 
 ```sh
-kubectl kustomize deploy/ > /dev/null   # must build clean; this is exactly what ci.yaml runs
+kubectl kustomize deploy/ > /dev/null   # must build clean
+bash tests/admin-team-policy.sh         # Admins policy invariants
+bash tests/declarative-coverage.sh      # every repo declared in every rendered dimension
 ```
+
+Those three commands are exactly what `ci.yaml` runs.
 
 `kubectl` (with built-in kustomize) is preinstalled on CI runners. A clean build proves the manifests
 are well-formed; the Crossplane CRDs themselves are applied/validated **on-cluster** (the

@@ -93,6 +93,8 @@ before every PR with exactly what CI runs:
 
 ```sh
 kubectl kustomize deploy/ > /dev/null
+bash tests/admin-team-policy.sh
+bash tests/declarative-coverage.sh
 ```
 
 See the platform repo's
@@ -119,4 +121,9 @@ production render and policy invariants with:
 ```sh
 kubectl kustomize deploy/ > /dev/null
 bash tests/admin-team-policy.sh
+bash tests/declarative-coverage.sh
 ```
+
+`declarative-coverage.sh` reads the **rendered** output, so it also catches a
+manifest that exists on disk but was never wired into its directory's
+`kustomization.yaml` — that file renders to nothing and never reconciles.
