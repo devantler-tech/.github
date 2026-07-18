@@ -7,8 +7,18 @@
       "@semantic-release/commit-analyzer",
       {
         "releaseRules": [
-          { "type": "revert", "release": "patch" }
-        ]
+          {
+            "type": "revert",
+            "release": "patch"
+          },
+          {
+            "breaking": true,
+            "release": "major"
+          }
+        ],
+        "parserOpts": {
+          "breakingHeaderPattern": "^(\\w*)(?:\\((.*)\\))?!: (.*)$"
+        }
       }
     ]
   ]
