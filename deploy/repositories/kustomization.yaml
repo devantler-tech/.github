@@ -1,14 +1,15 @@
 # One file per managed repository. Adoption is Observe-first: a repo starts with
 # managementPolicies: ["Observe"] (read-only — Crossplane mirrors live state into
 # status.atProvider and never writes), then forProvider is set and the policy
-# promoted to the full set EXCEPT Delete. Namespaced managed resources have no
-# deletionPolicy; omitting Delete is what guarantees Crossplane can never delete
-# a real GitHub repository. See devantler-tech/platform docs/github-management.md.
+# promoted to Observe/Create/Update. The active shared patch deliberately omits
+# both Delete (a real GitHub repository can never be deleted) and LateInitialize
+# (live-only fields must not leak into later update payloads). See
+# devantler-tech/platform docs/github-management.md.
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
-  # Actively managed (managementPolicies all-except-Delete). Every non-archived
-  # org repo; the shared merge-policy patch below applies to all of them.
+  # Actively managed. Every non-archived org repo; the shared policy patch below
+  # applies the safe update contract to all of them.
   - platform.yaml
   - ksail.yaml
   - maintenance.yaml
@@ -32,17 +33,27 @@ resources:
 # (auto-applies to every future repo):
 #  - squash-only merge policy (merge commits + rebase disabled; auto-merge,
 #    auto-delete head branches, always-suggest-updating-PR-branches enabled).
-#  - webCommitSignoffRequired: true — the org ENFORCES commit signoff and it
-#    can't be disabled per-repo, so the provider must always send true (else an
-#    update PATCH gets 422 "Commit signoff is enforced ... and cannot be
-#    disabled"). The 12 already-adopted repos had this true via LateInitialize;
-#    pinning it here makes every repo's update self-consistent and robust.
+#  - webCommitSignoffRequired: true at CREATE time only. The org ENFORCES
+#    signoff, so sending the field on an unrelated repository update makes
+#    GitHub reject the whole PATCH. initProvider preserves the secure default
+#    for new repositories without enforcing the org-owned field afterward.
+#  - no LateInitialize. Otherwise the observed signoff value is copied back into
+#    forProvider and poisons the next unrelated update despite initProvider.
 patches:
   - target:
       group: repo.github.m.upbound.io
       version: v1alpha1
       kind: Repository
     patch: |-
+      - op: replace
+        path: /spec/managementPolicies
+        value:
+          - Observe
+          - Create
+          - Update
+      - op: add
+        path: /spec/initProvider
+        value: {}
       - op: add
         path: /spec/forProvider/allowSquashMerge
         value: true
@@ -62,5 +73,5 @@ patches:
         path: /spec/forProvider/deleteBranchOnMerge
         value: true
       - op: add
-        path: /spec/forProvider/webCommitSignoffRequired
+        path: /spec/initProvider/webCommitSignoffRequired
         value: true
