@@ -29,18 +29,24 @@ active_count="$(printf '%s\n' "$active_repositories" | grep -c . || true)"
 [[ "$active_count" -ge 10 ]] ||
   fail "active Repository set collapsed to $active_count entries"
 
-late_initialized="$(
+unsafe_policies="$(
   yq -N '
     select(
       .kind == "Repository" and
       .spec.forProvider.archived != true and
-      (.spec.managementPolicies | contains(["LateInitialize"]))
+      (
+        ((.spec.managementPolicies | length) != 3) or
+        (
+          (.spec.managementPolicies | contains(["Create", "Observe", "Update"])) !=
+          true
+        )
+      )
     ) |
     .metadata.name
   ' "$render"
 )"
-[[ -z "$late_initialized" ]] ||
-  fail "active Repository resources still allow LateInitialize: $late_initialized"
+[[ -z "$unsafe_policies" ]] ||
+  fail "active Repository resources must use only Observe/Create/Update: $unsafe_policies"
 
 update_payload_signoff="$(
   yq -N '
