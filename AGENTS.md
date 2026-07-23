@@ -41,7 +41,11 @@ for the architecture, the GitHub App credential setup, and the Observe-first ado
 - **Observe-first when adopting an existing resource.** A new `Repository`/`IssueLabels`/team CR for
   an already-live object must adopt it without risk of recreate/delete: set the
   `crossplane.io/external-name` annotation to the live name and use a management policy that
-  **excludes `Delete`** (observe/late-initialize), per platform's `docs/github-management.md`. Verify
+  **excludes `Delete`** (observe/late-initialize), per platform's `docs/github-management.md`. After
+  observation, active `Repository` resources use `Observe`/`Create`/`Update` without
+  `LateInitialize`: only explicitly declared fields belong in update payloads. Org-owned create
+  defaults such as `webCommitSignoffRequired` belong in `initProvider`, where Crossplane applies
+  them only during creation. Verify
   the provider kind/field schema against the authoritative source
   ([crossplane-contrib/provider-upjet-github `package/crds/`](https://github.com/crossplane-contrib/provider-upjet-github)
   + `examples-generated/namespaced/`) — the CRs cannot be schema-validated locally (no cluster; CI
