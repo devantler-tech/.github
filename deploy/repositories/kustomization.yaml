@@ -27,6 +27,7 @@ resources:
   # Private repos.
   - ascoachingogvaner.yaml
   - wedding-app.yaml
+  - doggy-countdown.yaml
   - fleet-gitops.yaml
 # Org-wide repo settings applied to EVERY Repository, single source of truth
 # (auto-applies to every future repo):

@@ -1,0 +1,25 @@
+apiVersion: repo.github.m.upbound.io/v1alpha1
+kind: Repository
+metadata:
+  name: doggy-countdown
+  annotations:
+    crossplane.io/external-name: doggy-countdown
+spec:
+  # Actively managed (everything except Delete). Merge policy from the shared
+  # patch. PRIVATE repo: visibility is pinned private explicitly (never left to
+  # inference) so management can never expose it, and archived false so it can't
+  # be archived. description is declared so the config is AUTHORITATIVE for it;
+  # LateInitialize adopts every other setting.
+  managementPolicies:
+    - Observe
+    - Create
+    - Update
+    - LateInitialize
+  forProvider:
+    name: doggy-countdown
+    visibility: private
+    archived: false
+    description: "A countdown to the day Simba the Cocker Spaniel comes home."
+  providerConfigRef:
+    kind: ProviderConfig
+    name: default
