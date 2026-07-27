@@ -38,6 +38,16 @@ resources:
 #    update PATCH gets 422 "Commit signoff is enforced ... and cannot be
 #    disabled"). The 12 already-adopted repos had this true via LateInitialize;
 #    pinning it here makes every repo's update self-consistent and robust.
+#  - hasDownloads: false — GitHub has removed the downloads feature and no
+#    longer returns the field, so status.atProvider never carries it. The
+#    Terraform provider still defaults it to true, so any repo whose spec picked
+#    that default up through LateInitialize holds a value the API can never
+#    report back. That is an unresolvable diff: the provider sees spec != live on
+#    every reconcile and issues an update PATCH forever. Those PATCHes are then
+#    rejected wholesale (422, on the commit-signoff field), so NO declared
+#    setting reaches GitHub for that repository — visibility included. Pinning
+#    the field to the value the API actually reflects is what stops the diff, and
+#    therefore what keeps the rest of this file enforceable.
 patches:
   - target:
       group: repo.github.m.upbound.io
@@ -65,3 +75,6 @@ patches:
       - op: add
         path: /spec/forProvider/webCommitSignoffRequired
         value: true
+      - op: add
+        path: /spec/forProvider/hasDownloads
+        value: false
