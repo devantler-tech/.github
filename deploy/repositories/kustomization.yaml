@@ -90,3 +90,20 @@ patches:
       - op: add
         path: /spec/forProvider/hasDownloads
         value: false
+# ascoachingogvaner and wedding-app declare `visibility: private` while both live
+# repositories are public, and both host a deployed site. Which side is wrong is
+# the maintainer's call, tracked on #123. Until it is made, they stay on Observe:
+# Crossplane mirrors them read-only and writes nothing, so restoring the write
+# path org-wide cannot turn two live public sites private as a side effect.
+# Removing this patch is what enacts the decision, once the declared visibility
+# has been set to whatever the answer turns out to be.
+  - target:
+      group: repo.github.m.upbound.io
+      version: v1alpha1
+      kind: Repository
+      name: (ascoachingogvaner|wedding-app)
+    patch: |-
+      - op: replace
+        path: /spec/managementPolicies
+        value:
+          - Observe

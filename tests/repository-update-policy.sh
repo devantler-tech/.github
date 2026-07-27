@@ -33,25 +33,25 @@ active_count="$(printf '%s\n' "$active_repositories" | grep -c . || true)"
   fail "active Repository set collapsed to $active_count entries"
 
 # LateInitialize copies live-only values into forProvider, and everything in
-# forProvider is sent on every update PATCH. Observe/Create/Update only.
+# forProvider is sent on every update PATCH. Delete would let a prune destroy a
+# real repository. Neither may appear; a repository parked on Observe alone is
+# allowed, because a resource that never writes cannot send a bad payload.
 unsafe_policies="$(
   yq -N '
     select(
       .kind == "Repository" and
       .spec.forProvider.archived != true and
       (
-        ((.spec.managementPolicies | length) != 3) or
-        (
-          (.spec.managementPolicies | contains(["Create", "Observe", "Update"])) !=
-          true
-        )
+        (.spec.managementPolicies | contains(["LateInitialize"])) or
+        (.spec.managementPolicies | contains(["Delete"])) or
+        ((.spec.managementPolicies | contains(["Observe"])) != true)
       )
     ) |
     .metadata.name
   ' "$render"
 )"
 [[ -z "$unsafe_policies" ]] ||
-  fail "active Repository resources must use only Observe/Create/Update: $unsafe_policies"
+  fail "active Repository resources must be Observe-based without LateInitialize or Delete: $unsafe_policies"
 
 # The org enforces commit signoff. GitHub rejects the entire PATCH with 422
 # whenever this field appears in a repository update, whatever value it carries,
