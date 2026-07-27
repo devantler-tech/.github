@@ -1,14 +1,17 @@
 # One file per managed repository. Adoption is Observe-first: a repo starts with
 # managementPolicies: ["Observe"] (read-only — Crossplane mirrors live state into
 # status.atProvider and never writes), then forProvider is set and the policy
-# promoted to the full set EXCEPT Delete. Namespaced managed resources have no
-# deletionPolicy; omitting Delete is what guarantees Crossplane can never delete
-# a real GitHub repository. See devantler-tech/platform docs/github-management.md.
+# promoted to Observe/Create/Update by the shared patch below. Namespaced managed
+# resources have no deletionPolicy; omitting Delete is what guarantees Crossplane
+# can never delete a real GitHub repository. LateInitialize is omitted too: it
+# copies live-only values back into forProvider, and every field that lands there
+# is sent on every subsequent update PATCH. See devantler-tech/platform
+# docs/github-management.md.
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
-  # Actively managed (managementPolicies all-except-Delete). Every non-archived
-  # org repo; the shared merge-policy patch below applies to all of them.
+  # Actively managed (Observe/Create/Update). Every non-archived org repo; the
+  # shared policy patch below applies to all of them.
   - platform.yaml
   - ksail.yaml
   - maintenance.yaml
@@ -33,27 +36,36 @@ resources:
 # (auto-applies to every future repo):
 #  - squash-only merge policy (merge commits + rebase disabled; auto-merge,
 #    auto-delete head branches, always-suggest-updating-PR-branches enabled).
-#  - webCommitSignoffRequired: true — the org ENFORCES commit signoff and it
-#    can't be disabled per-repo, so the provider must always send true (else an
-#    update PATCH gets 422 "Commit signoff is enforced ... and cannot be
-#    disabled"). The 12 already-adopted repos had this true via LateInitialize;
-#    pinning it here makes every repo's update self-consistent and robust.
+#  - webCommitSignoffRequired: true, in initProvider — CREATE-ONLY. The org
+#    enforces commit signoff, and GitHub rejects the whole PATCH with 422
+#    "Commit signoff is enforced ... and cannot be disabled" whenever the field
+#    appears in a repository update, whatever value it carries. initProvider is
+#    applied at creation and never included in an update payload, so a new repo
+#    still gets the secure default while existing repos stay updatable.
 #  - hasDownloads: false — GitHub has removed the downloads feature and no
 #    longer returns the field, so status.atProvider never carries it. The
-#    Terraform provider still defaults it to true, so any repo whose spec picked
-#    that default up through LateInitialize holds a value the API can never
-#    report back. That is an unresolvable diff: the provider sees spec != live on
-#    every reconcile and issues an update PATCH forever. Those PATCHes are then
-#    rejected wholesale (422, on the commit-signoff field), so NO declared
-#    setting reaches GitHub for that repository — visibility included. Pinning
-#    the field to the value the API actually reflects is what stops the diff, and
-#    therefore what keeps the rest of this file enforceable.
+#    Terraform provider still defaults it to true, so a spec holding that default
+#    carries a value the API can never report back. That is an unresolvable diff:
+#    the provider sees spec != live on every reconcile and issues an update PATCH
+#    forever. Pinning the field to the value the API actually reflects is what
+#    stops the diff.
+# managementPolicies is replaced here rather than per repo, so the update
+# contract is stated once and every present and future repo inherits it.
 patches:
   - target:
       group: repo.github.m.upbound.io
       version: v1alpha1
       kind: Repository
     patch: |-
+      - op: replace
+        path: /spec/managementPolicies
+        value:
+          - Observe
+          - Create
+          - Update
+      - op: add
+        path: /spec/initProvider
+        value: {}
       - op: add
         path: /spec/forProvider/allowSquashMerge
         value: true
@@ -73,7 +85,7 @@ patches:
         path: /spec/forProvider/deleteBranchOnMerge
         value: true
       - op: add
-        path: /spec/forProvider/webCommitSignoffRequired
+        path: /spec/initProvider/webCommitSignoffRequired
         value: true
       - op: add
         path: /spec/forProvider/hasDownloads
