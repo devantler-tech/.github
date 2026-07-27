@@ -5,11 +5,11 @@ metadata:
   annotations:
     crossplane.io/external-name: gitops-tenant-template
 spec:
-  # Managed (all except Delete). forProvider now declares the discoverability
-  # metadata (description/topics) so the config is AUTHORITATIVE for it
-  # (previously LateInitialized from live); the org-wide squash-only merge policy
-  # still comes from the shared patch in kustomization.yaml, and every other
-  # setting is still adopted unchanged from the live repo via LateInitialize.
+  # Managed (Observe/Create/Update). forProvider declares the discoverability
+  # metadata (description/topics), so the config is AUTHORITATIVE for it; the
+  # org-wide squash-only merge policy comes from the shared patch in
+  # kustomization.yaml. Settings named in neither keep the value adopted from the
+  # live repo when it was first observed.
   managementPolicies:
     - Observe
     - Create

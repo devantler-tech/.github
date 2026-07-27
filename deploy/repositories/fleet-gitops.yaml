@@ -5,11 +5,12 @@ metadata:
   annotations:
     crossplane.io/external-name: fleet-gitops
 spec:
-  # Actively managed (everything except Delete). Merge policy from the shared
+  # Managed (Observe/Create/Update). Merge policy from the shared
   # patch. PRIVATE repo: visibility is pinned private explicitly (never left to
   # inference) so management can never expose it, and archived false so it can't
-  # be archived. description is declared so the config is AUTHORITATIVE for it
-  # (previously LateInitialized); LateInitialize adopts every other setting.
+  # be archived. description is declared so the config is AUTHORITATIVE for it.
+  # Settings declared nowhere here keep the value adopted from the live repo when
+  # it was first observed.
   managementPolicies:
     - Observe
     - Create

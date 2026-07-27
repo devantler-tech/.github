@@ -1,8 +1,9 @@
-# First repo brought under ACTIVE management (everything except Delete). The
+# First repo brought under ACTIVE management (Observe/Create/Update). The
 # merge policy (squash-only + auto-merge + auto-delete branches + suggest-update)
 # now comes from the shared patch in kustomization.yaml, so it is not repeated
 # here. `archived` is pinned false so management can never accidentally archive
-# the repo; `visibility` is intentionally left to LateInitialize (never hard-set).
+# the repo; `visibility` is intentionally never declared here, so management can
+# neither open nor close it.
 apiVersion: repo.github.m.upbound.io/v1alpha1
 kind: Repository
 metadata:

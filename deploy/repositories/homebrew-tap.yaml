@@ -5,10 +5,11 @@ metadata:
   annotations:
     crossplane.io/external-name: homebrew-tap
 spec:
-  # Managed (all except Delete). forProvider now declares the discoverability
+  # Managed (Observe/Create/Update). forProvider now declares the discoverability
   # metadata so the config is AUTHORITATIVE for it; the org-wide squash-only
-  # merge policy still comes from the shared patch in kustomization.yaml, and
-  # every other setting is still adopted unchanged via LateInitialize.
+  # merge policy comes from the shared patch in kustomization.yaml. Settings named
+  # in neither keep the value adopted from the live repo when it was first
+  # observed.
   # NB: this is the one repo whose live description was empty — declaring it here
   # is a real (intentional) Update, not a no-op cutover like the other repos.
   managementPolicies:

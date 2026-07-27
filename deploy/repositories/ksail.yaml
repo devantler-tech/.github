@@ -7,11 +7,12 @@ metadata:
     # (owner comes from the ProviderConfig credentials).
     crossplane.io/external-name: ksail
 spec:
-  # Actively managed (everything except Delete). Merge policy from the shared
+  # Managed (Observe/Create/Update). Merge policy from the shared
   # patch; visibility pinned public + archived false so management can never
   # flip visibility or archive this repo. Discoverability metadata
   # (description/topics/homepageUrl) is declared so the config is AUTHORITATIVE
-  # for it (previously LateInitialized from live); LateInitialize adopts the rest.
+  # for it. Settings declared nowhere here keep the value adopted from the live
+  # repo when it was first observed.
   managementPolicies:
     - Observe
     - Create

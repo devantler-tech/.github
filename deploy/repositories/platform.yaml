@@ -7,12 +7,12 @@ metadata:
     # (owner comes from the ProviderConfig credentials).
     crossplane.io/external-name: platform
 spec:
-  # Actively managed (everything except Delete). The merge policy comes from the
+  # Managed (Observe/Create/Update). The merge policy comes from the
   # shared patch in kustomization.yaml; visibility is pinned public and archived
   # false explicitly so management can never flip visibility or archive this
   # repo. Discoverability metadata (description/topics/homepageUrl) is declared
-  # so the config is AUTHORITATIVE for it (previously LateInitialized from live);
-  # LateInitialize adopts every other setting unchanged.
+  # so the config is AUTHORITATIVE for it. Settings declared nowhere here keep the
+  # value adopted from the live repo when it was first observed.
   managementPolicies:
     - Observe
     - Create
