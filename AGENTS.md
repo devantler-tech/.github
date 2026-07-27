@@ -44,9 +44,10 @@ for the architecture, the GitHub App credential setup, and the Observe-first ado
   **excludes `Delete`** (observe/late-initialize), per platform's `docs/github-management.md`. Once
   adopted, an active `Repository` runs on `Observe`/`Create`/`Update` **without `LateInitialize`**:
   late-initialized values land in `forProvider`, and everything in `forProvider` is sent on every
-  subsequent update PATCH. An org-enforced create default such as `webCommitSignoffRequired` belongs
-  in `initProvider`, which Crossplane applies only at creation — GitHub rejects the whole PATCH with
-  422 whenever that field appears in an update. Verify
+  subsequent update PATCH. A field the org already enforces, such as `webCommitSignoffRequired`, is
+  declared in neither `forProvider` nor `initProvider`: GitHub rejects the whole PATCH with 422
+  whenever that field appears in an update, even carrying its own current value, and upjet feeds both
+  of those blocks into the payload. The org setting applies it to new repositories anyway. Verify
   the provider kind/field schema against the authoritative source
   ([crossplane-contrib/provider-upjet-github `package/crds/`](https://github.com/crossplane-contrib/provider-upjet-github)
   + `examples-generated/namespaced/`) — the CRs cannot be schema-validated locally (no cluster; CI

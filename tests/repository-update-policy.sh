@@ -58,34 +58,28 @@ unsafe_policies="$(
 [[ -z "$unsafe_policies" ]] ||
   fail "active Repository resources must not pair Update with LateInitialize, must exclude Delete, and must Observe: $unsafe_policies"
 
-# The org enforces commit signoff. GitHub rejects the entire PATCH with 422
-# whenever this field appears in a repository update, whatever value it carries,
-# so it must never reach forProvider.
-update_payload_signoff="$(
+# The org enforces commit signoff, and GitHub rejects the entire PATCH with 422
+# whenever this field appears in a repository update — measured against the live
+# API, sending the field at its own current value of true still fails. The
+# Terraform provider only omits it from the payload when it is left unconfigured,
+# and upjet feeds BOTH forProvider and initProvider into that configuration, so
+# either one puts the field back into every update. It must appear in neither.
+# Nothing is lost by omitting it: the org setting is what applies signoff to a
+# new repository, which is the same policy that makes the field unwritable here.
+declared_signoff="$(
   yq -N '
     select(
       .kind == "Repository" and
       .spec.forProvider.archived != true and
-      (.spec.forProvider | has("webCommitSignoffRequired"))
+      (
+        (.spec.forProvider | has("webCommitSignoffRequired")) or
+        (.spec.initProvider | has("webCommitSignoffRequired"))
+      )
     ) |
     .metadata.name
   ' "$render"
 )"
-[[ -z "$update_payload_signoff" ]] ||
-  fail "org-controlled signoff remains in forProvider: $update_payload_signoff"
+[[ -z "$declared_signoff" ]] ||
+  fail "org-controlled signoff must not be declared in forProvider or initProvider: $declared_signoff"
 
-# Keeping it create-only is what preserves the secure default for new repos.
-missing_create_signoff="$(
-  yq -N '
-    select(
-      .kind == "Repository" and
-      .spec.forProvider.archived != true and
-      .spec.initProvider.webCommitSignoffRequired != true
-    ) |
-    .metadata.name
-  ' "$render"
-)"
-[[ -z "$missing_create_signoff" ]] ||
-  fail "create-only signoff is missing from initProvider: $missing_create_signoff"
-
-echo "repository-update-policy: OK — $active_count active repositories keep signoff create-only"
+echo "repository-update-policy: OK — $active_count active repositories leave signoff to the org"

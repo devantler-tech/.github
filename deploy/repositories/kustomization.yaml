@@ -36,12 +36,15 @@ resources:
 # (auto-applies to every future repo):
 #  - squash-only merge policy (merge commits + rebase disabled; auto-merge,
 #    auto-delete head branches, always-suggest-updating-PR-branches enabled).
-#  - webCommitSignoffRequired: true, in initProvider — CREATE-ONLY. The org
-#    enforces commit signoff, and GitHub rejects the whole PATCH with 422
-#    "Commit signoff is enforced ... and cannot be disabled" whenever the field
-#    appears in a repository update, whatever value it carries. initProvider is
-#    applied at creation and never included in an update payload, so a new repo
-#    still gets the secure default while existing repos stay updatable.
+#  - webCommitSignoffRequired is declared NOWHERE, on purpose. The org enforces
+#    commit signoff, and GitHub rejects the whole PATCH with 422 "Commit signoff
+#    is enforced ... and cannot be disabled" whenever the field appears in a
+#    repository update — including when it carries its own current value of true.
+#    The Terraform provider omits the field from the payload only while it is
+#    left unconfigured, and upjet builds that configuration from forProvider and
+#    initProvider alike, so declaring it in either one reinstates the 422.
+#    Omitting it costs nothing: the org setting is what applies signoff to a new
+#    repository, and it is the same setting that makes the field unwritable.
 #  - hasDownloads: false — GitHub has removed the downloads feature and no
 #    longer returns the field, so status.atProvider never carries it. The
 #    Terraform provider still defaults it to true, so a spec holding that default
@@ -78,19 +81,3 @@ patches:
       - op: add
         path: /spec/forProvider/hasDownloads
         value: false
-  # A merge patch, not a JSON Patch op: it creates spec.initProvider when absent
-  # and merges into it when a repository declares its own create-only settings.
-  # A JSON Patch `add` on that path would replace the whole map and silently drop
-  # them.
-  - target:
-      group: repo.github.m.upbound.io
-      version: v1alpha1
-      kind: Repository
-    patch: |-
-      apiVersion: repo.github.m.upbound.io/v1alpha1
-      kind: Repository
-      metadata:
-        name: placeholder
-      spec:
-        initProvider:
-          webCommitSignoffRequired: true
