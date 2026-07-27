@@ -24,8 +24,9 @@ spec:
     description: "Shared Kyverno policy library for the devantler-tech platforms — the single source the platform and platform-template consume instead of vendoring per-repo copies."
     visibility: public
     hasIssues: true
-    # Shared kustomization patch supplies the squash-only merge policy +
-    # webCommitSignoffRequired; nothing repo-specific needed here.
+    # Shared kustomization patch supplies the squash-only merge policy; commit
+    # signoff is inherited from the organization and declared nowhere. Nothing
+    # repo-specific needed here.
   providerConfigRef:
     kind: ProviderConfig
     name: default
