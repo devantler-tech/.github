@@ -9,8 +9,9 @@ spec:
   # patch. PUBLIC repo: visibility is pinned public explicitly (never left to
   # inference) so a reconcile can never take the published site private, and
   # archived false so it can't be archived. description is declared so the
-  # config is AUTHORITATIVE for it. Settings declared nowhere here keep the value
-  # adopted from the live repo when it was first observed.
+  # config is AUTHORITATIVE for it. Settings in neither
+  # are unmanaged: nothing new is copied into the spec, and values adopted
+  # earlier stay.
   managementPolicies:
     - Observe
     - Create

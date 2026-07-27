@@ -57,12 +57,6 @@ patches:
       version: v1alpha1
       kind: Repository
     patch: |-
-      # initProvider must exist before a field can be added under it. Anything a
-      # repo needs at create time goes in the shared patch below, not in the repo
-      # file — this op replaces a per-repo initProvider block if one is added.
-      - op: add
-        path: /spec/initProvider
-        value: {}
       - op: add
         path: /spec/forProvider/allowSquashMerge
         value: true
@@ -82,8 +76,21 @@ patches:
         path: /spec/forProvider/deleteBranchOnMerge
         value: true
       - op: add
-        path: /spec/initProvider/webCommitSignoffRequired
-        value: true
-      - op: add
         path: /spec/forProvider/hasDownloads
         value: false
+  # A merge patch, not a JSON Patch op: it creates spec.initProvider when absent
+  # and merges into it when a repository declares its own create-only settings.
+  # A JSON Patch `add` on that path would replace the whole map and silently drop
+  # them.
+  - target:
+      group: repo.github.m.upbound.io
+      version: v1alpha1
+      kind: Repository
+    patch: |-
+      apiVersion: repo.github.m.upbound.io/v1alpha1
+      kind: Repository
+      metadata:
+        name: placeholder
+      spec:
+        initProvider:
+          webCommitSignoffRequired: true

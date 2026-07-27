@@ -33,16 +33,21 @@ active_count="$(printf '%s\n' "$active_repositories" | grep -c . || true)"
   fail "active Repository set collapsed to $active_count entries"
 
 # LateInitialize copies live-only values into forProvider, and everything in
-# forProvider is sent on every update PATCH. Delete would let a prune destroy a
-# real repository. Neither may appear; a repository parked on Observe alone is
-# allowed, because a resource that never writes cannot send a bad payload.
+# forProvider is sent on every update PATCH, so LateInitialize is what turns a
+# live-only value into part of every future payload. The hazard is that pairing,
+# not LateInitialize itself: during Observe-first adoption a repository runs on
+# Observe+LateInitialize to mirror live state, sends nothing, and is safe. Delete
+# would let a prune destroy a real repository and is never allowed.
 unsafe_policies="$(
   yq -N '
     select(
       .kind == "Repository" and
       .spec.forProvider.archived != true and
       (
-        (.spec.managementPolicies | contains(["LateInitialize"])) or
+        (
+          (.spec.managementPolicies | contains(["LateInitialize"])) and
+          (.spec.managementPolicies | contains(["Update"]))
+        ) or
         (.spec.managementPolicies | contains(["Delete"])) or
         ((.spec.managementPolicies | contains(["Observe"])) != true)
       )
@@ -51,7 +56,7 @@ unsafe_policies="$(
   ' "$render"
 )"
 [[ -z "$unsafe_policies" ]] ||
-  fail "active Repository resources must be Observe-based without LateInitialize or Delete: $unsafe_policies"
+  fail "active Repository resources must not pair Update with LateInitialize, must exclude Delete, and must Observe: $unsafe_policies"
 
 # The org enforces commit signoff. GitHub rejects the entire PATCH with 422
 # whenever this field appears in a repository update, whatever value it carries,

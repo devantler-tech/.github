@@ -7,9 +7,9 @@ metadata:
 spec:
   # Managed (Observe/Create/Update). forProvider now declares the discoverability
   # metadata so the config is AUTHORITATIVE for it; the org-wide squash-only
-  # merge policy comes from the shared patch in kustomization.yaml. Settings named
-  # in neither keep the value adopted from the live repo when it was first
-  # observed.
+  # merge policy comes from the shared patch in kustomization.yaml. Settings in neither
+  # are unmanaged: nothing new is copied into the spec, and values adopted
+  # earlier stay.
   # NB: this is the one repo whose live description was empty — declaring it here
   # is a real (intentional) Update, not a no-op cutover like the other repos.
   managementPolicies:
