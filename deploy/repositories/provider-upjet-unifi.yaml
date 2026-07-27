@@ -14,7 +14,6 @@ spec:
     - Observe
     - Create
     - Update
-    - LateInitialize
   forProvider:
     name: provider-upjet-unifi
     description: "Crossplane provider for Ubiquiti UniFi, generated with Upjet from ubiquiti-community/terraform-provider-unifi. Manage UniFi networks, WLANs, firewall, VPN/WireGuard, devices and settings as Kubernetes resources."

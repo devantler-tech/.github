@@ -5,16 +5,17 @@ metadata:
   annotations:
     crossplane.io/external-name: doggy-countdown
 spec:
-  # Actively managed (everything except Delete). Merge policy from the shared
+  # Managed (Observe/Create/Update). Merge policy from the shared
   # patch. PUBLIC repo: visibility is pinned public explicitly (never left to
   # inference) so a reconcile can never take the published site private, and
   # archived false so it can't be archived. description is declared so the
-  # config is AUTHORITATIVE for it; LateInitialize adopts every other setting.
+  # config is AUTHORITATIVE for it. Settings in neither
+  # are unmanaged: nothing new is copied into the spec, and values adopted
+  # earlier stay.
   managementPolicies:
     - Observe
     - Create
     - Update
-    - LateInitialize
   forProvider:
     name: doggy-countdown
     visibility: public

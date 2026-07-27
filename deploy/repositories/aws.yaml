@@ -18,7 +18,6 @@ spec:
     - Observe
     - Create
     - Update
-    - LateInitialize
   forProvider:
     name: aws
     description: "Declarative AWS infrastructure for the devantler-tech platform — Crossplane managed resources in deploy/, published as a cosign-signed OCI artifact and reconciled by the platform's aws tenant."

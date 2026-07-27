@@ -11,13 +11,12 @@ metadata:
 spec:
   # Squash-only merge policy + webCommitSignoffRequired come from the shared
   # patch; description and topics are declared here so the config is
-  # AUTHORITATIVE for them (description was previously LateInitialized, topics
-  # were unset); everything else is adopted via LateInitialize.
+  # AUTHORITATIVE for them. Settings declared nowhere here keep the value adopted
+  # from the live repo when it was first observed.
   managementPolicies:
     - Observe
     - Create
     - Update
-    - LateInitialize
   forProvider:
     name: agent-plugins
     # Fixes a stale repo reference: `devantler-tech/skills` was renamed to

@@ -35,6 +35,9 @@ jobs:
       - name: 🧪 Test declarative coverage
         run: bash tests/declarative-coverage.sh
 
+      - name: 🧪 Test repository update policy
+        run: bash tests/repository-update-policy.sh
+
   ci-required-checks:
     name: CI - Required Checks
     runs-on: ubuntu-latest
