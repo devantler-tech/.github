@@ -14,7 +14,6 @@ spec:
     - Observe
     - Create
     - Update
-    - LateInitialize
   forProvider:
     name: platform-template
     description: "Opinionated, batteries-included Kubernetes platform (Flux GitOps + KSail + Talos) you instantiate from a template — fully automated bootstrap from GitHub Secrets. Derived from devantler-tech/platform."

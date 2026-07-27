@@ -49,20 +49,17 @@ resources:
 #    the provider sees spec != live on every reconcile and issues an update PATCH
 #    forever. Pinning the field to the value the API actually reflects is what
 #    stops the diff.
-# managementPolicies is replaced here rather than per repo, so the update
-# contract is stated once and every present and future repo inherits it.
+# managementPolicies stays per repo: adoption is Observe-first, and a shared
+# override would promote a repo to writing the moment it is added.
 patches:
   - target:
       group: repo.github.m.upbound.io
       version: v1alpha1
       kind: Repository
     patch: |-
-      - op: replace
-        path: /spec/managementPolicies
-        value:
-          - Observe
-          - Create
-          - Update
+      # initProvider must exist before a field can be added under it. Anything a
+      # repo needs at create time goes in the shared patch below, not in the repo
+      # file — this op replaces a per-repo initProvider block if one is added.
       - op: add
         path: /spec/initProvider
         value: {}
@@ -90,20 +87,3 @@ patches:
       - op: add
         path: /spec/forProvider/hasDownloads
         value: false
-# ascoachingogvaner and wedding-app declare `visibility: private` while both live
-# repositories are public, and both host a deployed site. Which side is wrong is
-# the maintainer's call, tracked on #123. Until it is made, they stay on Observe:
-# Crossplane mirrors them read-only and writes nothing, so restoring the write
-# path org-wide cannot turn two live public sites private as a side effect.
-# Removing this patch is what enacts the decision, once the declared visibility
-# has been set to whatever the answer turns out to be.
-  - target:
-      group: repo.github.m.upbound.io
-      version: v1alpha1
-      kind: Repository
-      name: (ascoachingogvaner|wedding-app)
-    patch: |-
-      - op: replace
-        path: /spec/managementPolicies
-        value:
-          - Observe

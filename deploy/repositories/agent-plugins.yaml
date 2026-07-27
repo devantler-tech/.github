@@ -17,7 +17,6 @@ spec:
     - Observe
     - Create
     - Update
-    - LateInitialize
   forProvider:
     name: agent-plugins
     # Fixes a stale repo reference: `devantler-tech/skills` was renamed to

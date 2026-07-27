@@ -19,7 +19,6 @@ spec:
     - Observe
     - Create
     - Update
-    - LateInitialize
   forProvider:
     name: kyverno-policies
     description: "Shared Kyverno policy library for the devantler-tech platforms — the single source the platform and platform-template consume instead of vendoring per-repo copies."

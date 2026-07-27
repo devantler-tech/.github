@@ -14,7 +14,6 @@ spec:
     - Observe
     - Create
     - Update
-    - LateInitialize
   forProvider:
     name: unifi
     description: "Declarative configuration of my UniFi network (OpenTofu + filipowm/unifi), reconciled by tofu-controller as a platform tenant"

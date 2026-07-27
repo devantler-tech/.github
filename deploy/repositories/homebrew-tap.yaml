@@ -15,7 +15,6 @@ spec:
     - Observe
     - Create
     - Update
-    - LateInitialize
   forProvider:
     name: homebrew-tap
     description: "Homebrew tap for devantler-tech CLIs (e.g. ksail)."

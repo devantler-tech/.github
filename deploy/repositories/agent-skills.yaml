@@ -18,7 +18,6 @@ spec:
     - Observe
     - Create
     - Update
-    - LateInitialize
   forProvider:
     name: agent-skills
     # De-Copilot-branded: these skills are agent-neutral (agentskills.io spec)

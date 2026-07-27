@@ -16,7 +16,6 @@ spec:
     - Observe
     - Create
     - Update
-    - LateInitialize
   forProvider:
     name: ksail
     visibility: public

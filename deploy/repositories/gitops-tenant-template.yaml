@@ -14,7 +14,6 @@ spec:
     - Observe
     - Create
     - Update
-    - LateInitialize
   forProvider:
     name: gitops-tenant-template
     description: "Template for GitOps tenants on the devantler-tech platform — framework-agnostic CI/CD plumbing kept current via template-sync."

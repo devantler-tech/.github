@@ -14,7 +14,6 @@ spec:
     - Observe
     - Create
     - Update
-    - LateInitialize
   forProvider:
     name: go-template
     description: "A simple Go template for new projects."

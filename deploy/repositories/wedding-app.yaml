@@ -5,16 +5,15 @@ metadata:
   annotations:
     crossplane.io/external-name: wedding-app
 spec:
-  # Actively managed (everything except Delete). Merge policy from the shared
-  # patch. PRIVATE repo: visibility is pinned private explicitly (never left to
-  # inference) so management can never expose it, and archived false so it can't
-  # be archived. description is declared so the config is AUTHORITATIVE for it
-  # (previously LateInitialized); LateInitialize adopts every other setting.
+  # Observe-only: this file declares `visibility: private` while the live
+  # repository is public and serving a site, so acting on the declaration would
+  # take the site off the public internet. Which side is wrong is the
+  # maintainer's call, tracked on devantler-tech/.github#123 — until it is made,
+  # Crossplane mirrors this repo read-only and writes nothing. Restoring
+  # Create/Update is what enacts the decision, once `visibility` below has been
+  # set to the answer.
   managementPolicies:
     - Observe
-    - Create
-    - Update
-    - LateInitialize
   forProvider:
     name: wedding-app
     visibility: private
