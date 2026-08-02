@@ -32,7 +32,7 @@ resources:
   - unifi.yaml
   - aws.yaml
   - kyverno-policies.yaml
-  - gitops-tenant-template.yaml
+  - platform-tenant-template.yaml
   - platform-template.yaml
   - go-template.yaml
   - dotnet-template.yaml

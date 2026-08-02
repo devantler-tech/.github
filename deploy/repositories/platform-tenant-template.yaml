@@ -1,9 +1,9 @@
 apiVersion: repo.github.m.upbound.io/v1alpha1
 kind: Repository
 metadata:
-  name: gitops-tenant-template
+  name: platform-tenant-template
   annotations:
-    crossplane.io/external-name: gitops-tenant-template
+    crossplane.io/external-name: platform-tenant-template
 spec:
   # Managed (Observe/Create/Update). forProvider declares the discoverability
   # metadata (description/topics), so the config is AUTHORITATIVE for it; the
@@ -16,8 +16,8 @@ spec:
     - Create
     - Update
   forProvider:
-    name: gitops-tenant-template
-    description: "Template for GitOps tenants on the devantler-tech platform — framework-agnostic CI/CD plumbing kept current via template-sync."
+    name: platform-tenant-template
+    description: "Template for platform tenants on the devantler-tech platform — framework-agnostic CI/CD plumbing kept current via template-sync."
   providerConfigRef:
     kind: ProviderConfig
     name: default

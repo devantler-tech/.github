@@ -33,7 +33,7 @@ resources:
   - agent-skills.yaml
   - agent-plugins.yaml
   - unifi.yaml
-  - gitops-tenant-template.yaml
+  - platform-tenant-template.yaml
   - platform-template.yaml
   - go-template.yaml
   - dotnet-template.yaml
