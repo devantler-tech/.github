@@ -7,6 +7,7 @@ name: CI
 
 on:
   pull_request:
+    types: [opened, synchronize, reopened, edited, ready_for_review]
   merge_group:
 
 permissions: {}
@@ -21,7 +22,18 @@ jobs:
       - name: 📑 Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
+          fetch-depth: 0
           persist-credentials: false
+
+      - name: 🚦 Validate release contract
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          git diff --name-only "$BASE_SHA" "$HEAD_SHA" |
+            bash scripts/validate-release-contract.sh "$PR_TITLE"
 
       - name: 🧹 Validate deploy/ kustomize build
         # kubectl (with built-in kustomize) is preinstalled on the runner. A
@@ -37,6 +49,9 @@ jobs:
 
       - name: 🧪 Test repository update policy
         run: bash tests/repository-update-policy.sh
+
+      - name: 🧪 Test release contract
+        run: bash tests/release-contract.sh
 
   ci-required-checks:
     name: CI - Required Checks

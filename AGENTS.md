@@ -86,9 +86,10 @@ kubectl kustomize deploy/ > /dev/null   # must build clean
 bash tests/admin-team-policy.sh         # Admins policy invariants
 bash tests/declarative-coverage.sh      # every repo declared in every rendered dimension
 bash tests/repository-update-policy.sh  # active Repository update invariants
+bash tests/release-contract.sh          # deploy/ changes must trigger a release
 ```
 
-Those four commands are exactly what `ci.yaml` runs.
+Those five commands are exactly what `ci.yaml` runs.
 
 `kubectl` (with built-in kustomize) is preinstalled on CI runners. A clean build proves the manifests
 are well-formed; the Crossplane CRDs themselves are applied/validated **on-cluster** (the
