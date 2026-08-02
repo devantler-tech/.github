@@ -12,7 +12,7 @@ deploy_changed=false
   exit 1
 }
 
-while IFS= read -r path; do
+while IFS= read -r -d '' path; do
   if [[ "$path" == deploy/* ]]; then
     deploy_changed=true
   fi

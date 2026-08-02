@@ -89,7 +89,9 @@ bash tests/repository-update-policy.sh  # active Repository update invariants
 bash tests/release-contract.sh          # deploy/ changes must trigger a release
 ```
 
-Those five commands are exactly what `ci.yaml` runs.
+Those five commands are the baseline checks that `ci.yaml` runs. Pull requests additionally pass
+their changed paths and title through `scripts/validate-release-contract.sh`; merge groups skip that
+event-specific check.
 
 `kubectl` (with built-in kustomize) is preinstalled on CI runners. A clean build proves the manifests
 are well-formed; the Crossplane CRDs themselves are applied/validated **on-cluster** (the

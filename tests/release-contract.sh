@@ -13,7 +13,7 @@ fail() {
 run_validator() {
   local title="$1"
   shift
-  printf '%s\n' "$@" | bash "$validator" "$title"
+  printf '%s\0' "$@" | bash "$validator" "$title"
 }
 
 expect_success() {
@@ -40,6 +40,10 @@ expect_failure \
 expect_failure \
   'docs(deploy): explain the platform tenant rename' \
   deploy/team-repositories/grant-admins-on-platform-tenant-template.yaml
+
+expect_failure \
+  'refactor(deploy): rename a path containing a newline' \
+  $'deploy/team-repositories/grant-admins-on-platform\ntenant-template.yaml'
 
 # Every title shape semantic-release maps to a release remains valid.
 expect_success \
