@@ -56,7 +56,7 @@ repositories=(
   doggy-countdown
   dotnet-template
   fleet-gitops
-  gitops-tenant-template
+  platform-tenant-template
   go-template
   homebrew-tap
   ksail

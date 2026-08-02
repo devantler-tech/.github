@@ -3,13 +3,13 @@
 apiVersion: team.github.m.upbound.io/v1alpha1
 kind: TeamRepository
 metadata:
-  name: maintainers-gitops-tenant-template
+  name: maintainers-platform-tenant-template
 spec:
   managementPolicies: ["Observe", "Create", "Update", "LateInitialize"]
   forProvider:
     teamIdRef:
       name: maintainers
-    repository: gitops-tenant-template
+    repository: platform-tenant-template
     permission: maintain
   providerConfigRef:
     kind: ProviderConfig

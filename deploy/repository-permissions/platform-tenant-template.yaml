@@ -1,13 +1,13 @@
-# Actions permissions for devantler-tech/gitops-tenant-template — binds the org-wide
+# Actions permissions for devantler-tech/platform-tenant-template — binds the org-wide
 # shaPinningRequired policy (asserted once in kustomization.yaml) to this repo.
 # Observe+LateInitialize adopts the repo's live enabled/allowedActions so turning
 # on SHA-pinning never disturbs them. See ../README.md.
 apiVersion: actions.github.m.upbound.io/v1alpha1
 kind: RepositoryPermissions
 metadata:
-  name: gitops-tenant-template
+  name: platform-tenant-template
   annotations:
-    crossplane.io/external-name: gitops-tenant-template
+    crossplane.io/external-name: platform-tenant-template
 spec:
   managementPolicies:
     - Observe
@@ -15,7 +15,7 @@ spec:
     - Update
     - LateInitialize
   forProvider:
-    repository: gitops-tenant-template
+    repository: platform-tenant-template
   providerConfigRef:
     kind: ProviderConfig
     name: default

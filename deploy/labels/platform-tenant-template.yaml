@@ -1,14 +1,14 @@
-# Issue labels for devantler-tech/gitops-tenant-template. The canonical org taxonomy (22 labels)
+# Issue labels for devantler-tech/platform-tenant-template. The canonical org taxonomy (22 labels)
 # is appended to every IssueLabels by the shared patch in kustomization.yaml; this
-# file adds only gitops-tenant-template's repo-specific extras (the dependency/ecosystem labels
+# file adds only platform-tenant-template's repo-specific extras (the dependency/ecosystem labels
 # Dependabot/Renovate apply), declared so the authoritative set doesn't churn
 # against the bots. See ../README.md.
 apiVersion: repo.github.m.upbound.io/v1alpha1
 kind: IssueLabels
 metadata:
-  name: gitops-tenant-template
+  name: platform-tenant-template
   annotations:
-    crossplane.io/external-name: gitops-tenant-template
+    crossplane.io/external-name: platform-tenant-template
 spec:
   managementPolicies:
     - Observe
@@ -16,7 +16,7 @@ spec:
     - Update
     - LateInitialize
   forProvider:
-    repository: gitops-tenant-template
+    repository: platform-tenant-template
     label:
       - name: "dependencies"
         color: "0366d6"
