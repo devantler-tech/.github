@@ -86,11 +86,12 @@ structure; implementing PRs use `Fixes #N`.
 kubectl kustomize deploy/ > /dev/null   # must build clean
 bash tests/admin-team-policy.sh         # Admins policy invariants
 bash tests/declarative-coverage.sh      # every repo declared in every rendered dimension
+bash tests/declarative-coverage-fail-closed.sh # rendered-label reads fail closed
 bash tests/repository-update-policy.sh  # active Repository update invariants
 bash tests/release-contract.sh          # deploy/ changes must trigger a release
 ```
 
-Those five commands are the baseline checks that `ci.yaml` runs. Pull requests additionally pass
+Those six commands are the baseline checks that `ci.yaml` runs. Pull requests additionally pass
 their changed paths and title through `scripts/validate-release-contract.sh`; merge groups skip that
 event-specific check.
 
