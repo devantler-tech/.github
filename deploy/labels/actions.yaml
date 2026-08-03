@@ -1,8 +1,9 @@
 # Issue labels for devantler-tech/actions. The canonical org taxonomy (22 labels)
 # is appended to every IssueLabels by the shared patch in kustomization.yaml; this
-# file adds only actions's repo-specific extras (the dependency/ecosystem labels
-# Dependabot/Renovate apply), declared so the authoritative set doesn't churn
-# against the bots. See ../README.md.
+# file adds only actions's repo-specific automation labels: dependency/ecosystem
+# markers used by Dependabot/Renovate and lifecycle markers used by Release
+# Please. Declaring them prevents authoritative reconciliation from deleting
+# state that those automations require. See ../README.md.
 apiVersion: repo.github.m.upbound.io/v1alpha1
 kind: IssueLabels
 metadata:
@@ -22,6 +23,10 @@ spec:
         color: "0366d6"
       - name: "github_actions"
         color: "000000"
+      - name: "autorelease: pending"
+        color: "ededed"
+      - name: "autorelease: tagged"
+        color: "ededed"
   providerConfigRef:
     kind: ProviderConfig
     name: default

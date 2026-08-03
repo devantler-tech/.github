@@ -47,6 +47,9 @@ jobs:
       - name: 🧪 Test declarative coverage
         run: bash tests/declarative-coverage.sh
 
+      - name: 🧪 Test declarative coverage failure handling
+        run: bash tests/declarative-coverage-fail-closed.sh
+
       - name: 🧪 Test repository update policy
         run: bash tests/repository-update-policy.sh
 

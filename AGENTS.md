@@ -58,7 +58,8 @@ for the architecture, the GitHub App credential setup, and the Observe-first ado
   `github_actions`, Renovate extras) so the declared set is a superset — or you will delete labels in
   use. The canonical taxonomy lives once in [`deploy/labels/kustomization.yaml`](deploy/labels/)
   (a shared patch appended to every repo); each `deploy/labels/<repo>.yaml` adds **only** that repo's
-  ecosystem extras.
+  automation-specific extras, including dependency/ecosystem labels and lifecycle labels that an
+  automation requires to retain state.
 
 ## `deploy/` layout
 
@@ -85,11 +86,12 @@ structure; implementing PRs use `Fixes #N`.
 kubectl kustomize deploy/ > /dev/null   # must build clean
 bash tests/admin-team-policy.sh         # Admins policy invariants
 bash tests/declarative-coverage.sh      # every repo declared in every rendered dimension
+bash tests/declarative-coverage-fail-closed.sh # rendered-label reads fail closed
 bash tests/repository-update-policy.sh  # active Repository update invariants
 bash tests/release-contract.sh          # deploy/ changes must trigger a release
 ```
 
-Those five commands are the baseline checks that `ci.yaml` runs. Pull requests additionally pass
+Those six commands are the baseline checks that `ci.yaml` runs. Pull requests additionally pass
 their changed paths and title through `scripts/validate-release-contract.sh`; merge groups skip that
 event-specific check.
 
