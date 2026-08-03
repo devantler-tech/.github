@@ -58,7 +58,8 @@ for the architecture, the GitHub App credential setup, and the Observe-first ado
   `github_actions`, Renovate extras) so the declared set is a superset — or you will delete labels in
   use. The canonical taxonomy lives once in [`deploy/labels/kustomization.yaml`](deploy/labels/)
   (a shared patch appended to every repo); each `deploy/labels/<repo>.yaml` adds **only** that repo's
-  ecosystem extras.
+  automation-specific extras, including dependency/ecosystem labels and lifecycle labels that an
+  automation requires to retain state.
 
 ## `deploy/` layout
 

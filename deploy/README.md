@@ -27,8 +27,9 @@ out-of-band changes made in the GitHub UI.
   `maintain` to Maintainers and `admin` to Admins without claiming Delete.
 - `labels/` — one `IssueLabels` per managed repo. The canonical org label
   taxonomy lives once in `labels/kustomization.yaml` (a shared patch appended to
-  every repo); each `<repo>.yaml` adds only that repo's Dependabot/Renovate
-  ecosystem extras. Authoritative — out-of-band label drift is reverted. This is
+  every repo); each `<repo>.yaml` adds only that repo's automation-specific
+  extras, including dependency/ecosystem and lifecycle labels. Authoritative —
+  out-of-band label drift is reverted. This is
   the Crossplane replacement for the old EndBug/label-sync workflow.
 - `organization-rulesets/` — one `OrganizationRuleset` per file (org-wide branch/tag
   protection). 10 existing org rulesets are adopted **Observe-first** (read-only) + 1

@@ -6,10 +6,11 @@
 # label set and reverts drift — exactly like the old action's `delete-other-labels:
 # true`, so the cutover is behaviour-preserving.
 #
-# One file per managed repo declares only that repo's repo-specific EXTRAS (the
-# Dependabot/Renovate ecosystem labels — `dependencies`, `go`, `docker`, … —
-# declared so the authoritative set doesn't churn against the bots that recreate
-# them). The shared patch below appends the CANONICAL org taxonomy (the 22 labels
+# One file per managed repo declares only that repo's automation-specific EXTRAS,
+# including dependency/ecosystem labels (`dependencies`, `go`, `docker`, …) and
+# lifecycle labels whose presence carries automation state. Declaring them keeps
+# the authoritative set from deleting state that those automations require. The
+# shared patch below appends the CANONICAL org taxonomy (the 22 labels
 # previously in `actions/.github/labels.yaml`) to every IssueLabels — this patch is
 # now the single source of truth for that taxonomy. Mirrors the org-wide settings
 # patch in ../repositories/kustomization.yaml.
