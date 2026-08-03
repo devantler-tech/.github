@@ -156,6 +156,21 @@ if [[ "$missing_count" -gt 0 ]]; then
   exit 1
 fi
 
+# Release Please identifies a merged release PR through these lifecycle labels.
+# IssueLabels is authoritative, so omitting either marker makes the reconciler
+# delete it before merge and causes Release Please to rescan historical commits.
+actions_labels="$(
+  yq -N '
+    select(.kind == "IssueLabels" and .spec.forProvider.repository == "actions")
+    | .spec.forProvider.label[].name
+  ' "$render" | grep -vE '^$|^null$|^---$' || true
+)"
+[[ -n "$actions_labels" ]] || fail "actions: no rendered issue labels"
+for required_label in "autorelease: pending" "autorelease: tagged"; do
+  printf '%s\n' "$actions_labels" | grep -Fxq "$required_label" ||
+    fail "actions: required Release Please label '$required_label' is undeclared"
+done
+
 echo "declarative-coverage: OK — $expected_count repositories across ${#labels[@]} rendered" \
   "dimensions ($exempt_count declared exemption(s))"
 
