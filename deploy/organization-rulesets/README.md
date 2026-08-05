@@ -15,8 +15,13 @@ Reconciled by the platform `github-config` tenant like the rest of `deploy/`.
   *visibility*, with zero behaviour change (the same flow `repositories/` and `teams/`
   used). `Delete` is omitted everywhere, so a CR/Flux prune can never delete a real
   ruleset.
-- **external-name = the import id.** `OrganizationRuleset` → the numeric ruleset id
-  (`gh api orgs/devantler-tech/rulesets`); `RepositoryRuleset` → `<repo>:<id>`.
+- **external-name = the numeric ruleset id**, for both Kinds — `OrganizationRuleset`
+  (`gh api orgs/devantler-tech/rulesets`) and `RepositoryRuleset`
+  (`gh api repos/devantler-tech/<repo>/rulesets`) alike. Terraform's
+  `<repo>:<ruleset_id>` is the **import** id, not the stored external-name: the provider
+  parses this annotation with `strconv.ParseInt`, so a `<repo>:`-prefixed value never
+  observes. (The composite `<team_id>:<repository>` form in `../team-repositories/` is a
+  different Kind and genuinely does take two parts — do not generalise it to rulesets.)
 - **forProvider is identity-only** on the Observe imports (`name`/`target`/
   `enforcement`). ⚠️ **Do not** promote an import past `Observe` without first
   backfilling its full `rules`/`conditions`/`bypassActors` from the observed
