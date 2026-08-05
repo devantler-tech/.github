@@ -1,0 +1,56 @@
+# Require the `CLA gate` check on world-at-ruin's default branch.
+#
+# world-at-ruin accepts outside contributions, and its `CLA gate` check (job
+# `cla-check` in that repo's .github/workflows/cla.yaml) fails red until an
+# external author has signed CLA.md. The check ran, but nothing *required* it:
+# every ruleset on the repo is organization-sourced, and the org's "Require
+# status checks to pass" ruleset requires exactly one context (`CI - Required
+# Checks`) for every repo — so adding `CLA gate` there would impose it on the
+# repos that have no CLA workflow at all. A repo-scoped ruleset is the only
+# place the requirement can be expressed without that spillover.
+#
+# The context to require is `CLA gate` — the JOB name. The workflow is named
+# `CLA`, so the workflow name is NOT the check context; requiring it would
+# block every PR on a check that never reports.
+#
+# Unlike the Observe-first imports in this directory (and like
+# ../organization-rulesets/protect-release-tags.yaml, the other net-new managed
+# ruleset), this has NO external-name and is managed Observe + Create + Update +
+# LateInitialize — never Delete — so Crossplane CREATES it on first reconcile
+# and then keeps it in sync.
+#
+# strictRequiredStatusChecksPolicy is false on purpose: `true` additionally
+# demands the branch be up to date with the base before merging, which forces a
+# rebase round-trip on every PR. This rule is here to close a legal gate, not to
+# change how anyone merges — the everyday path is exactly as easy as before.
+#
+# No bypassActors, consistent with the org's other protective rulesets. Trusted
+# authors are unaffected in practice: `CLA gate` passes instantly for them via
+# the workflow's allowlist.
+apiVersion: repo.github.m.upbound.io/v1alpha1
+kind: RepositoryRuleset
+metadata:
+  name: world-at-ruin-require-cla-gate
+spec:
+  managementPolicies:
+    - Observe
+    - Create
+    - Update
+    - LateInitialize
+  forProvider:
+    repository: world-at-ruin
+    name: Require CLA gate
+    target: branch
+    enforcement: active
+    conditions:
+      - refName:
+          - include: ["~DEFAULT_BRANCH"]
+            exclude: []
+    rules:
+      - requiredStatusChecks:
+          - requiredCheck:
+              - context: CLA gate
+            strictRequiredStatusChecksPolicy: false
+  providerConfigRef:
+    kind: ProviderConfig
+    name: default
