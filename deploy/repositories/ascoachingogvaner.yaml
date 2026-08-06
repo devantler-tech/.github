@@ -5,13 +5,11 @@ metadata:
   annotations:
     crossplane.io/external-name: ascoachingogvaner
 spec:
-  # Observe-only while the declared value catches up with reality. The repository
-  # is public and serves the live AS Coaching og Vaner site, so `public` below is
-  # the live value, not a change of policy — the previous `private` was carried in
-  # from the template this file was written against and was never true of this
-  # repository. Restoring Create/Update is a separate step, tracked on
-  # devantler-tech/.github#123; it is safe to take only because declared and live
-  # now agree, so enabling writes can no longer take the site off the internet.
+  # Observe-only: Crossplane mirrors this repository read-only and writes nothing.
+  # The repository is public and serves the live AS Coaching og Vaner site, and the
+  # visibility below states that live value — so enacting this declaration would be
+  # a no-op rather than a change. Enabling Create/Update is a separate, deliberate
+  # step, tracked on devantler-tech/.github#123.
   managementPolicies:
     - Observe
   forProvider:
