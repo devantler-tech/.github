@@ -43,7 +43,9 @@ for the architecture, the GitHub App credential setup, and the Observe-first ado
   `crossplane.io/external-name` annotation to the live name and use a management policy that
   **excludes `Delete`** (observe/late-initialize), per platform's `docs/github-management.md`. Once
   adopted, an active `Repository` runs on `Observe`/`Create`/`Update` **without `LateInitialize`**:
-  late-initialized values land in `forProvider` and are then part of the resource's declared state. A
+  the values late-initialized *during adoption* stay in `forProvider` as provider-owned state, and
+  once `LateInitialize` is gone **no newly observed field is ever copied in again** — so a resource
+  adopted without a given field never acquires it, and nothing but the config can supply it. A
   field the org already enforces, such as `webCommitSignoffRequired`, must be **declared in
   `forProvider` at the value the org enforces** — never left unconfigured and never seeded through
   the create-only `initProvider`. upjet builds the Terraform configuration from `forProvider`, an
