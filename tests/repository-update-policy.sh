@@ -74,7 +74,7 @@ unsafe_policies="$(
 # write-enabled repositories recorded LastAsyncOperation=Success — completed
 # update PATCHes. Two minutes after the declaration was removed the same
 # repositories began recording AsyncUpdateFailure carrying that 422, and seven
-# were still failing on 2026-08-06. See devantler-tech/.github#123.
+# were still failing on 2026-08-06. See devantler-tech/.github#112.
 #
 # initProvider is not a substitute: Crossplane applies it only at creation, so
 # forProvider stays unconfigured and the permanent diff above is unchanged.
