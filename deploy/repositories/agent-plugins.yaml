@@ -9,8 +9,8 @@ metadata:
     # external-name, so the provider observes directly and reconciles cleanly.
     crossplane.io/external-name: agent-plugins
 spec:
-  # The squash-only merge policy comes from the shared patch; commit signoff is
-  # declared nowhere and inherited from the organization. Description and topics
+  # The squash-only merge policy and the org-enforced commit signoff come from
+  # the shared patch. Description and topics
   # are declared here so the config is AUTHORITATIVE for them. Settings declared
   # nowhere here keep the value adopted from the live repo when it was first
   # observed.
