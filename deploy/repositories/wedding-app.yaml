@@ -5,18 +5,16 @@ metadata:
   annotations:
     crossplane.io/external-name: wedding-app
 spec:
-  # Observe-only: this file declares `visibility: private` while the live
-  # repository is public and serving a site, so acting on the declaration would
-  # take the site off the public internet. Which side is wrong is the
-  # maintainer's call, tracked on devantler-tech/.github#123 — until it is made,
-  # Crossplane mirrors this repo read-only and writes nothing. Restoring
-  # Create/Update is what enacts the decision, once `visibility` below has been
-  # set to the answer.
+  # Observe-only: Crossplane mirrors this repository read-only and writes nothing.
+  # The repository is public and serves the live wedding site, and the visibility
+  # below states that live value — so enacting this declaration would be a no-op
+  # rather than a change. Enabling Create/Update is a separate, deliberate step,
+  # tracked on devantler-tech/.github#123.
   managementPolicies:
     - Observe
   forProvider:
     name: wedding-app
-    visibility: private
+    visibility: public
     archived: false
     description: "A simple wedding API service deployed to the devantler-tech/platform Kubernetes cluster."
   providerConfigRef:
