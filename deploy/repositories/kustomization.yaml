@@ -28,10 +28,14 @@ resources:
   - homebrew-tap.yaml
   - world-at-ruin.yaml
   - doggy-countdown.yaml
-  # Private repos.
+  - fleet-gitops.yaml
+  # Observe-only (read-only mirror; Crossplane writes nothing). These two are
+  # public and serve live sites. They are listed apart because of their
+  # management policy, not their visibility — grouping them as "private repos"
+  # described neither correctly. Promoting them to Observe/Create/Update is
+  # tracked on devantler-tech/.github#123.
   - ascoachingogvaner.yaml
   - wedding-app.yaml
-  - fleet-gitops.yaml
 # Org-wide repo settings applied to EVERY Repository, single source of truth
 # (auto-applies to every future repo):
 #  - squash-only merge policy (merge commits + rebase disabled; auto-merge,

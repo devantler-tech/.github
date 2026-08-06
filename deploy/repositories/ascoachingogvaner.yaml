@@ -5,18 +5,18 @@ metadata:
   annotations:
     crossplane.io/external-name: ascoachingogvaner
 spec:
-  # Observe-only: this file declares `visibility: private` while the live
-  # repository is public and serving a site, so acting on the declaration would
-  # take the site off the public internet. Which side is wrong is the
-  # maintainer's call, tracked on devantler-tech/.github#123 — until it is made,
-  # Crossplane mirrors this repo read-only and writes nothing. Restoring
-  # Create/Update is what enacts the decision, once `visibility` below has been
-  # set to the answer.
+  # Observe-only while the declared value catches up with reality. The repository
+  # is public and serves the live AS Coaching og Vaner site, so `public` below is
+  # the live value, not a change of policy — the previous `private` was carried in
+  # from the template this file was written against and was never true of this
+  # repository. Restoring Create/Update is a separate step, tracked on
+  # devantler-tech/.github#123; it is safe to take only because declared and live
+  # now agree, so enabling writes can no longer take the site off the internet.
   managementPolicies:
     - Observe
   forProvider:
     name: ascoachingogvaner
-    visibility: private
+    visibility: public
     archived: false
     description: "AS Coaching og Vaner — coaching website (platform tenant)"
   providerConfigRef:
