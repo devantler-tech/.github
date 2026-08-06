@@ -36,15 +36,19 @@ resources:
 # (auto-applies to every future repo):
 #  - squash-only merge policy (merge commits + rebase disabled; auto-merge,
 #    auto-delete head branches, always-suggest-updating-PR-branches enabled).
-#  - webCommitSignoffRequired is declared NOWHERE, on purpose. The org enforces
-#    commit signoff, and GitHub rejects the whole PATCH with 422 "Commit signoff
-#    is enforced ... and cannot be disabled" whenever the field appears in a
-#    repository update — including when it carries its own current value of true.
-#    The Terraform provider omits the field from the payload only while it is
-#    left unconfigured, and upjet builds that configuration from forProvider and
-#    initProvider alike, so declaring it in either one reinstates the 422.
-#    Omitting it costs nothing: the org setting is what applies signoff to a new
-#    repository, and it is the same setting that makes the field unwritable.
+#  - webCommitSignoffRequired: true — declared precisely BECAUSE the org enforces
+#    it. Leaving the field unconfigured is what breaks updates, not declaring it.
+#    upjet builds the Terraform configuration from forProvider, an absent optional
+#    bool takes the provider's zero value of false, and false against a live true
+#    is a permanent diff — so every update PATCH carries
+#    web_commit_signoff_required: false and GitHub rejects the whole request with
+#    422 "Commit signoff is enforced ... and cannot be disabled". The error names
+#    disabling, not presence. Declaring the live value leaves nothing to diff, so
+#    Terraform omits the field from the payload and the rest of the update
+#    applies. Measured: with this line present, nine write-enabled repositories
+#    completed update PATCHes at 2026-07-27T04:34:5xZ; two minutes after it was
+#    removed the same repositories began failing on that 422, and seven were
+#    still failing on 2026-08-06. See #112.
 #  - hasDownloads: false — GitHub has removed the downloads feature and no
 #    longer returns the field, so status.atProvider never carries it. The
 #    Terraform provider still defaults it to true, so a spec holding that default
@@ -77,6 +81,9 @@ patches:
         value: true
       - op: add
         path: /spec/forProvider/deleteBranchOnMerge
+        value: true
+      - op: add
+        path: /spec/forProvider/webCommitSignoffRequired
         value: true
       - op: add
         path: /spec/forProvider/hasDownloads

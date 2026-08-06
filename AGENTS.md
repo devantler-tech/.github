@@ -43,11 +43,18 @@ for the architecture, the GitHub App credential setup, and the Observe-first ado
   `crossplane.io/external-name` annotation to the live name and use a management policy that
   **excludes `Delete`** (observe/late-initialize), per platform's `docs/github-management.md`. Once
   adopted, an active `Repository` runs on `Observe`/`Create`/`Update` **without `LateInitialize`**:
-  late-initialized values land in `forProvider`, and everything in `forProvider` is sent on every
-  subsequent update PATCH. A field the org already enforces, such as `webCommitSignoffRequired`, is
-  declared in neither `forProvider` nor `initProvider`: GitHub rejects the whole PATCH with 422
-  whenever that field appears in an update, even carrying its own current value, and upjet feeds both
-  of those blocks into the payload. The org setting applies it to new repositories anyway. Verify
+  the values late-initialized *during adoption* stay in `forProvider` as provider-owned state, and
+  once `LateInitialize` is gone **no newly observed field is ever copied in again** — so a resource
+  adopted without a given field never acquires it, and nothing but the config can supply it. A
+  field the org already enforces, such as `webCommitSignoffRequired`, must be **declared in
+  `forProvider` at the value the org enforces** — never left unconfigured and never seeded through
+  the create-only `initProvider`. upjet builds the Terraform configuration from `forProvider`, an
+  absent optional bool takes the provider's zero value of `false`, and `false` against a live `true`
+  is a permanent diff, so every update PATCH carries `web_commit_signoff_required: false` and GitHub
+  rejects the whole request with 422 "Commit signoff is enforced ... and cannot be disabled". The
+  error names disabling, not presence: declaring the live value leaves nothing to diff, so Terraform
+  omits the field from the payload and the update applies. `tests/repository-update-policy.sh` pins
+  this. Verify
   the provider kind/field schema against the authoritative source
   ([crossplane-contrib/provider-upjet-github `package/crds/`](https://github.com/crossplane-contrib/provider-upjet-github)
   + `examples-generated/namespaced/`) — the CRs cannot be schema-validated locally (no cluster; CI

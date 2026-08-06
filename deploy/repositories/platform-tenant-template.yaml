@@ -17,6 +17,12 @@ spec:
     - Update
   forProvider:
     name: platform-tenant-template
+    # Pinned because this resource carries no adopted values: it is the one
+    # active repository whose spec holds nothing beyond what the config declares,
+    # so an update cannot fall back on a previously observed visibility the way
+    # every other repository here can. Declaring the live value is what makes
+    # restoring the write path (#112) unable to change it.
+    visibility: public
     description: "Template for platform tenants on the devantler-tech platform — framework-agnostic CI/CD plumbing kept current via template-sync."
   providerConfigRef:
     kind: ProviderConfig

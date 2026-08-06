@@ -58,28 +58,50 @@ unsafe_policies="$(
 [[ -z "$unsafe_policies" ]] ||
   fail "active Repository resources must not pair Update with LateInitialize, must exclude Delete, and must Observe: $unsafe_policies"
 
-# The org enforces commit signoff, and GitHub rejects the entire PATCH with 422
-# whenever this field appears in a repository update — measured against the live
-# API, sending the field at its own current value of true still fails. The
-# Terraform provider only omits it from the payload when it is left unconfigured,
-# and upjet feeds BOTH forProvider and initProvider into that configuration, so
-# either one puts the field back into every update. It must appear in neither.
-# Nothing is lost by omitting it: the org setting is what applies signoff to a
-# new repository, which is the same policy that makes the field unwritable here.
-declared_signoff="$(
+# Every active repository must declare webCommitSignoffRequired: true in
+# forProvider, because the org enforces commit signoff and live is therefore
+# always true. Leaving the field unconfigured does NOT keep it out of the update
+# payload: upjet builds the Terraform configuration from forProvider, an absent
+# optional bool takes the provider's zero value of false, and false against a
+# live true is a permanent diff — so every update PATCH carries
+# web_commit_signoff_required: false and GitHub rejects the whole request with
+# 422 "Commit signoff is enforced by the organization and cannot be disabled".
+# Declaring the live value leaves nothing to diff, so Terraform omits the field
+# from the payload and the rest of the update applies.
+#
+# The 422 names disabling, not presence, and the cluster agrees: at
+# 2026-07-27T04:34:5xZ, with this field declared by the shared patch, nine
+# write-enabled repositories recorded LastAsyncOperation=Success — completed
+# update PATCHes. Two minutes after the declaration was removed the same
+# repositories began recording AsyncUpdateFailure carrying that 422, and seven
+# were still failing on 2026-08-06. See devantler-tech/.github#112.
+#
+# initProvider is not a substitute: Crossplane applies it only at creation, so
+# forProvider stays unconfigured and the permanent diff above is unchanged.
+missing_signoff="$(
   yq -N '
     select(
       .kind == "Repository" and
       .spec.forProvider.archived != true and
-      (
-        (.spec.forProvider | has("webCommitSignoffRequired")) or
-        (.spec.initProvider | has("webCommitSignoffRequired"))
-      )
+      .spec.forProvider.webCommitSignoffRequired != true
     ) |
     .metadata.name
   ' "$render"
 )"
-[[ -z "$declared_signoff" ]] ||
-  fail "org-controlled signoff must not be declared in forProvider or initProvider: $declared_signoff"
+[[ -z "$missing_signoff" ]] ||
+  fail "active Repository resources must declare forProvider.webCommitSignoffRequired: true so updates carry no disabling value: $missing_signoff"
 
-echo "repository-update-policy: OK — $active_count active repositories leave signoff to the org"
+seeded_signoff="$(
+  yq -N '
+    select(
+      .kind == "Repository" and
+      .spec.forProvider.archived != true and
+      (.spec.initProvider | has("webCommitSignoffRequired"))
+    ) |
+    .metadata.name
+  ' "$render"
+)"
+[[ -z "$seeded_signoff" ]] ||
+  fail "signoff must be declared in forProvider, not the create-only initProvider: $seeded_signoff"
+
+echo "repository-update-policy: OK — $active_count active repositories declare org-enforced signoff"
