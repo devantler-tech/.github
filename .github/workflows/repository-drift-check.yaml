@@ -26,24 +26,42 @@ jobs:
     permissions:
       contents: read # checkout
     steps:
+      - name: 📑 Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      # The token has to reach every repository the check reads, and no more.
+      # Deriving the list from deploy/ — the same source the check itself reads
+      # — is what keeps those two in step; a hand-maintained list here would be
+      # one more declaration that can silently go stale, which is the very thing
+      # this workflow exists to catch.
+      - name: 🎯 Resolve the repositories to read
+        id: targets
+        run: |
+          targets="$(
+            kubectl kustomize deploy |
+              yq -N '
+                select(.kind == "Repository") |
+                (.metadata.annotations["crossplane.io/external-name"] // .metadata.name)
+              ' | paste -sd, -
+          )"
+          [ -n "$targets" ] || { echo "deploy/ declares no repositories" >&2; exit 1; }
+          echo "list=$targets" >>"$GITHUB_OUTPUT"
+
       - name: 🔑 Get GitHub App Token
         uses: actions/create-github-app-token@f8d387b68d61c58ab83c6c016672934102569859 # v3.0.0
         id: app-token
         with:
           app-id: ${{ vars.APP_ID }}
           private-key: ${{ secrets.APP_PRIVATE_KEY }}
-          # The token defaults to this repository alone; the check reads every
-          # repository deploy/ declares, so it has to cover the whole owner.
+          # Least-privilege scope (zizmor github-app): metadata only, and only
+          # over the declared repositories. The workflow's own GITHUB_TOKEN
+          # cannot be used instead — it reaches this repository alone, and the
+          # org has a private repository it could not see either way.
           owner: ${{ github.repository_owner }}
-          # Least-privilege scope (zizmor github-app): the check only reads
-          # repository settings, and the org has a private repository that the
-          # workflow's own GITHUB_TOKEN cannot see.
+          repositories: ${{ steps.targets.outputs.list }}
           permission-metadata: read
-
-      - name: 📑 Checkout
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-        with:
-          persist-credentials: false
 
       - name: 🔍 Compare declared and live repository settings
         env:
