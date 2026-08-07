@@ -96,9 +96,10 @@ bash tests/declarative-coverage.sh      # every repo declared in every rendered 
 bash tests/declarative-coverage-fail-closed.sh # rendered-label reads fail closed
 bash tests/repository-update-policy.sh  # active Repository update invariants
 bash tests/release-contract.sh          # deploy/ changes must trigger a release
+bash tests/repository-drift.sh          # declared-vs-live comparison logic
 ```
 
-Those six commands are the baseline checks that `ci.yaml` runs. Pull requests additionally pass
+Those seven commands are the baseline checks that `ci.yaml` runs. Pull requests additionally pass
 their changed paths and title through `scripts/validate-release-contract.sh`; merge groups skip that
 event-specific check.
 
@@ -112,6 +113,12 @@ Repo-specific watch-list for the daily engineer:
 - **Drift / coverage.** New repos in the org, or org/repo/team settings changed in the UI, mean
   `deploy/` is now behind reality. Bringing them under management (Observe-first) is `roadmap`/
   `enhancement` work — never a UI fix.
+- **Declared settings that never landed.** `repository-drift-check.yaml` runs
+  [`scripts/check-repository-drift.sh`](scripts/check-repository-drift.sh) daily and fails when a
+  `forProvider` field disagrees with the live repository. Cluster state cannot answer this alone: a
+  `Repository` only PATCHes when it has a pending diff, so an `Observe`-only resource — or one whose
+  writes GitHub rejects — reports `Synced=ReconcileSuccess` while its declaration is never applied.
+  A `DRIFT` line is a real defect in one of those two shapes; fix the resource, never the live repo.
 - **`cd.yaml` is the publish path**, triggered on `v*` tags only; `ci.yaml` produces the PR-time
   required check. A red `cd.yaml` means the org-config OCI artifact didn't republish — investigate
   before assuming the live org is in sync.

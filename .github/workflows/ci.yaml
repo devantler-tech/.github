@@ -56,6 +56,12 @@ jobs:
       - name: 🧪 Test release contract
         run: bash tests/release-contract.sh
 
+      # The drift check itself reads live GitHub state and runs on a schedule
+      # (repository-drift-check.yaml); this only pins its comparison logic,
+      # against fixtures, so it stays offline and PR-safe.
+      - name: 🧪 Test repository drift check
+        run: bash tests/repository-drift.sh
+
   ci-required-checks:
     name: CI - Required Checks
     runs-on: ubuntu-latest
