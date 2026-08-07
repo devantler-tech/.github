@@ -53,11 +53,22 @@ if [[ -z "$render" ]]; then
 fi
 [[ -s "$render" ]] || abort "rendered manifest is empty"
 
-# One JSON object per declared Repository: the resource name plus the settings
-# block that deploy/ claims authority over.
+# One JSON object per declared Repository: the repository it points at, the
+# resource that declares it, and the settings block deploy/ claims authority
+# over.
+#
+# crossplane.io/external-name is what identifies the repository on GitHub, and
+# it is not always the resource name — an adoption after a rename carries the
+# new name there while the resource keeps its own. Reading live state by the
+# resource name would then compare against the wrong repository, or against
+# none at all.
 yq -N -o=json -I=0 '
   select(.kind == "Repository") |
-  {"repo": .metadata.name, "declared": .spec.forProvider}
+  {
+    "repo": (.metadata.annotations["crossplane.io/external-name"] // .metadata.name),
+    "resource": .metadata.name,
+    "declared": .spec.forProvider
+  }
 ' "$render" >"$work/declared.jsonl" || abort "failed to read Repository resources from the render"
 
 declared_count="$(grep -c . "$work/declared.jsonl" || true)"
@@ -79,6 +90,8 @@ drift_found=0
 while IFS= read -r entry; do
   [[ -n "$entry" ]] || continue
   repo="$(jq -r '.repo' <<<"$entry")"
+  # Only worth saying when the two differ; otherwise it is noise on every line.
+  where="$(jq -r 'if .resource == .repo then "" else " [declared by \(.resource)]" end' <<<"$entry")"
 
   if [[ -n "$live_dir" ]]; then
     live_file="$live_dir/$repo.json"
@@ -104,8 +117,8 @@ while IFS= read -r entry; do
           | if ($live | has($k)) | not then
               {field: .key, api: $k, status: "unmapped"}
             else
-              (if $k == "topics" then (.value | sort) else .value end) as $want
-              | (if $k == "topics" then ($live[$k] | sort) else $live[$k] end) as $got
+              (if $k == "topics" then (.value | unique) else .value end) as $want
+              | (if $k == "topics" then ($live[$k] | unique) else $live[$k] end) as $got
               | if $want == $got then empty
                 else {field: .key, api: $k, declared: $want, live: $got, status: "drift"}
                 end
@@ -118,13 +131,13 @@ while IFS= read -r entry; do
   while IFS= read -r finding; do
     [[ -n "$finding" ]] || continue
     if [[ "$(jq -r '.status' <<<"$finding")" == "unmapped" ]]; then
-      abort "$(jq -r --arg repo "$repo" '
-        "\($repo) declares \(.field) but the live repository object has no \(.api|tojson) field"
+      abort "$(jq -r --arg repo "$repo" --arg where "$where" '
+        "\($repo)\($where) declares \(.field) but the live repository object has no \(.api|tojson) field"
       ' <<<"$finding")"
     fi
     drift_found=1
-    jq -r --arg repo "$repo" '
-      "DRIFT \($repo).\(.field): declared=\(.declared | tojson) live=\(.live | tojson)"
+    jq -r --arg repo "$repo" --arg where "$where" '
+      "DRIFT \($repo).\(.field)\($where): declared=\(.declared | tojson) live=\(.live | tojson)"
     ' <<<"$finding"
   done <<<"$findings"
 done <"$work/declared.jsonl"

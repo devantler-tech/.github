@@ -23,24 +23,41 @@ fail() {
 # so every fixture set has to clear that floor.
 readonly FIXTURE_REPOS=10
 
-# Builds a render + live pair that agree on every declared field. Callers mutate
-# one of the two afterwards to create the case under test.
+# The one repository whose resource name and external name deliberately differ,
+# as an adoption after a rename does. Its live fixture is named after the
+# EXTERNAL name, so reading live state by the resource name finds nothing.
+readonly RENAMED_RESOURCE="fixture-repo-7"
+readonly RENAMED_EXTERNAL="fixture-repo-7-renamed"
+
+# Builds a render + live pair that agree on every declared field; callers mutate
+# one side afterwards to create the case under test.
+#
+# $2, when given, names the one repository whose DECLARED topics repeat an
+# entry. Built in rather than patched in afterwards: an in-place yq edit of a
+# multi-document render merges it into a single document and loses every
+# repository but the last.
 build_fixture() {
-  local dir="$1" i name
+  local dir="$1" dup_topics_repo="${2:-}" i name external topics
   mkdir -p "$dir/live"
   : >"$dir/render.yaml"
   for ((i = 1; i <= FIXTURE_REPOS; i++)); do
     name="fixture-repo-$i"
+    external="$name"
+    [[ "$name" == "$RENAMED_RESOURCE" ]] && external="$RENAMED_EXTERNAL"
+    topics='["beta", "alpha"]'
+    [[ -n "$dup_topics_repo" && "$name" == "$dup_topics_repo" ]] && topics='["beta", "alpha", "beta"]'
     cat >>"$dir/render.yaml" <<EOF
 ---
 apiVersion: repo.github.m.upbound.io/v1alpha1
 kind: Repository
 metadata:
   name: $name
+  annotations:
+    crossplane.io/external-name: $external
 spec:
   managementPolicies: [Observe, Create, Update]
   forProvider:
-    name: $name
+    name: $external
     description: "fixture $i"
     homepageUrl: "https://example.invalid/$i"
     visibility: public
@@ -48,14 +65,14 @@ spec:
     allowSquashMerge: true
     allowMergeCommit: false
     webCommitSignoffRequired: true
-    topics: ["beta", "alpha"]
+    topics: $topics
 EOF
     # Written in the REST object's own snake_case, by hand, so the mapping the
     # check derives has something independent to be wrong against. topics is
     # deliberately in the other order: the check compares it as a set.
-    cat >"$dir/live/$name.json" <<EOF
+    cat >"$dir/live/$external.json" <<EOF
 {
-  "name": "$name",
+  "name": "$external",
   "description": "fixture $i",
   "homepage": "https://example.invalid/$i",
   "visibility": "public",
@@ -128,7 +145,32 @@ jq '.topics = ["alpha"]' "$work/topics-drift/live/fixture-repo-2.json" >"$work/t
 mv "$work/topics-drift/live/fixture-repo-2.json.new" "$work/topics-drift/live/fixture-repo-2.json"
 expect_status "$work/topics-drift" 1 "a missing topic"
 
-# --- 5. fail closed: a declared field with no live counterpart ---------------
+# --- 5. duplicate topics are a set, not a multiset ---------------------------
+# A declaration that repeats a topic is untidy, but it is not a disagreement
+# with live: GitHub cannot hold the duplicate, so reporting drift would name a
+# divergence no change to the repository could ever close.
+build_fixture "$work/topics-dupe" "fixture-repo-6"
+expect_status "$work/topics-dupe" 0 "a duplicated declared topic"
+
+# --- 6. live state is read by external name, not resource name ---------------
+# The renamed fixture's live state is filed under its external name only, so a
+# check keying on metadata.name cannot find it.
+build_fixture "$work/renamed"
+expect_status "$work/renamed" 0 "a resource whose external name differs"
+[[ -f "$work/renamed/live/$RENAMED_EXTERNAL.json" && ! -f "$work/renamed/live/$RENAMED_RESOURCE.json" ]] ||
+  fail "the renamed fixture must exist only under its external name"
+
+# Drift on that repository is reported against the external name, and says which
+# resource declared it.
+build_fixture "$work/renamed-drift"
+jq '.visibility = "private"' "$work/renamed-drift/live/$RENAMED_EXTERNAL.json" >"$work/renamed-drift/live/tmp.json"
+mv "$work/renamed-drift/live/tmp.json" "$work/renamed-drift/live/$RENAMED_EXTERNAL.json"
+expect_status "$work/renamed-drift" 1 "drift on a renamed repository"
+grep -Fq "DRIFT $RENAMED_EXTERNAL.visibility [declared by $RENAMED_RESOURCE]" \
+  "$work/renamed-drift/stdout" ||
+  fail "drift on a renamed repository must name the repository and the declaring resource"
+
+# --- 7. fail closed: a declared field with no live counterpart ---------------
 # Skipping it would leave that setting permanently unchecked while the run still
 # reported success.
 build_fixture "$work/unmapped"
@@ -138,12 +180,12 @@ grep -Fq 'inventedSetting but the live repository object has no "invented_settin
   "$work/unmapped/stderr" ||
   fail "the unmappable field must be named under both its declared and its mapped name"
 
-# --- 6. fail closed: live state unavailable ----------------------------------
+# --- 8. fail closed: live state unavailable ----------------------------------
 build_fixture "$work/missing"
 rm "$work/missing/live/fixture-repo-4.json"
 expect_status "$work/missing" 2 "unreadable live state"
 
-# --- 7. fail closed: the render collapsed ------------------------------------
+# --- 9. fail closed: the render collapsed ------------------------------------
 # An empty or truncated render must never read as "nothing drifted".
 build_fixture "$work/collapsed"
 yq -N -i 'select(.metadata.name == "fixture-repo-1")' "$work/collapsed/render.yaml"
@@ -151,4 +193,4 @@ expect_status "$work/collapsed" 2 "a collapsed render"
 grep -Fq "collapsed to" "$work/collapsed/stderr" ||
   fail "a collapsed render must say so"
 
-echo "repository-drift: OK — agreement, drift, set-compare and three fail-closed paths"
+echo "repository-drift: OK — agreement, drift, set-compare, external-name and three fail-closed paths"

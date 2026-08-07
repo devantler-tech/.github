@@ -32,6 +32,9 @@ jobs:
         with:
           app-id: ${{ vars.APP_ID }}
           private-key: ${{ secrets.APP_PRIVATE_KEY }}
+          # The token defaults to this repository alone; the check reads every
+          # repository deploy/ declares, so it has to cover the whole owner.
+          owner: ${{ github.repository_owner }}
           # Least-privilege scope (zizmor github-app): the check only reads
           # repository settings, and the org has a private repository that the
           # workflow's own GITHUB_TOKEN cannot see.
