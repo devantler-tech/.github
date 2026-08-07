@@ -9,13 +9,17 @@ name: 🔍 Repository drift check
 # reports Synced=ReconcileSuccess indefinitely while its declaration goes
 # unapplied. Comparing the two ends directly is what catches that.
 #
-# This runs on a schedule rather than on pull requests: it reports the state of
-# the live org, which no individual PR controls, so it must not gate merges.
+# It reports the state of the live org, which no individual PR controls, so it
+# belongs on a schedule and must never gate a merge.
 
 on:
+  # Dispatch only, until the App is granted Administration: Read-only
+  # (devantler-tech/.github#144). Without it the token request itself is refused
+  # with 422, so a scheduled run would fail every day on something no change in
+  # this repository can fix. Restore the schedule when the permission lands:
+  #   schedule:
+  #     - cron: "17 5 * * *"
   workflow_dispatch:
-  schedule:
-    - cron: "17 5 * * *"
 
 permissions: {}
 
