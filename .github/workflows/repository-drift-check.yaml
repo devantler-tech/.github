@@ -1,0 +1,48 @@
+name: 🔍 Repository drift check
+
+# Fails when a repository setting declared in deploy/ disagrees with the live
+# repository on GitHub.
+#
+# Cluster state cannot answer this on its own: a Repository managed resource
+# only issues an update PATCH when it has a pending diff, so one that writes
+# nothing — because it is Observe-only, or because its writes are rejected —
+# reports Synced=ReconcileSuccess indefinitely while its declaration goes
+# unapplied. Comparing the two ends directly is what catches that.
+#
+# This runs on a schedule rather than on pull requests: it reports the state of
+# the live org, which no individual PR controls, so it must not gate merges.
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 5 * * *"
+
+permissions: {}
+
+jobs:
+  repository-drift-check:
+    name: 🔍 Repository drift check
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read # checkout
+    steps:
+      - name: 🔑 Get GitHub App Token
+        uses: actions/create-github-app-token@f8d387b68d61c58ab83c6c016672934102569859 # v3.0.0
+        id: app-token
+        with:
+          app-id: ${{ vars.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+          # Least-privilege scope (zizmor github-app): the check only reads
+          # repository settings, and the org has a private repository that the
+          # workflow's own GITHUB_TOKEN cannot see.
+          permission-metadata: read
+
+      - name: 📑 Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: 🔍 Compare declared and live repository settings
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: bash scripts/check-repository-drift.sh
