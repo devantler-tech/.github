@@ -39,6 +39,10 @@ jobs:
       - name: 🎯 Resolve the repositories to read
         id: targets
         run: |
+          # Without pipefail a failed render still exits 0 through the pipe, and
+          # the emptiness guard below would be the only thing standing between
+          # that and a token scoped to nothing.
+          set -euo pipefail
           targets="$(
             kubectl kustomize deploy |
               yq -N '

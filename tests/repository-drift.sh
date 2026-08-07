@@ -33,11 +33,11 @@ readonly RENAMED_EXTERNAL="fixture-repo-7-renamed"
 # one side afterwards to create the case under test.
 #
 # $2, when given, names the one repository whose DECLARED topics repeat an
-# entry. Built in rather than patched in afterwards: an in-place yq edit of a
-# multi-document render merges it into a single document and loses every
-# repository but the last.
+# entry; $3 the one whose live state is private. Built in rather than patched in
+# afterwards: an in-place yq edit of a multi-document render merges it into a
+# single document and loses every repository but the last.
 build_fixture() {
-  local dir="$1" dup_topics_repo="${2:-}" i name external topics
+  local dir="$1" dup_topics_repo="${2:-}" private_repo="${3:-}" i name external topics is_private
   mkdir -p "$dir/live"
   : >"$dir/render.yaml"
   for ((i = 1; i <= FIXTURE_REPOS; i++)); do
@@ -45,6 +45,8 @@ build_fixture() {
     external="$name"
     [[ "$name" == "$RENAMED_RESOURCE" ]] && external="$RENAMED_EXTERNAL"
     topics='["beta", "alpha"]'
+    is_private=false
+    [[ -n "$private_repo" && "$name" == "$private_repo" ]] && is_private=true
     [[ -n "$dup_topics_repo" && "$name" == "$dup_topics_repo" ]] && topics='["beta", "alpha", "beta"]'
     cat >>"$dir/render.yaml" <<EOF
 ---
@@ -79,6 +81,7 @@ EOF
   "has_issues": true,
   "allow_squash_merge": true,
   "allow_merge_commit": false,
+  "private": $is_private,
   "web_commit_signoff_required": true,
   "topics": ["alpha", "beta"]
 }
@@ -170,7 +173,39 @@ grep -Fq "DRIFT $RENAMED_EXTERNAL.visibility [declared by $RENAMED_RESOURCE]" \
   "$work/renamed-drift/stdout" ||
   fail "drift on a renamed repository must name the repository and the declaring resource"
 
-# --- 7. fail closed: a declared field with no live counterpart ---------------
+# --- 7. a private repository's values are withheld from the output -----------
+# This repository is public, so its Actions logs are public. A finding on a
+# private repository must name the field and print neither value.
+build_fixture "$work/private" "" "fixture-repo-4"
+jq '.description = "an internal description that must not be printed"' \
+  "$work/private/live/fixture-repo-4.json" >"$work/private/live/tmp.json"
+mv "$work/private/live/tmp.json" "$work/private/live/fixture-repo-4.json"
+expect_status "$work/private" 1 "drift on a private repository"
+grep -Fq "DRIFT fixture-repo-4.description: values withheld — private repository" \
+  "$work/private/stdout" ||
+  fail "a private repository's finding must name the field and withhold the values"
+if grep -Fq "an internal description that must not be printed" "$work/private/stdout" "$work/private/stderr"; then
+  fail "a private repository's live value leaked into the output"
+fi
+
+# A public repository is unaffected — the values are what make a finding useful.
+build_fixture "$work/public-values"
+jq '.description = "a public description that should be printed"' \
+  "$work/public-values/live/fixture-repo-4.json" >"$work/public-values/live/tmp.json"
+mv "$work/public-values/live/tmp.json" "$work/public-values/live/fixture-repo-4.json"
+expect_status "$work/public-values" 1 "drift on a public repository"
+grep -Fq "a public description that should be printed" "$work/public-values/stdout" ||
+  fail "a public repository's values must still be reported"
+
+# --- 8. fail closed: live state whose visibility cannot be determined --------
+build_fixture "$work/no-private-flag"
+jq 'del(.private)' "$work/no-private-flag/live/fixture-repo-2.json" >"$work/no-private-flag/live/tmp.json"
+mv "$work/no-private-flag/live/tmp.json" "$work/no-private-flag/live/fixture-repo-2.json"
+expect_status "$work/no-private-flag" 2 "live state with no private flag"
+grep -Fq "has no 'private' flag" "$work/no-private-flag/stderr" ||
+  fail "the missing visibility flag must be named"
+
+# --- 9. fail closed: a declared field with no live counterpart ---------------
 # Skipping it would leave that setting permanently unchecked while the run still
 # reported success.
 build_fixture "$work/unmapped"
@@ -180,12 +215,12 @@ grep -Fq 'inventedSetting but the live repository object has no "invented_settin
   "$work/unmapped/stderr" ||
   fail "the unmappable field must be named under both its declared and its mapped name"
 
-# --- 8. fail closed: live state unavailable ----------------------------------
+# --- 10. fail closed: live state unavailable ----------------------------------
 build_fixture "$work/missing"
 rm "$work/missing/live/fixture-repo-4.json"
 expect_status "$work/missing" 2 "unreadable live state"
 
-# --- 9. fail closed: the render collapsed ------------------------------------
+# --- 11. fail closed: the render collapsed ------------------------------------
 # An empty or truncated render must never read as "nothing drifted".
 build_fixture "$work/collapsed"
 yq -N -i 'select(.metadata.name == "fixture-repo-1")' "$work/collapsed/render.yaml"
@@ -193,4 +228,4 @@ expect_status "$work/collapsed" 2 "a collapsed render"
 grep -Fq "collapsed to" "$work/collapsed/stderr" ||
   fail "a collapsed render must say so"
 
-echo "repository-drift: OK — agreement, drift, set-compare, external-name and three fail-closed paths"
+echo "repository-drift: OK — agreement, drift, set-compare, external-name, private redaction and four fail-closed paths"

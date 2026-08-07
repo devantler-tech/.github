@@ -92,6 +92,7 @@ while IFS= read -r entry; do
   repo="$(jq -r '.repo' <<<"$entry")"
   # Only worth saying when the two differ; otherwise it is noise on every line.
   where="$(jq -r 'if .resource == .repo then "" else " [declared by \(.resource)]" end' <<<"$entry")"
+  is_private=false
 
   if [[ -n "$live_dir" ]]; then
     live_file="$live_dir/$repo.json"
@@ -103,6 +104,14 @@ while IFS= read -r entry; do
   fi
   jq -e 'type == "object"' >/dev/null <<<"$live" ||
     abort "live state for '$repo' is not a JSON object"
+
+  # This repository is public, so its Actions logs are public. A private
+  # repository's description, homepage or topics must not be printed into them,
+  # so a finding on one names the field and withholds both values. Absent the
+  # flag the sensitivity cannot be judged, so it aborts rather than guessing.
+  jq -e 'has("private")' >/dev/null <<<"$live" ||
+    abort "live state for '$repo' has no 'private' flag, so its findings cannot be safely printed"
+  is_private="$(jq -r 'if .private == true then "true" else "false" end' <<<"$live")"
 
   # A declared field with no counterpart on the live object means the mapping
   # is wrong or the API changed shape. Silently skipping it would let a whole
@@ -136,8 +145,10 @@ while IFS= read -r entry; do
       ' <<<"$finding")"
     fi
     drift_found=1
-    jq -r --arg repo "$repo" --arg where "$where" '
-      "DRIFT \($repo).\(.field)\($where): declared=\(.declared | tojson) live=\(.live | tojson)"
+    jq -r --arg repo "$repo" --arg where "$where" --argjson private "$is_private" '
+      "DRIFT \($repo).\(.field)\($where): " +
+      (if $private then "values withheld — private repository"
+       else "declared=\(.declared | tojson) live=\(.live | tojson)" end)
     ' <<<"$finding"
   done <<<"$findings"
 done <"$work/declared.jsonl"
