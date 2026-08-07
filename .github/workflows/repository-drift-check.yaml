@@ -59,12 +59,21 @@ jobs:
         with:
           app-id: ${{ vars.APP_ID }}
           private-key: ${{ secrets.APP_PRIVATE_KEY }}
-          # Least-privilege scope (zizmor github-app): metadata only, and only
-          # over the declared repositories. The workflow's own GITHUB_TOKEN
-          # cannot be used instead — it reaches this repository alone, and the
-          # org has a private repository it could not see either way.
+          # Least-privilege scope (zizmor github-app): read-only, and only over
+          # the declared repositories. The workflow's own GITHUB_TOKEN cannot be
+          # used instead — it reaches this repository alone, and the org has a
+          # private repository it could not see either way.
+          #
+          # `administration: read` is what the merge-policy and feature fields
+          # need: GitHub returns allow_squash_merge, allow_merge_commit,
+          # allow_rebase_merge, allow_auto_merge, allow_update_branch,
+          # delete_branch_on_merge and web_commit_signoff_required only to a
+          # caller with administrative read. Under metadata alone the repository
+          # object simply omits them, and the check aborts — which is how this
+          # was found, on the first live run.
           owner: ${{ github.repository_owner }}
           repositories: ${{ steps.targets.outputs.list }}
+          permission-administration: read
           permission-metadata: read
 
       - name: 🔍 Compare declared and live repository settings
