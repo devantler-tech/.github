@@ -114,11 +114,15 @@ Repo-specific watch-list for the daily engineer:
   `deploy/` is now behind reality. Bringing them under management (Observe-first) is `roadmap`/
   `enhancement` work — never a UI fix.
 - **Declared settings that never landed.** `repository-drift-check.yaml` runs
-  [`scripts/check-repository-drift.sh`](scripts/check-repository-drift.sh) daily and fails when a
+  [`scripts/check-repository-drift.sh`](scripts/check-repository-drift.sh) and fails when a
   `forProvider` field disagrees with the live repository. Cluster state cannot answer this alone: a
   `Repository` only PATCHes when it has a pending diff, so an `Observe`-only resource — or one whose
   writes GitHub rejects — reports `Synced=ReconcileSuccess` while its declaration is never applied.
   A `DRIFT` line is a real defect in one of those two shapes; fix the resource, never the live repo.
+  **It is `workflow_dispatch`-only** until the App holds `Administration: Read-only`
+  ([#144](https://github.com/devantler-tech/.github/issues/144)) — GitHub returns the merge-policy
+  and feature fields to no lesser scope, and requesting an ungranted permission fails the token step
+  outright. Restore the daily `schedule:` with the permission.
 - **`cd.yaml` is the publish path**, triggered on `v*` tags only; `ci.yaml` produces the PR-time
   required check. A red `cd.yaml` means the org-config OCI artifact didn't republish — investigate
   before assuming the live org is in sync.
