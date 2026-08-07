@@ -101,8 +101,10 @@ mv "$work/drift/live/fixture-repo-3.json.new" "$work/drift/live/fixture-repo-3.j
 expect_status "$work/drift" 1 "a diverging field"
 grep -Fq "DRIFT fixture-repo-3.visibility:" "$work/drift/stdout" ||
   fail "the drifting repository and field must be named on stdout"
-grep -Fq "DRIFT fixture-repo-1." "$work/drift/stdout" &&
-  fail "an agreeing repository must not be reported as drifting"
+# Exactly one, so a check that flagged everything could not pass this either.
+drift_lines="$(grep -c '^DRIFT ' "$work/drift/stdout" || true)"
+[[ "$drift_lines" -eq 1 ]] ||
+  fail "expected exactly one DRIFT line, got $drift_lines"
 
 # --- 3. drift on a multi-word field, i.e. through the case mapping -----------
 # A mapping bug would compare against a key the live object does not have, which
@@ -132,8 +134,9 @@ expect_status "$work/topics-drift" 1 "a missing topic"
 build_fixture "$work/unmapped"
 sed -i.bak 's/^    hasIssues: true$/    hasIssues: true\n    inventedSetting: true/' "$work/unmapped/render.yaml"
 expect_status "$work/unmapped" 2 "a declared field absent from the live object"
-grep -Fq "has no 'invented_setting' field" "$work/unmapped/stderr" ||
-  fail "the unmappable field must be named"
+grep -Fq 'inventedSetting but the live repository object has no "invented_setting" field' \
+  "$work/unmapped/stderr" ||
+  fail "the unmappable field must be named under both its declared and its mapped name"
 
 # --- 6. fail closed: live state unavailable ----------------------------------
 build_fixture "$work/missing"

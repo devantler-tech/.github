@@ -118,7 +118,9 @@ while IFS= read -r entry; do
   while IFS= read -r finding; do
     [[ -n "$finding" ]] || continue
     if [[ "$(jq -r '.status' <<<"$finding")" == "unmapped" ]]; then
-      abort "$repo declares '$(jq -r '.field' <<<"$finding")' but the live repository object has no '$(jq -r '.api' <<<"$finding")' field"
+      abort "$(jq -r --arg repo "$repo" '
+        "\($repo) declares \(.field) but the live repository object has no \(.api|tojson) field"
+      ' <<<"$finding")"
     fi
     drift_found=1
     jq -r --arg repo "$repo" '
