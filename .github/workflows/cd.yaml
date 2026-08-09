@@ -35,8 +35,11 @@ jobs:
     # Pinned to the released commit SHA (zizmor blanket policy requires a hash;
     # the SHA must be reachable from a tag, or zizmor flags it as an impostor).
     # Renovate manages this pin, as it does for publish-app.yaml elsewhere.
-    # The platform verifier matches `@.+$`, so the ref does not affect cosign
-    # verification.
+    # Keep the ref a 40-hex commit: it is part of the cosign subject the platform
+    # verifies, so its shape is load-bearing here. A ref the verifier does not
+    # accept fails nothing in this repo — the artifact still publishes, signed
+    # under an identity the platform rejects, and the `github-config` tenant
+    # stops reconciling until the ref is put back.
     uses: devantler-tech/actions/.github/workflows/publish-manifests.yaml@061b345a7351b0caf23055caea63ccd08b75e20e # v8.0.0
     with:
       oci-name: devantler-tech/github-config
