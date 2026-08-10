@@ -70,7 +70,7 @@ jobs:
     permissions: {}
     steps:
       - name: 📊 Evaluate job results
-        uses: devantler-tech/actions/aggregate-job-checks@8ce19528eda1ef50f3d028b685c53aebaed6ae62 # v5.4.1
+        uses: devantler-tech/actions/aggregate-job-checks@61d9c87b302523778789c7cf09655b87b6716e87 # v13.0.4
         with:
           job-results: >-
             ${{ needs.validate-manifests.result }}
