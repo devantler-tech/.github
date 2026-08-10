@@ -115,7 +115,9 @@ platform_tenant_issues="$(
       .kind == "Repository" and
       .metadata.name == "platform-tenant-template"
     ) |
-    .spec.forProvider.hasIssues
+    .spec.forProvider.hasIssues |
+    select(tag == "!!bool") |
+    select(. == true)
   ' "$render"
 )"
 [[ "$platform_tenant_issues" == "true" ]] ||
