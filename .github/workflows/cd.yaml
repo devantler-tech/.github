@@ -34,12 +34,17 @@ jobs:
       id-token: write # keyless cosign signing (Fulcio + Rekor via GitHub OIDC)
     # Pinned to the released commit SHA (zizmor blanket policy requires a hash;
     # the SHA must be reachable from a tag, or zizmor flags it as an impostor).
-    # Renovate manages this pin, as it does for publish-app.yaml elsewhere.
+    # Dependabot manages this pin (.github/dependabot.yml, github-actions
+    # ecosystem, no cooldown for devantler-tech/*).
     # Keep the ref a 40-hex commit: it is part of the cosign subject the platform
-    # verifies, so its shape is load-bearing here. A ref the verifier does not
-    # accept fails nothing in this repo — the artifact still publishes, signed
-    # under an identity the platform rejects, and the `github-config` tenant
-    # stops reconciling until the ref is put back.
-    uses: devantler-tech/actions/.github/workflows/publish-manifests.yaml@061b345a7351b0caf23055caea63ccd08b75e20e # v8.0.0
+    # verifies, so its shape is load-bearing here.
+    uses: devantler-tech/actions/.github/workflows/publish-manifests.yaml@61d9c87b302523778789c7cf09655b87b6716e87 # v13.0.4
     with:
       oci-name: devantler-tech/github-config
+      # Without this, a ref the platform verifier does not accept fails nothing
+      # here: the artifact still publishes, signed under an identity the
+      # platform rejects, and the `github-config` tenant silently stops
+      # reconciling until the ref is put back. Enabling the guard turns that
+      # into a loud pre-signing failure in this workflow instead — the publish
+      # refuses before the artifact exists, and the error names the fix.
+      enable-caller-pin: true
