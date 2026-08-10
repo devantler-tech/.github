@@ -23,6 +23,7 @@ spec:
     # every other repository here can. Declaring the live value is what makes
     # restoring the write path (#112) unable to change it.
     visibility: public
+    hasIssues: true
     description: "Template for platform tenants on the devantler-tech platform — framework-agnostic CI/CD plumbing kept current via template-sync."
   providerConfigRef:
     kind: ProviderConfig
