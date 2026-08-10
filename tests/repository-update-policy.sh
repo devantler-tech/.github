@@ -104,4 +104,21 @@ seeded_signoff="$(
 [[ -z "$seeded_signoff" ]] ||
   fail "signoff must be declared in forProvider, not the create-only initProvider: $seeded_signoff"
 
-echo "repository-update-policy: OK — $active_count active repositories declare org-enforced signoff"
+# This template's roadmap lives in its own GitHub Issues, so the active
+# Repository resource must keep that tracker enabled. As with signoff above, an
+# absent optional bool is not "unmanaged": provider zero-value behaviour makes
+# false authoritative on every update. Requiring the exact true value rejects
+# both removing the declaration and explicitly disabling it.
+platform_tenant_issues="$(
+  yq -N '
+    select(
+      .kind == "Repository" and
+      .metadata.name == "platform-tenant-template"
+    ) |
+    .spec.forProvider.hasIssues
+  ' "$render"
+)"
+[[ "$platform_tenant_issues" == "true" ]] ||
+  fail "platform-tenant-template must declare forProvider.hasIssues: true so its issue roadmap remains available"
+
+echo "repository-update-policy: OK — $active_count active repositories declare org-enforced signoff and the platform-tenant-template issue tracker"
