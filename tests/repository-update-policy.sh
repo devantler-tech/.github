@@ -126,6 +126,7 @@ compatibility_repositories="$(
   yq -N '
     select(
       .kind == "Repository" and
+      .spec.forProvider.archived != true and
       (.metadata.name == "agent-plugins" or .metadata.name == "agent-skills")
     ) |
     .metadata.name
