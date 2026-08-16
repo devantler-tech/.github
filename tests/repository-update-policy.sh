@@ -59,25 +59,17 @@ unsafe_policies="$(
   fail "active Repository resources must not pair Update with LateInitialize, must exclude Delete, and must Observe: $unsafe_policies"
 
 # Every active repository must declare webCommitSignoffRequired: true in
-# forProvider, because the org enforces commit signoff and live is therefore
-# always true. Leaving the field unconfigured does NOT keep it out of the update
-# payload: upjet builds the Terraform configuration from forProvider, an absent
-# optional bool takes the provider's zero value of false, and false against a
-# live true is a permanent diff — so every update PATCH carries
-# web_commit_signoff_required: false and GitHub rejects the whole request with
-# 422 "Commit signoff is enforced by the organization and cannot be disabled".
-# Declaring the live value leaves nothing to diff, so Terraform omits the field
-# from the payload and the rest of the update applies.
+# forProvider because the org enforces commit signoff and live is therefore
+# always true. Leaving the field unconfigured creates its own permanent false
+# versus true diff. Declaring true removes that diff, but it does not make
+# arbitrary updates safe with the deployed provider: v0.19.1 embeds
+# terraform-provider-github v6.6.0, which still includes the unchanged field
+# when another Repository setting changes, and GitHub rejects that PATCH.
+# The compatibility guard below therefore also prevents the known optional
+# topic drift until a provider release includes the upstream v6.12.0 fix.
 #
-# The 422 names disabling, not presence, and the cluster agrees: at
-# 2026-07-27T04:34:5xZ, with this field declared by the shared patch, nine
-# write-enabled repositories recorded LastAsyncOperation=Success — completed
-# update PATCHes. Two minutes after the declaration was removed the same
-# repositories began recording AsyncUpdateFailure carrying that 422, and seven
-# were still failing on 2026-08-06. See devantler-tech/.github#112.
-#
-# initProvider is not a substitute: Crossplane applies it only at creation, so
-# forProvider stays unconfigured and the permanent diff above is unchanged.
+# initProvider is not a substitute for the required live declaration:
+# Crossplane applies it only at creation, so forProvider would remain false.
 missing_signoff="$(
   yq -N '
     select(
@@ -123,4 +115,55 @@ platform_tenant_issues="$(
 [[ "$platform_tenant_issues" == "true" ]] ||
   fail "platform-tenant-template must declare forProvider.hasIssues: true so its issue roadmap remains available"
 
-echo "repository-update-policy: OK — $active_count active repositories declare org-enforced signoff and the platform-tenant-template issue tracker"
+# provider-upjet-github v0.19.1 embeds terraform-provider-github v6.6.0.
+# GitHub rejects every repository PATCH containing web_commit_signoff_required
+# while the organization enforces that setting, even when the requested value
+# is true (integrations/terraform-provider-github#2077). Topic-only drift on
+# these two resources therefore wedges the complete update. Keep the attempted
+# topics absent until a provider-upjet-github release includes the upstream
+# v6.12.0 fix, which omits the field when it is unchanged.
+compatibility_repositories="$(
+  yq -N '
+    select(
+      .kind == "Repository" and
+      .spec.forProvider.archived != true and
+      (.metadata.name == "agent-plugins" or .metadata.name == "agent-skills")
+    ) |
+    .metadata.name
+  ' "$render" | sort
+)"
+expected_compatibility_repositories="$(printf '%s\n' agent-plugins agent-skills)"
+[[ "$compatibility_repositories" == "$expected_compatibility_repositories" ]] ||
+  fail "provider compatibility guard requires both agent repositories; got: $compatibility_repositories"
+
+blocked_topic_updates="$(
+  yq -N '
+    select(
+      .kind == "Repository" and
+      (.metadata.name == "agent-plugins" or .metadata.name == "agent-skills") and
+      (.spec.forProvider | has("topics"))
+    ) |
+    .metadata.name
+  ' "$render"
+)"
+[[ -z "$blocked_topic_updates" ]] ||
+  fail "provider-upjet-github v0.19.1 cannot update repository topics under org-enforced signoff: $blocked_topic_updates"
+
+# Pin a matching live value to advance this resource's generation and cancel
+# the failed async update which predates the signoff workaround. The template
+# intentionally does not use GitHub Projects.
+platform_tenant_projects="$(
+  yq -N '
+    select(
+      .kind == "Repository" and
+      .metadata.name == "platform-tenant-template"
+    ) |
+    .spec.forProvider.hasProjects |
+    select(tag == "!!bool") |
+    select(. == false)
+  ' "$render"
+)"
+[[ "$platform_tenant_projects" == "false" ]] ||
+  fail "platform-tenant-template must pin forProvider.hasProjects: false while resetting its failed async update"
+
+echo "repository-update-policy: OK — $active_count active repositories declare org-enforced signoff and the provider-v0.19.1 update workaround"
