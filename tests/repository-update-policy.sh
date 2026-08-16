@@ -149,9 +149,11 @@ blocked_topic_updates="$(
 [[ -z "$blocked_topic_updates" ]] ||
   fail "provider-upjet-github v0.19.1 cannot update repository topics under org-enforced signoff: $blocked_topic_updates"
 
-# Pin a matching live value to advance this resource's generation and cancel
-# the failed async update which predates the signoff workaround. The template
-# intentionally does not use GitHub Projects.
+# The template intentionally does not use GitHub Projects. Its resource also
+# carries a failed asynchronous update from before the signoff workaround.
+# Observe/Create keeps the existing repository healthy and recreatable without
+# re-entering the provider's broken update path; restore Update with the same
+# provider release that removes the compatibility boundary above.
 platform_tenant_projects="$(
   yq -N '
     select(
@@ -164,6 +166,20 @@ platform_tenant_projects="$(
   ' "$render"
 )"
 [[ "$platform_tenant_projects" == "false" ]] ||
-  fail "platform-tenant-template must pin forProvider.hasProjects: false while resetting its failed async update"
+  fail "platform-tenant-template must pin forProvider.hasProjects: false while updates are compatibility-blocked"
+
+platform_tenant_management_policies="$(
+  yq -N '
+    select(
+      .kind == "Repository" and
+      .metadata.name == "platform-tenant-template"
+    ) |
+    .spec.managementPolicies |
+    sort |
+    join(",")
+  ' "$render"
+)"
+[[ "$platform_tenant_management_policies" == "Create,Observe" ]] ||
+  fail "platform-tenant-template must remain Observe/Create without Update until the provider signoff fix is deployed: $platform_tenant_management_policies"
 
 echo "repository-update-policy: OK — $active_count active repositories declare org-enforced signoff and the provider-v0.19.1 update workaround"
