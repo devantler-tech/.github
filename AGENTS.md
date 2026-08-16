@@ -58,8 +58,10 @@ for the architecture, the GitHub App credential setup, and the Observe-first ado
   ([upstream #2077](https://github.com/integrations/terraform-provider-github/issues/2077)). Until a
   provider-upjet-github release includes the upstream v6.12.0 fix, do not introduce new Repository
   drift merely for optional discovery metadata; `agent-plugins` and `agent-skills` topics are
-  deliberately omitted. `tests/repository-update-policy.sh` pins both the required live signoff
-  value and this temporary compatibility boundary. Verify
+  deliberately omitted. `platform-tenant-template` remains on `Observe`/`Create` without `Update`
+  because its failed asynchronous update otherwise keeps replaying the rejected PATCH.
+  `tests/repository-update-policy.sh` pins both the required live signoff value and this temporary
+  compatibility boundary. Verify
   the provider kind/field schema against the authoritative source
   ([crossplane-contrib/provider-upjet-github `package/crds/`](https://github.com/crossplane-contrib/provider-upjet-github)
   + `examples-generated/namespaced/`) — the CRs cannot be schema-validated locally (no cluster; CI

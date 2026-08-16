@@ -5,16 +5,13 @@ metadata:
   annotations:
     crossplane.io/external-name: platform-tenant-template
 spec:
-  # Managed (Observe/Create/Update). forProvider declares the discoverability
-  # metadata (description/topics), so the config is AUTHORITATIVE for it; the
-  # org-wide squash-only merge policy comes from the shared patch in
-  # kustomization.yaml. Settings in neither
-  # are unmanaged: nothing new is copied into the spec, and values adopted
-  # earlier stay.
+  # Managed for Observe/Create. Update is compatibility-blocked because the
+  # deployed provider sends the organization-enforced signoff field on every
+  # Repository PATCH and GitHub rejects it. The org-wide squash-only merge
+  # policy comes from the shared patch in kustomization.yaml.
   managementPolicies:
     - Observe
     - Create
-    - Update
   forProvider:
     name: platform-tenant-template
     # Pinned because this resource carries no adopted values: it is the one
@@ -24,8 +21,7 @@ spec:
     # restoring the write path (#112) unable to change it.
     visibility: public
     hasIssues: true
-    # Matches live state and advances this MR's generation so Crossplane drops
-    # the failed asynchronous update queued before the provider workaround.
+    # Matches live state while Repository updates are compatibility-blocked.
     hasProjects: false
     description: "Template for platform tenants on the devantler-tech platform — framework-agnostic CI/CD plumbing kept current via template-sync."
   providerConfigRef:
