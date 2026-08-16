@@ -130,6 +130,19 @@ platform_tenant_issues="$(
 # these two resources therefore wedges the complete update. Keep the attempted
 # topics absent until a provider-upjet-github release includes the upstream
 # v6.12.0 fix, which omits the field when it is unchanged.
+compatibility_repositories="$(
+  yq -N '
+    select(
+      .kind == "Repository" and
+      (.metadata.name == "agent-plugins" or .metadata.name == "agent-skills")
+    ) |
+    .metadata.name
+  ' "$render" | sort
+)"
+expected_compatibility_repositories="$(printf '%s\n' agent-plugins agent-skills)"
+[[ "$compatibility_repositories" == "$expected_compatibility_repositories" ]] ||
+  fail "provider compatibility guard requires both agent repositories; got: $compatibility_repositories"
+
 blocked_topic_updates="$(
   yq -N '
     select(
