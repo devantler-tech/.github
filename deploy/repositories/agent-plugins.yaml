@@ -10,8 +10,8 @@ metadata:
     crossplane.io/external-name: agent-plugins
 spec:
   # The squash-only merge policy and the org-enforced commit signoff come from
-  # the shared patch. Description and topics
-  # are declared here so the config is AUTHORITATIVE for them. Settings declared
+  # the shared patch. Description is declared here so the config is
+  # AUTHORITATIVE for it. Settings declared
   # nowhere here keep the value adopted from the live repo when it was first
   # observed.
   managementPolicies:
@@ -25,9 +25,10 @@ spec:
     # that no longer exists. Also names the bundled MCP servers and agents —
     # the marketplace is deliberately not skills-only.
     description: "Tool-neutral agent-plugin marketplace — bundles curated skills, MCP servers and agents from devantler-tech/agent-skills into category plugins for VS Code, GitHub Copilot CLI, and Claude Code"
-    # Discovery surface — the repo carried no topics at all, so it was invisible
-    # to every topic-based browse and directory crawl.
-    topics: ["agent-plugins", "agent-skills", "ai-agents", "claude-code", "claude-code-marketplace", "claude-code-plugin", "claude-plugin", "github-copilot", "plugin-marketplace", "vscode"]
+    # Topics stay temporarily unmanaged. provider-upjet-github v0.19.1 embeds
+    # terraform-provider-github v6.6.0, whose repository update includes the
+    # org-enforced web-signoff field and makes GitHub reject the whole PATCH.
+    # Restore topics after a provider release includes the upstream v6.12 fix.
   providerConfigRef:
     kind: ProviderConfig
     name: default

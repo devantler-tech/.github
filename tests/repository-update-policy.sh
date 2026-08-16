@@ -123,4 +123,41 @@ platform_tenant_issues="$(
 [[ "$platform_tenant_issues" == "true" ]] ||
   fail "platform-tenant-template must declare forProvider.hasIssues: true so its issue roadmap remains available"
 
-echo "repository-update-policy: OK — $active_count active repositories declare org-enforced signoff and the platform-tenant-template issue tracker"
+# provider-upjet-github v0.19.1 embeds terraform-provider-github v6.6.0.
+# GitHub rejects every repository PATCH containing web_commit_signoff_required
+# while the organization enforces that setting, even when the requested value
+# is true (integrations/terraform-provider-github#2077). Topic-only drift on
+# these two resources therefore wedges the complete update. Keep the attempted
+# topics absent until a provider-upjet-github release includes the upstream
+# v6.12.0 fix, which omits the field when it is unchanged.
+blocked_topic_updates="$(
+  yq -N '
+    select(
+      .kind == "Repository" and
+      (.metadata.name == "agent-plugins" or .metadata.name == "agent-skills") and
+      (.spec.forProvider | has("topics"))
+    ) |
+    .metadata.name
+  ' "$render"
+)"
+[[ -z "$blocked_topic_updates" ]] ||
+  fail "provider-upjet-github v0.19.1 cannot update repository topics under org-enforced signoff: $blocked_topic_updates"
+
+# Pin a matching live value to advance this resource's generation and cancel
+# the failed async update which predates the signoff workaround. The template
+# intentionally does not use GitHub Projects.
+platform_tenant_projects="$(
+  yq -N '
+    select(
+      .kind == "Repository" and
+      .metadata.name == "platform-tenant-template"
+    ) |
+    .spec.forProvider.hasProjects |
+    select(tag == "!!bool") |
+    select(. == false)
+  ' "$render"
+)"
+[[ "$platform_tenant_projects" == "false" ]] ||
+  fail "platform-tenant-template must pin forProvider.hasProjects: false while resetting its failed async update"
+
+echo "repository-update-policy: OK — $active_count active repositories declare org-enforced signoff and the provider-v0.19.1 update workaround"
