@@ -41,18 +41,13 @@ resources:
 #  - squash-only merge policy (merge commits + rebase disabled; auto-merge,
 #    auto-delete head branches, always-suggest-updating-PR-branches enabled).
 #  - webCommitSignoffRequired: true — declared precisely BECAUSE the org enforces
-#    it. Leaving the field unconfigured is what breaks updates, not declaring it.
-#    upjet builds the Terraform configuration from forProvider, an absent optional
-#    bool takes the provider's zero value of false, and false against a live true
-#    is a permanent diff — so every update PATCH carries
-#    web_commit_signoff_required: false and GitHub rejects the whole request with
-#    422 "Commit signoff is enforced ... and cannot be disabled". The error names
-#    disabling, not presence. Declaring the live value leaves nothing to diff, so
-#    Terraform omits the field from the payload and the rest of the update
-#    applies. Measured: with this line present, nine write-enabled repositories
-#    completed update PATCHes at 2026-07-27T04:34:5xZ; two minutes after it was
-#    removed the same repositories began failing on that 422, and seven were
-#    still failing on 2026-08-06. See #112.
+#    it. Leaving the field unconfigured creates a permanent false-versus-live-true
+#    diff. Declaring true removes that field's own diff, but the deployed
+#    provider-upjet-github v0.19.1 still includes the unchanged field whenever
+#    another Repository setting needs an update; GitHub rejects that PATCH under
+#    organization signoff enforcement. Until a provider release includes the
+#    terraform-provider-github v6.12.0 fix, optional Repository drift must remain
+#    absent as pinned by tests/repository-update-policy.sh. See upstream #2077.
 #  - hasDownloads: false — GitHub has removed the downloads feature and no
 #    longer returns the field, so status.atProvider never carries it. The
 #    Terraform provider still defaults it to true, so a spec holding that default

@@ -59,25 +59,17 @@ unsafe_policies="$(
   fail "active Repository resources must not pair Update with LateInitialize, must exclude Delete, and must Observe: $unsafe_policies"
 
 # Every active repository must declare webCommitSignoffRequired: true in
-# forProvider, because the org enforces commit signoff and live is therefore
-# always true. Leaving the field unconfigured does NOT keep it out of the update
-# payload: upjet builds the Terraform configuration from forProvider, an absent
-# optional bool takes the provider's zero value of false, and false against a
-# live true is a permanent diff — so every update PATCH carries
-# web_commit_signoff_required: false and GitHub rejects the whole request with
-# 422 "Commit signoff is enforced by the organization and cannot be disabled".
-# Declaring the live value leaves nothing to diff, so Terraform omits the field
-# from the payload and the rest of the update applies.
+# forProvider because the org enforces commit signoff and live is therefore
+# always true. Leaving the field unconfigured creates its own permanent false
+# versus true diff. Declaring true removes that diff, but it does not make
+# arbitrary updates safe with the deployed provider: v0.19.1 embeds
+# terraform-provider-github v6.6.0, which still includes the unchanged field
+# when another Repository setting changes, and GitHub rejects that PATCH.
+# The compatibility guard below therefore also prevents the known optional
+# topic drift until a provider release includes the upstream v6.12.0 fix.
 #
-# The 422 names disabling, not presence, and the cluster agrees: at
-# 2026-07-27T04:34:5xZ, with this field declared by the shared patch, nine
-# write-enabled repositories recorded LastAsyncOperation=Success — completed
-# update PATCHes. Two minutes after the declaration was removed the same
-# repositories began recording AsyncUpdateFailure carrying that 422, and seven
-# were still failing on 2026-08-06. See devantler-tech/.github#112.
-#
-# initProvider is not a substitute: Crossplane applies it only at creation, so
-# forProvider stays unconfigured and the permanent diff above is unchanged.
+# initProvider is not a substitute for the required live declaration:
+# Crossplane applies it only at creation, so forProvider would remain false.
 missing_signoff="$(
   yq -N '
     select(
