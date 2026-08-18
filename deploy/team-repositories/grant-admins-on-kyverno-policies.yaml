@@ -9,6 +9,8 @@ spec:
   forProvider:
     teamIdRef:
       name: admins
+      policy:
+        resolve: Always
     repository: kyverno-policies
     permission: admin
   providerConfigRef:

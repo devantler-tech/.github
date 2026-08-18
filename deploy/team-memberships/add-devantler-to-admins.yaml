@@ -8,6 +8,8 @@ spec:
   forProvider:
     teamIdRef:
       name: admins
+      policy:
+        resolve: Always
     username: devantler
     role: maintainer
   providerConfigRef:

@@ -11,6 +11,8 @@ spec:
   forProvider:
     teamIdRef:
       name: maintainers
+      policy:
+        resolve: Always
     repository: monorepo
     permission: maintain
   providerConfigRef:

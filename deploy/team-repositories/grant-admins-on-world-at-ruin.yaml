@@ -10,6 +10,8 @@ spec:
   forProvider:
     teamIdRef:
       name: admins
+      policy:
+        resolve: Always
     repository: world-at-ruin
     permission: admin
   providerConfigRef:

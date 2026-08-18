@@ -9,6 +9,8 @@ spec:
   forProvider:
     teamIdRef:
       name: maintainers
+      policy:
+        resolve: Always
     repository: platform-tenant-template
     permission: maintain
   providerConfigRef:
