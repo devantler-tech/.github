@@ -11,6 +11,8 @@ spec:
   forProvider:
     teamIdRef:
       name: maintainers
+      policy:
+        resolve: Always
     repository: dotnet-template
     permission: maintain
   providerConfigRef:

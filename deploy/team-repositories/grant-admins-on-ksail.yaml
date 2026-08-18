@@ -9,6 +9,8 @@ spec:
   forProvider:
     teamIdRef:
       name: admins
+      policy:
+        resolve: Always
     repository: ksail
     permission: admin
   providerConfigRef:
