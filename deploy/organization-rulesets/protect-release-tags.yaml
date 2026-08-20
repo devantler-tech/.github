@@ -1,4 +1,4 @@
-# Protect release tags — the ONE net-new, actually-managed ruleset in deploy/rulesets/.
+# Protect release tags — the first net-new, managed organization ruleset.
 #
 # The org ships every product by tagging a `v*` release (each repo's cd.yaml triggers
 # on `v*`), yet had NO tag ruleset — release tags could be deleted or force-moved.

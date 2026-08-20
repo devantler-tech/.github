@@ -38,6 +38,7 @@ verb — e.g. `require-pull-request.yaml`). Repo-scoped rulesets live next door 
 |---|---|---|
 | 10 `OrganizationRuleset` files | the 10 org rulesets below | Observe (read-only import) |
 | `protect-release-tags.yaml` | **Protect release tags** (net-new) | Managed (Create) — block tag delete + force-move + require `v<semver>` |
+| `require-world-at-ruin-trusted-regressions.yaml` | **Require workflow - World at Ruin trusted regressions** (net-new) | Managed (Create) — target only World at Ruin and require the central Actions workflow |
 | (in `../repository-rulesets/`) `require-merge-queue-on-platform.yaml` | `platform` "Require merge queue" | Observe (read-only import) |
 
 The 10 imported org rulesets: Block force pushes · Require a pull request before
@@ -58,7 +59,7 @@ Verified against the live CRDs, it does **not** support:
 - **Target `repository`** (only `branch`, `tag`, `push`).
 - **Bypass actor `EnterpriseOwner`**.
 
-So **10 of the 20 org rulesets cannot be faithfully expressed** and remain UI-managed:
+So **10 of the 22 org rulesets cannot be faithfully expressed** and remain UI-managed:
 
 | Ruleset (org) | Blocked by |
 |---|---|
@@ -98,6 +99,11 @@ here Observe-first once expressible.
   release tags immutable (block delete + force-move) and well-formed (`v<semver>`). See
   that file's header for the team-vs-enterprise tier caveat on the name-pattern rule and
   its fallback.
+- **Required-workflow source pins** — v0.19.1 exposes the source repository, path and a
+  branch/tag `ref`, but not GitHub's immutable workflow `sha` selector. The World at Ruin
+  rule therefore binds the external trusted source to `devantler-tech/actions` on
+  `refs/heads/main`; Actions review and merge gates own source changes until the provider
+  exposes `sha`.
 - **Actions policies** — the 2026-06-18
   [workflow execution protections](https://github.blog/changelog/2026-06-18-control-who-and-what-triggers-github-actions-workflows/)
   (actor + event allow-lists controlling who/what triggers workflows, delivered as org
