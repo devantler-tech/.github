@@ -1,0 +1,41 @@
+# Require the centrally hosted trusted-regression workflow on World at Ruin's
+# default branch. The organization scope is required for GitHub ruleset
+# workflows; repositoryId narrows this rule to the one product repository.
+#
+# The workflow lives in devantler-tech/actions, outside the candidate product
+# checkout. provider-upjet-github v0.19.1 exposes a branch/tag ref but not
+# GitHub's workflow SHA selector, so refs/heads/main is the strongest
+# declarative source binding the deployed provider can express. Changes to the
+# trusted controller therefore go through the Actions repository's reviewed
+# main branch and its own merge gates.
+#
+# This is net-new and managed Observe + Create + Update + LateInitialize, never
+# Delete. No bypassActors are declared.
+apiVersion: enterprise.github.m.upbound.io/v1alpha1
+kind: OrganizationRuleset
+metadata:
+  name: require-world-at-ruin-trusted-regressions
+spec:
+  managementPolicies:
+    - Observe
+    - Create
+    - Update
+    - LateInitialize
+  forProvider:
+    name: Require workflow - World at Ruin trusted regressions
+    target: branch
+    enforcement: active
+    conditions:
+      - refName:
+          - include: ["~DEFAULT_BRANCH"]
+            exclude: []
+        repositoryId: [1303188705]
+    rules:
+      - requiredWorkflows:
+          - requiredWorkflow:
+              - repositoryId: 948529001
+                path: .github/workflows/world-at-ruin-required-regressions.yaml
+                ref: refs/heads/main
+  providerConfigRef:
+    kind: ProviderConfig
+    name: default
