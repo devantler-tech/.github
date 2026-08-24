@@ -121,6 +121,19 @@ expect_failure_head \
   'chore(github): archive doggy-countdown' 3 'feat(deploy): archive doggy-countdown' \
   deploy/archived-repositories/doggy-countdown.yaml
 
+# A single-commit branch whose subject could not be read fails CLOSED. Falling
+# back to the title here would silently restore the hole this guard closes, and
+# an unreadable subject is an infrastructure symptom (shallow checkout, empty
+# base..head range), not a licence to trust a field GitHub will not use.
+expect_failure_head \
+  'feat: a release-driving title that GitHub will NOT use' 1 '' \
+  deploy/archived-repositories/doggy-countdown.yaml
+
+# ...but that fail-closed must not leak into the non-deploy exemption.
+expect_success_head \
+  'chore(ci): tidy a workflow' 1 '' \
+  .github/workflows/ci.yaml
+
 # The non-deploy exemption is unchanged whichever subject would land.
 expect_success_head \
   'chore(ci): tidy a workflow' 1 'chore(ci): tidy a workflow' \

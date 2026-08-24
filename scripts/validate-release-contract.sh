@@ -33,16 +33,6 @@ deploy_changed=false
   echo "release-contract: pull-request title is required" >&2
   exit 1
 }
-
-# Which subject will land: the lone commit's when there is exactly one, else the
-# pull-request title.
-subject="$title"
-subject_source="pull-request title"
-if [[ "$head_commit_count" == 1 && -n "$first_commit_subject" ]]; then
-  subject="$first_commit_subject"
-  subject_source="single-commit subject"
-fi
-
 while IFS= read -r -d '' path; do
   if [[ "$path" == deploy/* ]]; then
     deploy_changed=true
@@ -52,6 +42,25 @@ done
 if [[ "$deploy_changed" == false ]]; then
   echo "release-contract: OK — no deploy/ artifact change"
   exit 0
+fi
+
+# Which subject will land: the lone commit's when there is exactly one, else the
+# pull-request title. Resolved only once a deploy/ change is established, so the
+# non-artifact exemption above stays reachable regardless of what was passed.
+subject="$title"
+subject_source="pull-request title"
+if [[ "$head_commit_count" == 1 ]]; then
+  # A one-commit branch squashes under that commit, so an unreadable subject
+  # leaves the guard with nothing to judge. Fail closed and say so: falling back
+  # to the title would silently restore the very hole this guard closes, and the
+  # likeliest cause is infrastructural (a shallow checkout, or a base..head range
+  # that resolved to nothing) rather than a badly-typed subject.
+  [[ -n "$first_commit_subject" ]] || {
+    echo "release-contract: this branch carries ONE commit but its subject could not be read; refusing to fall back to the pull-request title, which GitHub will not use (check the checkout depth and the BASE_SHA..HEAD_SHA range)" >&2
+    exit 1
+  }
+  subject="$first_commit_subject"
+  subject_source="single-commit subject"
 fi
 
 if [[ "$subject" =~ $release_title || "$subject" =~ $breaking_title ]]; then
