@@ -30,9 +30,9 @@ require_fixed_count() {
 
 require_count 1 '^  name: admins$' "$production_render"
 require_count 1 '^  name: admins-devantler$' "$production_render"
-require_count 23 '^  name: admins-' "$production_render"
-require_count 22 '^    permission: admin$' "$production_render"
-require_count 23 '^      name: admins$' "$production_render"
+require_count 22 '^  name: admins-' "$production_render"
+require_count 21 '^    permission: admin$' "$production_render"
+require_count 22 '^      name: admins$' "$production_render"
 
 grant_files=("$repo_root"/deploy/team-repositories/grant-admins-on-*.yaml)
 policy_files=(
@@ -40,10 +40,10 @@ policy_files=(
   "$repo_root/deploy/team-memberships/add-devantler-to-admins.yaml"
   "${grant_files[@]}"
 )
-[[ "${#grant_files[@]}" == 22 ]] ||
-  fail "expected 22 Admins grants, got ${#grant_files[@]}"
-[[ "${#policy_files[@]}" == 24 ]] ||
-  fail "expected 24 Admins policy files, got ${#policy_files[@]}"
+[[ "${#grant_files[@]}" == 21 ]] ||
+  fail "expected 21 Admins grants, got ${#grant_files[@]}"
+[[ "${#policy_files[@]}" == 23 ]] ||
+  fail "expected 23 Admins policy files, got ${#policy_files[@]}"
 cat "${policy_files[@]}" >"$policy_source"
 
 repositories=(
@@ -53,7 +53,6 @@ repositories=(
   agent-skills
   ascoachingogvaner
   aws
-  doggy-countdown
   dotnet-template
   fleet-gitops
   platform-tenant-template
@@ -75,6 +74,7 @@ for repository in "${repositories[@]}"; do
   require_fixed_count 1 "    repository: ${repository}" "$policy_source"
 done
 
+require_count 0 '^    repository: doggy-countdown$' "$policy_source"
 require_count 0 '^    repository: reusable-workflows$' "$policy_source"
 
 if grep -Eq '^[[:space:]]*managementPolicies:.*Delete|crossplane.io/external-name' \

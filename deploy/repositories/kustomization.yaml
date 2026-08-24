@@ -27,7 +27,6 @@ resources:
   - dotnet-template.yaml
   - homebrew-tap.yaml
   - world-at-ruin.yaml
-  - doggy-countdown.yaml
   - fleet-gitops.yaml
   # Observe-only (read-only mirror; Crossplane writes nothing). These two are
   # public and serve live sites. They are listed apart because of their

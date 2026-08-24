@@ -1,0 +1,22 @@
+# Countdown to Simba the Cocker Spaniel coming home. Simba arrived, so the site
+# was decommissioned (devantler-tech/monorepo#3023) and the repository archived.
+# Observe+Update+LateInitialize with `archived: true` — LateInitialize backfills
+# the remaining live settings first, so the only write the provider ever sends is
+# the single archive PATCH; once archived, desired == observed and the reconcile
+# stays silent. `visibility` and `description` are deliberately NOT carried over
+# from the active CR: an archived repo is read-only for settings, so declaring
+# them would make every reconcile attempt a write that 422s.
+apiVersion: repo.github.m.upbound.io/v1alpha1
+kind: Repository
+metadata:
+  name: doggy-countdown
+  annotations:
+    crossplane.io/external-name: doggy-countdown
+spec:
+  managementPolicies: ["Observe", "Update", "LateInitialize"]
+  forProvider:
+    name: doggy-countdown
+    archived: true
+  providerConfigRef:
+    kind: ProviderConfig
+    name: default
