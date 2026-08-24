@@ -31,9 +31,14 @@ jobs:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           PR_TITLE: ${{ github.event.pull_request.title }}
+          # GitHub squashes a SINGLE-commit branch under that commit's subject
+          # (squash_merge_commit_title = COMMIT_OR_PR_TITLE) and ignores the
+          # title, so the guard needs both to judge the subject that will land.
+          COMMIT_COUNT: ${{ github.event.pull_request.commits }}
         run: |
+          first_subject="$(git log --format=%s "$BASE_SHA..$HEAD_SHA" | tail -1)"
           git diff --name-only -z "$BASE_SHA" "$HEAD_SHA" |
-            bash scripts/validate-release-contract.sh "$PR_TITLE"
+            bash scripts/validate-release-contract.sh "$PR_TITLE" "$COMMIT_COUNT" "$first_subject"
 
       - name: 🧹 Validate deploy/ kustomize build
         # kubectl (with built-in kustomize) is preinstalled on the runner. A
