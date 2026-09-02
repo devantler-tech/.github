@@ -38,7 +38,7 @@ jobs:
     # ecosystem, no cooldown for devantler-tech/*).
     # Keep the ref a 40-hex commit: it is part of the cosign subject the platform
     # verifies, so its shape is load-bearing here.
-    uses: devantler-tech/actions/.github/workflows/publish-manifests.yaml@0de1d284f879d62d6fe316d3997fd3ea8f092fb3 # v13.2.1
+    uses: devantler-tech/actions/.github/workflows/publish-manifests.yaml@3ee6cb9bbd616c2a38779be41a5e41f3e77282d0 # v13.2.3
     with:
       oci-name: devantler-tech/github-config
       # Without this, a ref the platform verifier does not accept fails nothing
