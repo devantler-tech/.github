@@ -1,10 +1,4 @@
-  [[ -f "$f" && -r "$f" ]] || die_unknown "'$f' is not a readable file"
-done
-# Every command the pipelines below rely on is preflighted, so an unavailable
-# prerequisite is always the UNKNOWN exit rather than a raw `set -e` status.
-for tool in yq awk comm sed sort tr wc; do
-  command -v "$tool" >/dev/null 2>&1 || die_unknown "$tool is required"
-done#!/usr/bin/env bash
+#!/usr/bin/env bash
 
 
 set -euo pipefail
@@ -60,9 +54,13 @@ die_unknown() {
 [[ -n "$base_render" && -n "$head_render" && -n "$body_file" ]] ||
   die_unknown "usage: validate-deploy-deletions.sh <base-render> <head-render> <pr-body-file>"
 for f in "$base_render" "$head_render" "$body_file"; do
-  [[ -f "$f" ]] || die_unknown "'$f' is not a readable file"
+  [[ -f "$f" && -r "$f" ]] || die_unknown "'$f' is not a readable file"
 done
-command -v yq >/dev/null 2>&1 || die_unknown "yq is required"
+# Every command the pipelines below rely on is preflighted, so an unavailable
+# prerequisite is always the UNKNOWN exit rather than a raw `set -e` status.
+for tool in yq awk comm sed sort tr wc; do
+  command -v "$tool" >/dev/null 2>&1 || die_unknown "$tool is required"
+done
 
 # identities <render-file> — one `<Kind>[.<group>]/[<namespace>/]<name>` per
 # document, sorted, unique. Refuses a document that has no kind or no name: such
