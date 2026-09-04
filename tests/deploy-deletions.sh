@@ -1,3 +1,14 @@
+# The same holds for every other command the validator relies on: with yq present
+# but awk missing, the guard must still exit 2 and name the missing tool.
+bin2="$tmp/bin2"
+mkdir -p "$bin2"
+for t in bash sort comm sed tr wc cat printf yq; do
+  p="$(command -v "$t")" && ln -s "$p" "$bin2/$t" || true
+done
+rc=0
+PATH="$bin2" bash "$validator" "$full" "$same" "$tmp/body-empty.txt" >/dev/null 2>"$tmp/err-noawk" || rc=$?
+[[ "$rc" == 2 ]] || fail "missing awk: expected exit 2, got $rc ($(cat "$tmp/err-noawk"))"
+grep -qF 'awk is required' "$tmp/err-noawk" || fail "missing awk: expected the message to name awk"
 #!/usr/bin/env bash
 
 set -euo pipefail

@@ -1,4 +1,10 @@
-#!/usr/bin/env bash
+  [[ -f "$f" && -r "$f" ]] || die_unknown "'$f' is not a readable file"
+done
+# Every command the pipelines below rely on is preflighted, so an unavailable
+# prerequisite is always the UNKNOWN exit rather than a raw `set -e` status.
+for tool in yq awk comm sed sort tr wc; do
+  command -v "$tool" >/dev/null 2>&1 || die_unknown "$tool is required"
+done#!/usr/bin/env bash
 
 
 set -euo pipefail
@@ -123,7 +129,7 @@ strip_html_comments() {
 # shellcheck disable=SC2016 # the backticks are literal characters to match, not a command substitution
 acked="$(tr -d '\r' <"$body_file" | strip_html_comments |
   sed -n -E 's/^[[:space:]]*([-*>][[:space:]]*)?Deletion-Acknowledged:[[:space:]]*`?([^[:space:]`]+)`?[[:space:]]*$/\2/p' |
-  sort -u)"
+  sort -u)" || die_unknown "could not read '$body_file'"
 
 status=0
 if [[ -n "$removed" ]]; then
