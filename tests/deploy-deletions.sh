@@ -223,13 +223,18 @@ run_case 2 "an empty base render is UNKNOWN, not a clean pass" "$tmp/empty.yaml"
   doc Repository ksail
   printf -- '---\napiVersion: v1\nkind: Label\nmetadata:\n  labels:\n    x: y\n'
 } >"$tmp/nameless.yaml"
-run_case 2 "a nameless document in the head render is UNKNOWN" "$full" "$tmp/nameless.yaml" "$tmp/body-empty.txt" "no kind or no metadata.name"
-run_case 2 "a nameless document in the base render is UNKNOWN" "$tmp/nameless.yaml" "$full" "$tmp/body-empty.txt" "no kind or no metadata.name"
+run_case 2 "a nameless document in the head render is UNKNOWN" "$full" "$tmp/nameless.yaml" "$tmp/body-empty.txt" "no apiVersion, no kind or no metadata.name"
+run_case 2 "a nameless document in the base render is UNKNOWN" "$tmp/nameless.yaml" "$full" "$tmp/body-empty.txt" "no apiVersion, no kind or no metadata.name"
 {
   doc Repository ksail
   printf -- '---\napiVersion: v1\nmetadata:\n  name: kindless\n'
 } >"$tmp/kindless.yaml"
-run_case 2 "a kindless document is UNKNOWN" "$full" "$tmp/kindless.yaml" "$tmp/body-empty.txt" "no kind or no metadata.name"
+run_case 2 "a kindless document is UNKNOWN" "$full" "$tmp/kindless.yaml" "$tmp/body-empty.txt" "no apiVersion, no kind or no metadata.name"
+{
+  doc Repository ksail
+  printf -- '---\nkind: Label\nmetadata:\n  name: no-api-version\n'
+} >"$tmp/apiless.yaml"
+run_case 2 "a document without apiVersion is UNKNOWN, not a core-group identity" "$full" "$tmp/apiless.yaml" "$tmp/body-empty.txt" "no apiVersion"
 run_case 2 "a missing body file is UNKNOWN" "$full" "$same" "$tmp/does-not-exist.txt" "not a readable file"
 rc=0
 bash "$validator" "$full" "$same" >/dev/null 2>&1 || rc=$?

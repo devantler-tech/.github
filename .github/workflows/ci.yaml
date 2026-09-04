@@ -59,8 +59,10 @@ jobs:
           PR_BODY: ${{ github.event.pull_request.body }}
         run: |
           git worktree add --detach "$RUNNER_TEMP/base" "$BASE_SHA"
-          kubectl kustomize "$RUNNER_TEMP/base/deploy" > "$RUNNER_TEMP/base-render.yaml"
-          kubectl kustomize deploy/ > "$RUNNER_TEMP/head-render.yaml"
+          kubectl kustomize "$RUNNER_TEMP/base/deploy" > "$RUNNER_TEMP/base-render.yaml" ||
+            { echo "deploy-deletions: UNKNOWN — the base deploy/ tree does not render; repair main first" >&2; exit 2; }
+          kubectl kustomize deploy/ > "$RUNNER_TEMP/head-render.yaml" ||
+            { echo "deploy-deletions: UNKNOWN — this pull request's deploy/ tree does not render" >&2; exit 2; }
           printf '%s' "$PR_BODY" > "$RUNNER_TEMP/pr-body.txt"
           bash scripts/validate-deploy-deletions.sh \
             "$RUNNER_TEMP/base-render.yaml" "$RUNNER_TEMP/head-render.yaml" "$RUNNER_TEMP/pr-body.txt"

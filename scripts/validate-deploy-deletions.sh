@@ -72,17 +72,19 @@ identities() {
   # documents a trailing separator produces. `// ""` keeps a missing field visible
   # as an empty segment instead of the literal string "null". The group is the
   # part of apiVersion before its "/"; a core-group apiVersion (`v1`) has no "/"
+  # and yields "". A document with NO apiVersion is refused rather than read as the
+  # core group: kustomize never emits one, so it is malformed input, not a core kind.
   # and yields "". Columns are separated by "|", which no group, kind, namespace
   # or name may contain — and unlike a tab it is not IFS whitespace, so an EMPTY
   # column (a cluster-scoped document has no namespace) is not collapsed by read.
-  ids="$(yq -N 'select(. != null) | [((.apiVersion // "") | sub("^[^/]*$"; "") | sub("/.*$"; "")), (.kind // ""), (.metadata.namespace // ""), (.metadata.name // "")] | join("|")' "$render")" ||
+  ids="$(yq -N 'select(. != null) | [(.apiVersion // ""), ((.apiVersion // "") | sub("^[^/]*$"; "") | sub("/.*$"; "")), (.kind // ""), (.metadata.namespace // ""), (.metadata.name // "")] | join("|")' "$render")" ||
     die_unknown "yq could not read '$render'"
   [[ -n "$ids" ]] || die_unknown "'$render' renders no documents"
-  local line group kind ns name id
+  local line api group kind ns name id
   while IFS= read -r line; do
-    IFS="|" read -r group kind ns name <<<"$line"
-    [[ -n "$kind" && -n "$name" ]] ||
-      die_unknown "a document in '$render' has no kind or no metadata.name ('$line')"
+    IFS="|" read -r api group kind ns name <<<"$line"
+    [[ -n "$api" && -n "$kind" && -n "$name" ]] ||
+      die_unknown "a document in '$render' has no apiVersion, no kind or no metadata.name ('$line')"
     id="$kind"
     [[ -z "$group" ]] || id="$kind.$group"
     [[ -z "$ns" ]] || id="$id/$ns"
