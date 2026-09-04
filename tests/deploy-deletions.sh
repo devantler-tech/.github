@@ -50,10 +50,14 @@ run_case() {
   done
 }
 
-# assert_absent <label> <base> <head> <body> <needle> — the combined output must NOT mention it.
+# assert_absent <label> <base> <head> <body> <needle> — the validator must exit 1 AND its
+# combined output must NOT mention the needle. The output is captured first: grepping a
+# pipeline under `pipefail` would report the validator's expected exit 1 as "no match".
 assert_absent() {
-  local label="$1" base="$2" head="$3" body="$4" needle="$5"
-  if bash "$validator" "$base" "$head" "$body" 2>&1 | grep -qF -- "$needle"; then
+  local label="$1" base="$2" head="$3" body="$4" needle="$5" rc=0
+  bash "$validator" "$base" "$head" "$body" >"$tmp/absent-out" 2>&1 || rc=$?
+  [[ "$rc" == 1 ]] || fail "$label: expected exit 1, got $rc"
+  if grep -qF -- "$needle" "$tmp/absent-out"; then
     fail "$label: output must not mention '$needle'"
   fi
 }
