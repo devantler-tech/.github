@@ -46,6 +46,25 @@ jobs:
         # CRDs are applied/validated on-cluster, not here.
         run: kubectl kustomize deploy/ > /dev/null
 
+      - name: 🗑️ Validate deploy/ deletions are acknowledged
+        # Compares the RENDERED deploy/ output at the base and head by resource
+        # identity, so a resource cut out of a multi-document file is caught as
+        # surely as a deleted file. Every removed identity needs its own
+        # `Deletion-Acknowledged: <Kind>/<name>` line in the pull-request body.
+        # The body arrives through an env var and is written to a file — never
+        # interpolated into the shell — because it is contributor-authored text.
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          git worktree add --detach "$RUNNER_TEMP/base" "$BASE_SHA"
+          kubectl kustomize "$RUNNER_TEMP/base/deploy" > "$RUNNER_TEMP/base-render.yaml"
+          kubectl kustomize deploy/ > "$RUNNER_TEMP/head-render.yaml"
+          printf '%s' "$PR_BODY" > "$RUNNER_TEMP/pr-body.txt"
+          bash scripts/validate-deploy-deletions.sh \
+            "$RUNNER_TEMP/base-render.yaml" "$RUNNER_TEMP/head-render.yaml" "$RUNNER_TEMP/pr-body.txt"
+
       - name: 🧪 Test active Admins policy
         run: bash tests/admin-team-policy.sh
 
@@ -60,6 +79,9 @@ jobs:
 
       - name: 🧪 Test release contract
         run: bash tests/release-contract.sh
+
+      - name: 🧪 Test deploy/ deletion acknowledgement
+        run: bash tests/deploy-deletions.sh
 
       - name: 🧪 Test World at Ruin trusted-regression ruleset
         run: bash tests/world-at-ruin-regression-ruleset.sh
