@@ -110,8 +110,10 @@ bash tests/repository-drift.sh          # declared-vs-live comparison logic
 Those eight commands are the baseline checks that `ci.yaml` runs. Pull requests additionally pass
 their changed paths and title through `scripts/validate-release-contract.sh` and their base/head
 renders plus the pull-request body through `scripts/validate-deploy-deletions.sh` (every managed
-resource that leaves the render needs its own `Deletion-Acknowledged: <Kind>/<name>` body line); merge groups skip those
-event-specific checks.
+resource that leaves the render needs its own `Deletion-Acknowledged: <Kind>.<group>/<name>` body line, spelled the way the
+failure prints it); merge groups skip those event-specific checks. The deletion check also renders
+`deploy/` at the base, so a pull request whose base `main` does not build fails there with kubectl's
+exit status — the pull request that repairs the build is expected to edit `ci.yaml` in the same change.
 
 `kubectl` (with built-in kustomize) is preinstalled on CI runners. A clean build proves the manifests
 are well-formed; the Crossplane CRDs themselves are applied/validated **on-cluster** (the

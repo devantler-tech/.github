@@ -50,7 +50,7 @@ jobs:
         # Compares the RENDERED deploy/ output at the base and head by resource
         # identity, so a resource cut out of a multi-document file is caught as
         # surely as a deleted file. Every removed identity needs its own
-        # `Deletion-Acknowledged: <Kind>/<name>` line in the pull-request body.
+        # `Deletion-Acknowledged: <Kind>.<group>/<name>` line in the pull-request body.
         # The body arrives through an env var and is written to a file — never
         # interpolated into the shell — because it is contributor-authored text.
         if: github.event_name == 'pull_request'
