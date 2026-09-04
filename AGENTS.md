@@ -103,12 +103,15 @@ bash tests/declarative-coverage.sh      # every repo declared in every rendered 
 bash tests/declarative-coverage-fail-closed.sh # rendered-label reads fail closed
 bash tests/repository-update-policy.sh  # active Repository update invariants
 bash tests/release-contract.sh          # deploy/ changes must trigger a release
+bash tests/deploy-deletions.sh          # removed deploy/ resources must be acknowledged per resource
 bash tests/repository-drift.sh          # declared-vs-live comparison logic
 ```
 
-Those seven commands are the baseline checks that `ci.yaml` runs. Pull requests additionally pass
-their changed paths and title through `scripts/validate-release-contract.sh`; merge groups skip that
-event-specific check.
+Those eight commands are the baseline checks that `ci.yaml` runs. Pull requests additionally pass
+their changed paths and title through `scripts/validate-release-contract.sh` and their base/head
+renders plus the pull-request body through `scripts/validate-deploy-deletions.sh` (every managed
+resource that leaves the render needs its own `Deletion-Acknowledged: <Kind>/<name>` body line); merge groups skip those
+event-specific checks.
 
 `kubectl` (with built-in kustomize) is preinstalled on CI runners. A clean build proves the manifests
 are well-formed; the Crossplane CRDs themselves are applied/validated **on-cluster** (the
