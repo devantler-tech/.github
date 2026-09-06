@@ -88,6 +88,9 @@ jobs:
       - name: 🧪 Test World at Ruin trusted-regression ruleset
         run: bash tests/world-at-ruin-regression-ruleset.sh
 
+      - name: 🧪 Test independent Monorepo CI aggregate ruleset
+        run: bash tests/ci-aggregate-ruleset.sh
+
       # The drift check itself reads live GitHub state and runs on a schedule
       # (repository-drift-check.yaml); this only pins its comparison logic,
       # against fixtures, so it stays offline and PR-safe.

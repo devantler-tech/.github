@@ -39,6 +39,7 @@ verb — e.g. `require-pull-request.yaml`). Repo-scoped rulesets live next door 
 | 10 `OrganizationRuleset` files | the 10 org rulesets below | Observe (read-only import) |
 | `protect-release-tags.yaml` | **Protect release tags** (net-new) | Managed (Create) — block tag delete + force-move + require `v<semver>` |
 | `require-world-at-ruin-trusted-regressions.yaml` | **Require workflow - World at Ruin trusted regressions** (net-new) | Managed (Create) — target only World at Ruin and require the central Actions workflow |
+| `require-monorepo-ci-aggregate-contract.yaml` | **Require workflow - Monorepo CI aggregate contract** (net-new) | Managed (Create) — target only monorepo and require the aggregate-execution control from its reviewed `main` |
 | (in `../repository-rulesets/`) `require-merge-queue-on-platform.yaml` | `platform` "Require merge queue" | Observe (read-only import) |
 
 The 10 imported org rulesets: Block force pushes · Require a pull request before
@@ -59,7 +60,7 @@ Verified against the live CRDs, it does **not** support:
 - **Target `repository`** (only `branch`, `tag`, `push`).
 - **Bypass actor `EnterpriseOwner`**.
 
-So **10 of the 22 org rulesets cannot be faithfully expressed** and remain UI-managed:
+So **10 of the 23 org rulesets cannot be faithfully expressed** and remain UI-managed:
 
 | Ruleset (org) | Blocked by |
 |---|---|

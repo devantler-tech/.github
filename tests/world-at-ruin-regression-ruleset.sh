@@ -57,7 +57,7 @@ assert_value "source repository" "948529001" '.spec.forProvider.rules[0].require
 assert_value "source path" ".github/workflows/world-at-ruin-required-regressions.yaml" '.spec.forProvider.rules[0].requiredWorkflows[0].requiredWorkflow[0].path'
 assert_value "source ref" "refs/heads/main" '.spec.forProvider.rules[0].requiredWorkflows[0].requiredWorkflow[0].ref'
 
-grep -Fq '10 of the 22 org rulesets' "${repo_root}/deploy/organization-rulesets/README.md" ||
-  fail "organization ruleset inventory must account for 10 imported, 2 managed, and 10 UI-managed rulesets"
+grep -Fq '10 of the 23 org rulesets' "${repo_root}/deploy/organization-rulesets/README.md" ||
+  fail "organization ruleset inventory must account for 10 imported, 3 managed, and 10 UI-managed rulesets"
 
 echo "world-at-ruin-regression-ruleset: OK"
