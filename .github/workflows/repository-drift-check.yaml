@@ -70,7 +70,6 @@ jobs:
           # same repository before comparing them.
           owner: ${{ github.repository_owner }}
           repositories: ${{ steps.targets.outputs.list }}
-          permission-administration: read
           permission-metadata: read
 
       - name: 🔍 Compare declared and live repository settings
