@@ -283,7 +283,7 @@ expect_transport_status() {
   local dir="$1" want="$2" what="$3" got=0
   PATH="$dir/bin:$PATH" DRIFT_GH_FIXTURES="$dir" \
     REPOSITORY_DRIFT_OWNER=devantler-tech \
-    REPOSITORY_DRIFT_RENDER="$dir/render.yaml" REPOSITORY_DRIFT_LIVE_DIR= \
+    REPOSITORY_DRIFT_RENDER="$dir/render.yaml" REPOSITORY_DRIFT_LIVE_DIR="" \
     bash "$check" >"$dir/stdout" 2>"$dir/stderr" || got=$?
   [[ "$got" -eq "$want" ]] || {
     cat "$dir/stdout" "$dir/stderr" >&2
