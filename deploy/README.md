@@ -32,9 +32,10 @@ out-of-band changes made in the GitHub UI.
   out-of-band label drift is reverted. This is
   the Crossplane replacement for the old EndBug/label-sync workflow.
 - `organization-rulesets/` — one `OrganizationRuleset` per file (org-wide branch/tag
-  protection). 10 existing org rulesets are adopted **Observe-first** (read-only) + 2
-  net-new rulesets are managed: `v*` tag protection and World at Ruin's trusted-regression
-  workflow. The 10 org rulesets the provider
+  protection). 9 existing org rulesets remain **Observe-only**; the existing signing
+  rule is retained disabled with only Observe/Update and its full observed fields.
+  Three net-new rulesets are managed: `v*` tag protection, World at Ruin's trusted-regression
+  workflow, and monorepo's independent CI aggregate check. The 10 org rulesets the provider
   can't yet express stay UI-managed — see
   [`organization-rulesets/README.md`](organization-rulesets/README.md) for the full
   importability matrix and the push/tag/Actions-policy analysis.
