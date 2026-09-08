@@ -91,6 +91,9 @@ jobs:
       - name: 🧪 Test independent Monorepo CI aggregate ruleset
         run: bash tests/ci-aggregate-ruleset.sh
 
+      - name: 🧪 Test retained signing-rule safety
+        run: bash tests/signing-rule-retirement.sh
+
       # The drift check itself reads live GitHub state and runs on a schedule
       # (repository-drift-check.yaml); this only pins its comparison logic,
       # against fixtures, so it stays offline and PR-safe.

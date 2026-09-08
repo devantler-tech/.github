@@ -9,12 +9,13 @@ Reconciled by the platform `github-config` tenant like the rest of `deploy/`.
 
 ## How adoption works
 
-- **Observe-first (read-only).** Existing rulesets are bound with
+- **Observe-first (read-only).** The nine Observe-only org imports are bound with
   `managementPolicies: ["Observe"]` — Crossplane mirrors live GitHub state into
   `status.atProvider` and **never writes, reverts, or deletes**. This is pure GitOps
   *visibility*, with zero behaviour change (the same flow `repositories/` and `teams/`
-  used). `Delete` is omitted everywhere, so a CR/Flux prune can never delete a real
-  ruleset.
+  used). The [retained signing rule](#retained-signing-rule-record) is the exception:
+  it uses only Observe and Update to preserve its disabled record. `Delete` is
+  omitted everywhere, so a CR/Flux prune can never delete a real ruleset.
 - **external-name = the numeric ruleset id**, for both Kinds — `OrganizationRuleset`
   (`gh api orgs/devantler-tech/rulesets`) and `RepositoryRuleset`
   (`gh api repos/devantler-tech/<repo>/rulesets`) alike. Terraform's
@@ -36,7 +37,8 @@ verb — e.g. `require-pull-request.yaml`). Repo-scoped rulesets live next door 
 
 | Files | Rulesets | Policy |
 |---|---|---|
-| 10 `OrganizationRuleset` files | the 10 org rulesets below | Observe (read-only import) |
+| 9 `OrganizationRuleset` files | the imported org rulesets below except Require signed commits | Observe (read-only import) |
+| `require-signed-commits.yaml` | **Require signed commits** (existing, retired) | Observe + Update — retain the disabled record; never create or delete |
 | `protect-release-tags.yaml` | **Protect release tags** (net-new) | Managed (Create) — block tag delete + force-move + require `v<semver>` |
 | `require-world-at-ruin-trusted-regressions.yaml` | **Require workflow - World at Ruin trusted regressions** (net-new) | Managed (Create) — target only World at Ruin and require the central Actions workflow |
 | `require-monorepo-ci-aggregate-contract.yaml` | **Require workflow - Monorepo CI aggregate contract** (net-new) | Managed (Create) — target only monorepo and require the aggregate-execution control from its reviewed `main` |
@@ -46,6 +48,24 @@ The 10 imported org rulesets: Block force pushes · Require a pull request befor
 merging · Require conversation resolution before merging · Require linear history ·
 Require signed commits · Require status checks to pass · Restrict deletions · Restrict
 branch names · Restrict commit metadata · Require workflows (DependencyReview).
+
+### Retained signing-rule record
+
+`require-signed-commits.yaml` retains ruleset `5397812` with `enforcement: disabled`.
+Its ref include list is empty, so it covers no branches. The complete observed
+selectors, bypass list and rule fields are declared before allowing `Update`;
+`Create`, `Delete` and `LateInitialize` remain excluded. The disabled record makes
+the control's actual coverage clear without changing effective branch protection.
+
+The effective pull-request, required-status-check and linear-history controls
+remain separate. GitHub-created signed squash commits are outcome evidence, not
+native signature enforcement. GitHub's
+[signed-commit rules](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/available-rules-for-rulesets#require-signed-commits)
+restrict squash merging another author's pull request when signatures are required.
+Any future enforcement proposal must first prove the bot and contributor merge
+paths are compatible; changing the empty ref selector is not part of this retirement.
+The retirement decision and evidence are tracked in
+[#132](https://github.com/devantler-tech/.github/issues/132).
 
 ## What stays UI-managed, and why
 

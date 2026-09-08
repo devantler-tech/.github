@@ -1,6 +1,6 @@
-# Existing org ruleset, adopted Observe-first (read-only). Identity-only
-# forProvider — don't promote past Observe without backfilling from
-# status.atProvider (lossy round-trip). See ./README.md for the convention.
+# Retained disabled record: this rule's empty ref selector protects no branches.
+# Backfilled from the observed ruleset before allowing Update; keep all fields
+# and the existing identity. Never create or delete it. See ./README.md and #132.
 apiVersion: enterprise.github.m.upbound.io/v1alpha1
 kind: OrganizationRuleset
 metadata:
@@ -8,11 +8,27 @@ metadata:
   annotations:
     crossplane.io/external-name: "5397812" # numeric ruleset id
 spec:
-  managementPolicies: ["Observe"]
+  managementPolicies: ["Observe", "Update"]
   forProvider:
     name: Require signed commits
     target: branch
-    enforcement: active
+    enforcement: disabled
+    bypassActors: []
+    conditions:
+      - refName:
+          - include: []
+            exclude: []
+        repositoryName:
+          - include: ["~ALL"]
+            exclude: []
+            protected: false
+    rules:
+      - creation: false
+        deletion: false
+        nonFastForward: false
+        requiredLinearHistory: false
+        requiredSignatures: true
+        update: false
   providerConfigRef:
     kind: ProviderConfig
     name: default
