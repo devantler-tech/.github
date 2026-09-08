@@ -9,12 +9,13 @@ Reconciled by the platform `github-config` tenant like the rest of `deploy/`.
 
 ## How adoption works
 
-- **Observe-first (read-only).** Existing rulesets are bound with
+- **Observe-first (read-only).** The nine Observe-only org imports are bound with
   `managementPolicies: ["Observe"]` — Crossplane mirrors live GitHub state into
   `status.atProvider` and **never writes, reverts, or deletes**. This is pure GitOps
   *visibility*, with zero behaviour change (the same flow `repositories/` and `teams/`
-  used). `Delete` is omitted everywhere, so a CR/Flux prune can never delete a real
-  ruleset.
+  used). The [retained signing rule](#retained-signing-rule-record) is the exception:
+  it uses only Observe and Update to preserve its disabled record. `Delete` is
+  omitted everywhere, so a CR/Flux prune can never delete a real ruleset.
 - **external-name = the numeric ruleset id**, for both Kinds — `OrganizationRuleset`
   (`gh api orgs/devantler-tech/rulesets`) and `RepositoryRuleset`
   (`gh api repos/devantler-tech/<repo>/rulesets`) alike. Terraform's
