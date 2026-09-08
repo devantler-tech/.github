@@ -228,4 +228,180 @@ expect_status "$work/collapsed" 2 "a collapsed render"
 grep -Fq "collapsed to" "$work/collapsed/stderr" ||
   fail "a collapsed render must say so"
 
-echo "repository-drift: OK — agreement, drift, set-compare, external-name, private redaction and four fail-closed paths"
+# Exercise the real gh transport path, including the REST omissions observed
+# with an installation token. The fake accepts only the expected read requests.
+transport="$work/transport"
+build_fixture "$transport"
+mkdir -p "$transport/bin" "$transport/graphql"
+yq '.spec.forProvider *= {"allowAutoMerge": true, "allowRebaseMerge": false, "allowUpdateBranch": true, "deleteBranchOnMerge": true}' \
+  "$transport/render.yaml" >"$transport/render.new"
+mv "$transport/render.new" "$transport/render.yaml"
+for file in "$transport"/live/*.json; do
+  jq '. + {node_id: ("R_" + .name), full_name: ("devantler-tech/" + .name),
+    allow_auto_merge: true, allow_rebase_merge: false, allow_update_branch: true,
+    delete_branch_on_merge: true}' "$file" >"$file.new"
+  mv "$file.new" "$file"
+  jq '{data: {repository: {
+    id: .node_id, nameWithOwner: .full_name, isPrivate: .private,
+    allow_auto_merge, allow_squash_merge, allow_merge_commit, allow_rebase_merge,
+    allow_update_branch, delete_branch_on_merge, web_commit_signoff_required
+  }}}' "$file" >"$transport/graphql/$(basename "$file")"
+done
+cat >"$transport/bin/gh" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+[[ "$1" == api ]] || exit 91
+if [[ "$2" == graphql ]]; then
+  shift 2
+  owner="" name="" query=""
+  while [[ "$#" -gt 0 ]]; do
+    [[ "$1" == -f || "$1" == -F ]] || exit 92
+    case "$2" in
+      owner=*) owner="${2#owner=}" ;;
+      name=*) name="${2#name=}" ;;
+      query=*) query="${2#query=}" ;;
+      *) exit 93 ;;
+    esac
+    shift 2
+  done
+  [[ "$owner" == devantler-tech && "$name" == fixture-repo-* ]] || exit 94
+  for field in autoMergeAllowed squashMergeAllowed mergeCommitAllowed rebaseMergeAllowed \
+    allowUpdateBranch deleteBranchOnMerge webCommitSignoffRequired nameWithOwner isPrivate; do
+    [[ "$query" == *"$field"* ]] || exit 95
+  done
+  echo "$name" >>"$DRIFT_GH_FIXTURES/graphql-calls"
+  [[ ! -e "$DRIFT_GH_FIXTURES/graphql-error" ]] || exit 96
+  cat "$DRIFT_GH_FIXTURES/graphql/$name.json"
+else
+  [[ "$#" == 2 && "$2" == repos/devantler-tech/fixture-repo-* ]] || exit 97
+  cat "$DRIFT_GH_FIXTURES/live/${2##*/}.json"
+fi
+EOF
+chmod +x "$transport/bin/gh"
+
+expect_transport_status() {
+  local dir="$1" want="$2" what="$3" got=0
+  PATH="$dir/bin:$PATH" DRIFT_GH_FIXTURES="$dir" \
+    REPOSITORY_DRIFT_OWNER=devantler-tech \
+    REPOSITORY_DRIFT_RENDER="$dir/render.yaml" REPOSITORY_DRIFT_LIVE_DIR="" \
+    bash "$check" >"$dir/stdout" 2>"$dir/stderr" || got=$?
+  [[ "$got" -eq "$want" ]] || {
+    cat "$dir/stdout" "$dir/stderr" >&2
+    fail "$what expected exit $want, got $got"
+  }
+}
+
+expect_transport_status "$transport" 0 "complete REST response"
+[[ ! -e "$transport/graphql-calls" ]] || fail "complete REST data must not query GraphQL"
+
+missing_settings="$work/missing-settings"
+cp -R "$transport" "$missing_settings"
+for file in "$missing_settings"/live/*.json; do
+  jq 'del(.allow_auto_merge, .allow_squash_merge, .allow_merge_commit,
+    .allow_rebase_merge, .allow_update_branch, .delete_branch_on_merge,
+    .web_commit_signoff_required)' "$file" >"$file.new"
+  mv "$file.new" "$file"
+done
+expect_transport_status "$missing_settings" 0 "REST omits settings, GraphQL supplies them"
+[[ "$(wc -l <"$missing_settings/graphql-calls" | tr -d ' ')" == "$FIXTURE_REPOS" ]] ||
+  fail "every incomplete REST response must get one scoped GraphQL read"
+grep -Fxq "$RENAMED_EXTERNAL" "$missing_settings/graphql-calls" ||
+  fail "GraphQL lookup must use the declared external repository name"
+
+# Every mapped field must still detect a real divergence, including false values.
+for pair in allow_auto_merge:allowAutoMerge allow_squash_merge:allowSquashMerge \
+  allow_merge_commit:allowMergeCommit allow_rebase_merge:allowRebaseMerge \
+  allow_update_branch:allowUpdateBranch delete_branch_on_merge:deleteBranchOnMerge \
+  web_commit_signoff_required:webCommitSignoffRequired; do
+  dir="$work/graphql-drift-${pair%%:*}"
+  cp -R "$missing_settings" "$dir"
+  jq --arg field "${pair%%:*}" '.data.repository[$field] |= not' \
+    "$dir/graphql/fixture-repo-1.json" >"$dir/changed.json"
+  mv "$dir/changed.json" "$dir/graphql/fixture-repo-1.json"
+  expect_transport_status "$dir" 1 "GraphQL drift in ${pair%%:*}"
+  grep -Fq "DRIFT fixture-repo-1.${pair#*:}:" "$dir/stdout" ||
+    fail "GraphQL drift must name the mapped declared field"
+done
+
+dir="$work/rest-false-wins"
+cp -R "$missing_settings" "$dir"
+jq '.allow_merge_commit = false' "$dir/live/fixture-repo-1.json" >"$dir/changed.json"
+mv "$dir/changed.json" "$dir/live/fixture-repo-1.json"
+jq '.data.repository.allow_merge_commit = true' "$dir/graphql/fixture-repo-1.json" >"$dir/changed.json"
+mv "$dir/changed.json" "$dir/graphql/fixture-repo-1.json"
+expect_transport_status "$dir" 0 "present false REST setting wins over GraphQL"
+
+for invalid in wrong-id wrong-name changed-privacy null-repository partial-error false-errors \
+  missing-boolean null-boolean string-boolean malformed-json transport-error; do
+  dir="$work/graphql-$invalid"
+  cp -R "$missing_settings" "$dir"
+  file="$dir/graphql/fixture-repo-1.json"
+  case "$invalid" in
+    wrong-id) filter='.data.repository.id = "R_different"' ;;
+    wrong-name) filter='.data.repository.nameWithOwner = "another/repository"' ;;
+    changed-privacy) filter='.data.repository.isPrivate = true' ;;
+    null-repository) filter='.data.repository = null' ;;
+    partial-error) filter='.errors = [{message: "partial response"}]' ;;
+    false-errors) filter='.errors = false' ;;
+    missing-boolean) filter='del(.data.repository.allow_auto_merge)' ;;
+    null-boolean) filter='.data.repository.allow_auto_merge = null' ;;
+    string-boolean) filter='.data.repository.allow_auto_merge = "true"' ;;
+    malformed-json) printf '{' >"$file"; filter='' ;;
+    transport-error) touch "$dir/graphql-error"; filter='' ;;
+  esac
+  if [[ -n "$filter" ]]; then
+    jq "$filter" "$file" >"$dir/changed.json"
+    mv "$dir/changed.json" "$file"
+  fi
+  expect_transport_status "$dir" 2 "invalid GraphQL response: $invalid"
+done
+
+for invalid in missing-id missing-name null-setting string-setting null-privacy string-privacy; do
+  dir="$work/rest-$invalid"
+  cp -R "$missing_settings" "$dir"
+  case "$invalid" in
+    missing-id) filter='del(.node_id)' ;;
+    missing-name) filter='del(.full_name)' ;;
+    null-setting) filter='.allow_merge_commit = null' ;;
+    string-setting) filter='.allow_merge_commit = "false"' ;;
+    null-privacy) filter='.private = null' ;;
+    string-privacy) filter='.private = "false"' ;;
+  esac
+  jq "$filter" "$dir/live/fixture-repo-1.json" >"$dir/changed.json"
+  mv "$dir/changed.json" "$dir/live/fixture-repo-1.json"
+  expect_transport_status "$dir" 2 "invalid REST response: $invalid"
+done
+
+dir="$work/rest-complete-invalid-privacy"
+cp -R "$transport" "$dir"
+jq '.private = "false" | .description = "sensitive live description"' \
+  "$dir/live/fixture-repo-1.json" >"$dir/changed.json"
+mv "$dir/changed.json" "$dir/live/fixture-repo-1.json"
+expect_transport_status "$dir" 2 "complete REST response with malformed visibility"
+! grep -Fq 'sensitive live description' "$dir/stdout" "$dir/stderr" ||
+  fail "malformed visibility must not disclose live values"
+
+dir="$work/graphql-private-drift"
+cp -R "$missing_settings" "$dir"
+jq '.private = true | .description = "sensitive live description"' \
+  "$dir/live/fixture-repo-1.json" >"$dir/changed.json"
+mv "$dir/changed.json" "$dir/live/fixture-repo-1.json"
+jq '.data.repository.isPrivate = true | .data.repository.allow_auto_merge = false' \
+  "$dir/graphql/fixture-repo-1.json" >"$dir/changed.json"
+mv "$dir/changed.json" "$dir/graphql/fixture-repo-1.json"
+expect_transport_status "$dir" 1 "private drift after GraphQL completion"
+grep -Fq 'DRIFT fixture-repo-1.allowAutoMerge: values withheld' "$dir/stdout" ||
+  fail "GraphQL completion must retain private-repository redaction"
+! grep -Fq 'sensitive live description' "$dir/stdout" "$dir/stderr" ||
+  fail "GraphQL completion must not disclose private live values"
+
+# Unknown declarations must still fail closed after known settings are filled.
+dir="$work/graphql-unmapped"
+cp -R "$missing_settings" "$dir"
+yq '.spec.forProvider.inventedSetting = true' "$dir/render.yaml" >"$dir/render.new"
+mv "$dir/render.new" "$dir/render.yaml"
+expect_transport_status "$dir" 2 "unmapped declaration after GraphQL read"
+grep -Fq 'inventedSetting but the live repository object has no "invented_setting" field' "$dir/stderr" ||
+  fail "GraphQL completion must not hide unrelated missing fields"
+
+echo "repository-drift: OK — comparison, private redaction, REST/GraphQL settings and fail-closed reads"

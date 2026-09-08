@@ -85,6 +85,69 @@ readonly KEY_PROGRAM='
   def api_key: {"homepageUrl": "homepage"}[.] // to_snake;
 '
 
+# GraphQL exposes these settings even when the REST repository object omits
+# them. Only fill missing declared settings; an existing REST value, including
+# false, remains authoritative for this read.
+readonly SETTINGS_KEYS='["allow_auto_merge", "allow_squash_merge", "allow_merge_commit",
+  "allow_rebase_merge", "allow_update_branch", "delete_branch_on_merge",
+  "web_commit_signoff_required"]'
+readonly SETTINGS_QUERY='query RepositorySettings($owner: String!, $name: String!) {
+  repository(owner: $owner, name: $name) {
+    id nameWithOwner isPrivate
+    allow_auto_merge: autoMergeAllowed
+    allow_squash_merge: squashMergeAllowed
+    allow_merge_commit: mergeCommitAllowed
+    allow_rebase_merge: rebaseMergeAllowed
+    allow_update_branch: allowUpdateBranch
+    delete_branch_on_merge: deleteBranchOnMerge
+    web_commit_signoff_required: webCommitSignoffRequired
+  }
+}'
+
+complete_repository_settings() {
+  local entry="$1" live="$2" repo="$3" declared_settings missing settings
+  declared_settings="$(jq -c --argjson keys "$SETTINGS_KEYS" "$KEY_PROGRAM"'
+    [.declared | keys[] | api_key | select(. as $key | $keys | index($key))]
+  ' <<<"$entry")" || abort "failed to identify declared settings for '$repo'"
+
+  jq -e --argjson keys "$declared_settings" '
+    . as $live | all($keys[]; . as $key |
+      ($live | has($key) | not) or ($live[$key] | type == "boolean"))
+  ' >/dev/null <<<"$live" || abort "live repository settings for '$repo' are not booleans"
+  missing="$(jq -c --argjson keys "$declared_settings" '
+    . as $live | [$keys[] | select(. as $key | $live | has($key) | not)]
+  ' <<<"$live")" || abort "failed to identify missing settings for '$repo'"
+
+  # Fixture mode stays offline. Missing fixture fields still reach the ordinary
+  # unmapped-field rejection below; transport tests use a fake gh executable.
+  if [[ "$missing" == '[]' || -n "$live_dir" ]]; then
+    printf '%s\n' "$live"
+    return
+  fi
+
+  jq -e '
+    (.node_id | type == "string" and length > 0) and
+    (.full_name | type == "string" and length > 0) and
+    (.private | type == "boolean")
+  ' >/dev/null <<<"$live" || abort "REST repository identity for '$repo' is incomplete"
+  settings="$(gh api graphql -f query="$SETTINGS_QUERY" -f owner="$owner" -f name="$repo")" ||
+    abort "failed to read GraphQL repository settings for '$repo'"
+  # Bind both reads to the same immutable repository and canonical name, also
+  # rejecting a visibility change before any values could enter public logs.
+  # Partial GraphQL data must never conceal an API error or a missing setting.
+  jq -e --argjson live "$live" --argjson keys "$SETTINGS_KEYS" '
+    ((has("errors") | not) or .errors == null or .errors == []) and
+    (.data.repository | type == "object") and
+    (.data.repository.id == $live.node_id) and
+    (.data.repository.nameWithOwner == $live.full_name) and
+    (.data.repository.isPrivate == $live.private) and
+    (.data.repository as $settings | all($keys[]; $settings[.] | type == "boolean"))
+  ' >/dev/null <<<"$settings" || abort "GraphQL repository settings for '$repo' are incomplete or mismatched"
+  jq -c --argjson settings "$settings" --argjson missing "$missing" '
+    reduce $missing[] as $key (. ; .[$key] = $settings.data.repository[$key])
+  ' <<<"$live" || abort "failed to combine repository settings for '$repo'"
+}
+
 drift_found=0
 
 while IFS= read -r entry; do
@@ -111,7 +174,12 @@ while IFS= read -r entry; do
   # flag the sensitivity cannot be judged, so it aborts rather than guessing.
   jq -e 'has("private")' >/dev/null <<<"$live" ||
     abort "live state for '$repo' has no 'private' flag, so its findings cannot be safely printed"
-  is_private="$(jq -r 'if .private == true then "true" else "false" end' <<<"$live")"
+  jq -e '.private | type == "boolean"' >/dev/null <<<"$live" ||
+    abort "live state for '$repo' has a non-boolean 'private' flag, so its findings cannot be safely printed"
+  is_private="$(jq -r '.private' <<<"$live")"
+
+  live="$(complete_repository_settings "$entry" "$live" "$repo")" ||
+    abort "could not complete repository settings for '$repo'"
 
   # A declared field with no counterpart on the live object means the mapping
   # is wrong or the API changed shape. Silently skipping it would let a whole

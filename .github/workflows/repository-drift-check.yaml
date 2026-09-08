@@ -13,12 +13,8 @@ name: 🔍 Repository drift check
 # belongs on a schedule and must never gate a merge.
 
 on:
-  # Dispatch only, until the App is granted Administration: Read-only
-  # (devantler-tech/.github#144). Without it the token request itself is refused
-  # with 422, so a scheduled run would fail every day on something no change in
-  # this repository can fix. Restore the schedule when the permission lands:
-  #   schedule:
-  #     - cron: "17 5 * * *"
+  schedule:
+    - cron: "17 5 * * *"
   workflow_dispatch:
 
 permissions: {}
@@ -68,16 +64,12 @@ jobs:
           # used instead — it reaches this repository alone, and the org has a
           # private repository it could not see either way.
           #
-          # `administration: read` is what the merge-policy and feature fields
-          # need: GitHub returns allow_squash_merge, allow_merge_commit,
-          # allow_rebase_merge, allow_auto_merge, allow_update_branch,
-          # delete_branch_on_merge and web_commit_signoff_required only to a
-          # caller with administrative read. Under metadata alone the repository
-          # object simply omits them, and the check aborts — which is how this
-          # was found, on the first live run.
+          # An installation token's REST response can omit merge-policy fields
+          # even with administrative read. The comparison fills only missing
+          # declared settings from GraphQL and verifies both reads identify the
+          # same repository before comparing them.
           owner: ${{ github.repository_owner }}
           repositories: ${{ steps.targets.outputs.list }}
-          permission-administration: read
           permission-metadata: read
 
       - name: 🔍 Compare declared and live repository settings
