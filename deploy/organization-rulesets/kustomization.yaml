@@ -1,6 +1,6 @@
 # `OrganizationRuleset` resources — one per file, named after the rule (an active verb).
 # Nine imported org rulesets remain Observe-only; the retained signing rule is disabled
-# with only Observe/Update. Three net-new rulesets are managed (Create).
+# with only Observe/Update. Four net-new rulesets are managed (Create).
 # The 10 org rulesets the provider cannot express remain UI-managed —
 # see ./README.md for the importability matrix and the push/tag/Actions-policy analysis.
 # Repo-scoped rulesets live in ../repository-rulesets/. Included by ../kustomization.yaml.
@@ -22,3 +22,4 @@ resources:
   - protect-release-tags.yaml
   - require-world-at-ruin-trusted-regressions.yaml
   - require-monorepo-ci-aggregate-contract.yaml
+  - require-dotgithub-deploy-guards.yaml

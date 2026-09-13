@@ -1,0 +1,42 @@
+# Require the deploy/ guards from this repository's reviewed main branch.
+# ci.yaml runs the release-contract and deletion validators from the pull
+# request's own checkout, so a candidate can edit or remove them and still pass
+# `CI - Required Checks`. This rule selects .github/workflows/deploy-guards.yaml
+# from refs/heads/main; that workflow runs the validators from the same reviewed
+# revision and reads the candidate only as data.
+#
+# provider-upjet-github v0.19.1 exposes a branch/tag ref but not GitHub's
+# workflow SHA selector, so refs/heads/main is the strongest declarative source
+# binding the deployed provider can express. The source workflow reaches main in
+# the merge that adds this rule, and deploy/ publishes only on a later v* tag.
+#
+# Net-new and managed Observe + Create + Update + LateInitialize, never Delete.
+# No bypassActors are declared.
+apiVersion: enterprise.github.m.upbound.io/v1alpha1
+kind: OrganizationRuleset
+metadata:
+  name: require-dotgithub-deploy-guards
+spec:
+  managementPolicies:
+    - Observe
+    - Create
+    - Update
+    - LateInitialize
+  forProvider:
+    name: Require workflow - .github deploy guards
+    target: branch
+    enforcement: active
+    conditions:
+      - refName:
+          - include: ["~DEFAULT_BRANCH"]
+            exclude: []
+        repositoryId: [933213756]
+    rules:
+      - requiredWorkflows:
+          - requiredWorkflow:
+              - repositoryId: 933213756
+                path: .github/workflows/deploy-guards.yaml
+                ref: refs/heads/main
+  providerConfigRef:
+    kind: ProviderConfig
+    name: default
