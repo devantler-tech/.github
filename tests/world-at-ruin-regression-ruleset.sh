@@ -57,7 +57,18 @@ assert_value "source repository" "948529001" '.spec.forProvider.rules[0].require
 assert_value "source path" ".github/workflows/world-at-ruin-required-regressions.yaml" '.spec.forProvider.rules[0].requiredWorkflows[0].requiredWorkflow[0].path'
 assert_value "source ref" "refs/heads/main" '.spec.forProvider.rules[0].requiredWorkflows[0].requiredWorkflow[0].ref'
 
-grep -Fq '10 of the 23 org rulesets' "${repo_root}/deploy/organization-rulesets/README.md" ||
-  fail "organization ruleset inventory must account for 10 imported, 3 managed, and 10 UI-managed rulesets"
+inventory="${repo_root}/deploy/organization-rulesets/README.md"
+grep -Fq 'The 10 imported org rulesets' "${inventory}" ||
+  fail "organization ruleset inventory must account for 10 imported rulesets"
+# The backticks are literal Markdown table cell delimiters, not command substitution.
+# shellcheck disable=SC2016
+managed_rows="$(grep -c '^| `[a-z-]*\.yaml` | .*(net-new) | Managed (Create)' "${inventory}" || true)"
+[[ "${managed_rows}" == "4" ]] ||
+  fail "organization ruleset inventory must list 4 managed rulesets, got ${managed_rows}"
+managed_rendered="$(yq -N 'select(.kind == "OrganizationRuleset" and (.spec.managementPolicies | contains(["Create"]))) | .metadata.name' "${render}" | grep -c . || true)"
+[[ "${managed_rendered}" == "4" ]] ||
+  fail "expected 4 rendered managed (Create) organization rulesets, got ${managed_rendered}"
+grep -Fq '10 of the 24 org rulesets' "${inventory}" ||
+  fail "organization ruleset inventory must account for 10 UI-managed of 24 org rulesets"
 
 echo "world-at-ruin-regression-ruleset: OK"

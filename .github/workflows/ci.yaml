@@ -91,6 +91,9 @@ jobs:
       - name: 🧪 Test independent Monorepo CI aggregate ruleset
         run: bash tests/ci-aggregate-ruleset.sh
 
+      - name: 🧪 Test trusted deploy/ guards ruleset
+        run: bash tests/deploy-guards-ruleset.sh
+
       - name: 🧪 Test retained signing-rule safety
         run: bash tests/signing-rule-retirement.sh
 

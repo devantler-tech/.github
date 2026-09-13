@@ -114,7 +114,16 @@ renders plus the pull-request body through `scripts/validate-deploy-deletions.sh
 resource that leaves the render needs its own `Deletion-Acknowledged: <Kind>.<group>/<name>` body line, spelled the way the
 failure prints it); merge groups skip those event-specific checks. The deletion check also renders
 `deploy/` at the base, so a pull request whose base `main` does not build fails there with kubectl's
-exit status — the pull request that repairs the build is expected to edit `ci.yaml` in the same change.
+exit status.
+
+Both validators also run in `.github/workflows/deploy-guards.yaml`, which the
+`require-dotgithub-deploy-guards` organization ruleset requires from reviewed `main`. That copy
+checks the validators out at `github.workflow_sha` and reads the pull request only as data, so
+editing `ci.yaml`, the workflow, or a validator in a pull request does not change the check that
+judges it; such edits take effect only after they merge. Keep `tests/deploy-guards-ruleset.sh`
+passing when either file changes. Because the repairing pull request cannot edit that check, a
+`main` whose `deploy/` no longer renders needs an organization owner to set the ruleset's
+enforcement to `evaluate` while the `github-config` reconciliation is suspended, then restore both.
 
 `kubectl` (with built-in kustomize) is preinstalled on CI runners. A clean build proves the manifests
 are well-formed; the Crossplane CRDs themselves are applied/validated **on-cluster** (the
