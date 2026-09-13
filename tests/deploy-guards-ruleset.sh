@@ -61,7 +61,12 @@ assert_value "source ref" "refs/heads/main" '.spec.forProvider.rules[0].required
 wf() { yq -r "$1" "${workflow}"; }
 
 [[ "$(wf '.on | has("pull_request")')" == "true" ]] || fail "workflow must run on pull_request"
-[[ "$(wf '.on | has("merge_group")')" == "true" ]] || fail "workflow must run on merge_group"
+# A merge-group event carries no pull-request title, commits or body, so a
+# merge_group run could only skip both guards and pass. Leaving the trigger out
+# makes a merge queue wait on this required check instead.
+[[ "$(wf '.on | has("merge_group")')" == "false" ]] || fail "workflow must not run on merge_group, where both guards would be skipped"
+guarded_steps="$(wf '[.jobs[].steps[] | select(.run // "" | test("validate-(release-contract|deploy-deletions)\\.sh")) | select(.if // "" | test("pull_request"))] | length')"
+[[ "${guarded_steps}" == "2" ]] || fail "both validator steps must run on pull_request, got ${guarded_steps}"
 [[ "$(wf '.permissions | tojson')" == "{}" ]] || fail "workflow-level permissions must be {}"
 
 # The validators must come from the ruleset-selected source revision. A
