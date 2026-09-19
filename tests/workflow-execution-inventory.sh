@@ -24,6 +24,7 @@ printf 'on:\n  workflow_call: {}\njobs: {}\n' >"$wf/shared.yaml"
 printf 'on:\n  schedule:\n    - cron: "0 0 * * *"\njobs: {}\n' >"$wf/nightly.yaml"
 printf 'on:\n  push:\n    tags: ["v*"]\njobs: {}\n' >"$wf/cd.yaml"
 printf 'on: push\njobs: {}\n' >"$wf/notes.txt"
+printf 'on: push\njobs: {}\n' >"$wf/.dot.yml"
 
 out="$(bash "$inventory" --dir "$wf" --repo fixture)" || fail "a fully parseable directory must exit 0"
 
@@ -44,6 +45,7 @@ expect sync.yaml repository_dispatch manual-entry
 expect shared.yaml workflow_call reusable
 expect nightly.yaml schedule scheduled
 expect cd.yaml push release
+expect .dot.yml push ci
 
 grep -q 'notes.txt' <<<"$out" && fail "a non-workflow file must not be inventoried"
 [ "$(head -1 <<<"$out")" = "$(printf 'repo\tworkflow\tevents\texposure\trepo_policies')" ] ||
@@ -92,8 +94,10 @@ mkdir "$bin"
 cat >"$bin/gh" <<'STUB'
 #!/usr/bin/env bash
 case "$2" in
-  orgs/fix/repos) printf 'false readable\nfalse nowf\nfalse hidden\ntrue retired\n' ;;
-  orgs/fix) echo "${EXPECTED-4}" ;;
+  orgs/fix/repos) printf 'false readable\nfalse nowf\nfalse hidden\nfalse empty\nfalse huge\ntrue retired\n' ;;
+  orgs/fix) echo "${EXPECTED-6}" ;;
+  repos/fix/empty/commits*) echo 'gh: Git Repository is empty. (HTTP 409)' >&2; exit 1 ;;
+  repos/fix/huge/contents/.github/workflows) echo TRUNCATED ;;
   repos/fix/*/actions/policies) echo 0 ;;
   repos/fix/readable/contents/.github/workflows) echo ci.yaml ;;
   repos/fix/readable/contents/.github/workflows/ci.yaml) printf 'on: push\njobs: {}\n' ;;
@@ -109,9 +113,11 @@ grep -q "$(printf '^readable\tci.yaml\tpush\tci\t0$')" <<<"$out" || fail "the re
 grep -q "$(printf '^hidden\tUNKNOWN')" <<<"$out" || fail "a repository hidden behind a 404 must be UNKNOWN"
 grep -q '^nowf' <<<"$out" && fail "a repository with a readable root and no workflows must be omitted"
 grep -q '^retired' <<<"$out" && fail "an archived repository must not be inventoried"
+grep -q '^empty' <<<"$out" && fail "an empty repository has no workflows and must be omitted"
+grep -q "$(printf '^huge\tUNKNOWN')" <<<"$out" || fail "a listing at the 1,000-entry cap must be UNKNOWN"
 
 # A token that sees only some repositories lists them successfully; the organisation count exposes it.
-for expected in 5 ""; do
+for expected in 7 ""; do
   rc=0
   err="$(EXPECTED="$expected" PATH="$bin:$PATH" bash "$inventory" --org fix 2>&1 >/dev/null)" || rc=$?
   [ "$rc" -eq 2 ] || fail "an incomplete listing (expected='$expected') must exit 2, got $rc"

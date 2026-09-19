@@ -72,7 +72,8 @@ inventory_dir() {
     unknown=1
     return
   fi
-  for f in "$dir"/*.yml "$dir"/*.yaml; do
+  # GitHub runs dot-prefixed workflow files too, and a bare glob skips them.
+  for f in "$dir"/*.yml "$dir"/*.yaml "$dir"/.*.yml "$dir"/.*.yaml; do
     [ -f "$f" ] || continue
     # classify runs in a subshell, so its verdict is read from the row, not from a variable.
     row="$(classify "$f" "$(basename "$f")")"
@@ -103,12 +104,23 @@ inventory_org() {
     policies="$(gh api "repos/$org/$repo/actions/policies" --jq '.total_count' 2>/dev/null)" ||
       { policies=UNKNOWN; unknown=1; }
     if ! listing="$(gh api "repos/$org/$repo/contents/.github/workflows" \
-      --jq '.[] | select(.type == "file") | .name' 2>"$tmp/err")"; then
+      --jq 'if length >= 1000 then "TRUNCATED" else (.[] | select(.type == "file") | .name) end' 2>"$tmp/err")"; then
       # A 404 also hides a repository the token cannot read. Count it as "no workflows" only
-      # when the same token can read the repository root.
-      if grep -q 'HTTP 404' "$tmp/err" && gh api "repos/$org/$repo/contents/" --jq 'length' >/dev/null 2>&1; then
-        continue
+      # when the same token can read the repository root, or when the repository is empty: an
+      # empty repository has no tree, and GitHub answers its commit list with 409.
+      if grep -q 'HTTP 404' "$tmp/err"; then
+        gh api "repos/$org/$repo/contents/" --jq 'length' >/dev/null 2>&1 && continue
+        if ! gh api "repos/$org/$repo/commits?per_page=1" >/dev/null 2>"$tmp/err" &&
+          grep -q 'HTTP 409' "$tmp/err"; then
+          continue
+        fi
       fi
+      printf '%s\tUNKNOWN\tUNKNOWN\tUNKNOWN\t%s\n' "$repo" "$policies"
+      unknown=1
+      continue
+    fi
+    # The contents API lists at most 1,000 entries per directory, so a full page may be partial.
+    if [ "$listing" = TRUNCATED ]; then
       printf '%s\tUNKNOWN\tUNKNOWN\tUNKNOWN\t%s\n' "$repo" "$policies"
       unknown=1
       continue
