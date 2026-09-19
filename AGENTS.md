@@ -106,9 +106,10 @@ bash tests/signing-rule-retirement.sh  # retained signing-rule identity and safe
 bash tests/release-contract.sh          # deploy/ changes must trigger a release
 bash tests/deploy-deletions.sh          # removed deploy/ resources must be acknowledged per resource
 bash tests/repository-drift.sh          # declared-vs-live comparison logic
+bash tests/workflow-execution-inventory.sh # who and what can start each workflow
 ```
 
-Those nine commands are the baseline checks that `ci.yaml` runs. Pull requests additionally pass
+Those ten commands are the baseline checks that `ci.yaml` runs. Pull requests additionally pass
 their changed paths and title through `scripts/validate-release-contract.sh` and their base/head
 renders plus the pull-request body through `scripts/validate-deploy-deletions.sh` (every managed
 resource that leaves the render needs its own `Deletion-Acknowledged: <Kind>.<group>/<name>` body line, spelled the way the
