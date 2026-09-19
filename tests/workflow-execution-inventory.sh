@@ -75,6 +75,16 @@ out="$(bash "$inventory" --dir "$wf" --repo fixture 2>/dev/null)" || rc=$?
 grep -q "$(printf 'multi.yaml\tUNKNOWN\tUNKNOWN')" <<<"$out" ||
   fail "a multi-document workflow must be reported as UNKNOWN, not as a merged workflow"
 
+# A directory that cannot be listed is UNKNOWN, never an empty inventory.
+locked="$tmp/locked"
+mkdir "$locked"
+chmod 000 "$locked"
+rc=0
+out="$(bash "$inventory" --dir "$locked" --repo fixture 2>/dev/null)" || rc=$?
+chmod 700 "$locked"
+[ "$rc" -eq 2 ] || fail "an unreadable directory must exit 2, got $rc"
+grep -q "$(printf '^fixture\tUNKNOWN')" <<<"$out" || fail "an unreadable directory must be reported as UNKNOWN"
+
 # Org mode against a stub gh: a 404 counts as "no workflows" only when the repository root is
 # readable; an unreadable repository is UNKNOWN and fails the run.
 bin="$tmp/bin"

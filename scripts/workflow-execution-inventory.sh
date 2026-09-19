@@ -66,6 +66,12 @@ classify() {
 # inventory_dir <repo> <dir> <policies> — one row per workflow file in <dir>.
 inventory_dir() {
   local repo="$1" dir="$2" policies="$3" f row
+  # An unlistable directory expands no glob, which would read as "no workflows".
+  if [ ! -r "$dir" ] || [ ! -x "$dir" ]; then
+    printf '%s\tUNKNOWN\tUNKNOWN\tUNKNOWN\t%s\n' "$repo" "$policies"
+    unknown=1
+    return
+  fi
   for f in "$dir"/*.yml "$dir"/*.yaml; do
     [ -f "$f" ] || continue
     # classify runs in a subshell, so its verdict is read from the row, not from a variable.
