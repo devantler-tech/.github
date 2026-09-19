@@ -83,7 +83,7 @@ inventory_dir() {
 }
 
 inventory_org() {
-  local org="$1" repos repo policies listing name
+  local org="$1" repos repo policies listing name sha
   local listed expected
   listed="$(gh api "orgs/$org/repos" --paginate --jq '.[] | "\(.archived) \(.name)"')" ||
     { echo "workflow-execution-inventory: UNKNOWN — cannot list $org repositories" >&2; exit 2; }
@@ -96,25 +96,26 @@ inventory_org() {
     exit 2
   fi
   repos="$(sed -n 's/^false //p' <<<"$listed")"
-  [ -n "$repos" ] || { echo "workflow-execution-inventory: UNKNOWN — $org listed no repositories" >&2; exit 2; }
+  # The count check above proved the listing complete, so no active repository is a complete answer.
+  [ -n "$repos" ] || return 0
   # Global, not local: the EXIT trap runs after this function has returned.
   tmp="$(mktemp -d)"
   trap 'rm -rf "$tmp"' EXIT
   while IFS= read -r repo; do
     policies="$(gh api "repos/$org/$repo/actions/policies" --jq '.total_count' 2>/dev/null)" ||
       { policies=UNKNOWN; unknown=1; }
-    if ! listing="$(gh api "repos/$org/$repo/contents/.github/workflows" \
+    # Pin every read to one commit, so a push during the scan cannot split the listing from the files.
+    # An empty repository has no commit; GitHub answers with 409 and it has no workflows.
+    if ! sha="$(gh api "repos/$org/$repo/commits/HEAD" --jq '.sha' 2>"$tmp/err")" || [ -z "$sha" ]; then
+      grep -q 'HTTP 409' "$tmp/err" && continue
+      printf '%s\tUNKNOWN\tUNKNOWN\tUNKNOWN\t%s\n' "$repo" "$policies"
+      unknown=1
+      continue
+    fi
+    if ! listing="$(gh api "repos/$org/$repo/contents/.github/workflows?ref=$sha" \
       --jq 'if length >= 1000 then "TRUNCATED" else (.[] | select(.type == "file") | .name) end' 2>"$tmp/err")"; then
-      # A 404 also hides a repository the token cannot read. Count it as "no workflows" only
-      # when the same token can read the repository root, or when the repository is empty: an
-      # empty repository has no tree, and GitHub answers its commit list with 409.
-      if grep -q 'HTTP 404' "$tmp/err"; then
-        gh api "repos/$org/$repo/contents/" --jq 'length' >/dev/null 2>&1 && continue
-        if ! gh api "repos/$org/$repo/commits?per_page=1" >/dev/null 2>"$tmp/err" &&
-          grep -q 'HTTP 409' "$tmp/err"; then
-          continue
-        fi
-      fi
+      # The commit was readable, so a 404 here means the directory does not exist at that commit.
+      grep -q 'HTTP 404' "$tmp/err" && continue
       printf '%s\tUNKNOWN\tUNKNOWN\tUNKNOWN\t%s\n' "$repo" "$policies"
       unknown=1
       continue
@@ -128,7 +129,7 @@ inventory_org() {
     rm -rf "${tmp:?}/wf" && mkdir "$tmp/wf"
     while IFS= read -r name; do
       case "$name" in *.yml | *.yaml) ;; *) continue ;; esac
-      gh api "repos/$org/$repo/contents/.github/workflows/$name" \
+      gh api "repos/$org/$repo/contents/.github/workflows/$name?ref=$sha" \
         -H 'Accept: application/vnd.github.raw' >"$tmp/wf/$name" 2>/dev/null ||
         { : >"$tmp/wf/$name"; }  # an empty file classifies as UNKNOWN
     done <<<"$listing"

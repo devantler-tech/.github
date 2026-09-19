@@ -93,15 +93,19 @@ bin="$tmp/bin"
 mkdir "$bin"
 cat >"$bin/gh" <<'STUB'
 #!/usr/bin/env bash
+# Content reads answer only at the pinned commit s1: an unpinned read returns 404.
 case "$2" in
   orgs/fix/repos) printf 'false readable\nfalse nowf\nfalse hidden\nfalse empty\nfalse huge\ntrue retired\n' ;;
   orgs/fix) echo "${EXPECTED-6}" ;;
-  repos/fix/empty/commits*) echo 'gh: Git Repository is empty. (HTTP 409)' >&2; exit 1 ;;
-  repos/fix/huge/contents/.github/workflows) echo TRUNCATED ;;
+  orgs/none/repos) printf 'true retired\n' ;;
+  orgs/none) echo 1 ;;
+  repos/fix/empty/commits/HEAD) echo 'gh: Git Repository is empty. (HTTP 409)' >&2; exit 1 ;;
+  repos/fix/hidden/commits/HEAD) echo 'gh: Not Found (HTTP 404)' >&2; exit 1 ;;
+  repos/fix/*/commits/HEAD) echo s1 ;;
+  "repos/fix/huge/contents/.github/workflows?ref=s1") echo TRUNCATED ;;
   repos/fix/*/actions/policies) echo 0 ;;
-  repos/fix/readable/contents/.github/workflows) echo ci.yaml ;;
-  repos/fix/readable/contents/.github/workflows/ci.yaml) printf 'on: push\njobs: {}\n' ;;
-  repos/fix/nowf/contents/) echo 3 ;;
+  "repos/fix/readable/contents/.github/workflows?ref=s1") echo ci.yaml ;;
+  "repos/fix/readable/contents/.github/workflows/ci.yaml?ref=s1") printf 'on: push\njobs: {}\n' ;;
   *) echo 'gh: Not Found (HTTP 404)' >&2; exit 1 ;;
 esac
 STUB
@@ -123,5 +127,11 @@ for expected in 7 ""; do
   [ "$rc" -eq 2 ] || fail "an incomplete listing (expected='$expected') must exit 2, got $rc"
   grep -q 'the token cannot see them all' <<<"$err" || fail "an incomplete listing must say why: $err"
 done
+
+# An organisation whose complete listing holds no active repository is a complete, empty inventory.
+rc=0
+out="$(PATH="$bin:$PATH" bash "$inventory" --org none 2>/dev/null)" || rc=$?
+[ "$rc" -eq 0 ] || fail "an organisation with no active repositories must exit 0, got $rc"
+[ "$(grep -c . <<<"$out")" -eq 1 ] || fail "an organisation with no active repositories must print only the header"
 
 echo "workflow-execution-inventory test: ok"
