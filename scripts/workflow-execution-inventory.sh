@@ -19,6 +19,8 @@
 #   scheduled            schedule
 #   ci                   none of the above
 # The release class is a naming heuristic; confirm each hit by reading the workflow.
+# Scope: each repository's DEFAULT BRANCH only. A workflow that exists only on another branch or tag
+# can still run there and is not listed; this is a default-branch inventory, not a complete one.
 #
 # Exit codes: 0 complete · 2 UNKNOWN — at least one repository, listing or workflow could not be
 # read or parsed. Those rows say UNKNOWN; a partial inventory is never reported as complete.
@@ -35,6 +37,8 @@ unknown=0
 # (a malformed later document in a multi-document file).
 events() {
   local out
+  # GitHub reads one workflow document per file; merging several would invent a workflow.
+  [ "$(yq ea '[.] | length' "$1" 2>/dev/null)" = 1 ] || return 1
   out="$(yq -r '.on | ((select(tag == "!!str")), (select(tag == "!!seq") | .[]),
     (select(tag == "!!map") | keys | .[]))' "$1" 2>/dev/null)" || return 1
   grep -v '^$' <<<"$out" | sort -u || true
@@ -73,8 +77,18 @@ inventory_dir() {
 
 inventory_org() {
   local org="$1" repos repo policies listing name
-  repos="$(gh api "orgs/$org/repos" --paginate --jq '.[] | select(.archived | not) | .name')" ||
+  local listed expected
+  listed="$(gh api "orgs/$org/repos" --paginate --jq '.[] | "\(.archived) \(.name)"')" ||
     { echo "workflow-execution-inventory: UNKNOWN — cannot list $org repositories" >&2; exit 2; }
+  # A token restricted to selected repositories lists only those, and succeeds. Compare the listing
+  # with the organisation's own count; a token that cannot see the private count is UNKNOWN too.
+  expected="$(gh api "orgs/$org" --jq 'if .total_private_repos == null then "" else .public_repos + .total_private_repos end')" ||
+    expected=""
+  if [ -z "$expected" ] || [ "$(grep -c . <<<"$listed")" != "$expected" ]; then
+    echo "workflow-execution-inventory: UNKNOWN — listed $(grep -c . <<<"$listed") of ${expected:-an unknown number of} $org repositories; the token cannot see them all" >&2
+    exit 2
+  fi
+  repos="$(sed -n 's/^false //p' <<<"$listed")"
   [ -n "$repos" ] || { echo "workflow-execution-inventory: UNKNOWN — $org listed no repositories" >&2; exit 2; }
   # Global, not local: the EXIT trap runs after this function has returned.
   tmp="$(mktemp -d)"

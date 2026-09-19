@@ -66,6 +66,15 @@ out="$(bash "$inventory" --dir "$wf" --repo fixture 2>/dev/null)" || rc=$?
 grep -q "$(printf 'multi.yaml\tUNKNOWN\tUNKNOWN')" <<<"$out" ||
   fail "a partly parsed workflow must be reported as UNKNOWN, not by its first document"
 
+# Two VALID documents are UNKNOWN as well: GitHub reads one workflow per file, so their merged
+# events describe a workflow that does not exist.
+printf 'on: push\njobs: {}\n---\non: workflow_dispatch\njobs: {}\n' >"$wf/multi.yaml"
+rc=0
+out="$(bash "$inventory" --dir "$wf" --repo fixture 2>/dev/null)" || rc=$?
+[ "$rc" -eq 2 ] || fail "a multi-document workflow must exit 2, got $rc"
+grep -q "$(printf 'multi.yaml\tUNKNOWN\tUNKNOWN')" <<<"$out" ||
+  fail "a multi-document workflow must be reported as UNKNOWN, not as a merged workflow"
+
 # Org mode against a stub gh: a 404 counts as "no workflows" only when the repository root is
 # readable; an unreadable repository is UNKNOWN and fails the run.
 bin="$tmp/bin"
@@ -73,7 +82,8 @@ mkdir "$bin"
 cat >"$bin/gh" <<'STUB'
 #!/usr/bin/env bash
 case "$2" in
-  orgs/fix/repos) printf 'readable\nnowf\nhidden\n' ;;
+  orgs/fix/repos) printf 'false readable\nfalse nowf\nfalse hidden\ntrue retired\n' ;;
+  orgs/fix) echo "${EXPECTED-4}" ;;
   repos/fix/*/actions/policies) echo 0 ;;
   repos/fix/readable/contents/.github/workflows) echo ci.yaml ;;
   repos/fix/readable/contents/.github/workflows/ci.yaml) printf 'on: push\njobs: {}\n' ;;
@@ -88,5 +98,14 @@ out="$(PATH="$bin:$PATH" bash "$inventory" --org fix 2>/dev/null)" || rc=$?
 grep -q "$(printf '^readable\tci.yaml\tpush\tci\t0$')" <<<"$out" || fail "the readable repository's workflow is missing"
 grep -q "$(printf '^hidden\tUNKNOWN')" <<<"$out" || fail "a repository hidden behind a 404 must be UNKNOWN"
 grep -q '^nowf' <<<"$out" && fail "a repository with a readable root and no workflows must be omitted"
+grep -q '^retired' <<<"$out" && fail "an archived repository must not be inventoried"
+
+# A token that sees only some repositories lists them successfully; the organisation count exposes it.
+for expected in 5 ""; do
+  rc=0
+  err="$(EXPECTED="$expected" PATH="$bin:$PATH" bash "$inventory" --org fix 2>&1 >/dev/null)" || rc=$?
+  [ "$rc" -eq 2 ] || fail "an incomplete listing (expected='$expected') must exit 2, got $rc"
+  grep -q 'the token cannot see them all' <<<"$err" || fail "an incomplete listing must say why: $err"
+done
 
 echo "workflow-execution-inventory test: ok"
