@@ -31,16 +31,19 @@ usage() {
 
 unknown=0
 
-# events <file> — one event name per line; nothing on a parse failure.
+# events <file> — one event name per line. Fails when yq fails, even after partial output
+# (a malformed later document in a multi-document file).
 events() {
-  yq -r '.on | ((select(tag == "!!str")), (select(tag == "!!seq") | .[]),
-    (select(tag == "!!map") | keys | .[]))' "$1" 2>/dev/null | grep -v '^$' | sort -u || true
+  local out
+  out="$(yq -r '.on | ((select(tag == "!!str")), (select(tag == "!!seq") | .[]),
+    (select(tag == "!!map") | keys | .[]))' "$1" 2>/dev/null)" || return 1
+  grep -v '^$' <<<"$out" | sort -u || true
 }
 
 # classify <file> <workflow-name> — prints "<events>\t<exposure>" or UNKNOWN.
 classify() {
   local file="$1" name="$2" evs display classes=()
-  evs="$(events "$file")"
+  evs="$(events "$file")" || evs=""
   if [ -z "$evs" ]; then
     printf 'UNKNOWN\tUNKNOWN'
     return
@@ -81,8 +84,10 @@ inventory_org() {
       { policies=UNKNOWN; unknown=1; }
     if ! listing="$(gh api "repos/$org/$repo/contents/.github/workflows" \
       --jq '.[] | select(.type == "file") | .name' 2>"$tmp/err")"; then
-      if grep -q 'HTTP 404' "$tmp/err"; then
-        continue  # no workflows directory: nothing can start
+      # A 404 also hides a repository the token cannot read. Count it as "no workflows" only
+      # when the same token can read the repository root.
+      if grep -q 'HTTP 404' "$tmp/err" && gh api "repos/$org/$repo/contents/" --jq 'length' >/dev/null 2>&1; then
+        continue
       fi
       printf '%s\tUNKNOWN\tUNKNOWN\tUNKNOWN\t%s\n' "$repo" "$policies"
       unknown=1

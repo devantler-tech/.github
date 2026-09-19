@@ -57,4 +57,36 @@ out="$(bash "$inventory" --dir "$wf" --repo fixture 2>/dev/null)" || rc=$?
 grep -q "$(printf 'no-trigger.yaml\tUNKNOWN\tUNKNOWN')" <<<"$out" ||
   fail "the unreadable workflow must be reported as UNKNOWN"
 
+# A parser failure after partial output (a malformed later document) is UNKNOWN too.
+rm "$wf/no-trigger.yaml"
+printf 'on: push\njobs: {}\n---\non: [unclosed\n' >"$wf/multi.yaml"
+rc=0
+out="$(bash "$inventory" --dir "$wf" --repo fixture 2>/dev/null)" || rc=$?
+[ "$rc" -eq 2 ] || fail "a partly parsed workflow must exit 2, got $rc"
+grep -q "$(printf 'multi.yaml\tUNKNOWN\tUNKNOWN')" <<<"$out" ||
+  fail "a partly parsed workflow must be reported as UNKNOWN, not by its first document"
+
+# Org mode against a stub gh: a 404 counts as "no workflows" only when the repository root is
+# readable; an unreadable repository is UNKNOWN and fails the run.
+bin="$tmp/bin"
+mkdir "$bin"
+cat >"$bin/gh" <<'STUB'
+#!/usr/bin/env bash
+case "$2" in
+  orgs/fix/repos) printf 'readable\nnowf\nhidden\n' ;;
+  repos/fix/*/actions/policies) echo 0 ;;
+  repos/fix/readable/contents/.github/workflows) echo ci.yaml ;;
+  repos/fix/readable/contents/.github/workflows/ci.yaml) printf 'on: push\njobs: {}\n' ;;
+  repos/fix/nowf/contents/) echo 3 ;;
+  *) echo 'gh: Not Found (HTTP 404)' >&2; exit 1 ;;
+esac
+STUB
+chmod +x "$bin/gh"
+rc=0
+out="$(PATH="$bin:$PATH" bash "$inventory" --org fix 2>/dev/null)" || rc=$?
+[ "$rc" -eq 2 ] || fail "an unreadable repository must make the org inventory exit 2, got $rc"
+grep -q "$(printf '^readable\tci.yaml\tpush\tci\t0$')" <<<"$out" || fail "the readable repository's workflow is missing"
+grep -q "$(printf '^hidden\tUNKNOWN')" <<<"$out" || fail "a repository hidden behind a 404 must be UNKNOWN"
+grep -q '^nowf' <<<"$out" && fail "a repository with a readable root and no workflows must be omitted"
+
 echo "workflow-execution-inventory test: ok"
