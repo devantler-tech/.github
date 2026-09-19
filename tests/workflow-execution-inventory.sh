@@ -51,10 +51,8 @@ grep -q 'notes.txt' <<<"$out" && fail "a non-workflow file must not be inventori
 
 # A workflow whose triggers cannot be read makes the whole inventory UNKNOWN, never complete.
 printf 'jobs: {}\n' >"$wf/no-trigger.yaml"
-set +e
-out="$(bash "$inventory" --dir "$wf" --repo fixture 2>/dev/null)"
-rc=$?
-set -e
+rc=0
+out="$(bash "$inventory" --dir "$wf" --repo fixture 2>/dev/null)" || rc=$?
 [ "$rc" -eq 2 ] || fail "an unreadable workflow must exit 2, got $rc"
 grep -q "$(printf 'no-trigger.yaml\tUNKNOWN\tUNKNOWN')" <<<"$out" ||
   fail "the unreadable workflow must be reported as UNKNOWN"
