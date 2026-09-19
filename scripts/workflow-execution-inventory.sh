@@ -69,10 +69,11 @@ inventory_dir() {
 }
 
 inventory_org() {
-  local org="$1" repos repo tmp policies listing name
+  local org="$1" repos repo policies listing name
   repos="$(gh api "orgs/$org/repos" --paginate --jq '.[] | select(.archived | not) | .name')" ||
     { echo "workflow-execution-inventory: UNKNOWN — cannot list $org repositories" >&2; exit 2; }
   [ -n "$repos" ] || { echo "workflow-execution-inventory: UNKNOWN — $org listed no repositories" >&2; exit 2; }
+  # Global, not local: the EXIT trap runs after this function has returned.
   tmp="$(mktemp -d)"
   trap 'rm -rf "$tmp"' EXIT
   while IFS= read -r repo; do
