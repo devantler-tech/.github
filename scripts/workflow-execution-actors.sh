@@ -72,7 +72,7 @@ listed="$(gh api "orgs/$org/repos" --paginate --jq '.[] | "\(.archived)\t\(.name
   exit 2
 }
 expected="$(gh api "orgs/$org" --jq 'if .total_private_repos == null then "" else .public_repos + .total_private_repos end' 2>/dev/null)" || expected=""
-listed_count="$(grep -c . <<<"$listed")"
+listed_count="$(awk 'NF { count++ } END { print count + 0 }' <<<"$listed")"
 if [ -z "$expected" ] || [ "$listed_count" != "$expected" ]; then
   echo "workflow-execution-actors: UNKNOWN — listed $listed_count of ${expected:-an unknown number of} $org repositories; the token cannot see them all" >&2
   exit 2
@@ -96,14 +96,67 @@ while IFS= read -r repo; do
     # shellcheck disable=SC2016 # $run is a jq variable inside the single-quoted filter.
     if ! gh api "repos/$org/$repo/actions/workflows/$workflow_id/runs?per_page=100&created=%3E%3D$since" \
       --paginate --jq '
-        .workflow_runs[] as $run |
-        ({role:"actor", value:$run.actor},
-         {role:"triggering_actor", value:(
-           if (($run.triggering_actor.id // null) != ($run.actor.id // null))
-           then $run.triggering_actor else null end)}) |
-        select(.value != null) |
-        [$run.event, .role, .value.login, .value.type, (.value.id | tostring)] | @tsv
+        (["__META__", (.total_count | tostring), "-", "-", "-", "-", "-"] | @tsv),
+        (.workflow_runs[] as $run |
+          ({role:"actor", value:($run.actor // {})},
+           (if (($run.triggering_actor.id // null) != ($run.actor.id // null))
+            then {role:"triggering_actor", value:$run.triggering_actor} else empty end)) |
+          [$run.event, .role, .value.login, .value.type, (.value.id | tostring),
+           ($run.id | tostring), ($run.run_attempt | tostring)] | @tsv)
       ' >"$runs" 2>"$tmp/error"; then
+      unknown_row "$repo" "$workflow_path"
+      continue
+    fi
+
+    run_count_values="$(awk -F '\t' '$1 == "__META__" { print $2 }' "$runs" | sort -u)"
+    run_count_value_count="$(awk 'NF { count++ } END { print count + 0 }' <<<"$run_count_values")"
+    run_count="$run_count_values"
+    run_rows="$tmp/run-rows"
+    awk -F '\t' '$1 != "__META__"' "$runs" >"$run_rows"
+    actual_run_count="$(awk -F '\t' '{ print $6 }' "$run_rows" | sort -u |
+      awk 'NF { count++ } END { print count + 0 }')"
+    if [ "$run_count_value_count" -ne 1 ] || ! [[ "$run_count" =~ ^[0-9]+$ ]] ||
+      [ "$run_count" -gt 1000 ] || [ "$actual_run_count" -ne "$run_count" ]; then
+      unknown_row "$repo" "$workflow_path"
+      continue
+    fi
+    mv "$run_rows" "$runs"
+
+    run_attempts="$tmp/run-attempts"
+    awk -F '\t' '{ print $6 "\t" $7 }' "$runs" | sort -u >"$run_attempts"
+    history_complete=1
+    while IFS=$'\t' read -r run_id run_attempt; do
+      [ -n "$run_id" ] && [ -n "$run_attempt" ] || continue
+      if ! [[ "$run_id" =~ ^[0-9]+$ ]] || ! [[ "$run_attempt" =~ ^[0-9]+$ ]] ||
+        [ "$run_attempt" -lt 1 ]; then
+        history_complete=0
+        break
+      fi
+      attempt=1
+      while [ "$attempt" -lt "$run_attempt" ]; do
+        attempt_rows="$tmp/attempt-$run_id-$attempt"
+        # shellcheck disable=SC2016 # $run is a jq variable inside the single-quoted filter.
+        if ! gh api "repos/$org/$repo/actions/runs/$run_id/attempts/$attempt" --jq '
+          . as $run |
+          ({role:"actor", value:($run.actor // {})},
+           (if (($run.triggering_actor.id // null) != ($run.actor.id // null))
+            then {role:"triggering_actor", value:$run.triggering_actor} else empty end)) |
+          [$run.event, .role, .value.login, .value.type, (.value.id | tostring),
+           ($run.id | tostring), ($run.run_attempt | tostring)] | @tsv
+        ' >"$attempt_rows" 2>"$tmp/error"; then
+          history_complete=0
+          break 2
+        fi
+        if ! awk -F '\t' -v id="$run_id" -v attempt="$attempt" \
+          'NF != 7 || $6 != id || $7 != attempt { bad=1 } END { exit bad }' "$attempt_rows"; then
+          history_complete=0
+          break 2
+        fi
+        cat "$attempt_rows" >>"$runs"
+        attempt=$((attempt + 1))
+      done
+    done <"$run_attempts"
+    if [ "$history_complete" -ne 1 ]; then
       unknown_row "$repo" "$workflow_path"
       continue
     fi
@@ -116,9 +169,10 @@ while IFS= read -r repo; do
     verified="$tmp/verified"
     : >"$verified"
     workflow_verified=1
-    while IFS=$'\t' read -r event actor_role actor_login actor_type actor_id; do
+    while IFS=$'\t' read -r event actor_role actor_login actor_type actor_id run_id run_attempt; do
       if [ -z "$event" ] || [ -z "$actor_role" ] || [ -z "$actor_login" ] ||
         [ -z "$actor_type" ] || ! [[ "$actor_id" =~ ^[0-9]+$ ]] ||
+        ! [[ "$run_id" =~ ^[0-9]+$ ]] || ! [[ "$run_attempt" =~ ^[0-9]+$ ]] ||
         ! resolve_actor "$actor_login" "$actor_type" "$actor_id"; then
         workflow_verified=0
         break
@@ -127,7 +181,7 @@ while IFS= read -r repo; do
         "$repo" "$workflow_path" "$event" "$actor_role" "$actor_login" "$actor_type" "$actor_id" >>"$verified"
     done <"$runs"
     if [ "$workflow_verified" -eq 1 ]; then
-      cat "$verified"
+      sort -u "$verified"
     else
       unknown_row "$repo" "$workflow_path"
     fi
