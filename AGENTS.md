@@ -107,9 +107,10 @@ bash tests/release-contract.sh          # deploy/ changes must trigger a release
 bash tests/deploy-deletions.sh          # removed deploy/ resources must be acknowledged per resource
 bash tests/repository-drift.sh          # declared-vs-live comparison logic
 bash tests/workflow-execution-inventory.sh # who and what can start each workflow
+bash tests/workflow-execution-actors.sh  # live actor IDs/types observed per workflow and event
 ```
 
-Those ten commands are the baseline checks that `ci.yaml` runs. Pull requests additionally pass
+Those eleven commands are the baseline checks that `ci.yaml` runs. Pull requests additionally pass
 their changed paths and title through `scripts/validate-release-contract.sh` and their base/head
 renders plus the pull-request body through `scripts/validate-deploy-deletions.sh` (every managed
 resource that leaves the render needs its own `Deletion-Acknowledged: <Kind>.<group>/<name>` body line, spelled the way the
