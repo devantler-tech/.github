@@ -116,7 +116,7 @@ while IFS= read -r repo; do
     actual_run_count="$(awk -F '\t' '{ print $6 }' "$run_rows" | sort -u |
       awk 'NF { count++ } END { print count + 0 }')"
     if [ "$run_count_value_count" -ne 1 ] || ! [[ "$run_count" =~ ^[0-9]+$ ]] ||
-      [ "$run_count" -gt 1000 ] || [ "$actual_run_count" -ne "$run_count" ]; then
+      [ "$run_count" -ge 1000 ] || [ "$actual_run_count" -ne "$run_count" ]; then
       unknown_row "$repo" "$workflow_path"
       continue
     fi

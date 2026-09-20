@@ -69,8 +69,7 @@ case "$endpoint" in
     elif [ "${RERUN_ACTORS-}" = 1 ]; then
       printf '%s\n' '{"total_count":1,"workflow_runs":[{"id":103,"run_attempt":3,"event":"push","actor":{"login":"devantler","type":"User","id":26203420},"triggering_actor":{"login":"devantler","type":"User","id":26203420}}]}' | emit_json
     elif [ "${CAPPED_RUNS-}" = 1 ]; then
-      total_count=1001
-      printf '{"total_count":%s,"workflow_runs":[{"id":101,"run_attempt":1,"event":"push","actor":{"login":"dependabot[bot]","type":"Bot","id":49699333},"triggering_actor":{"login":"devantler","type":"User","id":26203420}},{"id":102,"run_attempt":1,"event":"push","actor":{"login":"dependabot[bot]","type":"Bot","id":49699333},"triggering_actor":{"login":"dependabot[bot]","type":"Bot","id":49699333}}]}\n' "$total_count" | emit_json
+      jq -nc '{total_count:1000,workflow_runs:[range(1;1001) | {id:.,run_attempt:1,event:"push",actor:{login:"dependabot[bot]",type:"Bot",id:49699333},triggering_actor:{login:"dependabot[bot]",type:"Bot",id:49699333}}]}' | emit_json
     else
       printf '%s\n' '{"total_count":2,"workflow_runs":[{"id":101,"run_attempt":1,"event":"push","actor":{"login":"dependabot[bot]","type":"Bot","id":49699333},"triggering_actor":{"login":"devantler","type":"User","id":26203420}},{"id":102,"run_attempt":1,"event":"push","actor":{"login":"dependabot[bot]","type":"Bot","id":49699333},"triggering_actor":{"login":"dependabot[bot]","type":"Bot","id":49699333}}]}' | emit_json
     fi
@@ -125,7 +124,7 @@ out="$(EMPTY_ORG=1 EXPECTED_REPOS=0 PATH="$bin:$PATH" bash "$inventory" --org fi
 [ "$rc" -eq 0 ] || fail "an empty organization must exit 0, got $rc"
 [ "$out" = "$header" ] || fail "an empty organization must emit only the header"
 
-# GitHub caps created-filtered workflow-run searches at 1,000 results.
+# GitHub may truncate created-filtered workflow-run searches at exactly 1,000 results.
 rc=0
 out="$(CAPPED_RUNS=1 PATH="$bin:$PATH" bash "$inventory" --org fix --since 2026-08-20 2>/dev/null)" || rc=$?
 [ "$rc" -eq 2 ] || fail "a capped run search must exit 2, got $rc"
