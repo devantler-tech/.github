@@ -26,6 +26,8 @@ printf 'on:\n  push:\n    tags: ["v*"]\njobs: {}\n' >"$wf/cd.yaml"
 # Content evidence, not names: a job bound to an environment deploys whatever the workflow is called.
 printf 'on: push\njobs:\n  ship:\n    environment: production\n    runs-on: ubuntu-latest\n    steps: [{run: make}]\n' >"$wf/build.yaml"
 printf 'on: push\njobs:\n  roll:\n    runs-on: ubuntu-latest\n    steps:\n      - run: |\n          helm upgrade --install app ./chart\n' >"$wf/roll.yaml"
+# Deploying a Pages site changes what is live, so it is a deployment, not a publication.
+printf 'on: push\njobs:\n  site:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/deploy-pages@v4\n' >"$wf/site.yaml"
 printf 'on: push\npermissions:\n  packages: write\njobs:\n  image:\n    runs-on: ubuntu-latest\n    steps: [{run: make}]\n' >"$wf/image.yaml"
 printf 'on: push\njobs:\n  sign:\n    permissions:\n      id-token: write\n    runs-on: ubuntu-latest\n    steps: [{run: make}]\n' >"$wf/sign.yaml"
 printf 'on: push\njobs:\n  tag:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: goreleaser/goreleaser-action@v6\n' >"$wf/tag.yaml"
@@ -67,6 +69,7 @@ expect cd.yaml push release-unconfirmed
 expect .dot.yml push ci
 expect build.yaml push deployment
 expect roll.yaml push deployment
+expect site.yaml push deployment
 expect image.yaml push publication
 expect sign.yaml push publication
 expect tag.yaml push publication

@@ -14,7 +14,8 @@
 # Exposure classes (comma-separated when several apply):
 #   privileged-trigger   pull_request_target or workflow_run: runs with base-repository privileges
 #   manual-entry         workflow_dispatch or repository_dispatch
-#   deployment           a job targets an environment, or a step runs a deploy command
+#   deployment           a job targets an environment, or a step runs a deploy command or deploys
+#                        a live site (actions/deploy-pages)
 #   publication          a packages, id-token or attestations write scope (or write-all), or a step
 #                        uses a release, image-push, signing or package-publish tool
 #   release-unconfirmed  the file or display name says it publishes, releases or deploys, but the
@@ -52,8 +53,8 @@ events() {
 }
 
 # Commands that change a running environment, and tools that publish an artifact or release.
-deploy_commands='kubectl (apply|patch|rollout|set|delete)|helm (upgrade|install)|terraform apply|tofu apply|pulumi up|flux reconcile|ksail[^|]* (workload (push|reconcile)|cluster (create|update))|aws [a-z-]+ (deploy|update-service)|wrangler (deploy|publish)'
-publish_tools='goreleaser|semantic-release|gh release (create|upload|edit)|docker (push|buildx build[^|]*--push)|cosign sign|npm publish|dotnet nuget push|oras push|softprops/action-gh-release|docker/build-push-action|actions/deploy-pages'
+deploy_commands='kubectl (apply|patch|rollout|set|delete)|helm (upgrade|install)|terraform apply|tofu apply|pulumi up|flux reconcile|ksail[^|]* (workload (push|reconcile)|cluster (create|update))|aws [a-z-]+ (deploy|update-service)|wrangler (deploy|publish)|actions/deploy-pages'
+publish_tools='goreleaser|semantic-release|gh release (create|upload|edit)|docker (push|buildx build[^|]*--push)|cosign sign|npm publish|dotnet nuget push|oras push|softprops/action-gh-release|docker/build-push-action'
 
 # evidence <file> — prints "deployment" and/or "publication", one per line, from what the workflow
 # does rather than what it is called. Fails when the file cannot be read.
