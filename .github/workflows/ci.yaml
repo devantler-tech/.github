@@ -103,6 +103,9 @@ jobs:
       - name: 🧪 Test workflow actor evidence inventory
         run: bash tests/workflow-execution-actors.sh
 
+      - name: 🧪 Test workflow execution policies
+        run: bash tests/workflow-execution-policies.sh
+
       # The drift check itself reads live GitHub state and runs on a schedule
       # (repository-drift-check.yaml); this only pins its comparison logic,
       # against fixtures, so it stays offline and PR-safe.
