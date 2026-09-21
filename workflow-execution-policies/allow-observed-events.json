@@ -1,0 +1,31 @@
+{
+  "name": "Allow only the events portfolio workflows use",
+  "enforcement": "evaluate",
+  "conditions": {
+    "repository_name": {
+      "include": ["~ALL"],
+      "exclude": []
+    },
+    "workflow_path": {
+      "include": ["~ALL"],
+      "exclude": []
+    }
+  },
+  "rules": [
+    {
+      "type": "restrict_action_events",
+      "parameters": {
+        "allowed_events": [
+          "issue_comment",
+          "merge_group",
+          "pull_request",
+          "pull_request_review",
+          "push",
+          "schedule",
+          "workflow_call",
+          "workflow_dispatch"
+        ]
+      }
+    }
+  ]
+}
