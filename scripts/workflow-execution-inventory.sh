@@ -19,6 +19,8 @@
 #                        uses a release, image-push, signing or package-publish tool
 #   release-unconfirmed  the file or display name says it publishes, releases or deploys, but the
 #                        workflow shows no deployment or publication evidence — read it to decide
+#   reusable-caller      a job calls a reusable workflow and this file shows no deployment or
+#                        publication evidence — the called workflow's steps decide, so read it
 #   reusable             workflow_call
 #   scheduled            schedule
 #   ci                   none of the above
@@ -56,7 +58,7 @@ publish_tools='goreleaser|semantic-release|gh release (create|upload|edit)|docke
 # evidence <file> — prints "deployment" and/or "publication", one per line, from what the workflow
 # does rather than what it is called. Fails when the file cannot be read.
 evidence() {
-  local file="$1" text perms envs
+  local file="$1" text perms envs callers seen=""
   # Every step command and every action or reusable workflow a job uses.
   text="$(yq -r '.jobs[]? | (.steps[]?.run, .steps[]?.uses, .uses) | select(. != null)' "$file" 2>/dev/null)" ||
     return 1
@@ -65,13 +67,20 @@ evidence() {
     ((select(tag == "!!str")), (select(tag == "!!map") | to_entries | .[] | select(.value == "write") | .key))' \
     "$file" 2>/dev/null)" || return 1
   envs="$(yq -r '[.jobs[]? | select(has("environment"))] | length' "$file" 2>/dev/null)" || return 1
+  callers="$(yq -r '[.jobs[]? | select(has("uses"))] | length' "$file" 2>/dev/null)" || return 1
   if [ "${envs:-0}" != 0 ] || grep -qiE "$deploy_commands" <<<"$text"; then
     echo deployment
+    seen=1
   fi
   # contents: write is left out: bots that only commit formatting or changelogs need it too.
   if grep -qxE 'write-all|packages|id-token|attestations' <<<"$perms" ||
     grep -qiE "$publish_tools" <<<"$text"; then
     echo publication
+    seen=1
+  fi
+  # A called workflow's steps are not in this file, so no evidence here proves nothing.
+  if [ -z "$seen" ] && [ "${callers:-0}" != 0 ]; then
+    echo reusable-caller
   fi
   return 0
 }
@@ -91,9 +100,11 @@ classify() {
   grep -qx deployment <<<"$found" && classes+=(deployment)
   grep -qx publication <<<"$found" && classes+=(publication)
   # A release-sounding name with no evidence is reported for reading, never guessed either way.
-  if [ -z "$found" ] && grep -qiE '(^|[^a-z])(cd|deploy|publish|release)' <<<"$name $display"; then
+  if ! grep -qxE 'deployment|publication' <<<"$found" &&
+    grep -qiE '(^|[^a-z])(cd|deploy|publish|release)' <<<"$name $display"; then
     classes+=(release-unconfirmed)
   fi
+  grep -qx reusable-caller <<<"$found" && classes+=(reusable-caller)
   grep -qx 'workflow_call' <<<"$evs" && classes+=(reusable)
   grep -qx 'schedule' <<<"$evs" && classes+=(scheduled)
   [ "${#classes[@]}" -eq 0 ] && classes=(ci)
