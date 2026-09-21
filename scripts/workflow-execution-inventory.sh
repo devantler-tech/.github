@@ -53,18 +53,25 @@ events() {
 }
 
 # Commands that change a running environment, and tools that publish an artifact or release.
-deploy_commands='kubectl (apply|patch|rollout|set|delete)|helm (upgrade|install)|terraform apply|tofu apply|pulumi up|flux reconcile|ksail[^|]* (workload (push|reconcile)|cluster (create|update))|aws [a-z-]+ (deploy|update-service)|wrangler (deploy|publish)|actions/deploy-pages'
+deploy_commands='kubectl (apply|patch|rollout|set|delete)|helm (upgrade|install)|terraform apply|tofu apply|pulumi up|flux reconcile|ksail[^|]* (workload (push|reconcile)|cluster (create|update))|aws [a-z-]+ (deploy|update-service)|wrangler (deploy|publish)'
+# Actions that deploy. Matched against `uses:` references only, so a shell step that merely names one
+# (`echo actions/deploy-pages`) is not mistaken for running it.
+deploy_actions='^actions/deploy-pages(@|$)'
 publish_tools='goreleaser|semantic-release|gh release (create|upload|edit)|docker (push|buildx build[^|]*--push)|cosign sign|npm publish|dotnet nuget push|oras push|softprops/action-gh-release'
 
 # evidence <file> — prints "deployment" and/or "publication", one per line, from what the workflow
 # does rather than what it is called. Fails when the file cannot be read.
 evidence() {
-  local file="$1" text perms envs callers pushes seen=""
+  local file="$1" text runs uses perms envs callers pushes seen=""
   # Every step command and every action or reusable workflow a job uses.
   text="$(yq -r '.jobs[]? | (.steps[]?.run, .steps[]?.uses, .uses) | select(. != null)' "$file" 2>/dev/null)" ||
     return 1
   # A commented-out line is not something the workflow does.
   text="$(grep -vE '^[[:space:]]*#' <<<"$text" || true)"
+  # Shell commands and action references, kept apart for the deployment test.
+  runs="$(yq -r '.jobs[]? | .steps[]?.run | select(. != null)' "$file" 2>/dev/null)" || return 1
+  runs="$(grep -vE '^[[:space:]]*#' <<<"$runs" || true)"
+  uses="$(yq -r '.jobs[]? | (.steps[]?.uses, .uses) | select(. != null)' "$file" 2>/dev/null)" || return 1
   # Each job's effective write scopes: its own permissions replace the workflow's, and a job without
   # any inherits them. `write-all` grants every scope.
   # shellcheck disable=SC2016 # $wp is a yq variable, not a shell one.
@@ -78,7 +85,8 @@ evidence() {
   pushes="$(yq -r '[.jobs[]?.steps[]? | select((.uses // "") | test("^docker/build-push-action(@|$)")) |
     select(.with.push != null and (.with.push | tostring | downcase) != "false")] | length' "$file" 2>/dev/null)" ||
     return 1
-  if [ "${envs:-0}" != 0 ] || grep -qiE "$deploy_commands" <<<"$text"; then
+  if [ "${envs:-0}" != 0 ] || grep -qiE "$deploy_commands" <<<"$runs" ||
+    grep -qE "$deploy_actions" <<<"$uses"; then
     echo deployment
     seen=1
   fi
