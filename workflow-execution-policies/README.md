@@ -36,7 +36,7 @@ login can be renamed and reused.
 
 ## Checks
 
-`bash tests/workflow-execution-policies.sh` runs in CI. It rejects an unknown enforcement mode,
+`bash tests/workflow-execution-policies.sh` runs in CI. It rejects an unknown top-level key or condition, an unknown enforcement mode,
 rule, event or actor type, a non-integer actor ID, `active` enforcement, a privileged trigger
 without an exception, and malformed repository or workflow targeting.
 

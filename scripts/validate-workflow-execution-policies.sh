@@ -8,6 +8,8 @@
 # POST /orgs/{org}/actions/policies. The files are desired state only: nothing here applies them.
 # The check fails when a file:
 #   - is not a JSON object, or its name is not a non-empty string
+#   - has a top-level key or condition the API does not define (a mistyped optional field would
+#     otherwise be dropped silently)
 #   - uses an enforcement other than evaluate or disabled (active needs maintainer approval)
 #   - has no rules, or a rule type the API does not define
 #   - names an actor without an integer id, or with a type the API does not define
@@ -55,6 +57,8 @@ for f in "${files[@]}"; do
     def privileged: ["pull_request_target", "workflow_run"];
     if type != "object" then "not a JSON object" else
       ( if (.name | type) != "string" or .name == "" then "name must be a non-empty string" else empty end ),
+      ( keys[] | select(IN("name", "enforcement", "conditions", "rules", "exception") | not)
+        | "unknown key \(tojson); only name, enforcement, conditions, rules and exception are allowed" ),
       ( if (.enforcement | IN("evaluate", "disabled")) | not
         then "enforcement \(.enforcement | tojson) is not evaluate or disabled; active needs maintainer approval"
         else empty end ),
@@ -86,6 +90,9 @@ for f in "${files[@]}"; do
           then "allows \($p | unique | join(", ")) but targets workflow paths the exception does not list"
           else empty end ),
       ( if (.conditions | type) != "object" then "conditions must be an object" else
+          ( .conditions | keys[]
+            | select(IN("repository_name", "repository_id", "repository_property", "workflow_path") | not)
+            | "unknown condition \(tojson); only repository_name, repository_id, repository_property and workflow_path are allowed" ),
           ( [ .conditions | keys[] | select(IN("repository_name", "repository_id", "repository_property")) ] | length
             | if . != 1 then "conditions must target repositories by exactly one of repository_name, repository_id or repository_property" else empty end ),
           ( if .conditions | has("repository_name") and ((.repository_name | type) != "object" or (.repository_name.include | type) != "array")
