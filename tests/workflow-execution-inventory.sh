@@ -23,6 +23,47 @@ printf 'on:\n  repository_dispatch:\n    types: [sync]\njobs: {}\n' >"$wf/sync.y
 printf 'on:\n  workflow_call: {}\njobs: {}\n' >"$wf/shared.yaml"
 printf 'on:\n  schedule:\n    - cron: "0 0 * * *"\njobs: {}\n' >"$wf/nightly.yaml"
 printf 'on:\n  push:\n    tags: ["v*"]\njobs: {}\n' >"$wf/cd.yaml"
+# Content evidence, not names: a job bound to an environment deploys whatever the workflow is called.
+printf 'on: push\njobs:\n  ship:\n    environment: production\n    runs-on: ubuntu-latest\n    steps: [{run: make}]\n' >"$wf/build.yaml"
+printf 'on: push\njobs:\n  roll:\n    runs-on: ubuntu-latest\n    steps:\n      - run: |\n          helm upgrade --install app ./chart\n' >"$wf/roll.yaml"
+# Deploying a Pages site changes what is live, so it is a deployment, not a publication.
+printf 'on: push\njobs:\n  site:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/deploy-pages@v4\n' >"$wf/site.yaml"
+# Naming the action in a shell command does not invoke it.
+printf 'on: push\njobs:\n  say:\n    runs-on: ubuntu-latest\n    steps:\n      - run: echo actions/deploy-pages\n' >"$wf/say-pages.yaml"
+# GitHub resolves action owners and names case-insensitively, so a mixed-case reference still runs.
+printf 'on: push\njobs:\n  site:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: Actions/Deploy-Pages@v4\n' >"$wf/site-mixed.yaml"
+# Run scripts are matched as text: a printed deploy command still counts, by design (over-report,
+# never miss a deploy path).
+printf 'on: push\njobs:\n  say:\n    runs-on: ubuntu-latest\n    steps:\n      - run: echo kubectl apply -f production.yaml\n' >"$wf/say-kubectl.yaml"
+printf 'on: push\njobs:\n  say:\n    runs-on: ubuntu-latest\n    steps:\n      - run: echo npm publish\n' >"$wf/say-publish.yaml"
+printf 'name: CDN Cache\non: push\njobs: {}\n' >"$wf/cdn-cache.yaml"
+printf 'on: push\npermissions:\n  packages: write\njobs:\n  image:\n    runs-on: ubuntu-latest\n    steps: [{run: make}]\n' >"$wf/image.yaml"
+printf 'on: push\njobs:\n  sign:\n    permissions:\n      id-token: write\n    runs-on: ubuntu-latest\n    steps: [{run: make}]\n' >"$wf/sign.yaml"
+printf 'on: push\njobs:\n  tag:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: goreleaser/goreleaser-action@v6\n' >"$wf/tag.yaml"
+printf 'on: push\npermissions: write-all\njobs:\n  all:\n    runs-on: ubuntu-latest\n    steps: [{run: make}]\n' >"$wf/broad.yaml"
+# docker/build-push-action pushes only when asked to: its push input defaults to false.
+printf 'on: push\njobs:\n  img:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: docker/build-push-action@v6\n' >"$wf/build-only.yaml"
+printf 'on: push\njobs:\n  img:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: docker/build-push-action@v6\n        with:\n          push: false\n' >"$wf/build-false.yaml"
+printf 'on: push\njobs:\n  img:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: docker/build-push-action@v6\n        with:\n          push: true\n' >"$wf/build-push.yaml"
+printf 'on: push\njobs:\n  img:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: Docker/Build-Push-Action@v6\n        with:\n          push: true\n' >"$wf/build-push-mixed.yaml"
+# An expression may evaluate to true, so it is not treated as build-only.
+# shellcheck disable=SC2016 # ${{ }} is a GitHub expression, not a shell one.
+printf 'on: push\njobs:\n  img:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: docker/build-push-action@v6\n        with:\n          push: ${{ github.event_name == %s }}\n' "'push'" >"$wf/build-expr.yaml"
+# A reusable-workflow call hides its steps, so a release-sounding caller stays unconfirmed.
+printf 'name: Release\non: push\njobs:\n  call:\n    uses: ./.github/workflows/shared.yaml\n' >"$wf/release-caller.yaml"
+# A neutral name hides nothing less: the called workflow may deploy, so it is never plain ci.
+printf 'on: push\njobs:\n  call:\n    uses: org/repo/.github/workflows/x.yaml@v1\n' >"$wf/caller.yaml"
+# A reusable workflow whose path names a publishing tool is still only a caller: the called
+# workflow, not its path, holds the evidence.
+printf 'on: push\njobs:\n  call:\n    uses: org/repo/.github/workflows/goreleaser.yaml@v1\n' >"$wf/caller-goreleaser.yaml"
+# A commented-out command is not something the workflow does.
+printf 'on: push\njobs:\n  lint:\n    runs-on: ubuntu-latest\n    steps:\n      - run: |\n          # kubectl apply -f k8s/\n            # goreleaser release\n          make lint\n' >"$wf/commented.yaml"
+# contents: write alone is also granted to bots that only commit, so it is not publication evidence.
+printf 'on: push\npermissions:\n  contents: write\njobs:\n  fmt:\n    runs-on: ubuntu-latest\n    steps: [{run: make fmt}]\n' >"$wf/fmt.yaml"
+# A job's own permissions replace the workflow's, so a scope every job overrides is never granted.
+printf 'on: push\npermissions:\n  packages: write\njobs:\n  a:\n    permissions:\n      contents: read\n    runs-on: ubuntu-latest\n    steps: [{run: make}]\n  b:\n    permissions: {}\n    runs-on: ubuntu-latest\n    steps: [{run: make}]\n' >"$wf/overridden.yaml"
+# One job left without its own permissions still inherits the workflow's scope.
+printf 'on: push\npermissions:\n  packages: write\njobs:\n  a:\n    permissions:\n      contents: read\n    runs-on: ubuntu-latest\n    steps: [{run: make}]\n  b:\n    runs-on: ubuntu-latest\n    steps: [{run: make}]\n' >"$wf/inherited.yaml"
 printf 'on: push\njobs: {}\n' >"$wf/notes.txt"
 printf 'on: push\njobs: {}\n' >"$wf/.dot.yml"
 
@@ -40,12 +81,36 @@ expect string.yaml push ci
 expect list.yml merge_group,pull_request ci
 expect target.yaml pull_request_target privileged-trigger
 expect after-ci.yaml workflow_run privileged-trigger
-expect pages.yaml push,workflow_dispatch manual-entry,release
+expect pages.yaml push,workflow_dispatch manual-entry,release-unconfirmed
 expect sync.yaml repository_dispatch manual-entry
 expect shared.yaml workflow_call reusable
 expect nightly.yaml schedule scheduled
-expect cd.yaml push release
+expect cd.yaml push release-unconfirmed
 expect .dot.yml push ci
+expect build.yaml push deployment
+expect roll.yaml push deployment
+expect site.yaml push deployment
+expect say-pages.yaml push ci
+expect site-mixed.yaml push deployment
+expect say-kubectl.yaml push deployment
+expect say-publish.yaml push publication
+expect cdn-cache.yaml push ci
+expect image.yaml push publication
+expect sign.yaml push publication
+expect tag.yaml push publication
+expect broad.yaml push publication
+expect build-only.yaml push ci
+expect build-false.yaml push ci
+expect build-push.yaml push publication
+expect build-push-mixed.yaml push publication
+expect build-expr.yaml push publication
+expect release-caller.yaml push release-unconfirmed,reusable-caller
+expect caller.yaml push reusable-caller
+expect caller-goreleaser.yaml push reusable-caller
+expect fmt.yaml push ci
+expect commented.yaml push ci
+expect overridden.yaml push ci
+expect inherited.yaml push publication
 
 grep -q 'notes.txt' <<<"$out" && fail "a non-workflow file must not be inventoried"
 [ "$(head -1 <<<"$out")" = "$(printf 'repo\tworkflow\tevents\texposure\trepo_policies')" ] ||
