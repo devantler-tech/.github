@@ -62,6 +62,8 @@ evidence() {
   # Every step command and every action or reusable workflow a job uses.
   text="$(yq -r '.jobs[]? | (.steps[]?.run, .steps[]?.uses, .uses) | select(. != null)' "$file" 2>/dev/null)" ||
     return 1
+  # A commented-out line is not something the workflow does.
+  text="$(grep -vE '^[[:space:]]*#' <<<"$text" || true)"
   # Workflow- and job-level write scopes; `write-all` grants every scope.
   perms="$(yq -r '(.permissions, .jobs[]?.permissions) |
     ((select(tag == "!!str")), (select(tag == "!!map") | to_entries | .[] | select(.value == "write") | .key))' \

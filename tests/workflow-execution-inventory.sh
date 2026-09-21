@@ -34,6 +34,8 @@ printf 'on: push\npermissions: write-all\njobs:\n  all:\n    runs-on: ubuntu-lat
 printf 'name: Release\non: push\njobs:\n  call:\n    uses: ./.github/workflows/shared.yaml\n' >"$wf/release-caller.yaml"
 # A neutral name hides nothing less: the called workflow may deploy, so it is never plain ci.
 printf 'on: push\njobs:\n  call:\n    uses: org/repo/.github/workflows/x.yaml@v1\n' >"$wf/caller.yaml"
+# A commented-out command is not something the workflow does.
+printf 'on: push\njobs:\n  lint:\n    runs-on: ubuntu-latest\n    steps:\n      - run: |\n          # kubectl apply -f k8s/\n            # goreleaser release\n          make lint\n' >"$wf/commented.yaml"
 # contents: write alone is also granted to bots that only commit, so it is not publication evidence.
 printf 'on: push\npermissions:\n  contents: write\njobs:\n  fmt:\n    runs-on: ubuntu-latest\n    steps: [{run: make fmt}]\n' >"$wf/fmt.yaml"
 printf 'on: push\njobs: {}\n' >"$wf/notes.txt"
@@ -68,6 +70,7 @@ expect broad.yaml push publication
 expect release-caller.yaml push release-unconfirmed,reusable-caller
 expect caller.yaml push reusable-caller
 expect fmt.yaml push ci
+expect commented.yaml push ci
 
 grep -q 'notes.txt' <<<"$out" && fail "a non-workflow file must not be inventoried"
 [ "$(head -1 <<<"$out")" = "$(printf 'repo\tworkflow\tevents\texposure\trepo_policies')" ] ||
