@@ -21,7 +21,9 @@
 #                        inventory exists to find every path that could deploy, and a missed one
 #                        costs more than a row a reader clears by reading it.
 #   publication          a packages, id-token or attestations write scope (or write-all), or a step
-#                        uses a release, image-push, signing or package-publish tool
+#                        uses a release, image-push, signing or package-publish tool. Tools are matched
+#                        as text across run scripts and action references, so a printed publish
+#                        command (echo npm publish) still counts, for the same reason as deployment.
 #   release-unconfirmed  the file or display name says it publishes, releases or deploys, but the
 #                        workflow shows no deployment or publication evidence — read it to decide
 #   reusable-caller      a job calls a reusable workflow and this file shows no deployment or
@@ -123,7 +125,7 @@ classify() {
   grep -qx publication <<<"$found" && classes+=(publication)
   # A release-sounding name with no evidence is reported for reading, never guessed either way.
   if ! grep -qxE 'deployment|publication' <<<"$found" &&
-    grep -qiE '(^|[^a-z])(cd|deploy|publish|release)' <<<"$name $display"; then
+    grep -qiE '(^|[^a-z])(cd($|[^a-z])|deploy|publish|release)' <<<"$name $display"; then
     classes+=(release-unconfirmed)
   fi
   grep -qx reusable-caller <<<"$found" && classes+=(reusable-caller)

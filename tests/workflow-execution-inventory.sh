@@ -33,6 +33,8 @@ printf 'on: push\njobs:\n  say:\n    runs-on: ubuntu-latest\n    steps:\n      -
 # Run scripts are matched as text: a printed deploy command still counts, by design (over-report,
 # never miss a deploy path).
 printf 'on: push\njobs:\n  say:\n    runs-on: ubuntu-latest\n    steps:\n      - run: echo kubectl apply -f production.yaml\n' >"$wf/say-kubectl.yaml"
+printf 'on: push\njobs:\n  say:\n    runs-on: ubuntu-latest\n    steps:\n      - run: echo npm publish\n' >"$wf/say-publish.yaml"
+printf 'name: CDN Cache\non: push\njobs: {}\n' >"$wf/cdn-cache.yaml"
 printf 'on: push\npermissions:\n  packages: write\njobs:\n  image:\n    runs-on: ubuntu-latest\n    steps: [{run: make}]\n' >"$wf/image.yaml"
 printf 'on: push\njobs:\n  sign:\n    permissions:\n      id-token: write\n    runs-on: ubuntu-latest\n    steps: [{run: make}]\n' >"$wf/sign.yaml"
 printf 'on: push\njobs:\n  tag:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: goreleaser/goreleaser-action@v6\n' >"$wf/tag.yaml"
@@ -84,6 +86,8 @@ expect roll.yaml push deployment
 expect site.yaml push deployment
 expect say-pages.yaml push ci
 expect say-kubectl.yaml push deployment
+expect say-publish.yaml push publication
+expect cdn-cache.yaml push ci
 expect image.yaml push publication
 expect sign.yaml push publication
 expect tag.yaml push publication
