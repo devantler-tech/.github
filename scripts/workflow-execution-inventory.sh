@@ -14,8 +14,12 @@
 # Exposure classes (comma-separated when several apply):
 #   privileged-trigger   pull_request_target or workflow_run: runs with base-repository privileges
 #   manual-entry         workflow_dispatch or repository_dispatch
-#   deployment           a job targets an environment, or a step runs a deploy command or deploys
-#                        a live site (actions/deploy-pages)
+#   deployment           a job targets an environment, a step's run script contains a deploy
+#                        command, or a step deploys a live site (actions/deploy-pages). Run scripts
+#                        are matched as text, not parsed, so a deploy command that is only printed
+#                        (echo kubectl apply) still counts. That over-reporting is deliberate: this
+#                        inventory exists to find every path that could deploy, and a missed one
+#                        costs more than a row a reader clears by reading it.
 #   publication          a packages, id-token or attestations write scope (or write-all), or a step
 #                        uses a release, image-push, signing or package-publish tool
 #   release-unconfirmed  the file or display name says it publishes, releases or deploys, but the

@@ -30,6 +30,9 @@ printf 'on: push\njobs:\n  roll:\n    runs-on: ubuntu-latest\n    steps:\n      
 printf 'on: push\njobs:\n  site:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/deploy-pages@v4\n' >"$wf/site.yaml"
 # Naming the action in a shell command does not invoke it.
 printf 'on: push\njobs:\n  say:\n    runs-on: ubuntu-latest\n    steps:\n      - run: echo actions/deploy-pages\n' >"$wf/say-pages.yaml"
+# Run scripts are matched as text: a printed deploy command still counts, by design (over-report,
+# never miss a deploy path).
+printf 'on: push\njobs:\n  say:\n    runs-on: ubuntu-latest\n    steps:\n      - run: echo kubectl apply -f production.yaml\n' >"$wf/say-kubectl.yaml"
 printf 'on: push\npermissions:\n  packages: write\njobs:\n  image:\n    runs-on: ubuntu-latest\n    steps: [{run: make}]\n' >"$wf/image.yaml"
 printf 'on: push\njobs:\n  sign:\n    permissions:\n      id-token: write\n    runs-on: ubuntu-latest\n    steps: [{run: make}]\n' >"$wf/sign.yaml"
 printf 'on: push\njobs:\n  tag:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: goreleaser/goreleaser-action@v6\n' >"$wf/tag.yaml"
@@ -80,6 +83,7 @@ expect build.yaml push deployment
 expect roll.yaml push deployment
 expect site.yaml push deployment
 expect say-pages.yaml push ci
+expect say-kubectl.yaml push deployment
 expect image.yaml push publication
 expect sign.yaml push publication
 expect tag.yaml push publication
