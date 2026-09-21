@@ -38,6 +38,10 @@ printf 'on: push\njobs:\n  call:\n    uses: org/repo/.github/workflows/x.yaml@v1
 printf 'on: push\njobs:\n  lint:\n    runs-on: ubuntu-latest\n    steps:\n      - run: |\n          # kubectl apply -f k8s/\n            # goreleaser release\n          make lint\n' >"$wf/commented.yaml"
 # contents: write alone is also granted to bots that only commit, so it is not publication evidence.
 printf 'on: push\npermissions:\n  contents: write\njobs:\n  fmt:\n    runs-on: ubuntu-latest\n    steps: [{run: make fmt}]\n' >"$wf/fmt.yaml"
+# A job's own permissions replace the workflow's, so a scope every job overrides is never granted.
+printf 'on: push\npermissions:\n  packages: write\njobs:\n  a:\n    permissions:\n      contents: read\n    runs-on: ubuntu-latest\n    steps: [{run: make}]\n  b:\n    permissions: {}\n    runs-on: ubuntu-latest\n    steps: [{run: make}]\n' >"$wf/overridden.yaml"
+# One job left without its own permissions still inherits the workflow's scope.
+printf 'on: push\npermissions:\n  packages: write\njobs:\n  a:\n    permissions:\n      contents: read\n    runs-on: ubuntu-latest\n    steps: [{run: make}]\n  b:\n    runs-on: ubuntu-latest\n    steps: [{run: make}]\n' >"$wf/inherited.yaml"
 printf 'on: push\njobs: {}\n' >"$wf/notes.txt"
 printf 'on: push\njobs: {}\n' >"$wf/.dot.yml"
 
@@ -71,6 +75,8 @@ expect release-caller.yaml push release-unconfirmed,reusable-caller
 expect caller.yaml push reusable-caller
 expect fmt.yaml push ci
 expect commented.yaml push ci
+expect overridden.yaml push ci
+expect inherited.yaml push publication
 
 grep -q 'notes.txt' <<<"$out" && fail "a non-workflow file must not be inventoried"
 [ "$(head -1 <<<"$out")" = "$(printf 'repo\tworkflow\tevents\texposure\trepo_policies')" ] ||

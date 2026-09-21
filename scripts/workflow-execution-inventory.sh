@@ -64,8 +64,10 @@ evidence() {
     return 1
   # A commented-out line is not something the workflow does.
   text="$(grep -vE '^[[:space:]]*#' <<<"$text" || true)"
-  # Workflow- and job-level write scopes; `write-all` grants every scope.
-  perms="$(yq -r '(.permissions, .jobs[]?.permissions) |
+  # Each job's effective write scopes: its own permissions replace the workflow's, and a job without
+  # any inherits them. `write-all` grants every scope.
+  # shellcheck disable=SC2016 # $wp is a yq variable, not a shell one.
+  perms="$(yq -r '.permissions as $wp | .jobs[]? | (.permissions // $wp) | select(. != null) |
     ((select(tag == "!!str")), (select(tag == "!!map") | to_entries | .[] | select(.value == "write") | .key))' \
     "$file" 2>/dev/null)" || return 1
   envs="$(yq -r '[.jobs[]? | select(has("environment"))] | length' "$file" 2>/dev/null)" || return 1
