@@ -21,6 +21,9 @@
 #   - gives a condition the wrong shape: repository_name or repository_property without an
 #     include array, repository_id without integer repository_ids, or workflow_path without both
 #     include and exclude arrays
+#   - gives those arrays the wrong members: repository_name or workflow_path patterns that are
+#     not non-empty strings, repository_property members without a name and non-empty string
+#     property_values, or a workflow_path with no include or exclude pattern at all
 #   - mixes ~ALL into other workflow_path include patterns, or puts ~ALL in workflow_path exclude
 # The exception object is this repository's own review record. Strip it before sending a file to
 # the API.
@@ -94,7 +97,22 @@ for f in "${files[@]}"; do
             then "repository_property must be an object with an include array" else empty end ),
           ( if .conditions | has("workflow_path") and ((.workflow_path | type) != "object"
                 or (.workflow_path.include | type) != "array" or (.workflow_path.exclude | type) != "array")
-            then "workflow_path must be an object with include and exclude arrays" else empty end )
+            then "workflow_path must be an object with include and exclude arrays" else empty end ),
+          ( if .conditions.repository_name | type == "object" and
+                any((.include, .exclude) | arrays | .[]; type != "string" or . == "")
+            then "repository_name include and exclude must hold non-empty strings" else empty end ),
+          ( if .conditions.repository_property | type == "object" and
+                any((.include, .exclude) | arrays | .[];
+                  type != "object" or (.name | type) != "string" or .name == ""
+                  or (.property_values | type) != "array" or (.property_values | length) == 0
+                  or any(.property_values[]; type != "string"))
+            then "repository_property include members need a name and non-empty property_values" else empty end ),
+          ( if .conditions.workflow_path | type == "object" and
+                any((.include, .exclude) | arrays | .[]; type != "string" or . == "")
+            then "workflow_path include and exclude must hold non-empty strings" else empty end ),
+          ( if .conditions.workflow_path | type == "object" and (.include | type) == "array" and (.exclude | type) == "array"
+                and (.include | length) + (.exclude | length) == 0
+            then "workflow_path needs at least one include or exclude pattern" else empty end )
         end ),
       ( (.conditions.workflow_path.include // []) as $inc
         | if ($inc | index("~ALL")) != null and ($inc | length) > 1

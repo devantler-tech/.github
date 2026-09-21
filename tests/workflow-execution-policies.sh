@@ -90,6 +90,23 @@ expect empty-workflow-path 1 '.conditions.workflow_path = {}' 'workflow_path mus
 expect string-workflow-path 1 '.conditions.workflow_path = {"include": "~ALL", "exclude": []}' \
   'workflow_path must be an object with include and exclude arrays'
 expect null-workflow-path 1 '.conditions.workflow_path = null' 'workflow_path must be an object with include and exclude arrays'
+# The members of those arrays need the request shape too.
+expect repository-name-numeric-member 1 '.conditions.repository_name.include = [7]' \
+  'repository_name include and exclude must hold non-empty strings'
+expect repository-name-numeric-exclude 1 '.conditions.repository_name.exclude = [7]' \
+  'repository_name include and exclude must hold non-empty strings'
+expect repository-property-member-no-name 1 \
+  'del(.conditions.repository_name) | .conditions.repository_property = {"include": [{"property_values": ["x"]}]}' \
+  'repository_property include members need a name and non-empty property_values'
+expect repository-property-member-no-values 1 \
+  'del(.conditions.repository_name) | .conditions.repository_property = {"include": [{"name": "tier"}]}' \
+  'repository_property include members need a name and non-empty property_values'
+expect repository-property-valid 0 \
+  'del(.conditions.repository_name) | .conditions.repository_property = {"include": [{"name": "tier", "property_values": ["prod"]}]}'
+expect workflow-path-no-patterns 1 '.conditions.workflow_path = {"include": [], "exclude": []}' \
+  'workflow_path needs at least one include or exclude pattern'
+expect workflow-path-empty-pattern 1 '.conditions.workflow_path = {"include": [""], "exclude": []}' \
+  'workflow_path include and exclude must hold non-empty strings'
 
 # Not JSON at all.
 mkdir "$tmp/broken"
