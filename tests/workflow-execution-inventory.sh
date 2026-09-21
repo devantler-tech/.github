@@ -32,6 +32,13 @@ printf 'on: push\npermissions:\n  packages: write\njobs:\n  image:\n    runs-on:
 printf 'on: push\njobs:\n  sign:\n    permissions:\n      id-token: write\n    runs-on: ubuntu-latest\n    steps: [{run: make}]\n' >"$wf/sign.yaml"
 printf 'on: push\njobs:\n  tag:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: goreleaser/goreleaser-action@v6\n' >"$wf/tag.yaml"
 printf 'on: push\npermissions: write-all\njobs:\n  all:\n    runs-on: ubuntu-latest\n    steps: [{run: make}]\n' >"$wf/broad.yaml"
+# docker/build-push-action pushes only when asked to: its push input defaults to false.
+printf 'on: push\njobs:\n  img:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: docker/build-push-action@v6\n' >"$wf/build-only.yaml"
+printf 'on: push\njobs:\n  img:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: docker/build-push-action@v6\n        with:\n          push: false\n' >"$wf/build-false.yaml"
+printf 'on: push\njobs:\n  img:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: docker/build-push-action@v6\n        with:\n          push: true\n' >"$wf/build-push.yaml"
+# An expression may evaluate to true, so it is not treated as build-only.
+# shellcheck disable=SC2016 # ${{ }} is a GitHub expression, not a shell one.
+printf 'on: push\njobs:\n  img:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: docker/build-push-action@v6\n        with:\n          push: ${{ github.event_name == %s }}\n' "'push'" >"$wf/build-expr.yaml"
 # A reusable-workflow call hides its steps, so a release-sounding caller stays unconfirmed.
 printf 'name: Release\non: push\njobs:\n  call:\n    uses: ./.github/workflows/shared.yaml\n' >"$wf/release-caller.yaml"
 # A neutral name hides nothing less: the called workflow may deploy, so it is never plain ci.
@@ -74,6 +81,10 @@ expect image.yaml push publication
 expect sign.yaml push publication
 expect tag.yaml push publication
 expect broad.yaml push publication
+expect build-only.yaml push ci
+expect build-false.yaml push ci
+expect build-push.yaml push publication
+expect build-expr.yaml push publication
 expect release-caller.yaml push release-unconfirmed,reusable-caller
 expect caller.yaml push reusable-caller
 expect fmt.yaml push ci

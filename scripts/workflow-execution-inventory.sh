@@ -54,12 +54,12 @@ events() {
 
 # Commands that change a running environment, and tools that publish an artifact or release.
 deploy_commands='kubectl (apply|patch|rollout|set|delete)|helm (upgrade|install)|terraform apply|tofu apply|pulumi up|flux reconcile|ksail[^|]* (workload (push|reconcile)|cluster (create|update))|aws [a-z-]+ (deploy|update-service)|wrangler (deploy|publish)|actions/deploy-pages'
-publish_tools='goreleaser|semantic-release|gh release (create|upload|edit)|docker (push|buildx build[^|]*--push)|cosign sign|npm publish|dotnet nuget push|oras push|softprops/action-gh-release|docker/build-push-action'
+publish_tools='goreleaser|semantic-release|gh release (create|upload|edit)|docker (push|buildx build[^|]*--push)|cosign sign|npm publish|dotnet nuget push|oras push|softprops/action-gh-release'
 
 # evidence <file> — prints "deployment" and/or "publication", one per line, from what the workflow
 # does rather than what it is called. Fails when the file cannot be read.
 evidence() {
-  local file="$1" text perms envs callers seen=""
+  local file="$1" text perms envs callers pushes seen=""
   # Every step command and every action or reusable workflow a job uses.
   text="$(yq -r '.jobs[]? | (.steps[]?.run, .steps[]?.uses, .uses) | select(. != null)' "$file" 2>/dev/null)" ||
     return 1
@@ -73,13 +73,18 @@ evidence() {
     "$file" 2>/dev/null)" || return 1
   envs="$(yq -r '[.jobs[]? | select(has("environment"))] | length' "$file" 2>/dev/null)" || return 1
   callers="$(yq -r '[.jobs[]? | select(has("uses"))] | length' "$file" 2>/dev/null)" || return 1
+  # docker/build-push-action only builds unless its `push` input is set (the default is false). An
+  # expression may evaluate to true, so anything but an explicit false counts as a push.
+  pushes="$(yq -r '[.jobs[]?.steps[]? | select((.uses // "") | test("^docker/build-push-action(@|$)")) |
+    select(.with.push != null and (.with.push | tostring | downcase) != "false")] | length' "$file" 2>/dev/null)" ||
+    return 1
   if [ "${envs:-0}" != 0 ] || grep -qiE "$deploy_commands" <<<"$text"; then
     echo deployment
     seen=1
   fi
   # contents: write is left out: bots that only commit formatting or changelogs need it too.
   if grep -qxE 'write-all|packages|id-token|attestations' <<<"$perms" ||
-    grep -qiE "$publish_tools" <<<"$text"; then
+    grep -qiE "$publish_tools" <<<"$text" || [ "${pushes:-0}" != 0 ]; then
     echo publication
     seen=1
   fi
