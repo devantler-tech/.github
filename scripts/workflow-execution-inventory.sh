@@ -69,15 +69,16 @@ publish_tools='goreleaser|semantic-release|gh release (create|upload|edit)|docke
 # does rather than what it is called. Fails when the file cannot be read.
 evidence() {
   local file="$1" text runs uses perms envs callers pushes seen=""
-  # Every step command and every action or reusable workflow a job uses.
-  text="$(yq -r '.jobs[]? | (.steps[]?.run, .steps[]?.uses, .uses) | select(. != null)' "$file" 2>/dev/null)" ||
+  # Every step command and action. A job-level reusable workflow is not evidence: the called workflow,
+  # not its path, holds what runs, so it only marks the job as a reusable caller below.
+  text="$(yq -r '.jobs[]? | (.steps[]?.run, .steps[]?.uses) | select(. != null)' "$file" 2>/dev/null)" ||
     return 1
   # A commented-out line is not something the workflow does.
   text="$(grep -vE '^[[:space:]]*#' <<<"$text" || true)"
   # Shell commands and action references, kept apart for the deployment test.
   runs="$(yq -r '.jobs[]? | .steps[]?.run | select(. != null)' "$file" 2>/dev/null)" || return 1
   runs="$(grep -vE '^[[:space:]]*#' <<<"$runs" || true)"
-  uses="$(yq -r '.jobs[]? | (.steps[]?.uses, .uses) | select(. != null)' "$file" 2>/dev/null)" || return 1
+  uses="$(yq -r '.jobs[]? | .steps[]?.uses | select(. != null)' "$file" 2>/dev/null)" || return 1
   # Each job's effective write scopes: its own permissions replace the workflow's, and a job without
   # any inherits them. `write-all` grants every scope.
   # shellcheck disable=SC2016 # $wp is a yq variable, not a shell one.

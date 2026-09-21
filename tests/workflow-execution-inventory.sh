@@ -53,6 +53,9 @@ printf 'on: push\njobs:\n  img:\n    runs-on: ubuntu-latest\n    steps:\n      -
 printf 'name: Release\non: push\njobs:\n  call:\n    uses: ./.github/workflows/shared.yaml\n' >"$wf/release-caller.yaml"
 # A neutral name hides nothing less: the called workflow may deploy, so it is never plain ci.
 printf 'on: push\njobs:\n  call:\n    uses: org/repo/.github/workflows/x.yaml@v1\n' >"$wf/caller.yaml"
+# A reusable workflow whose path names a publishing tool is still only a caller: the called
+# workflow, not its path, holds the evidence.
+printf 'on: push\njobs:\n  call:\n    uses: org/repo/.github/workflows/goreleaser.yaml@v1\n' >"$wf/caller-goreleaser.yaml"
 # A commented-out command is not something the workflow does.
 printf 'on: push\njobs:\n  lint:\n    runs-on: ubuntu-latest\n    steps:\n      - run: |\n          # kubectl apply -f k8s/\n            # goreleaser release\n          make lint\n' >"$wf/commented.yaml"
 # contents: write alone is also granted to bots that only commit, so it is not publication evidence.
@@ -103,6 +106,7 @@ expect build-push-mixed.yaml push publication
 expect build-expr.yaml push publication
 expect release-caller.yaml push release-unconfirmed,reusable-caller
 expect caller.yaml push reusable-caller
+expect caller-goreleaser.yaml push reusable-caller
 expect fmt.yaml push ci
 expect commented.yaml push ci
 expect overridden.yaml push ci
