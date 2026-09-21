@@ -42,6 +42,11 @@ expect disabled 0 '.enforcement = "disabled"'
 expect active 1 '.enforcement = "active"' 'active needs maintainer approval'
 expect unknown-enforcement 1 '.enforcement = "enforce"' 'is not evaluate or disabled'
 expect empty-name 1 '.name = ""' 'name must be a non-empty string'
+# A mistyped optional field would otherwise be dropped silently, so only documented keys pass.
+expect unknown-top-level-key 1 '.enforcment = "evaluate"' 'unknown key "enforcment"'
+expect unknown-condition-key 1 '.conditions.workflow_paths = {"include": ["~ALL"], "exclude": []}' \
+  'unknown condition "workflow_paths"'
+expect exception-key-allowed 0 '.exception = {"workflow_paths": [".github/workflows/x.yaml"], "threat_model": "t"}'
 expect no-rules 1 '.rules = []' 'rules must be a non-empty array'
 expect unknown-rule 1 '.rules[0].type = "restrict_everything"' 'rule type "restrict_everything"'
 expect unknown-event 1 '.rules[0].parameters.allowed_events += ["pull_request_merged"]' 'event "pull_request_merged"'
