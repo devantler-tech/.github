@@ -88,11 +88,11 @@ evidence() {
   callers="$(yq -r '[.jobs[]? | select(has("uses"))] | length' "$file" 2>/dev/null)" || return 1
   # docker/build-push-action only builds unless its `push` input is set (the default is false). An
   # expression may evaluate to true, so anything but an explicit false counts as a push.
-  pushes="$(yq -r '[.jobs[]?.steps[]? | select((.uses // "") | test("^docker/build-push-action(@|$)")) |
+  pushes="$(yq -r '[.jobs[]?.steps[]? | select((.uses // "") | downcase | test("^docker/build-push-action(@|$)")) |
     select(.with.push != null and (.with.push | tostring | downcase) != "false")] | length' "$file" 2>/dev/null)" ||
     return 1
   if [ "${envs:-0}" != 0 ] || grep -qiE "$deploy_commands" <<<"$runs" ||
-    grep -qE "$deploy_actions" <<<"$uses"; then
+    grep -qiE "$deploy_actions" <<<"$uses"; then
     echo deployment
     seen=1
   fi

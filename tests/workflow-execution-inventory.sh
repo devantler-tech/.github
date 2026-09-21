@@ -30,6 +30,8 @@ printf 'on: push\njobs:\n  roll:\n    runs-on: ubuntu-latest\n    steps:\n      
 printf 'on: push\njobs:\n  site:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/deploy-pages@v4\n' >"$wf/site.yaml"
 # Naming the action in a shell command does not invoke it.
 printf 'on: push\njobs:\n  say:\n    runs-on: ubuntu-latest\n    steps:\n      - run: echo actions/deploy-pages\n' >"$wf/say-pages.yaml"
+# GitHub resolves action owners and names case-insensitively, so a mixed-case reference still runs.
+printf 'on: push\njobs:\n  site:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: Actions/Deploy-Pages@v4\n' >"$wf/site-mixed.yaml"
 # Run scripts are matched as text: a printed deploy command still counts, by design (over-report,
 # never miss a deploy path).
 printf 'on: push\njobs:\n  say:\n    runs-on: ubuntu-latest\n    steps:\n      - run: echo kubectl apply -f production.yaml\n' >"$wf/say-kubectl.yaml"
@@ -43,6 +45,7 @@ printf 'on: push\npermissions: write-all\njobs:\n  all:\n    runs-on: ubuntu-lat
 printf 'on: push\njobs:\n  img:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: docker/build-push-action@v6\n' >"$wf/build-only.yaml"
 printf 'on: push\njobs:\n  img:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: docker/build-push-action@v6\n        with:\n          push: false\n' >"$wf/build-false.yaml"
 printf 'on: push\njobs:\n  img:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: docker/build-push-action@v6\n        with:\n          push: true\n' >"$wf/build-push.yaml"
+printf 'on: push\njobs:\n  img:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: Docker/Build-Push-Action@v6\n        with:\n          push: true\n' >"$wf/build-push-mixed.yaml"
 # An expression may evaluate to true, so it is not treated as build-only.
 # shellcheck disable=SC2016 # ${{ }} is a GitHub expression, not a shell one.
 printf 'on: push\njobs:\n  img:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: docker/build-push-action@v6\n        with:\n          push: ${{ github.event_name == %s }}\n' "'push'" >"$wf/build-expr.yaml"
@@ -85,6 +88,7 @@ expect build.yaml push deployment
 expect roll.yaml push deployment
 expect site.yaml push deployment
 expect say-pages.yaml push ci
+expect site-mixed.yaml push deployment
 expect say-kubectl.yaml push deployment
 expect say-publish.yaml push publication
 expect cdn-cache.yaml push ci
@@ -95,6 +99,7 @@ expect broad.yaml push publication
 expect build-only.yaml push ci
 expect build-false.yaml push ci
 expect build-push.yaml push publication
+expect build-push-mixed.yaml push publication
 expect build-expr.yaml push publication
 expect release-caller.yaml push release-unconfirmed,reusable-caller
 expect caller.yaml push reusable-caller
