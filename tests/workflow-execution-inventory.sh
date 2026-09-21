@@ -23,6 +23,17 @@ printf 'on:\n  repository_dispatch:\n    types: [sync]\njobs: {}\n' >"$wf/sync.y
 printf 'on:\n  workflow_call: {}\njobs: {}\n' >"$wf/shared.yaml"
 printf 'on:\n  schedule:\n    - cron: "0 0 * * *"\njobs: {}\n' >"$wf/nightly.yaml"
 printf 'on:\n  push:\n    tags: ["v*"]\njobs: {}\n' >"$wf/cd.yaml"
+# Content evidence, not names: a job bound to an environment deploys whatever the workflow is called.
+printf 'on: push\njobs:\n  ship:\n    environment: production\n    runs-on: ubuntu-latest\n    steps: [{run: make}]\n' >"$wf/build.yaml"
+printf 'on: push\njobs:\n  roll:\n    runs-on: ubuntu-latest\n    steps:\n      - run: |\n          helm upgrade --install app ./chart\n' >"$wf/roll.yaml"
+printf 'on: push\npermissions:\n  packages: write\njobs:\n  image:\n    runs-on: ubuntu-latest\n    steps: [{run: make}]\n' >"$wf/image.yaml"
+printf 'on: push\njobs:\n  sign:\n    permissions:\n      id-token: write\n    runs-on: ubuntu-latest\n    steps: [{run: make}]\n' >"$wf/sign.yaml"
+printf 'on: push\njobs:\n  tag:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: goreleaser/goreleaser-action@v6\n' >"$wf/tag.yaml"
+printf 'on: push\npermissions: write-all\njobs:\n  all:\n    runs-on: ubuntu-latest\n    steps: [{run: make}]\n' >"$wf/broad.yaml"
+# A reusable-workflow call hides its steps, so a release-sounding caller stays unconfirmed.
+printf 'name: Release\non: push\njobs:\n  call:\n    uses: ./.github/workflows/shared.yaml\n' >"$wf/release-caller.yaml"
+# contents: write alone is also granted to bots that only commit, so it is not publication evidence.
+printf 'on: push\npermissions:\n  contents: write\njobs:\n  fmt:\n    runs-on: ubuntu-latest\n    steps: [{run: make fmt}]\n' >"$wf/fmt.yaml"
 printf 'on: push\njobs: {}\n' >"$wf/notes.txt"
 printf 'on: push\njobs: {}\n' >"$wf/.dot.yml"
 
@@ -40,12 +51,20 @@ expect string.yaml push ci
 expect list.yml merge_group,pull_request ci
 expect target.yaml pull_request_target privileged-trigger
 expect after-ci.yaml workflow_run privileged-trigger
-expect pages.yaml push,workflow_dispatch manual-entry,release
+expect pages.yaml push,workflow_dispatch manual-entry,release-unconfirmed
 expect sync.yaml repository_dispatch manual-entry
 expect shared.yaml workflow_call reusable
 expect nightly.yaml schedule scheduled
-expect cd.yaml push release
+expect cd.yaml push release-unconfirmed
 expect .dot.yml push ci
+expect build.yaml push deployment
+expect roll.yaml push deployment
+expect image.yaml push publication
+expect sign.yaml push publication
+expect tag.yaml push publication
+expect broad.yaml push publication
+expect release-caller.yaml push release-unconfirmed
+expect fmt.yaml push ci
 
 grep -q 'notes.txt' <<<"$out" && fail "a non-workflow file must not be inventoried"
 [ "$(head -1 <<<"$out")" = "$(printf 'repo\tworkflow\tevents\texposure\trepo_policies')" ] ||

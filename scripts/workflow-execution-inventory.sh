@@ -14,11 +14,16 @@
 # Exposure classes (comma-separated when several apply):
 #   privileged-trigger   pull_request_target or workflow_run: runs with base-repository privileges
 #   manual-entry         workflow_dispatch or repository_dispatch
-#   release              the workflow's file or display name says it publishes, releases or deploys
+#   deployment           a job targets an environment, or a step runs a deploy command
+#   publication          a packages, id-token or attestations write scope (or write-all), or a step
+#                        uses a release, image-push, signing or package-publish tool
+#   release-unconfirmed  the file or display name says it publishes, releases or deploys, but the
+#                        workflow shows no deployment or publication evidence — read it to decide
 #   reusable             workflow_call
 #   scheduled            schedule
 #   ci                   none of the above
-# The release class is a naming heuristic; confirm each hit by reading the workflow.
+# deployment and publication come from what the workflow does, not from its name. A job that calls a
+# reusable workflow hides that workflow's steps, so read the called workflow for those.
 # Scope: each repository's DEFAULT BRANCH only. A workflow that exists only on another branch or tag
 # can still run there and is not listed; this is a default-branch inventory, not a complete one.
 #
@@ -44,10 +49,38 @@ events() {
   grep -v '^$' <<<"$out" | sort -u || true
 }
 
+# Commands that change a running environment, and tools that publish an artifact or release.
+deploy_commands='kubectl (apply|patch|rollout|set|delete)|helm (upgrade|install)|terraform apply|tofu apply|pulumi up|flux reconcile|ksail[^|]* (workload (push|reconcile)|cluster (create|update))|aws [a-z-]+ (deploy|update-service)|wrangler (deploy|publish)'
+publish_tools='goreleaser|semantic-release|gh release (create|upload|edit)|docker (push|buildx build[^|]*--push)|cosign sign|npm publish|dotnet nuget push|oras push|softprops/action-gh-release|docker/build-push-action|actions/deploy-pages'
+
+# evidence <file> — prints "deployment" and/or "publication", one per line, from what the workflow
+# does rather than what it is called. Fails when the file cannot be read.
+evidence() {
+  local file="$1" text perms envs
+  # Every step command and every action or reusable workflow a job uses.
+  text="$(yq -r '.jobs[]? | (.steps[]?.run, .steps[]?.uses, .uses) | select(. != null)' "$file" 2>/dev/null)" ||
+    return 1
+  # Workflow- and job-level write scopes; `write-all` grants every scope.
+  perms="$(yq -r '(.permissions, .jobs[]?.permissions) |
+    ((select(tag == "!!str")), (select(tag == "!!map") | to_entries | .[] | select(.value == "write") | .key))' \
+    "$file" 2>/dev/null)" || return 1
+  envs="$(yq -r '[.jobs[]? | select(has("environment"))] | length' "$file" 2>/dev/null)" || return 1
+  if [ "${envs:-0}" != 0 ] || grep -qiE "$deploy_commands" <<<"$text"; then
+    echo deployment
+  fi
+  # contents: write is left out: bots that only commit formatting or changelogs need it too.
+  if grep -qxE 'write-all|packages|id-token|attestations' <<<"$perms" ||
+    grep -qiE "$publish_tools" <<<"$text"; then
+    echo publication
+  fi
+  return 0
+}
+
 # classify <file> <workflow-name> — prints "<events>\t<exposure>" or UNKNOWN.
 classify() {
-  local file="$1" name="$2" evs display classes=()
+  local file="$1" name="$2" evs display found classes=()
   evs="$(events "$file")" || evs=""
+  found="$(evidence "$file")" || evs=""
   if [ -z "$evs" ]; then
     printf 'UNKNOWN\tUNKNOWN'
     return
@@ -55,7 +88,12 @@ classify() {
   display="$(yq -r '.name // ""' "$file" 2>/dev/null || true)"
   grep -qxE 'pull_request_target|workflow_run' <<<"$evs" && classes+=(privileged-trigger)
   grep -qxE 'workflow_dispatch|repository_dispatch' <<<"$evs" && classes+=(manual-entry)
-  grep -qiE '(^|[^a-z])(cd|deploy|publish|release)' <<<"$name $display" && classes+=(release)
+  grep -qx deployment <<<"$found" && classes+=(deployment)
+  grep -qx publication <<<"$found" && classes+=(publication)
+  # A release-sounding name with no evidence is reported for reading, never guessed either way.
+  if [ -z "$found" ] && grep -qiE '(^|[^a-z])(cd|deploy|publish|release)' <<<"$name $display"; then
+    classes+=(release-unconfirmed)
+  fi
   grep -qx 'workflow_call' <<<"$evs" && classes+=(reusable)
   grep -qx 'schedule' <<<"$evs" && classes+=(scheduled)
   [ "${#classes[@]}" -eq 0 ] && classes=(ci)
