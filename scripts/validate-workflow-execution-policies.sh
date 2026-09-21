@@ -13,9 +13,14 @@
 #   - names an actor without an integer id, or with a type the API does not define
 #   - allows an event the API does not define
 #   - allows pull_request_target or workflow_run without an "exception" object that names the
-#     workflow paths it covers and a "threat_model" explaining why they are safe
+#     workflow paths it covers (non-empty strings) and a "threat_model" explaining why they are
+#     safe, or whose workflow_path include targets anything the exception does not list (~ALL
+#     or an unlisted path): the exception is stripped before sending, so only this binds it
 #   - does not target repositories by exactly one of repository_name, repository_id or
 #     repository_property (an organization policy must name its repositories)
+#   - gives a condition the wrong shape: repository_name or repository_property without an
+#     include array, repository_id without integer repository_ids, or workflow_path without both
+#     include and exclude arrays
 #   - mixes ~ALL into other workflow_path include patterns, or puts ~ALL in workflow_path exclude
 # The exception object is this repository's own review record. Strip it before sending a file to
 # the API.
@@ -66,12 +71,31 @@ for f in "${files[@]}"; do
               else "rule type \(.type | tojson) is not defined by the API" end )
         end ),
       ( [ .rules[]? | select(.type == "restrict_action_events") | .parameters.allowed_events[]? | select(IN(privileged[])) ] as $p
-        | if ($p | length) > 0 and ((.exception.workflow_paths | type) != "array" or (.exception.workflow_paths | length) == 0
-              or (.exception.threat_model | type) != "string" or .exception.threat_model == "")
+        | if ($p | length) == 0 then empty
+          elif (.exception.workflow_paths | type) != "array" or (.exception.workflow_paths | length) == 0
+              or any(.exception.workflow_paths[]; type != "string" or . == "")
+              or (.exception.threat_model | type) != "string" or .exception.threat_model == ""
           then "allows \($p | unique | join(", ")) without an exception naming its workflow_paths and threat_model"
+          # The exception is stripped before the API sees it, so only this check ties it to the
+          # policy: the policy may target nothing beyond the paths the exception lists.
+          elif (.conditions.workflow_path.include | type) != "array" or (.conditions.workflow_path.include | length) == 0
+              or (.exception.workflow_paths as $ex | any(.conditions.workflow_path.include[]; . == "~ALL" or (IN($ex[]) | not)))
+          then "allows \($p | unique | join(", ")) but targets workflow paths the exception does not list"
           else empty end ),
-      ( [ .conditions // {} | keys[] | select(IN("repository_name", "repository_id", "repository_property")) ] | length
-        | if . != 1 then "conditions must target repositories by exactly one of repository_name, repository_id or repository_property" else empty end ),
+      ( if (.conditions | type) != "object" then "conditions must be an object" else
+          ( [ .conditions | keys[] | select(IN("repository_name", "repository_id", "repository_property")) ] | length
+            | if . != 1 then "conditions must target repositories by exactly one of repository_name, repository_id or repository_property" else empty end ),
+          ( if .conditions | has("repository_name") and ((.repository_name | type) != "object" or (.repository_name.include | type) != "array")
+            then "repository_name must be an object with an include array" else empty end ),
+          ( if .conditions | has("repository_id") and ((.repository_id | type) != "object" or (.repository_id.repository_ids | type) != "array"
+                or any(.repository_id.repository_ids[]; type != "number" or floor != .))
+            then "repository_id must be an object with an integer repository_ids array" else empty end ),
+          ( if .conditions | has("repository_property") and ((.repository_property | type) != "object" or (.repository_property.include | type) != "array")
+            then "repository_property must be an object with an include array" else empty end ),
+          ( if .conditions | has("workflow_path") and ((.workflow_path | type) != "object"
+                or (.workflow_path.include | type) != "array" or (.workflow_path.exclude | type) != "array")
+            then "workflow_path must be an object with include and exclude arrays" else empty end )
+        end ),
       ( (.conditions.workflow_path.include // []) as $inc
         | if ($inc | index("~ALL")) != null and ($inc | length) > 1
           then "workflow_path include mixes ~ALL with other patterns" else empty end ),

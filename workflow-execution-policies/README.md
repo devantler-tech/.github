@@ -17,7 +17,8 @@ Each `*.json` file is the request body of
 [`POST /orgs/{org}/actions/policies`](https://docs.github.com/en/rest/actions/policies), so it can
 be sent as-is. The one addition is an optional `exception` object, which is our review record and
 must be removed before sending: a policy may allow `pull_request_target` or `workflow_run` only when
-`exception` lists the `workflow_paths` it covers and a `threat_model` saying why they are safe.
+`exception` lists the `workflow_paths` it covers and a `threat_model` saying why they are safe, and
+the policy itself targets only those paths.
 
 Every policy starts in `evaluate` mode, so GitHub reports what it would block without blocking it.
 Moving a policy to `active` is the maintainer's call.

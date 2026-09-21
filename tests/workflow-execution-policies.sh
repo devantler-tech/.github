@@ -61,14 +61,35 @@ expect exception-without-threat-model 1 \
 expect exception-without-paths 1 \
   '.rules[0].parameters.allowed_events += ["workflow_run"] | .exception = {"workflow_paths": [], "threat_model": "reads no PR code"}' \
   'without an exception'
-expect documented-exception 0 \
-  '.rules[0].parameters.allowed_events += ["workflow_run"] | .exception = {"workflow_paths": [".github/workflows/x.yaml"], "threat_model": "reads no PR code"}'
+# A valid exception is bound to what the policy targets: the policy covers exactly the excepted paths.
+x='.rules[0].parameters.allowed_events += ["workflow_run"]
+  | .conditions.workflow_path = {"include": [".github/workflows/x.yaml"], "exclude": []}
+  | .exception = {"workflow_paths": [".github/workflows/x.yaml"], "threat_model": "reads no PR code"}'
+expect documented-exception 0 "$x"
+# An exception on an untargeted policy would lift the prohibition for every workflow.
+expect exception-untargeted 1 "$x | del(.conditions.workflow_path)" 'targets workflow paths the exception does not list'
+expect exception-on-all 1 "$x | .conditions.workflow_path.include = [\"~ALL\"]" 'targets workflow paths the exception does not list'
+expect exception-other-path 1 "$x | .conditions.workflow_path.include += [\".github/workflows/y.yaml\"]" \
+  'targets workflow paths the exception does not list'
+expect exception-blank-path 1 "$x | .exception.workflow_paths += [\"\"]" 'without an exception'
+expect exception-number-path 1 "$x | .exception.workflow_paths = [1]" 'without an exception'
 expect no-repository-target 1 'del(.conditions.repository_name)' 'exactly one of repository_name'
 expect two-repository-targets 1 '.conditions.repository_id = {"repository_ids": [1]}' 'exactly one of repository_name'
 expect all-mixed-into-include 1 '.conditions.workflow_path = {"include": ["~ALL", ".github/workflows/cd.yaml"], "exclude": []}' \
   'mixes ~ALL'
 expect all-in-exclude 1 '.conditions.workflow_path = {"include": ["~ALL"], "exclude": ["~ALL"]}' \
   'exclude may not contain ~ALL'
+# Condition values must have the request shape, not only the right keys.
+expect null-repository-name 1 '.conditions.repository_name = null' 'repository_name must be an object with an include array'
+expect repository-name-no-include 1 '.conditions.repository_name = {"exclude": []}' 'repository_name must be an object with an include array'
+expect repository-id-not-ints 1 'del(.conditions.repository_name) | .conditions.repository_id = {"repository_ids": ["x"]}' \
+  'repository_id must be an object with an integer repository_ids array'
+expect repository-property-no-include 1 'del(.conditions.repository_name) | .conditions.repository_property = {}' \
+  'repository_property must be an object with an include array'
+expect empty-workflow-path 1 '.conditions.workflow_path = {}' 'workflow_path must be an object with include and exclude arrays'
+expect string-workflow-path 1 '.conditions.workflow_path = {"include": "~ALL", "exclude": []}' \
+  'workflow_path must be an object with include and exclude arrays'
+expect null-workflow-path 1 '.conditions.workflow_path = null' 'workflow_path must be an object with include and exclude arrays'
 
 # Not JSON at all.
 mkdir "$tmp/broken"
