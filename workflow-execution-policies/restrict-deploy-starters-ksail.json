@@ -1,0 +1,42 @@
+{
+  "name": "Only portfolio identities may start deploy and publish workflows in ksail",
+  "enforcement": "evaluate",
+  "conditions": {
+    "repository_name": {
+      "include": [
+        "ksail"
+      ],
+      "exclude": []
+    },
+    "workflow_path": {
+      "include": [
+        ".github/workflows/maintenance.yaml",
+        ".github/workflows/system-test-eks.yaml",
+        ".github/workflows/system-test-hetzner.yaml",
+        ".github/workflows/system-test-omni.yaml"
+      ],
+      "exclude": []
+    }
+  },
+  "rules": [
+    {
+      "type": "restrict_actions_actors",
+      "parameters": {
+        "allowed_actors": [
+          {
+            "id": 26203420,
+            "type": "User"
+          },
+          {
+            "id": 118344674,
+            "type": "Bot"
+          },
+          {
+            "id": 185060876,
+            "type": "Bot"
+          }
+        ]
+      }
+    }
+  ]
+}
