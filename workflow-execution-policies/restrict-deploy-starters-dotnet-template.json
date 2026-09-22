@@ -1,6 +1,6 @@
 {
   "name": "Only portfolio identities may start deploy and publish workflows in dotnet-template",
-  "enforcement": "evaluate",
+  "enforcement": "disabled",
   "conditions": {
     "repository_name": {
       "include": [

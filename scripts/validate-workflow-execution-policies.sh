@@ -10,7 +10,8 @@
 #   - is not a JSON object, or its name is not a non-empty string
 #   - has a top-level key or condition the API does not define (a mistyped optional field would
 #     otherwise be dropped silently)
-#   - uses an enforcement other than evaluate or disabled (active needs maintainer approval)
+#   - uses an enforcement other than disabled (evaluate needs GitHub Enterprise Cloud, which this
+#     organization does not have; active needs maintainer approval)
 #   - has no rules, or a rule type the API does not define
 #   - names an actor without an integer id, or with a type the API does not define
 #   - allows an event the API does not define
@@ -62,8 +63,8 @@ for f in "${files[@]}"; do
       ( if (.name | type) != "string" or .name == "" then "name must be a non-empty string" else empty end ),
       ( keys[] | select(IN("name", "enforcement", "conditions", "rules", "exception") | not)
         | "unknown key \(tojson); only name, enforcement, conditions, rules and exception are allowed" ),
-      ( if (.enforcement | IN("evaluate", "disabled")) | not
-        then "enforcement \(.enforcement | tojson) is not evaluate or disabled; active needs maintainer approval"
+      ( if .enforcement != "disabled"
+        then "enforcement \(.enforcement | tojson) is not disabled; evaluate needs GitHub Enterprise Cloud and active needs maintainer approval"
         else empty end ),
       ( if (.rules | type) != "array" or (.rules | length) == 0 then "rules must be a non-empty array"
         else

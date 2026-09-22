@@ -64,8 +64,7 @@ GitHub's `evaluate` mode reports what a policy would block without blocking it. 
 "(GitHub Enterprise Cloud only)". This organization is on the Team plan
 (`gh api orgs/devantler-tech --jq .plan.name` returns `team`), so it cannot use `evaluate`, and a
 policy is never observed in a non-blocking mode. A policy can only be `active` or `disabled`
-here. The files still say `evaluate`; changing them and the check that accepts that value is
-tracked in [#213](https://github.com/devantler-tech/.github/issues/213).
+here, so every checked-in file says `disabled`, and the check rejects any other value.
 
 Without `evaluate`, a policy is tested in two steps:
 
@@ -85,7 +84,7 @@ Without `evaluate`, a policy is tested in two steps:
 2. **Activate one policy on one low-risk repository first.** Start with a template repository's
    `restrict-deploy-starters-*` policy. Create it with `POST /orgs/{org}/actions/policies`, sending
    the file's content with `enforcement` set to `active` in the request body (the checked-in file
-   keeps `evaluate` until #213 lands, and the check rejects `active` in the file). Record the `id`
+   stays `disabled`, and the check rejects `active` in the file). Record the `id`
    in the response: it is the `policy_id` every later request needs. Keep the policy `active` for a
    week and check that the repository's releases and syncs still run. Rollback is one request,
    `PUT /orgs/{org}/actions/policies/{policy_id}` with `enforcement` set to `disabled`.
@@ -99,8 +98,8 @@ not document an exemption from event restrictions. Confirm that those runs still
 
 ## Checks
 
-`bash tests/workflow-execution-policies.sh` runs in CI. It rejects an unknown top-level key or condition, a policy that names workflow files without targeting exactly one repository, an unknown enforcement mode,
-rule, event or actor type, a non-integer actor ID, `active` enforcement, a privileged trigger
+`bash tests/workflow-execution-policies.sh` runs in CI. It rejects an unknown top-level key or condition, a policy that names workflow files without targeting exactly one repository, an unknown
+rule, event or actor type, a non-integer actor ID, any enforcement other than `disabled`, a privileged trigger
 without an exception, and malformed repository or workflow targeting.
 
 The event list came from `scripts/workflow-execution-inventory.sh --org devantler-tech` on
