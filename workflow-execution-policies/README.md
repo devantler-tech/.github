@@ -59,14 +59,15 @@ form must be confirmed before any apply.
 
 ## Testing a policy before it blocks
 
-GitHub's `evaluate` mode, which reports what a policy would block without blocking it, is
-[GitHub Enterprise Cloud only](https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/actions-policies/workflow-execution-protections).
-This organization is on the Team plan (`gh api orgs/devantler-tech --jq .plan.name` returns
-`team`), so there are no policy insights to watch. A policy can only be `active` or `disabled`
+GitHub's `evaluate` mode reports what a policy would block without blocking it. GitHub's
+[workflow execution protections](https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/actions-policies/workflow-execution-protections) page labels that option
+"(GitHub Enterprise Cloud only)". This organization is on the Team plan
+(`gh api orgs/devantler-tech --jq .plan.name` returns `team`), so it cannot use `evaluate`, and a
+policy is never observed in a non-blocking mode. A policy can only be `active` or `disabled`
 here. The files still say `evaluate`; changing them and the check that accepts that value is
 tracked in [#213](https://github.com/devantler-tech/.github/issues/213).
 
-Without insights, a policy is tested in two steps:
+Without `evaluate`, a policy is tested in two steps:
 
 1. **Compare the policy with the evidence (simulation).** Run
    `scripts/workflow-execution-actors.sh --org devantler-tech --since <YYYY-MM-DD>`, with the date
@@ -78,15 +79,19 @@ Without insights, a policy is tested in two steps:
    incomplete evidence, do not activate. This is our own comparison, not GitHub telemetry, and it
    does not prove the policy is enforced.
 2. **Activate one policy on one low-risk repository first.** Start with a template repository's
-   `restrict-deploy-starters-*` policy, keep it `active` for a week, and check that its releases
-   and syncs still run. Rollback is one request,
+   `restrict-deploy-starters-*` policy. Create it with `POST /orgs/{org}/actions/policies`, sending
+   the file's content with `enforcement` set to `active` in the request body (the checked-in file
+   keeps `evaluate` until #213 lands, and the check rejects `active` in the file). Record the `id`
+   in the response: it is the `policy_id` every later request needs. Keep the policy `active` for a
+   week and check that the repository's releases and syncs still run. Rollback is one request,
    `PUT /orgs/{org}/actions/policies/{policy_id}` with `enforcement` set to `disabled`.
    Record the outcome on [#202](https://github.com/devantler-tech/.github/issues/202) before
    activating the next policy. The organization-wide `allow-observed-events.json` goes last.
 
-The one-repository trial is also where to confirm that GitHub-managed runs (code scanning default
-setup, Dependabot updates) are exempt from the event list, as GitHub documents for built-in
-processes.
+GitHub documents that its built-in processes (code scanning default setup, Dependabot updates) are
+exempt from actor restrictions, so the `restrict-deploy-starters-*` trial covers that case. It does
+not document an exemption from event restrictions. Confirm that those runs still start while
+`allow-observed-events.json` is active, during its own trial, before relying on it.
 
 ## Checks
 
