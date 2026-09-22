@@ -8,8 +8,8 @@ spec:
   # Observe-only: Crossplane mirrors this repository read-only and writes nothing.
   # The repository is public and serves the live wedding site, and the visibility
   # below states that live value — so enacting this declaration would be a no-op
-  # rather than a change. Enabling Create/Update is a separate, deliberate step,
-  # tracked on devantler-tech/.github#123.
+  # rather than a change. Enabling Create/Update is a separate, deliberate step
+  # that waits on the provider repin tracked on devantler-tech/platform#2800.
   managementPolicies:
     - Observe
   forProvider:

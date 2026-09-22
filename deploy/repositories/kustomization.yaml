@@ -26,17 +26,20 @@ resources:
   - go-template.yaml
   - dotnet-template.yaml
   - homebrew-tap.yaml
-  - world-at-ruin.yaml
   - fleet-gitops.yaml
-  # Observe-only (read-only mirror; Crossplane writes nothing). These two are
-  # public and serve live sites. They are listed apart because of their
-  # management policy, not their visibility — grouping them as "private repos"
-  # described neither correctly. Promoting them to Observe/Create/Update is
-  # tracked on devantler-tech/.github#123.
+  # Observe-only (read-only mirror; Crossplane writes nothing). They are listed
+  # apart because of their management policy, not their visibility. Promoting
+  # them to Observe/Create/Update waits on the provider repin tracked on
+  # devantler-tech/platform#2800 (see world-at-ruin.yaml for why).
+  - world-at-ruin.yaml
   - ascoachingogvaner.yaml
   - wedding-app.yaml
 # Org-wide repo settings applied to EVERY Repository, single source of truth
-# (auto-applies to every future repo):
+# (auto-applies to every future repo). This includes the Observe-only ones:
+# Crossplane never writes those, but scripts/check-repository-drift.sh compares
+# every declared field against live GitHub, so the declaration still states the
+# policy and a live divergence still fails the check. Exempting them would hide
+# exactly the drift that check exists to find.
 #  - squash-only merge policy (merge commits + rebase disabled; auto-merge,
 #    auto-delete head branches, always-suggest-updating-PR-branches enabled).
 #  - webCommitSignoffRequired: true — declared precisely BECAUSE the org enforces
