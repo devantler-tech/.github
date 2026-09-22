@@ -69,8 +69,8 @@ tracked in [#213](https://github.com/devantler-tech/.github/issues/213).
 Without insights, a policy is tested in two steps:
 
 1. **Compare the policy with the evidence (simulation).** Run
-   `scripts/workflow-execution-actors.sh --org devantler-tech --since <30 days ago>` and confirm
-   that every actor that started each targeted workflow in that window is allowed. Run
+   `scripts/workflow-execution-actors.sh --org devantler-tech --since <YYYY-MM-DD>`, with the date
+   30 days before the run, and confirm that every actor that started each targeted workflow in that window is allowed. Run
    `scripts/workflow-execution-inventory.sh --org devantler-tech` and confirm that every event the
    current default-branch workflows accept is allowed. The inventory reads today's workflow files,
    not their history. Both scripts must exit 0 with no `UNKNOWN` row, and every `NO-RUNS` row must
