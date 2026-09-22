@@ -122,6 +122,7 @@ expect named-files-one-repository 0 "$named | .conditions.repository_name.includ
 expect named-files-all-repositories 1 "$named" "$single"
 expect named-files-two-repositories 1 "$named | .conditions.repository_name.include = [\"platform\", \"ksail\"]" "$single"
 expect named-files-glob-repository 1 "$named | .conditions.repository_name.include = [\"plat*\"]" "$single"
+expect named-files-repository-excluded 1 "$named | .conditions.repository_name = {\"include\": [\"platform\"], \"exclude\": [\"platform\"]}" "$single"
 expect named-files-by-property 1 \
   "$named | del(.conditions.repository_name) | .conditions.repository_property = {\"include\": [{\"name\": \"tier\", \"property_values\": [\"prod\"]}]}" "$single"
 expect all-files-all-repositories 0 '.conditions.workflow_path = {"include": ["~ALL"], "exclude": []}'

@@ -28,6 +28,7 @@
 #     property_values, or a workflow_path with no include or exclude pattern at all
 #   - mixes ~ALL into other workflow_path include patterns, or puts ~ALL in workflow_path exclude
 #   - names specific workflow_path files without targeting exactly one repository by exact name
+#     and an empty repository_name exclude
 #     (a file name can mean a different workflow in each repository)
 # The exception object is this repository's own review record. Strip it before sending a file to
 # the API.
@@ -134,8 +135,9 @@ for f in "${files[@]}"; do
         | if ($inc | length) > 0 and ($inc | index("~ALL")) == null
             and ((.conditions.repository_name.include // null) as $r
               | ($r | type) != "array" or ($r | length) != 1
-                or ($r[0] | type) != "string" or ($r[0] | test("^~ALL$|[*?\\[]")))
-          then "workflow_path names specific files, so repository_name must include exactly one repository by exact name"
+                or ($r[0] | type) != "string" or ($r[0] | test("^~ALL$|[*?\\[]"))
+                or ((.conditions.repository_name.exclude // []) | length) != 0)
+          then "workflow_path names specific files, so repository_name must include exactly one repository by exact name and exclude none"
           else empty end )
     end' "$f" 2>/dev/null)" || problems="not valid JSON"
   if [ -n "$problems" ]; then
