@@ -1,0 +1,40 @@
+{
+  "name": "Only portfolio identities may start deploy and publish workflows in dotnet-template",
+  "enforcement": "evaluate",
+  "conditions": {
+    "repository_name": {
+      "include": [
+        "dotnet-template"
+      ],
+      "exclude": []
+    },
+    "workflow_path": {
+      "include": [
+        ".github/workflows/publish.yaml",
+        ".github/workflows/release.yaml"
+      ],
+      "exclude": []
+    }
+  },
+  "rules": [
+    {
+      "type": "restrict_actions_actors",
+      "parameters": {
+        "allowed_actors": [
+          {
+            "id": 26203420,
+            "type": "User"
+          },
+          {
+            "id": 118344674,
+            "type": "Bot"
+          },
+          {
+            "id": 185060876,
+            "type": "Bot"
+          }
+        ]
+      }
+    }
+  ]
+}

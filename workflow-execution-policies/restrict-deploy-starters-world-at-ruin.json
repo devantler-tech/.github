@@ -1,0 +1,39 @@
+{
+  "name": "Only portfolio identities may start deploy and publish workflows in world-at-ruin",
+  "enforcement": "evaluate",
+  "conditions": {
+    "repository_name": {
+      "include": [
+        "world-at-ruin"
+      ],
+      "exclude": []
+    },
+    "workflow_path": {
+      "include": [
+        ".github/workflows/cd.yaml"
+      ],
+      "exclude": []
+    }
+  },
+  "rules": [
+    {
+      "type": "restrict_actions_actors",
+      "parameters": {
+        "allowed_actors": [
+          {
+            "id": 26203420,
+            "type": "User"
+          },
+          {
+            "id": 118344674,
+            "type": "Bot"
+          },
+          {
+            "id": 185060876,
+            "type": "Bot"
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -69,6 +69,7 @@ expect exception-without-paths 1 \
 # A valid exception is bound to what the policy targets: the policy covers exactly the excepted paths.
 x='.rules[0].parameters.allowed_events += ["workflow_run"]
   | .conditions.workflow_path = {"include": [".github/workflows/x.yaml"], "exclude": []}
+  | .conditions.repository_name.include = ["x"]
   | .exception = {"workflow_paths": [".github/workflows/x.yaml"], "threat_model": "reads no PR code"}'
 expect documented-exception 0 "$x"
 # An exception on an untargeted policy would lift the prohibition for every workflow.
@@ -112,6 +113,18 @@ expect workflow-path-no-patterns 1 '.conditions.workflow_path = {"include": [], 
   'workflow_path needs at least one include or exclude pattern'
 expect workflow-path-empty-pattern 1 '.conditions.workflow_path = {"include": [""], "exclude": []}' \
   'workflow_path include and exclude must hold non-empty strings'
+
+# Naming files is reviewable only against one repository: ci.yaml deploys in one repository and
+# only tests in another, so the same path would restrict a different workflow elsewhere.
+named='.conditions.workflow_path = {"include": [".github/workflows/cd.yaml"], "exclude": []}'
+single="specific files, so repository_name must include exactly one repository"
+expect named-files-one-repository 0 "$named | .conditions.repository_name.include = [\"platform\"]"
+expect named-files-all-repositories 1 "$named" "$single"
+expect named-files-two-repositories 1 "$named | .conditions.repository_name.include = [\"platform\", \"ksail\"]" "$single"
+expect named-files-glob-repository 1 "$named | .conditions.repository_name.include = [\"plat*\"]" "$single"
+expect named-files-by-property 1 \
+  "$named | del(.conditions.repository_name) | .conditions.repository_property = {\"include\": [{\"name\": \"tier\", \"property_values\": [\"prod\"]}]}" "$single"
+expect all-files-all-repositories 0 '.conditions.workflow_path = {"include": ["~ALL"], "exclude": []}'
 
 # Not JSON at all.
 mkdir "$tmp/broken"

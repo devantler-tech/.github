@@ -1,0 +1,55 @@
+{
+  "name": "Only portfolio identities may start deploy and publish workflows in platform",
+  "enforcement": "evaluate",
+  "conditions": {
+    "repository_name": {
+      "include": [
+        "platform"
+      ],
+      "exclude": []
+    },
+    "workflow_path": {
+      "include": [
+        ".github/workflows/cd.yaml",
+        ".github/workflows/diagnose-cilium-ext-authz-ipcache.yaml",
+        ".github/workflows/dr-rebuild.yaml",
+        ".github/workflows/measure-datapath-cpu-throttling.yaml",
+        ".github/workflows/mirror-wedding-backup-catalogue.yaml",
+        ".github/workflows/probe-cilium-externalauth-crossnode.yaml",
+        ".github/workflows/probe-image-signature-enforcement.yaml",
+        ".github/workflows/prove-scoped-package-access.yaml",
+        ".github/workflows/publish-unsigned-probe-image.yaml",
+        ".github/workflows/recover-wedding-db-incident.yaml",
+        ".github/workflows/regenerate-publish-workflow-approved-revisions.yaml",
+        ".github/workflows/release.yaml",
+        ".github/workflows/validate-image-verifier-liveness.yaml"
+      ],
+      "exclude": []
+    }
+  },
+  "rules": [
+    {
+      "type": "restrict_actions_actors",
+      "parameters": {
+        "allowed_actors": [
+          {
+            "id": 26203420,
+            "type": "User"
+          },
+          {
+            "id": 118344674,
+            "type": "Bot"
+          },
+          {
+            "id": 185060876,
+            "type": "Bot"
+          },
+          {
+            "id": 41898282,
+            "type": "Bot"
+          }
+        ]
+      }
+    }
+  ]
+}
