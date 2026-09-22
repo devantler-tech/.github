@@ -15,7 +15,7 @@ fail() {
 # A valid base policy. Each case below changes exactly one thing about it.
 base='{
   "name": "base",
-  "enforcement": "evaluate",
+  "enforcement": "disabled",
   "conditions": {"repository_name": {"include": ["~ALL"], "exclude": []}},
   "rules": [
     {"type": "restrict_action_events", "parameters": {"allowed_events": ["push", "pull_request"]}},
@@ -38,9 +38,9 @@ expect() {
 }
 
 expect valid 0 '.'
-expect disabled 0 '.enforcement = "disabled"'
+expect evaluate 1 '.enforcement = "evaluate"' 'evaluate needs GitHub Enterprise Cloud'
 expect active 1 '.enforcement = "active"' 'active needs maintainer approval'
-expect unknown-enforcement 1 '.enforcement = "enforce"' 'is not evaluate or disabled'
+expect unknown-enforcement 1 '.enforcement = "enforce"' 'is not disabled'
 expect empty-name 1 '.name = ""' 'name must be a non-empty string'
 # A mistyped optional field would otherwise be dropped silently, so only documented keys pass.
 expect unknown-top-level-key 1 '.enforcment = "evaluate"' 'unknown key "enforcment"'

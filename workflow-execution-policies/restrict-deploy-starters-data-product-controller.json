@@ -1,6 +1,6 @@
 {
   "name": "Only portfolio identities may start deploy and publish workflows in data-product-controller",
-  "enforcement": "evaluate",
+  "enforcement": "disabled",
   "conditions": {
     "repository_name": {
       "include": [

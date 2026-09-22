@@ -1,6 +1,6 @@
 {
   "name": "Allow only the events portfolio workflows use",
-  "enforcement": "evaluate",
+  "enforcement": "disabled",
   "conditions": {
     "repository_name": {
       "include": ["~ALL"],
