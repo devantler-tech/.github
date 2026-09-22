@@ -20,10 +20,8 @@ must be removed before sending: a policy may allow `pull_request_target` or `wor
 `exception` lists the `workflow_paths` it covers and a `threat_model` saying why they are safe, and
 the policy itself targets only those paths.
 
-Every policy starts in `evaluate` mode, so GitHub reports what it would block without blocking it.
-Moving a policy to `active` is the maintainer's call.
-Evaluate mode is also where to confirm that GitHub-managed runs (code scanning default setup,
-Dependabot updates) are exempt from the event list, as GitHub documents for built-in processes.
+Moving a policy to `active` is the maintainer's call. See [Testing a policy before it
+blocks](#testing-a-policy-before-it-blocks) for how that step is made safely.
 
 Actors are numeric IDs with their API type (`User`, `Bot`, `App`, …), never logins, because a
 login can be renamed and reused.
@@ -59,9 +57,45 @@ Workflow paths are written repository-relative (`.github/workflows/<file>`). The
 does not say whether that is the expected form, so each policy targets a single repository, and the
 form must be confirmed before any apply.
 
-⚠️ GitHub documents evaluate mode as GitHub Enterprise Cloud only, and this organization is on the
-Team plan. How to test these policies safely is tracked in
-[#213](https://github.com/devantler-tech/.github/issues/213).
+## Testing a policy before it blocks
+
+GitHub's `evaluate` mode reports what a policy would block without blocking it. GitHub's
+[workflow execution protections](https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/actions-policies/workflow-execution-protections) page labels that option
+"(GitHub Enterprise Cloud only)". This organization is on the Team plan
+(`gh api orgs/devantler-tech --jq .plan.name` returns `team`), so it cannot use `evaluate`, and a
+policy is never observed in a non-blocking mode. A policy can only be `active` or `disabled`
+here. The files still say `evaluate`; changing them and the check that accepts that value is
+tracked in [#213](https://github.com/devantler-tech/.github/issues/213).
+
+Without `evaluate`, a policy is tested in two steps:
+
+1. **Compare the policy with the evidence (simulation).** Run
+   `scripts/workflow-execution-actors.sh --org devantler-tech --since <YYYY-MM-DD>`, with the date
+   30 days before the run, and confirm that every actor that started each targeted workflow in that window is allowed. Run
+   `scripts/workflow-execution-inventory.sh --org devantler-tech` and confirm that every event the
+   current default-branch workflows accept is allowed. The inventory reads only each repository's
+   default branch, while the event policy applies to workflows on every branch and tag. So also
+   confirm that every value in the actors report's `event` column is allowed: that report covers
+   runs from any ref in the window. A workflow that exists only on another ref and did not run in
+   the window appears in neither, so the `allow-observed-events.json` trial below is the only check
+   for it. Both scripts must exit 0 with no `UNKNOWN` row, and every `NO-RUNS` row must
+   be reviewed by hand: it only means nothing ran in the window, not that no actor is needed. With
+   incomplete evidence, do not activate. This is our own comparison, not GitHub telemetry, and it
+   does not prove the policy is enforced.
+2. **Activate one policy on one low-risk repository first.** Start with a template repository's
+   `restrict-deploy-starters-*` policy. Create it with `POST /orgs/{org}/actions/policies`, sending
+   the file's content with `enforcement` set to `active` in the request body (the checked-in file
+   keeps `evaluate` until #213 lands, and the check rejects `active` in the file). Record the `id`
+   in the response: it is the `policy_id` every later request needs. Keep the policy `active` for a
+   week and check that the repository's releases and syncs still run. Rollback is one request,
+   `PUT /orgs/{org}/actions/policies/{policy_id}` with `enforcement` set to `disabled`.
+   Record the outcome on [#202](https://github.com/devantler-tech/.github/issues/202) before
+   activating the next policy. The organization-wide `allow-observed-events.json` goes last.
+
+GitHub documents that its built-in processes (code scanning default setup, Dependabot updates) are
+exempt from actor restrictions, so the `restrict-deploy-starters-*` trial covers that case. It does
+not document an exemption from event restrictions. Confirm that those runs still start while
+`allow-observed-events.json` is active, during its own trial, before relying on it.
 
 ## Checks
 
