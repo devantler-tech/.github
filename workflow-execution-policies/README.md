@@ -73,8 +73,12 @@ Without `evaluate`, a policy is tested in two steps:
    `scripts/workflow-execution-actors.sh --org devantler-tech --since <YYYY-MM-DD>`, with the date
    30 days before the run, and confirm that every actor that started each targeted workflow in that window is allowed. Run
    `scripts/workflow-execution-inventory.sh --org devantler-tech` and confirm that every event the
-   current default-branch workflows accept is allowed. The inventory reads today's workflow files,
-   not their history. Both scripts must exit 0 with no `UNKNOWN` row, and every `NO-RUNS` row must
+   current default-branch workflows accept is allowed. The inventory reads only each repository's
+   default branch, while the event policy applies to workflows on every branch and tag. So also
+   confirm that every value in the actors report's `event` column is allowed: that report covers
+   runs from any ref in the window. A workflow that exists only on another ref and did not run in
+   the window appears in neither, so the `allow-observed-events.json` trial below is the only check
+   for it. Both scripts must exit 0 with no `UNKNOWN` row, and every `NO-RUNS` row must
    be reviewed by hand: it only means nothing ran in the window, not that no actor is needed. With
    incomplete evidence, do not activate. This is our own comparison, not GitHub telemetry, and it
    does not prove the policy is enforced.
