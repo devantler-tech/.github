@@ -68,13 +68,19 @@ tracked in [#213](https://github.com/devantler-tech/.github/issues/213).
 
 Without insights, a policy is tested in two steps:
 
-1. **Replay the evidence (simulation).** Re-run `scripts/workflow-execution-actors.sh` and
-   `scripts/workflow-execution-inventory.sh` for the last 30 days and confirm that every actor and
-   event that started each targeted workflow is allowed by the policy. This is our own comparison
-   against past runs. It is not GitHub telemetry and does not prove the policy is enforced.
+1. **Compare the policy with the evidence (simulation).** Run
+   `scripts/workflow-execution-actors.sh --org devantler-tech --since <30 days ago>` and confirm
+   that every actor that started each targeted workflow in that window is allowed. Run
+   `scripts/workflow-execution-inventory.sh --org devantler-tech` and confirm that every event the
+   current default-branch workflows accept is allowed. The inventory reads today's workflow files,
+   not their history. Both scripts must exit 0 with no `UNKNOWN` row, and every `NO-RUNS` row must
+   be reviewed by hand: it only means nothing ran in the window, not that no actor is needed. With
+   incomplete evidence, do not activate. This is our own comparison, not GitHub telemetry, and it
+   does not prove the policy is enforced.
 2. **Activate one policy on one low-risk repository first.** Start with a template repository's
    `restrict-deploy-starters-*` policy, keep it `active` for a week, and check that its releases
-   and syncs still run. Rollback is a single `PATCH` of that policy's `enforcement` to `disabled`.
+   and syncs still run. Rollback is one request,
+   `PUT /orgs/{org}/actions/policies/{policy_id}` with `enforcement` set to `disabled`.
    Record the outcome on [#202](https://github.com/devantler-tech/.github/issues/202) before
    activating the next policy. The organization-wide `allow-observed-events.json` goes last.
 
