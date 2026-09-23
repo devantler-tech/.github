@@ -111,9 +111,10 @@ without an exception, and malformed repository or workflow targeting.
 
 `bash tests/apply-workflow-execution-policies.sh` also runs in CI. It drives the apply script
 against an offline stand-in for GitHub's API and fails when the script writes anything while the
-files are invalid or the live list is incomplete, sends the review-only `exception`, counts GitHub's
-own fields or list order as drift, misses a policy on a later page, changes a policy it does not
-manage, or accepts a read-back that differs from what it sent.
+files are invalid or the live list is incomplete, sends the review-only `exception`, compares a
+summary list entry instead of the policy's full read, counts GitHub's own fields or list order as
+drift, misses a policy on a later page, changes a policy it does not manage, or accepts a
+read-back that differs from what it sent.
 
 The event list came from `scripts/workflow-execution-inventory.sh --org devantler-tech` on
 2026-09-21 (144 workflows across the active repositories). Re-run it when adding a workflow that

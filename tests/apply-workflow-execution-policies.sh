@@ -13,9 +13,13 @@ fail() {
 }
 
 # The stand-in keeps the organization's live policies in $GH_STATE, logs every call to $GH_LOG
-# and every request body to $GH_BODIES. Knobs: FAIL_LIST and FAIL_WRITE make those calls fail,
-# BAD_SHAPE returns a list in the wrong shape, EXTRA_TOTAL inflates the reported total, and
-# MANGLE_PATHS stores workflow paths in a different form from the one sent.
+# and every request body to $GH_BODIES. Like GitHub's, its list returns each policy in summary
+# form, without conditions or rules, so only a single-policy read can be compared with a file.
+# Knobs: FAIL_LIST, FAIL_GET and FAIL_WRITE make those calls fail, FAIL_GET_ID fails the read of
+# one policy, BAD_SHAPE returns a list in the wrong shape, NO_ID lists policies without an id,
+# BAD_GET returns a single read that is not a policy, BAD_CONDITIONS_ID returns one policy with
+# malformed conditions, EXTRA_TOTAL inflates the reported total, and MANGLE_PATHS stores workflow
+# paths in a different form from the one sent.
 bin="$tmp/bin"
 mkdir "$bin"
 cat >"$bin/gh" <<'STUB'
@@ -59,7 +63,10 @@ case "$method $endpoint" in
     page="${endpoint#*&page=}"
     page="${page%%&*}"
     jq --argjson page "$page" --argjson extra "${EXTRA_TOTAL-0}" \
-      '{total_count: (length + $extra), policies: .[($page - 1) * 100 : $page * 100]}' "$state"
+      --arg no_id "${NO_ID-}" \
+      '{total_count: (length + $extra),
+        policies: (.[($page - 1) * 100 : $page * 100] | map({id, name, enforcement, source_type, target})
+          | if $no_id == "1" then map(del(.id)) else . end)}' "$state"
     ;;
   "POST orgs/fix/actions/policies")
     [ "${FAIL_WRITE-}" != 1 ] || { echo "HTTP 403: Resource not accessible by integration" >&2; exit 1; }
@@ -72,6 +79,13 @@ case "$method $endpoint" in
     store "${endpoint##*/}" PUT
     ;;
   "GET orgs/fix/actions/policies/"*)
+    [ "${FAIL_GET-}" != 1 ] || { echo "HTTP 500: Internal Error" >&2; exit 1; }
+    [ "${FAIL_GET_ID-}" != "${endpoint##*/}" ] || { echo "HTTP 500: Internal Error" >&2; exit 1; }
+    [ "${BAD_GET-}" != 1 ] || { echo '{"message": "not a policy"}'; exit 0; }
+    if [ "${BAD_CONDITIONS_ID-}" = "${endpoint##*/}" ]; then
+      jq --argjson id "${endpoint##*/}" 'map(select(.id == $id)) | first | .conditions = 7' "$state"
+      exit 0
+    fi
     found="$(jq --argjson id "${endpoint##*/}" 'map(select(.id == $id)) | first // empty' "$state")"
     [ -n "$found" ] || { echo "HTTP 404: Not Found" >&2; exit 1; }
     printf '%s\n' "$found"
@@ -188,6 +202,8 @@ run_apply 0 --dir "$policies"
 expect_out 'UPDATED  starters.json (id 2)'
 expect_out 'IN-SYNC  events.json'
 grep -qx 'PUT orgs/fix/actions/policies/2' "$log" || fail "$case: no PUT to policy 2: $(cat "$log")"
+# What the policy was before the write, so the cause of drift can be read from the log.
+expect_out '"enforcement":"active"'
 expect_writes 1
 [ "$(jq -r '.[1].enforcement' "$state")" = disabled ] || fail "$case: policy 2 was not set back to disabled"
 
@@ -258,6 +274,45 @@ case=list-failed
 reset "$in_sync"
 FAIL_LIST=1 run_apply 2 --dir "$policies"
 expect_out 'UNKNOWN could not list'
+expect_writes 0
+
+# A policy that cannot be read in full cannot be compared, so it is not written either.
+case=single-read-failed
+reset "$in_sync"
+FAIL_GET=1 run_apply 2 --dir "$policies"
+expect_out 'UNKNOWN  events.json: policy 1 could not be read'
+expect_out 'UNKNOWN  starters.json: policy 2 could not be read'
+expect_out 'nothing was applied'
+expect_writes 0
+
+# Every managed policy is read before any is written: a drifted policy is not updated when a
+# policy after it cannot be read.
+case=later-read-failed
+reset "$(jq '.[0].enforcement = "active"' <<<"$in_sync")"
+FAIL_GET_ID=2 run_apply 2 --dir "$policies"
+expect_out 'UNKNOWN  starters.json: policy 2 could not be read'
+expect_writes 0
+
+# A read that succeeds but is not the policy leaves nothing to compare, so it is not drift.
+case=malformed-full-read
+reset "$(jq '.[0].enforcement = "active"' <<<"$in_sync")"
+BAD_GET=1 run_apply 2 --dir "$policies"
+expect_out "UNKNOWN  events.json: policy 1's full read is not the documented shape"
+expect_writes 0
+
+# A full read in a shape the comparison cannot handle is caught before any write, not midway.
+case=malformed-conditions
+reset "$(jq '.[0].enforcement = "active"' <<<"$in_sync")"
+BAD_CONDITIONS_ID=2 run_apply 2 --dir "$policies"
+expect_out "UNKNOWN  starters.json: policy 2's full read could not be compared"
+expect_writes 0
+
+# A listed policy without an id cannot be read or updated, and must not look like a missing one:
+# creating it again would duplicate a policy that exists.
+case=list-entry-without-id
+reset "$in_sync"
+NO_ID=1 run_apply 2 --dir "$policies"
+expect_out 'is not the documented shape'
 expect_writes 0
 
 case=list-bad-shape

@@ -17,8 +17,11 @@
 # A live organization policy that no file names is reported as UNMANAGED and left alone: nothing
 # here deletes a policy, the same rule deploy/ follows.
 #
-# Only the fields the files set are compared (name, enforcement, conditions and rules), with
-# unordered lists sorted, so server-side fields such as id and timestamps never count as drift.
+# The list returns each policy in summary form, so every managed policy is read in full, and its
+# shape checked, before anything is written; one that cannot be read is UNKNOWN and nothing is
+# written. Only the fields the files set are compared (name, enforcement, conditions and rules),
+# with unordered lists sorted, so server-side fields such as id and timestamps never count as drift.
+# An UPDATED or DRIFT line also prints what the live policy was.
 # An update that omits workflow_path keeps the live policy's targeting, so removing workflow_path
 # from a file reads back as MISMATCH until the policy is recreated.
 #
@@ -111,7 +114,9 @@ while :; do
     echo "UNKNOWN could not list the organization's Actions policies (page $page): $(tr '\n' ' ' <"$tmp/err")" >&2
     exit 2
   fi
-  if ! jq -e '(.total_count | type) == "number" and (.policies | type) == "array"' >/dev/null 2>&1 <<<"$response"; then
+  # A listed policy without an id or name could not be matched or read, and would look missing.
+  if ! jq -e '(.total_count | type) == "number" and (.policies | type) == "array"
+      and all(.policies[]; (.id | type) == "number" and (.name | type) == "string")' >/dev/null 2>&1 <<<"$response"; then
     echo "UNKNOWN the Actions policies list (page $page) is not the documented shape" >&2
     exit 2
   fi
@@ -150,29 +155,72 @@ if [ -n "$ambiguous" ]; then
   exit 1
 fi
 
+# The list returns each policy in summary form, so every managed policy is read in full before
+# anything is written. A read that fails, or that is not the policy it was asked for, leaves
+# nothing to compare, and writing the others around it would half-apply the set.
+full="$tmp/full"
+mkdir "$full"
+unreadable=0
+while IFS=$'\t' read -r name base; do
+  live_id="$(jq -r --arg name "$name" 'map(select(.name == $name)) | first | .id // empty' "$live")"
+  [ -n "$live_id" ] || continue
+  if ! policy="$(gh api "orgs/$org/actions/policies/$live_id" </dev/null 2>"$tmp/err")"; then
+    echo "UNKNOWN  $base: policy $live_id could not be read: $(tr '\n' ' ' <"$tmp/err")" >&2
+    unreadable=1
+    continue
+  fi
+  if ! jq -e --argjson id "$live_id" --arg name "$name" '
+      type == "object" and .id == $id and .name == $name
+      and (.enforcement | type) == "string" and (.rules | type) == "array"' >/dev/null 2>&1 <<<"$policy"; then
+    echo "UNKNOWN  $base: policy $live_id's full read is not the documented shape" >&2
+    unreadable=1
+    continue
+  fi
+  # Normalizing here, not in the write pass, means a shape the comparison cannot handle stops
+  # the run before the first write rather than midway through it.
+  if ! have="$(jq -c "$normalize" 2>/dev/null <<<"$policy")" || [ -z "$have" ]; then
+    echo "UNKNOWN  $base: policy $live_id's full read could not be compared" >&2
+    unreadable=1
+    continue
+  fi
+  printf '%s\n' "$live_id" >"$full/$base.id"
+  printf '%s\n' "$have" >"$full/$base.normalized"
+done < <(sort -t $'\t' -k2 "$names")
+if [ "$unreadable" != 0 ]; then
+  echo "UNKNOWN not every managed policy could be read in full; nothing was applied" >&2
+  exit 2
+fi
+
 failed=0
 while IFS=$'\t' read -r name base; do
   want="$(jq -c "$normalize" "$desired/$base")"
-  current="$(jq -c --arg name "$name" 'map(select(.name == $name)) | first // empty' "$live")"
-  if [ -n "$current" ] && [ "$(jq -c "$normalize" <<<"$current")" = "$want" ]; then
-    echo "IN-SYNC  $base"
-    continue
+  live_id=""
+  have=""
+  if [ -f "$full/$base.id" ]; then
+    live_id="$(cat "$full/$base.id")"
+    have="$(cat "$full/$base.normalized")"
+    if [ "$have" = "$want" ]; then
+      echo "IN-SYNC  $base"
+      continue
+    fi
   fi
   if [ "$check" = true ]; then
-    if [ -z "$current" ]; then
+    if [ -z "$live_id" ]; then
       echo "DRIFT    $base: no live policy is named \"$name\""
     else
-      echo "DRIFT    $base: the live policy (id $(jq .id <<<"$current")) differs"
+      echo "DRIFT    $base: the live policy (id $live_id) differs"
+      echo "         want: $want"
+      echo "         live: $have"
     fi
     failed=1
     continue
   fi
-  if [ -z "$current" ]; then
+  if [ -z "$live_id" ]; then
     action=CREATED
     write=(--method POST "orgs/$org/actions/policies")
   else
     action=UPDATED
-    write=(--method PUT "orgs/$org/actions/policies/$(jq .id <<<"$current")")
+    write=(--method PUT "orgs/$org/actions/policies/$live_id")
   fi
   if ! written="$(gh api "${write[@]}" --input "$desired/$base" </dev/null 2>"$tmp/err")"; then
     echo "FAILED   $base: $(tr '\n' ' ' <"$tmp/err")"
@@ -201,6 +249,8 @@ while IFS=$'\t' read -r name base; do
     continue
   fi
   echo "$action  $base (id $id)"
+  # What it was before the write, so the cause of drift can be read from the log.
+  [ -z "$have" ] || echo "         was: $have"
 done < <(sort -t $'\t' -k2 "$names")
 
 jq -r --rawfile names "$names" '
