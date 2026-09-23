@@ -35,9 +35,15 @@ while [ $# -gt 0 ]; do
 done
 printf '%s %s\n' "$method" "$endpoint" >>"$GH_LOG"
 state="$GH_STATE"
+# store <id> <method>: an update that omits workflow_path keeps the policy's existing workflow
+# targeting, as GitHub documents for PUT; a create stores only what was sent.
 store() {
-  jq --argjson id "$1" --slurpfile body "$input" --arg mangle "${MANGLE_PATHS-}" '
-    ($body[0] + {id: $id, source_type: "Organization", target: "actions"}
+  jq --argjson id "$1" --arg method "$2" --slurpfile body "$input" --arg mangle "${MANGLE_PATHS-}" '
+    (map(select(.id == $id)) | first // {}) as $old
+    | ($body[0] + {id: $id, source_type: "Organization", target: "actions"}
+      | if $method == "PUT" and .conditions.workflow_path == null and $old.conditions.workflow_path != null then
+          .conditions.workflow_path = $old.conditions.workflow_path
+        else . end
       | if $mangle == "1" and .conditions.workflow_path then
           .conditions.workflow_path.include |= map("example/" + .)
         else . end) as $p
@@ -58,12 +64,12 @@ case "$method $endpoint" in
   "POST orgs/fix/actions/policies")
     [ "${FAIL_WRITE-}" != 1 ] || { echo "HTTP 403: Resource not accessible by integration" >&2; exit 1; }
     jq -c . "$input" >>"$GH_BODIES"
-    store "$(jq '(map(.id) | max // 0) + 1' "$state")"
+    store "$(jq '(map(.id) | max // 0) + 1' "$state")" POST
     ;;
   "PUT orgs/fix/actions/policies/"*)
     [ "${FAIL_WRITE-}" != 1 ] || { echo "HTTP 403: Resource not accessible by integration" >&2; exit 1; }
     jq -c . "$input" >>"$GH_BODIES"
-    store "${endpoint##*/}"
+    store "${endpoint##*/}" PUT
     ;;
   "GET orgs/fix/actions/policies/"*)
     found="$(jq --argjson id "${endpoint##*/}" 'map(select(.id == $id)) | first // empty' "$state")"
@@ -185,10 +191,19 @@ grep -qx 'PUT orgs/fix/actions/policies/2' "$log" || fail "$case: no PUT to poli
 expect_writes 1
 [ "$(jq -r '.[1].enforcement' "$state")" = disabled ] || fail "$case: policy 2 was not set back to disabled"
 
-case=update-added-condition
-reset "$(jq '.[0].conditions.workflow_path = {"include": [".github/workflows/x.yaml"], "exclude": []}' <<<"$in_sync")"
+# A changed workflow_path is sent in full, so the update replaces it.
+case=update-workflow-path
+reset "$(jq '.[1].conditions.workflow_path.include = [".github/workflows/other.yaml"]' <<<"$in_sync")"
 run_apply 0 --dir "$policies"
-expect_out 'UPDATED  events.json (id 1)'
+expect_out 'UPDATED  starters.json (id 2)'
+expect_writes 1
+
+# An update cannot remove workflow_path: GitHub keeps the live targeting when it is omitted, so
+# the read-back has to fail loudly rather than report the policy as updated.
+case=update-cannot-drop-workflow-path
+reset "$(jq '.[0].conditions.workflow_path = {"include": [".github/workflows/x.yaml"], "exclude": []}' <<<"$in_sync")"
+run_apply 1 --dir "$policies"
+expect_out 'MISMATCH events.json: policy 1 was stored differently'
 expect_writes 1
 
 case=check-drift
