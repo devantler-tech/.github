@@ -114,7 +114,9 @@ while :; do
     echo "UNKNOWN could not list the organization's Actions policies (page $page): $(tr '\n' ' ' <"$tmp/err")" >&2
     exit 2
   fi
-  if ! jq -e '(.total_count | type) == "number" and (.policies | type) == "array"' >/dev/null 2>&1 <<<"$response"; then
+  # A listed policy without an id or name could not be matched or read, and would look missing.
+  if ! jq -e '(.total_count | type) == "number" and (.policies | type) == "array"
+      and all(.policies[]; (.id | type) == "number" and (.name | type) == "string")' >/dev/null 2>&1 <<<"$response"; then
     echo "UNKNOWN the Actions policies list (page $page) is not the documented shape" >&2
     exit 2
   fi
@@ -174,7 +176,15 @@ while IFS=$'\t' read -r name base; do
     unreadable=1
     continue
   fi
-  printf '%s\n' "$policy" >"$full/$base"
+  # Normalizing here, not in the write pass, means a shape the comparison cannot handle stops
+  # the run before the first write rather than midway through it.
+  if ! have="$(jq -c "$normalize" 2>/dev/null <<<"$policy")" || [ -z "$have" ]; then
+    echo "UNKNOWN  $base: policy $live_id's full read could not be compared" >&2
+    unreadable=1
+    continue
+  fi
+  printf '%s\n' "$live_id" >"$full/$base.id"
+  printf '%s\n' "$have" >"$full/$base.normalized"
 done < <(sort -t $'\t' -k2 "$names")
 if [ "$unreadable" != 0 ]; then
   echo "UNKNOWN not every managed policy could be read in full; nothing was applied" >&2
@@ -186,9 +196,9 @@ while IFS=$'\t' read -r name base; do
   want="$(jq -c "$normalize" "$desired/$base")"
   live_id=""
   have=""
-  if [ -f "$full/$base" ]; then
-    live_id="$(jq -r .id "$full/$base")"
-    have="$(jq -c "$normalize" "$full/$base")"
+  if [ -f "$full/$base.id" ]; then
+    live_id="$(cat "$full/$base.id")"
+    have="$(cat "$full/$base.normalized")"
     if [ "$have" = "$want" ]; then
       echo "IN-SYNC  $base"
       continue
