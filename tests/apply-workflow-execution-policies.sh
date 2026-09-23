@@ -13,9 +13,11 @@ fail() {
 }
 
 # The stand-in keeps the organization's live policies in $GH_STATE, logs every call to $GH_LOG
-# and every request body to $GH_BODIES. Knobs: FAIL_LIST and FAIL_WRITE make those calls fail,
-# BAD_SHAPE returns a list in the wrong shape, EXTRA_TOTAL inflates the reported total, and
-# MANGLE_PATHS stores workflow paths in a different form from the one sent.
+# and every request body to $GH_BODIES. Like GitHub's, its list returns each policy in summary
+# form, without conditions or rules, so only a single-policy read can be compared with a file.
+# Knobs: FAIL_LIST, FAIL_GET and FAIL_WRITE make those calls fail, BAD_SHAPE returns a list in
+# the wrong shape, EXTRA_TOTAL inflates the reported total, and MANGLE_PATHS stores workflow paths
+# in a different form from the one sent.
 bin="$tmp/bin"
 mkdir "$bin"
 cat >"$bin/gh" <<'STUB'
@@ -59,7 +61,8 @@ case "$method $endpoint" in
     page="${endpoint#*&page=}"
     page="${page%%&*}"
     jq --argjson page "$page" --argjson extra "${EXTRA_TOTAL-0}" \
-      '{total_count: (length + $extra), policies: .[($page - 1) * 100 : $page * 100]}' "$state"
+      '{total_count: (length + $extra),
+        policies: (.[($page - 1) * 100 : $page * 100] | map({id, name, enforcement, source_type, target}))}' "$state"
     ;;
   "POST orgs/fix/actions/policies")
     [ "${FAIL_WRITE-}" != 1 ] || { echo "HTTP 403: Resource not accessible by integration" >&2; exit 1; }
@@ -72,6 +75,7 @@ case "$method $endpoint" in
     store "${endpoint##*/}" PUT
     ;;
   "GET orgs/fix/actions/policies/"*)
+    [ "${FAIL_GET-}" != 1 ] || { echo "HTTP 500: Internal Error" >&2; exit 1; }
     found="$(jq --argjson id "${endpoint##*/}" 'map(select(.id == $id)) | first // empty' "$state")"
     [ -n "$found" ] || { echo "HTTP 404: Not Found" >&2; exit 1; }
     printf '%s\n' "$found"
@@ -188,6 +192,8 @@ run_apply 0 --dir "$policies"
 expect_out 'UPDATED  starters.json (id 2)'
 expect_out 'IN-SYNC  events.json'
 grep -qx 'PUT orgs/fix/actions/policies/2' "$log" || fail "$case: no PUT to policy 2: $(cat "$log")"
+# What the policy was before the write, so the cause of drift can be read from the log.
+expect_out '"enforcement":"active"'
 expect_writes 1
 [ "$(jq -r '.[1].enforcement' "$state")" = disabled ] || fail "$case: policy 2 was not set back to disabled"
 
@@ -258,6 +264,14 @@ case=list-failed
 reset "$in_sync"
 FAIL_LIST=1 run_apply 2 --dir "$policies"
 expect_out 'UNKNOWN could not list'
+expect_writes 0
+
+# A policy that cannot be read in full cannot be compared, so it is not written either.
+case=single-read-failed
+reset "$in_sync"
+FAIL_GET=1 run_apply 1 --dir "$policies"
+expect_out 'FAILED   events.json: policy 1 could not be read'
+expect_out 'FAILED   starters.json: policy 2 could not be read'
 expect_writes 0
 
 case=list-bad-shape

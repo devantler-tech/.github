@@ -13,12 +13,14 @@
 #   IN-SYNC    the live policy already matched
 #   DRIFT      (--check only) the live policy is missing or differs; nothing was written
 #   MISMATCH   after a write, GitHub returned something other than what was sent
-#   FAILED     GitHub refused the write
+#   FAILED     GitHub refused the write, or the live policy could not be read to compare
 # A live organization policy that no file names is reported as UNMANAGED and left alone: nothing
 # here deletes a policy, the same rule deploy/ follows.
 #
-# Only the fields the files set are compared (name, enforcement, conditions and rules), with
-# unordered lists sorted, so server-side fields such as id and timestamps never count as drift.
+# The list returns each policy in summary form, so a live policy is read in full before it is
+# compared. Only the fields the files set are compared (name, enforcement, conditions and rules),
+# with unordered lists sorted, so server-side fields such as id and timestamps never count as drift.
+# An UPDATED or DRIFT line also prints what the live policy was.
 # An update that omits workflow_path keeps the live policy's targeting, so removing workflow_path
 # from a file reads back as MISMATCH until the policy is recreated.
 #
@@ -153,26 +155,38 @@ fi
 failed=0
 while IFS=$'\t' read -r name base; do
   want="$(jq -c "$normalize" "$desired/$base")"
-  current="$(jq -c --arg name "$name" 'map(select(.name == $name)) | first // empty' "$live")"
-  if [ -n "$current" ] && [ "$(jq -c "$normalize" <<<"$current")" = "$want" ]; then
-    echo "IN-SYNC  $base"
-    continue
+  live_id="$(jq -r --arg name "$name" 'map(select(.name == $name)) | first | .id // empty' "$live")"
+  have=""
+  if [ -n "$live_id" ]; then
+    # The list returns each policy in summary form, so compare the policy's own full read.
+    if ! current="$(gh api "orgs/$org/actions/policies/$live_id" </dev/null 2>"$tmp/err")"; then
+      echo "FAILED   $base: policy $live_id could not be read: $(tr '\n' ' ' <"$tmp/err")"
+      failed=1
+      continue
+    fi
+    have="$(jq -c "$normalize" <<<"$current" 2>/dev/null || true)"
+    if [ "$have" = "$want" ]; then
+      echo "IN-SYNC  $base"
+      continue
+    fi
   fi
   if [ "$check" = true ]; then
-    if [ -z "$current" ]; then
+    if [ -z "$live_id" ]; then
       echo "DRIFT    $base: no live policy is named \"$name\""
     else
-      echo "DRIFT    $base: the live policy (id $(jq .id <<<"$current")) differs"
+      echo "DRIFT    $base: the live policy (id $live_id) differs"
+      echo "         want: $want"
+      echo "         live: $have"
     fi
     failed=1
     continue
   fi
-  if [ -z "$current" ]; then
+  if [ -z "$live_id" ]; then
     action=CREATED
     write=(--method POST "orgs/$org/actions/policies")
   else
     action=UPDATED
-    write=(--method PUT "orgs/$org/actions/policies/$(jq .id <<<"$current")")
+    write=(--method PUT "orgs/$org/actions/policies/$live_id")
   fi
   if ! written="$(gh api "${write[@]}" --input "$desired/$base" </dev/null 2>"$tmp/err")"; then
     echo "FAILED   $base: $(tr '\n' ' ' <"$tmp/err")"
@@ -201,6 +215,8 @@ while IFS=$'\t' read -r name base; do
     continue
   fi
   echo "$action  $base (id $id)"
+  # What it was before the write, so the cause of drift can be read from the log.
+  [ -z "$have" ] || echo "         was: $have"
 done < <(sort -t $'\t' -k2 "$names")
 
 jq -r --rawfile names "$names" '
