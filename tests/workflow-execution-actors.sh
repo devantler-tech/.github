@@ -78,6 +78,8 @@ case "$endpoint" in
       end_day="${end_day%%T*}"
       if [ "$start_day" != "$end_day" ]; then
         split_runs 1 1001 1200
+        # Past the cap GitHub serves one more page that reports a total of zero.
+        printf '%s\n' '{"total_count":0,"workflow_runs":[]}' | emit_json
         exit 0
       fi
       case "$created" in

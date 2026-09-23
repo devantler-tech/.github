@@ -89,9 +89,14 @@ read_window() {
     return 1
   fi
   run_count="$(awk -F '\t' '$1 == "__META__" { print $2 }' "$page" | sort -u)"
+  # Past the cap GitHub serves one more page reporting a total of zero, so a capped range shows
+  # two totals. Any page at or over the cap marks the whole range capped.
+  if awk '$1 ~ /^[0-9]+$/ && $1 + 0 >= 1000 { capped=1 } END { exit(capped ? 0 : 1) }' \
+    <<<"$run_count"; then
+    return 3
+  fi
   run_count_value_count="$(awk 'NF { count++ } END { print count + 0 }' <<<"$run_count")"
   [ "$run_count_value_count" -eq 1 ] && [[ "$run_count" =~ ^[0-9]+$ ]] || return 1
-  [ "$run_count" -lt 1000 ] || return 3
   awk -F '\t' '$1 != "__META__"' "$page" >"$run_rows"
   actual_run_count="$(awk -F '\t' '{ print $6 }' "$run_rows" | sort -u |
     awk 'NF { count++ } END { print count + 0 }')"
