@@ -15,9 +15,10 @@ fail() {
 # The stand-in keeps the organization's live policies in $GH_STATE, logs every call to $GH_LOG
 # and every request body to $GH_BODIES. Like GitHub's, its list returns each policy in summary
 # form, without conditions or rules, so only a single-policy read can be compared with a file.
-# Knobs: FAIL_LIST, FAIL_GET and FAIL_WRITE make those calls fail, BAD_SHAPE returns a list in
-# the wrong shape, EXTRA_TOTAL inflates the reported total, and MANGLE_PATHS stores workflow paths
-# in a different form from the one sent.
+# Knobs: FAIL_LIST, FAIL_GET and FAIL_WRITE make those calls fail, FAIL_GET_ID fails the read of
+# one policy, BAD_SHAPE returns a list in the wrong shape, BAD_GET returns a single read that is not
+# a policy, EXTRA_TOTAL inflates the reported total, and MANGLE_PATHS stores workflow paths in a
+# different form from the one sent.
 bin="$tmp/bin"
 mkdir "$bin"
 cat >"$bin/gh" <<'STUB'
@@ -76,6 +77,8 @@ case "$method $endpoint" in
     ;;
   "GET orgs/fix/actions/policies/"*)
     [ "${FAIL_GET-}" != 1 ] || { echo "HTTP 500: Internal Error" >&2; exit 1; }
+    [ "${FAIL_GET_ID-}" != "${endpoint##*/}" ] || { echo "HTTP 500: Internal Error" >&2; exit 1; }
+    [ "${BAD_GET-}" != 1 ] || { echo '{"message": "not a policy"}'; exit 0; }
     found="$(jq --argjson id "${endpoint##*/}" 'map(select(.id == $id)) | first // empty' "$state")"
     [ -n "$found" ] || { echo "HTTP 404: Not Found" >&2; exit 1; }
     printf '%s\n' "$found"
@@ -269,9 +272,25 @@ expect_writes 0
 # A policy that cannot be read in full cannot be compared, so it is not written either.
 case=single-read-failed
 reset "$in_sync"
-FAIL_GET=1 run_apply 1 --dir "$policies"
-expect_out 'FAILED   events.json: policy 1 could not be read'
-expect_out 'FAILED   starters.json: policy 2 could not be read'
+FAIL_GET=1 run_apply 2 --dir "$policies"
+expect_out 'UNKNOWN  events.json: policy 1 could not be read'
+expect_out 'UNKNOWN  starters.json: policy 2 could not be read'
+expect_out 'nothing was applied'
+expect_writes 0
+
+# Every managed policy is read before any is written: a drifted policy is not updated when a
+# policy after it cannot be read.
+case=later-read-failed
+reset "$(jq '.[0].enforcement = "active"' <<<"$in_sync")"
+FAIL_GET_ID=2 run_apply 2 --dir "$policies"
+expect_out 'UNKNOWN  starters.json: policy 2 could not be read'
+expect_writes 0
+
+# A read that succeeds but is not the policy leaves nothing to compare, so it is not drift.
+case=malformed-full-read
+reset "$(jq '.[0].enforcement = "active"' <<<"$in_sync")"
+BAD_GET=1 run_apply 2 --dir "$policies"
+expect_out "UNKNOWN  events.json: policy 1's full read is not the documented shape"
 expect_writes 0
 
 case=list-bad-shape
