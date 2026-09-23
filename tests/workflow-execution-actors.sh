@@ -63,7 +63,43 @@ case "$endpoint" in
     fi
     printf '%s\n' '{"workflows":[{"id":11,"path":".github/workflows/ci.yaml","state":"active"},{"id":12,"path":".github/workflows/manual.yaml","state":"active"},{"id":13,"path":"dynamic/dependabot/dependabot-updates","state":"active"}]}' | emit_json
     ;;
-  "repos/fix/example/actions/workflows/11/runs?per_page=100&created=%3E%3D2026-08-20")
+  "repos/fix/example/actions/workflows/11/runs?per_page=100&created="*)
+    # The fixture's runs all fall on 2026-08-20; every other window is empty unless a case
+    # below spreads runs across days.
+    created="${endpoint#*created=}"
+    split_runs() {
+      jq -nc --argjson from "$1" --argjson to "$2" --argjson total "$3" '{total_count:$total,workflow_runs:[range($from;$to) | {id:.,run_attempt:1,event:"push",actor:{login:"dependabot[bot]",type:"Bot",id:49699333},triggering_actor:{login:"dependabot[bot]",type:"Bot",id:49699333}}]}' | emit_json
+    }
+    if [ "${SPLIT_RUNS-}" = 1 ]; then
+      # 1,200 runs across two days: a query over the whole window hits GitHub's 1,000-result
+      # cap, while each day on its own stays well under it.
+      start_day="${created%%T*}"
+      end_day="${created#*..}"
+      end_day="${end_day%%T*}"
+      if [ "$start_day" != "$end_day" ]; then
+        split_runs 1 1001 1200
+        # Past the cap GitHub serves one more page that reports a total of zero.
+        printf '%s\n' '{"total_count":0,"workflow_runs":[]}' | emit_json
+        exit 0
+      fi
+      case "$created" in
+        %3E%3D*) split_runs 1 1001 1200 ;;
+        2026-08-20T*) split_runs 1 601 600 ;;
+        2026-08-21T*) split_runs 601 1201 600 ;;
+        *) printf '%s\n' '{"total_count":0,"workflow_runs":[]}' | emit_json ;;
+      esac
+      exit 0
+    fi
+    case "$created" in
+      %3E%3D2026-08-20 | 2026-08-20T*) ;;
+      *) printf '%s\n' '{"total_count":0,"workflow_runs":[]}' | emit_json; exit 0 ;;
+    esac
+    if [ "${DRIFTING_RUNS-}" = 1 ]; then
+      # A run lands between page reads, so the pages disagree about the total.
+      printf '%s\n' '{"total_count":2,"workflow_runs":[{"id":101,"run_attempt":1,"event":"push","actor":{"login":"dependabot[bot]","type":"Bot","id":49699333},"triggering_actor":{"login":"dependabot[bot]","type":"Bot","id":49699333}}]}' | emit_json
+      printf '%s\n' '{"total_count":3,"workflow_runs":[{"id":102,"run_attempt":1,"event":"push","actor":{"login":"dependabot[bot]","type":"Bot","id":49699333},"triggering_actor":{"login":"dependabot[bot]","type":"Bot","id":49699333}}]}' | emit_json
+      exit 0
+    fi
     if [ "${NULL_ACTOR-}" = 1 ]; then
       printf '%s\n' '{"total_count":1,"workflow_runs":[{"id":104,"run_attempt":1,"event":"push","actor":null,"triggering_actor":null}]}' | emit_json
     elif [ "${RERUN_ACTORS-}" = 1 ]; then
@@ -78,7 +114,7 @@ case "$endpoint" in
       exit 1
     fi
     ;;
-  "repos/fix/example/actions/workflows/12/runs?per_page=100&created=%3E%3D2026-08-20")
+  "repos/fix/example/actions/workflows/12/runs?per_page=100&created="*)
     printf '%s\n' '{"total_count":0,"workflow_runs":[]}' | emit_json
     ;;
   "repos/fix/example/actions/runs/103/attempts/1")
@@ -178,5 +214,42 @@ grep -Fq "$(printf 'example\tUNKNOWN')" <<<"$out" || fail "an unreadable workflo
 rc=0
 EXPECTED_REPOS=3 PATH="$bin:$PATH" bash "$inventory" --org fix --since 2026-08-20 >/dev/null 2>&1 || rc=$?
 [ "$rc" -eq 2 ] || fail "an incomplete repository listing must exit 2, got $rc"
+
+# A busy workflow can exceed 1,000 runs across the window while every single day stays under it.
+# Reading one day at a time must complete instead of failing closed on the aggregate.
+: >"$GH_LOG"
+out="$(SPLIT_RUNS=1 PATH="$bin:$PATH" bash "$inventory" --org fix --since 2026-08-20 --until 2026-08-21)" ||
+  fail "a workflow over 1,000 runs in the window but under it per day must exit 0"
+grep -Fxq "$actor_row" <<<"$out" || fail "per-day windows must still yield OBSERVED evidence"
+# Every run-history query is a closed range, so no read can grow while it is paged.
+runs_queries="$(grep '/runs?' "$GH_LOG")"
+[ -n "$runs_queries" ] || fail "the run history must have been queried"
+if grep -v 'created=[0-9-]*T[0-9:]*Z\.\.[0-9-]*T[0-9:]*Z$' <<<"$runs_queries" | grep -q .; then
+  fail "every run-history query must be a closed created=<start>..<end> range"
+fi
+# The capped workflow is re-read one day at a time over exactly the requested days.
+prefix='repos/fix/example/actions/workflows/11/runs?per_page=100&created='
+expected_busy="$(printf '%s\n' \
+  "${prefix}2026-08-20T00:00:00Z..2026-08-21T23:59:59Z" \
+  "${prefix}2026-08-20T00:00:00Z..2026-08-20T23:59:59Z" \
+  "${prefix}2026-08-21T00:00:00Z..2026-08-21T23:59:59Z")"
+[ "$(grep -F "$prefix" "$GH_LOG")" = "$expected_busy" ] ||
+  fail "a capped window must be re-read as exactly the requested days, got: $(grep -F "$prefix" "$GH_LOG")"
+# A workflow under the cap is read once, so splitting costs nothing where it is not needed.
+[ "$(grep -c '^repos/fix/example/actions/workflows/12/runs?' "$GH_LOG")" -eq 1 ] ||
+  fail "a workflow under the cap must be read in one query"
+
+# A single day whose count changes between pages still fails closed.
+rc=0
+out="$(DRIFTING_RUNS=1 PATH="$bin:$PATH" bash "$inventory" --org fix --since 2026-08-20 --until 2026-08-21 2>/dev/null)" || rc=$?
+[ "$rc" -eq 2 ] || fail "a day whose run count changes while it is read must exit 2, got $rc"
+grep -Fq "$(printf 'example\t.github/workflows/ci.yaml\tUNKNOWN')" <<<"$out" ||
+  fail "a changing run count must emit UNKNOWN"
+assert_no_ci_observed "$out" "a changing run count"
+
+# The window's end can never precede its start.
+rc=0
+PATH="$bin:$PATH" bash "$inventory" --org fix --since 2026-08-21 --until 2026-08-20 >/dev/null 2>&1 || rc=$?
+[ "$rc" -eq 2 ] || fail "--until before --since must be rejected, got $rc"
 
 echo "workflow-execution-actors test: ok"

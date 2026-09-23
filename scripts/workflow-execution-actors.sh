@@ -2,9 +2,13 @@
 # workflow-execution-actors.sh — read-only evidence of actors that started portfolio workflows.
 #
 # Usage:
-#   workflow-execution-actors.sh --org <org> --since <YYYY-MM-DD>
+#   workflow-execution-actors.sh --org <org> --since <YYYY-MM-DD> [--until <YYYY-MM-DD>]
 #
-# Every active workflow is joined to workflow runs created on or after --since. Each observed run
+# Every active workflow is joined to workflow runs created from --since through --until (default:
+# today, UTC). Runs are read over closed ranges that end no later than the moment the script
+# starts, so a range cannot grow while its pages are read. GitHub caps a filtered run list at
+# 1,000 results, so a workflow whose window reaches the cap is re-read one UTC day at a time. A day
+# that still reaches the cap, or a total that changes between pages, is UNKNOWN. Each observed run
 # actor is resolved again through GitHub's live user API, so the numeric ID and actor type are usable
 # as policy evidence rather than inferred from a login. A re-running actor is emitted separately
 # when it differs from the actor that started the original run.
@@ -23,15 +27,33 @@ usage() {
 
 org=""
 since=""
+until=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --org) org="${2:-}"; shift 2 || usage ;;
     --since) since="${2:-}"; shift 2 || usage ;;
+    --until) until="${2:-}"; shift 2 || usage ;;
     *) usage ;;
   esac
 done
+cutoff="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+until="${until:-${cutoff%%T*}}"
 [[ "$since" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]] || usage
+[[ "$until" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]] || usage
 [ -n "$org" ] || usage
+# Closed <start>..<end> ranges ending no later than the start-up cutoff: the whole window first,
+# then one per UTC day for a workflow whose whole window reaches the cap.
+day_windows="$(jq -nr --arg since "$since" --arg until "$until" --arg cutoff "$cutoff" '
+  ($since + "T00:00:00Z" | fromdateiso8601) as $from |
+  ($until + "T00:00:00Z" | fromdateiso8601) as $to |
+  ($cutoff | fromdateiso8601) as $cut |
+  if $to < $from or $from > $cut then error("empty window") else empty end,
+  (range($from; $to + 86400; 86400) | select(. <= $cut) |
+    "\(todate)..\([. + 86399, $cut] | min | todate)")
+' 2>/dev/null)" || usage
+full_window="$(head -1 <<<"$day_windows")"
+full_window="${full_window%%..*}..$(tail -1 <<<"$day_windows" | sed 's/.*\.\.//')"
+day_window_count="$(awk 'NF { count++ } END { print count + 0 }' <<<"$day_windows")"
 
 unknown=0
 tmp="$(mktemp -d)"
@@ -42,6 +64,44 @@ actor_cache="$tmp/actors.tsv"
 unknown_row() {
   printf '%s\t%s\tUNKNOWN\t-\t-\t-\t-\tUNKNOWN\n' "$1" "$2"
   unknown=1
+}
+
+# read_window <workflow-id> <created-range> <append-to>
+# Appends the runs created in one closed range to <append-to> (repository: $repo). Returns 0 when
+# the range was read completely, 3 when it reached GitHub's 1,000-result cap (so a narrower range
+# may still succeed), and 1 for any other incomplete read, including a total that changed between
+# pages.
+read_window() {
+  local workflow_id="$1" window="$2" append_to="$3"
+  local page="$tmp/page" run_rows="$tmp/run-rows"
+  local run_count run_count_value_count actual_run_count
+  # shellcheck disable=SC2016 # $run is a jq variable inside the single-quoted filter.
+  if ! gh api "repos/$org/$repo/actions/workflows/$workflow_id/runs?per_page=100&created=$window" \
+    --paginate --jq '
+      (["__META__", (.total_count | tostring), "-", "-", "-", "-", "-"] | @tsv),
+      (.workflow_runs[] as $run |
+        ({role:"actor", value:($run.actor // {})},
+         (if (($run.triggering_actor.id // null) != ($run.actor.id // null))
+          then {role:"triggering_actor", value:$run.triggering_actor} else empty end)) |
+        [$run.event, .role, .value.login, .value.type, (.value.id | tostring),
+         ($run.id | tostring), ($run.run_attempt | tostring)] | @tsv)
+    ' >"$page" 2>"$tmp/error"; then
+    return 1
+  fi
+  run_count="$(awk -F '\t' '$1 == "__META__" { print $2 }' "$page" | sort -u)"
+  # Past the cap GitHub serves one more page reporting a total of zero, so a capped range shows
+  # two totals. Any page at or over the cap marks the whole range capped.
+  if awk '$1 ~ /^[0-9]+$/ && $1 + 0 >= 1000 { capped=1 } END { exit(capped ? 0 : 1) }' \
+    <<<"$run_count"; then
+    return 3
+  fi
+  run_count_value_count="$(awk 'NF { count++ } END { print count + 0 }' <<<"$run_count")"
+  [ "$run_count_value_count" -eq 1 ] && [[ "$run_count" =~ ^[0-9]+$ ]] || return 1
+  awk -F '\t' '$1 != "__META__"' "$page" >"$run_rows"
+  actual_run_count="$(awk -F '\t' '{ print $6 }' "$run_rows" | sort -u |
+    awk 'NF { count++ } END { print count + 0 }')"
+  [ "$actual_run_count" -eq "$run_count" ] || return 1
+  cat "$run_rows" >>"$append_to"
 }
 
 # resolve_actor <login> <history-type> <history-id>
@@ -93,34 +153,26 @@ while IFS= read -r repo; do
     [ -n "$workflow_id" ] && [ -n "$workflow_path" ] || continue
     case "$workflow_path" in .github/workflows/*) ;; *) continue ;; esac
     runs="$tmp/runs"
-    # shellcheck disable=SC2016 # $run is a jq variable inside the single-quoted filter.
-    if ! gh api "repos/$org/$repo/actions/workflows/$workflow_id/runs?per_page=100&created=%3E%3D$since" \
-      --paginate --jq '
-        (["__META__", (.total_count | tostring), "-", "-", "-", "-", "-"] | @tsv),
-        (.workflow_runs[] as $run |
-          ({role:"actor", value:($run.actor // {})},
-           (if (($run.triggering_actor.id // null) != ($run.actor.id // null))
-            then {role:"triggering_actor", value:$run.triggering_actor} else empty end)) |
-          [$run.event, .role, .value.login, .value.type, (.value.id | tostring),
-           ($run.id | tostring), ($run.run_attempt | tostring)] | @tsv)
-      ' >"$runs" 2>"$tmp/error"; then
+    : >"$runs"
+    windows_complete=1
+    window_status=0
+    read_window "$workflow_id" "$full_window" "$runs" || window_status=$?
+    if [ "$window_status" -eq 3 ] && [ "$day_window_count" -gt 1 ]; then
+      : >"$runs"
+      while IFS= read -r window; do
+        [ -n "$window" ] || continue
+        if ! read_window "$workflow_id" "$window" "$runs"; then
+          windows_complete=0
+          break
+        fi
+      done <<<"$day_windows"
+    elif [ "$window_status" -ne 0 ]; then
+      windows_complete=0
+    fi
+    if [ "$windows_complete" -ne 1 ]; then
       unknown_row "$repo" "$workflow_path"
       continue
     fi
-
-    run_count_values="$(awk -F '\t' '$1 == "__META__" { print $2 }' "$runs" | sort -u)"
-    run_count_value_count="$(awk 'NF { count++ } END { print count + 0 }' <<<"$run_count_values")"
-    run_count="$run_count_values"
-    run_rows="$tmp/run-rows"
-    awk -F '\t' '$1 != "__META__"' "$runs" >"$run_rows"
-    actual_run_count="$(awk -F '\t' '{ print $6 }' "$run_rows" | sort -u |
-      awk 'NF { count++ } END { print count + 0 }')"
-    if [ "$run_count_value_count" -ne 1 ] || ! [[ "$run_count" =~ ^[0-9]+$ ]] ||
-      [ "$run_count" -ge 1000 ] || [ "$actual_run_count" -ne "$run_count" ]; then
-      unknown_row "$repo" "$workflow_path"
-      continue
-    fi
-    mv "$run_rows" "$runs"
 
     run_attempts="$tmp/run-attempts"
     awk -F '\t' '{ print $6 "\t" $7 }' "$runs" | sort -u >"$run_attempts"
