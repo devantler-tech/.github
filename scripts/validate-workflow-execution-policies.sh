@@ -5,7 +5,8 @@
 #   validate-workflow-execution-policies.sh [<policies-dir>]   # default: workflow-execution-policies/
 #
 # Each *.json file is one organization policy in the request shape of
-# POST /orgs/{org}/actions/policies. The files are desired state only: nothing here applies them.
+# POST /orgs/{org}/actions/policies. This only checks the files; apply-workflow-execution-policies.sh
+# applies them, and refuses to when this check fails.
 # The check fails when a file:
 #   - is not a JSON object, or its name is not a non-empty string
 #   - has a top-level key or condition the API does not define (a mistyped optional field would

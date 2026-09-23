@@ -132,4 +132,6 @@ here Observe-first once expressible.
   rulesets scoped by **custom properties**) are **not adoptable**: the new rule types
   aren't in the provider and the feature relies on the `repository_property` scoping the
   provider lacks. Tracked in [#69](https://github.com/devantler-tech/.github/issues/69);
-  revisit when the provider catches up.
+  revisit when the provider catches up. Until then they are declared in
+  [`workflow-execution-policies/`](../../workflow-execution-policies/) and applied by a workflow;
+  moving them here is [#226](https://github.com/devantler-tech/.github/issues/226).
