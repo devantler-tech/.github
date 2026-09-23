@@ -36,6 +36,9 @@ for the architecture, the GitHub App credential setup, and the Observe-first ado
   imperative change is at best a no-op and at worst churns against the reconciler. (Reading via
   `gh api` is fine; *writing* managed config is not.) Applying an **existing** label to an issue is
   triage (content, allowed); creating or editing a label **definition** is config (declarative-only).
+  The one setting the provider cannot express yet, Actions workflow execution policies, is declared
+  in [`workflow-execution-policies/`](workflow-execution-policies/) and applied from `main` by
+  `apply-workflow-execution-policies.yaml`; change those by editing the files, never the live policy.
 - **Ownership goes to a team, not an individual.** The canonical owner across the suite is the
   `maintainers` team — model access on `Team`/`TeamRepository`, never on individual logins.
 - **Observe-first when adopting an existing resource.** A new `Repository`/`IssueLabels`/team CR for
@@ -108,10 +111,11 @@ bash tests/deploy-deletions.sh          # removed deploy/ resources must be ackn
 bash tests/repository-drift.sh          # declared-vs-live comparison logic
 bash tests/workflow-execution-inventory.sh # who and what can start each workflow
 bash tests/workflow-execution-actors.sh  # live actor IDs/types observed per workflow and event
-bash tests/workflow-execution-policies.sh # reviewed execution policies are valid, unapplied desired state
+bash tests/workflow-execution-policies.sh # reviewed execution policies are valid desired state
+bash tests/apply-workflow-execution-policies.sh # the policy reconciler, against an offline API stand-in
 ```
 
-Those twelve commands are the baseline checks that `ci.yaml` runs. Pull requests additionally pass
+Those thirteen commands are the baseline checks that `ci.yaml` runs. Pull requests additionally pass
 their changed paths and title through `scripts/validate-release-contract.sh` and their base/head
 renders plus the pull-request body through `scripts/validate-deploy-deletions.sh` (every managed
 resource that leaves the render needs its own `Deletion-Acknowledged: <Kind>.<group>/<name>` body line, spelled the way the
@@ -147,6 +151,14 @@ Repo-specific watch-list for the daily engineer:
   It runs daily at 05:17 UTC and on `workflow_dispatch`. The scoped App token reads repository
   settings through REST and fills missing merge-policy fields through GraphQL. Both reads must
   identify the same repository and visibility; missing fields or partial responses fail the check.
+- **Workflow execution policies are applied by a workflow, not Crossplane.**
+  `apply-workflow-execution-policies.yaml` runs when a change to `workflow-execution-policies/` or
+  its reconciler lands on `main`, daily at 05:43 UTC, and on `workflow_dispatch`. It mints a token
+  from `APP_CLIENT_ID` / `APP_PRIVATE_KEY` with organization administration only, makes the live
+  policies match the files by name, reads each back, and never deletes one. A red run names the
+  policy and prints `FAILED`, `MISMATCH` or `UNKNOWN`; fix the file or the credential, never the
+  live policy. Moving these into `deploy/` once the provider supports them is
+  [#226](https://github.com/devantler-tech/.github/issues/226).
 - **`cd.yaml` is the publish path**, triggered on `v*` tags only; `ci.yaml` produces the PR-time
   required check. A red `cd.yaml` means the org-config OCI artifact didn't republish — investigate
   before assuming the live org is in sync.

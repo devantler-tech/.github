@@ -4,12 +4,19 @@ GitHub can restrict which actors and events may start each Actions workflow ("wo
 protections"). This folder holds the policies we intend to use across the organization, one file per
 policy, reviewed through pull requests.
 
-**Nothing here is applied yet.** Our GitHub configuration reaches the live organization through
-Crossplane and the GitHub Terraform provider, and that provider has no resource for these policies:
-its latest release (6.13.0) predates the feature's general availability on 2026-09-17. Applying them
-by hand would leave them outside the reconciler and outside the drift check. The files stay here as
-reviewed desired state until a GitOps path exists, or until the maintainer approves an interim
-apply. Roadmap: [#202](https://github.com/devantler-tech/.github/issues/202).
+**How they reach the organization.** The rest of our GitHub configuration goes through Crossplane
+and the GitHub Terraform provider, which has no resource for these policies: its latest release
+(6.13.0) predates the feature's general availability on 2026-09-17. So
+[`apply-workflow-execution-policies.yaml`](../.github/workflows/apply-workflow-execution-policies.yaml)
+applies them instead. When a change here lands on `main`, every day, and on demand, it runs
+[`scripts/apply-workflow-execution-policies.sh`](../scripts/apply-workflow-execution-policies.sh):
+the organization's policies are made to match these files, matched by name, and each one is read
+back and must match. A policy changed by hand is set back on the next run. Nothing is deleted: a live
+policy that no file names is reported and left alone. The token comes from the organization-wide App
+credential (`APP_CLIENT_ID` and `APP_PRIVATE_KEY`) and carries organization administration only.
+Moving the policies into `deploy/` once the provider supports them is tracked in
+[#226](https://github.com/devantler-tech/.github/issues/226). Roadmap:
+[#202](https://github.com/devantler-tech/.github/issues/202).
 
 ## Format
 
@@ -54,8 +61,9 @@ Excluded on purpose, because they also run on `pull_request`, where the actor is
 (platform and ksail `ci.yaml`, actions `enable-auto-merge.yaml`); none is targeted.
 
 Workflow paths are written repository-relative (`.github/workflows/<file>`). The REST reference
-does not say whether that is the expected form, so each policy targets a single repository, and the
-form must be confirmed before any apply.
+does not say whether that is the expected form, so each policy targets a single repository. Every
+file is `disabled` until the apply workflow's read-back confirms the form: if GitHub stores a
+different one, the run fails with `MISMATCH` and prints both.
 
 ## Testing a policy before it blocks
 
@@ -82,14 +90,13 @@ Without `evaluate`, a policy is tested in two steps:
    incomplete evidence, do not activate. This is our own comparison, not GitHub telemetry, and it
    does not prove the policy is enforced.
 2. **Activate one policy on one low-risk repository first.** Start with a template repository's
-   `restrict-deploy-starters-*` policy. Create it with `POST /orgs/{org}/actions/policies`, sending
-   the file's content with `enforcement` set to `active` in the request body (the checked-in file
-   stays `disabled`, and the check rejects `active` in the file). Record the `id`
-   in the response: it is the `policy_id` every later request needs. Keep the policy `active` for a
-   week and check that the repository's releases and syncs still run. Rollback is one request,
-   `PUT /orgs/{org}/actions/policies/{policy_id}` with `enforcement` set to `disabled`.
-   Record the outcome on [#202](https://github.com/devantler-tech/.github/issues/202) before
-   activating the next policy. The organization-wide `allow-observed-events.json` goes last.
+   `restrict-deploy-starters-*` policy. Activation is a pull request that sets that file's
+   `enforcement` to `active`, and the apply workflow turns the policy on once it lands. The check
+   rejects `active`, so the first activation pull request also changes the check to allow it, and
+   it needs the maintainer's approval. Keep the policy `active` for a week and check that the
+   repository's releases and syncs still run. Rollback is reverting that pull request. Record the
+   outcome on [#202](https://github.com/devantler-tech/.github/issues/202) before activating the
+   next policy. The organization-wide `allow-observed-events.json` goes last.
 
 GitHub documents that its built-in processes (code scanning default setup, Dependabot updates) are
 exempt from actor restrictions, so the `restrict-deploy-starters-*` trial covers that case. It does
@@ -101,6 +108,12 @@ not document an exemption from event restrictions. Confirm that those runs still
 `bash tests/workflow-execution-policies.sh` runs in CI. It rejects an unknown top-level key or condition, a policy that names workflow files without targeting exactly one repository, an unknown
 rule, event or actor type, a non-integer actor ID, any enforcement other than `disabled`, a privileged trigger
 without an exception, and malformed repository or workflow targeting.
+
+`bash tests/apply-workflow-execution-policies.sh` also runs in CI. It drives the apply script
+against an offline stand-in for GitHub's API and fails when the script writes anything while the
+files are invalid or the live list is incomplete, sends the review-only `exception`, counts GitHub's
+own fields or list order as drift, misses a policy on a later page, changes a policy it does not
+manage, or accepts a read-back that differs from what it sent.
 
 The event list came from `scripts/workflow-execution-inventory.sh --org devantler-tech` on
 2026-09-21 (144 workflows across the active repositories). Re-run it when adding a workflow that

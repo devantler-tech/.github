@@ -1,0 +1,64 @@
+name: 🛡️ Apply workflow execution policies
+
+# Makes the organization's Actions policies (workflow execution protections)
+# match the reviewed files in workflow-execution-policies/. The Crossplane
+# GitHub provider cannot manage these policies yet, so this workflow applies
+# them until it can; moving them into deploy/ is tracked in #226.
+#
+# It runs when a change to the policies or to this reconciler lands on main,
+# daily so a policy changed by hand is set back, and on demand. It never runs
+# for a pull request: its token can administer the organization, so it only
+# ever runs reviewed code from main.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - workflow-execution-policies/**
+      - scripts/apply-workflow-execution-policies.sh
+      - scripts/validate-workflow-execution-policies.sh
+      - .github/workflows/apply-workflow-execution-policies.yaml
+  schedule:
+    - cron: "43 5 * * *"
+  workflow_dispatch:
+
+permissions: {}
+
+# Two runs writing the same policies at once could both create one.
+concurrency:
+  group: apply-workflow-execution-policies
+  cancel-in-progress: false
+
+jobs:
+  apply:
+    name: 🛡️ Apply workflow execution policies
+    runs-on: ubuntu-latest
+    # workflow_dispatch can name any branch; only main is reviewed.
+    if: github.ref == 'refs/heads/main'
+    permissions:
+      contents: read # checkout
+    steps:
+      - name: 📑 Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: 🔑 Get GitHub App Token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        id: app-token
+        with:
+          client-id: ${{ vars.APP_CLIENT_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          # Least privilege (zizmor github-app): organization administration is
+          # what manages Actions policies, and nothing here touches a
+          # repository, so the token reaches only this one. Minting fails when
+          # the App lacks the permission, rather than falling back to all of it.
+          repositories: .github
+          permission-organization-administration: write
+
+      - name: 🛡️ Apply the policies
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          ORG: ${{ github.repository_owner }}
+        run: bash scripts/apply-workflow-execution-policies.sh --org "$ORG"

@@ -106,6 +106,12 @@ jobs:
       - name: 🧪 Test workflow execution policies
         run: bash tests/workflow-execution-policies.sh
 
+      # The reconciler itself writes to the live org and runs only from main
+      # (apply-workflow-execution-policies.yaml); this pins it against an
+      # offline stand-in for the API, so it stays PR-safe.
+      - name: 🧪 Test workflow execution policy reconciler
+        run: bash tests/apply-workflow-execution-policies.sh
+
       # The drift check itself reads live GitHub state and runs on a schedule
       # (repository-drift-check.yaml); this only pins its comparison logic,
       # against fixtures, so it stays offline and PR-safe.
