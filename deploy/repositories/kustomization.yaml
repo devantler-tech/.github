@@ -10,10 +10,9 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
-  # Actively managed (Observe/Create/Update). Every non-archived org repo; the
-  # shared policy patch below applies to all of them.
-  - platform.yaml
-  - ksail.yaml
+  # Actively managed (Observe/Create/Update). The shared policy patch below
+  # applies to all Repository resources in this kustomization, while each file
+  # retains its own lifecycle policy.
   - maintenance.yaml
   - agent-skills.yaml
   - agent-plugins.yaml
@@ -27,6 +26,12 @@ resources:
   - dotnet-template.yaml
   - homebrew-tap.yaml
   - fleet-gitops.yaml
+  # Active repositories temporarily contained at Observe-only while #232
+  # removes provider-owned deprecated Pages state from their live CRs. The
+  # declarations remain complete and the shared policy patch still renders, but
+  # Crossplane issues no writes until clean re-adoption is verified.
+  - platform.yaml
+  - ksail.yaml
   # Observe-only (read-only mirror; Crossplane writes nothing). They are listed
   # apart because of their management policy, not their visibility. Promoting
   # them to Observe/Create/Update waits on the provider repin tracked on

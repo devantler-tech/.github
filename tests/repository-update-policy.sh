@@ -59,6 +59,28 @@ active_count="$(printf '%s\n' "$active_repositories" | grep -c . || true)"
 [[ "$active_count" -ge 10 ]] ||
   fail "active Repository set collapsed to $active_count entries"
 
+# ksail and platform were adopted before the provider split GitHub Pages into
+# its own managed resource, so their live CRs still carry provider-owned
+# spec.forProvider.pages state. The GitHub App intentionally has no Pages write
+# permission, and Update would keep retrying that deprecated field on every
+# reconciliation. Hold these two Repository resources at Observe-only until
+# #232 completes a clean re-adoption without the stale field.
+for pages_contained_repository in ksail platform; do
+  pages_contained_policies="$(
+    yq -N "
+      select(
+        .kind == \"Repository\" and
+        .metadata.name == \"$pages_contained_repository\"
+      ) |
+      .spec.managementPolicies |
+      sort |
+      join(\",\")
+    " "$render"
+  )"
+  [[ "$pages_contained_policies" == "Observe" ]] ||
+    fail "$pages_contained_repository must remain Observe-only until its deprecated Pages state is cleanly re-adopted: $pages_contained_policies"
+done
+
 # LateInitialize copies live-only values into forProvider, and everything in
 # forProvider is sent on update PATCHes, so LateInitialize is what turns a
 # live-only value into part of future payloads. The hazard is that pairing, not

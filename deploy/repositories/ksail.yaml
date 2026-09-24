@@ -7,16 +7,13 @@ metadata:
     # (owner comes from the ProviderConfig credentials).
     crossplane.io/external-name: ksail
 spec:
-  # Managed (Observe/Create/Update). Merge policy from the shared
-  # patch; visibility pinned public + archived false so management can never
-  # flip visibility or archive this repo. Discoverability metadata
-  # (description/topics/homepageUrl) is declared so the config is AUTHORITATIVE
-  # for it. Settings declared nowhere here keep the value adopted from the live
-  # repo when it was first observed.
-  managementPolicies:
-    - Observe
-    - Create
-    - Update
+  # Temporarily Observe-only under #232. This resource was adopted before the
+  # provider split GitHub Pages into its own managed resource, so the live CR
+  # retains provider-owned deprecated Pages state. The GitHub App deliberately
+  # has no Pages write permission; keeping Update enabled would retry that stale
+  # field indefinitely. Restore Create/Update only after a clean re-adoption
+  # proves the field is absent.
+  managementPolicies: ["Observe"]
   forProvider:
     name: ksail
     visibility: public
