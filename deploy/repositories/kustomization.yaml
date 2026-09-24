@@ -44,12 +44,9 @@ resources:
 #    auto-delete head branches, always-suggest-updating-PR-branches enabled).
 #  - webCommitSignoffRequired: true — declared precisely BECAUSE the org enforces
 #    it. Leaving the field unconfigured creates a permanent false-versus-live-true
-#    diff. Declaring true removes that field's own diff, but the deployed
-#    provider-upjet-github v0.19.1 still includes the unchanged field whenever
-#    another Repository setting needs an update; GitHub rejects that PATCH under
-#    organization signoff enforcement. Until a provider release includes the
-#    terraform-provider-github v6.12.0 fix, optional Repository drift must remain
-#    absent as pinned by tests/repository-update-policy.sh. See upstream #2077.
+#    diff. The deployed provider-upjet-github v0.20.0 embeds
+#    terraform-provider-github v6.13.0, whose upstream #2077 fix omits the
+#    unchanged field when another Repository setting needs an update.
 #  - hasDownloads: false — GitHub has removed the downloads feature and no
 #    longer returns the field, so status.atProvider never carries it. The
 #    Terraform provider still defaults it to true, so a spec holding that default

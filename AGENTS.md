@@ -55,16 +55,14 @@ for the architecture, the GitHub App credential setup, and the Observe-first ado
   absent optional bool takes the provider's zero value of `false`, and `false` against a live `true`
   is a permanent diff, so every update PATCH carries `web_commit_signoff_required: false` and GitHub
   rejects the whole request with 422 "Commit signoff is enforced ... and cannot be disabled".
-  Declaring the live value removes that field's own diff, but the deployed provider-upjet-github
-  v0.19.1 embeds terraform-provider-github v6.6.0 and still includes the field when another setting
-  needs an update; GitHub rejects the entire PATCH while organization signoff is enforced
-  ([upstream #2077](https://github.com/integrations/terraform-provider-github/issues/2077)). Until a
-  provider-upjet-github release includes the upstream v6.12.0 fix, do not introduce new Repository
-  drift merely for optional discovery metadata; `agent-plugins` and `agent-skills` topics are
-  deliberately omitted. `platform-tenant-template` remains on `Observe`/`Create` without `Update`
-  because its failed asynchronous update otherwise keeps replaying the rejected PATCH.
-  `tests/repository-update-policy.sh` pins both the required live signoff value and this temporary
-  compatibility boundary. Verify
+  Declaring the live value removes that field's own diff. The deployed provider-upjet-github
+  v0.20.0 embeds terraform-provider-github v6.13.0, whose fix for
+  [upstream #2077](https://github.com/integrations/terraform-provider-github/issues/2077) omits the
+  unchanged field when another setting needs an update. Active repositories can therefore use
+  `Update` while keeping the enforced live value explicit. After a repository's one-time
+  `archived: true` update lands, move it to exactly `Observe`: GitHub makes archived repositories
+  read-only, and retaining `Update` or `LateInitialize` lets newly exposed provider fields create a
+  permanent update loop. `tests/repository-update-policy.sh` pins both invariants. Verify
   the provider kind/field schema against the authoritative source
   ([crossplane-contrib/provider-upjet-github `package/crds/`](https://github.com/crossplane-contrib/provider-upjet-github)
   + `examples-generated/namespaced/`) — the CRs cannot be schema-validated locally (no cluster; CI

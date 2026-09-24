@@ -17,8 +17,9 @@ out-of-band changes made in the GitHub UI.
 - `archived-repositories/` — one `Repository` per archived (or archival-bound)
   repo, kept outside `repositories/` so its shared merge-policy patch never
   targets a read-only repo (each patched reconcile would 422). Observe-first,
-  then a single `archived: true` flip; the two-phase lifecycle is documented in
-  that dir's `kustomization.yaml`.
+  perform the single `archived: true` update, then return the live archived
+  resource to Observe-only; the three-phase lifecycle is documented in that
+  directory's `kustomization.yaml`.
 - `teams/` — one `Team` per file. `maintainers` is Observe-adopted; the
   separate `admins` policy actively manages explicit repository-admin grants.
 - `team-memberships/` — one `TeamMembership` per file (`add-<user>-to-<team>.yaml`).

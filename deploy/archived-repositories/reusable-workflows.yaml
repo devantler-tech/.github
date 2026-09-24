@@ -1,12 +1,9 @@
-# Legacy reusable-workflow library, merged INTO devantler-tech/actions (#314,
-# v7.0.0) and archived per devantler-tech/actions#425 AC3. Phase 2 (this
-# revision): Observe+Update+LateInitialize with `archived: true` —
-# LateInitialize backfills the remaining live settings first, so the only write
-# the provider ever sends is the single archive PATCH; once archived,
-# desired == observed and the reconcile stays silent. MERGE GATE: the org
-# required-workflow rulesets must be repointed off this repo first
-# (devantler-tech/.github#87), or every gated PR org-wide loses its required
-# workflow source.
+# Legacy reusable-workflow library, merged into devantler-tech/actions (#314,
+# v7.0.0) and archived per devantler-tech/actions#425 AC3. The archive update
+# has landed, so this is now an Observe-only mirror. GitHub makes archived
+# repositories read-only for settings; retaining Update or LateInitialize
+# would let a newly exposed provider field create an update loop that can never
+# converge.
 apiVersion: repo.github.m.upbound.io/v1alpha1
 kind: Repository
 metadata:
@@ -14,7 +11,7 @@ metadata:
   annotations:
     crossplane.io/external-name: reusable-workflows
 spec:
-  managementPolicies: ["Observe", "Update", "LateInitialize"]
+  managementPolicies: ["Observe"]
   forProvider:
     name: reusable-workflows
     archived: true

@@ -11,10 +11,9 @@ metadata:
     crossplane.io/external-name: agent-skills
 spec:
   # The squash-only merge policy and the org-enforced commit signoff come from
-  # the shared patch. Description is declared here so the config is
-  # AUTHORITATIVE for it. Settings declared
-  # nowhere here keep the value adopted from the live repo when it was first
-  # observed.
+  # the shared patch. Description and topics are declared here so the config is
+  # AUTHORITATIVE for them. Settings declared nowhere here keep the value
+  # adopted from the live repo when it was first observed.
   managementPolicies:
     - Observe
     - Create
@@ -26,10 +25,10 @@ spec:
     # either `gh skill install` or `npx skills add`. The old wording undersold
     # that and read as Copilot-only.
     description: "Agent-neutral skills for Claude Code, Copilot, Cursor and Codex — install with `gh skill install` or `npx skills add`"
-    # Topics stay temporarily unmanaged. provider-upjet-github v0.19.1 embeds
-    # terraform-provider-github v6.6.0, whose repository update includes the
-    # org-enforced web-signoff field and makes GitHub reject the whole PATCH.
-    # Restore topics after a provider release includes the upstream v6.12 fix.
+    # Discovery surface. `gh skill publish --tag` runs non-interactively in
+    # cd.yaml and therefore skips the interactive topic prompt, so the complete
+    # reviewed topic set is declared here.
+    topics: ["agent-skills", "agent-skill", "ai-agents", "claude-code", "claude-skill", "codex", "cursor", "github-copilot", "gitops", "kubernetes", "skills"]
   providerConfigRef:
     kind: ProviderConfig
     name: default

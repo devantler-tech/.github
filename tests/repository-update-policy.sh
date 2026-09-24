@@ -19,6 +19,33 @@ kubectl kustomize "$repo_root/deploy" >"$render" ||
   fail "kubectl kustomize deploy/ failed"
 [[ -s "$render" ]] || fail "rendered output is empty"
 
+# Archived repositories are read-only in GitHub. Their one-time archive update
+# has already landed, so retaining Update or LateInitialize would let a newly
+# exposed/computed provider field create a permanent diff and retry an update
+# GitHub cannot apply. Keep the steady state strictly Observe-only.
+archived_repositories="$(
+  yq -N '
+    select(.kind == "Repository" and .spec.forProvider.archived == true) |
+    .metadata.name
+  ' "$render"
+)"
+archived_count="$(printf '%s\n' "$archived_repositories" | grep -c . || true)"
+[[ "$archived_count" -ge 2 ]] ||
+  fail "archived Repository set collapsed to $archived_count entries"
+
+write_enabled_archived_repositories="$(
+  yq -N '
+    select(
+      .kind == "Repository" and
+      .spec.forProvider.archived == true and
+      ((.spec.managementPolicies | sort | join(",")) != "Observe")
+    ) |
+    .metadata.name
+  ' "$render"
+)"
+[[ -z "$write_enabled_archived_repositories" ]] ||
+  fail "archived Repository resources must be Observe-only after the archive update lands: $write_enabled_archived_repositories"
+
 # Active (non-archived) repositories only. Archived repos live in
 # deploy/archived-repositories/, get no shared patch, and are read-only for
 # settings, so the update contract below does not apply to them.
@@ -33,11 +60,11 @@ active_count="$(printf '%s\n' "$active_repositories" | grep -c . || true)"
   fail "active Repository set collapsed to $active_count entries"
 
 # LateInitialize copies live-only values into forProvider, and everything in
-# forProvider is sent on every update PATCH, so LateInitialize is what turns a
-# live-only value into part of every future payload. The hazard is that pairing,
-# not LateInitialize itself: during Observe-first adoption a repository runs on
-# Observe+LateInitialize to mirror live state, sends nothing, and is safe. Delete
-# would let a prune destroy a real repository and is never allowed.
+# forProvider is sent on update PATCHes, so LateInitialize is what turns a
+# live-only value into part of future payloads. The hazard is that pairing, not
+# LateInitialize itself: during Observe-first adoption a repository runs on
+# Observe+LateInitialize to mirror live state, sends nothing, and is safe.
+# Delete would let a prune destroy a real repository and is never allowed.
 unsafe_policies="$(
   yq -N '
     select(
@@ -61,12 +88,9 @@ unsafe_policies="$(
 # Every active repository must declare webCommitSignoffRequired: true in
 # forProvider because the org enforces commit signoff and live is therefore
 # always true. Leaving the field unconfigured creates its own permanent false
-# versus true diff. Declaring true removes that diff, but it does not make
-# arbitrary updates safe with the deployed provider: v0.19.1 embeds
-# terraform-provider-github v6.6.0, which still includes the unchanged field
-# when another Repository setting changes, and GitHub rejects that PATCH.
-# The compatibility guard below therefore also prevents the known optional
-# topic drift until a provider release includes the upstream v6.12.0 fix.
+# versus true diff. The deployed provider v0.20.0 embeds
+# terraform-provider-github v6.13.0, whose upstream #2077 fix omits the
+# unchanged field when another Repository setting changes.
 #
 # initProvider is not a substitute for the required live declaration:
 # Crossplane applies it only at creation, so forProvider would remain false.
@@ -115,45 +139,24 @@ platform_tenant_issues="$(
 [[ "$platform_tenant_issues" == "true" ]] ||
   fail "platform-tenant-template must declare forProvider.hasIssues: true so its issue roadmap remains available"
 
-# provider-upjet-github v0.19.1 embeds terraform-provider-github v6.6.0.
-# GitHub rejects every repository PATCH containing web_commit_signoff_required
-# while the organization enforces that setting, even when the requested value
-# is true (integrations/terraform-provider-github#2077). Topic-only drift on
-# these two resources therefore wedges the complete update. Keep the attempted
-# topics absent until a provider-upjet-github release includes the upstream
-# v6.12.0 fix, which omits the field when it is unchanged.
-compatibility_repositories="$(
-  yq -N '
-    select(
-      .kind == "Repository" and
-      .spec.forProvider.archived != true and
-      (.metadata.name == "agent-plugins" or .metadata.name == "agent-skills")
-    ) |
-    .metadata.name
-  ' "$render" | sort
-)"
-expected_compatibility_repositories="$(printf '%s\n' agent-plugins agent-skills)"
-[[ "$compatibility_repositories" == "$expected_compatibility_repositories" ]] ||
-  fail "provider compatibility guard requires both agent repositories; got: $compatibility_repositories"
-
-blocked_topic_updates="$(
+# These discovery topics were removed only because the previous provider could
+# not update any other Repository field under organization-enforced signoff.
+# v0.20.0 removes that compatibility boundary, so both declarations must stay
+# present instead of silently returning to the old workaround.
+missing_agent_topics="$(
   yq -N '
     select(
       .kind == "Repository" and
       (.metadata.name == "agent-plugins" or .metadata.name == "agent-skills") and
-      (.spec.forProvider | has("topics"))
+      ((.spec.forProvider.topics // []) | length == 0)
     ) |
     .metadata.name
   ' "$render"
 )"
-[[ -z "$blocked_topic_updates" ]] ||
-  fail "provider-upjet-github v0.19.1 cannot update repository topics under org-enforced signoff: $blocked_topic_updates"
+[[ -z "$missing_agent_topics" ]] ||
+  fail "agent repository topics must remain declarative under provider v0.20.0: $missing_agent_topics"
 
-# The template intentionally does not use GitHub Projects. Its resource also
-# carries a failed asynchronous update from before the signoff workaround.
-# Observe/Create keeps the existing repository healthy and recreatable without
-# re-entering the provider's broken update path; restore Update with the same
-# provider release that removes the compatibility boundary above.
+# The template intentionally does not use GitHub Projects.
 platform_tenant_projects="$(
   yq -N '
     select(
@@ -166,7 +169,7 @@ platform_tenant_projects="$(
   ' "$render"
 )"
 [[ "$platform_tenant_projects" == "false" ]] ||
-  fail "platform-tenant-template must pin forProvider.hasProjects: false while updates are compatibility-blocked"
+  fail "platform-tenant-template must pin forProvider.hasProjects: false"
 
 platform_tenant_management_policies="$(
   yq -N '
@@ -179,7 +182,7 @@ platform_tenant_management_policies="$(
     join(",")
   ' "$render"
 )"
-[[ "$platform_tenant_management_policies" == "Create,Observe" ]] ||
-  fail "platform-tenant-template must remain Observe/Create without Update until the provider signoff fix is deployed: $platform_tenant_management_policies"
+[[ "$platform_tenant_management_policies" == "Create,Observe,Update" ]] ||
+  fail "platform-tenant-template must restore Update under provider v0.20.0: $platform_tenant_management_policies"
 
-echo "repository-update-policy: OK — $active_count active repositories declare org-enforced signoff and the provider-v0.19.1 update workaround"
+echo "repository-update-policy: OK — $archived_count archived repositories are Observe-only; $active_count active repositories declare safe update policy"
