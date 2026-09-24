@@ -5,13 +5,13 @@ metadata:
   annotations:
     crossplane.io/external-name: platform-tenant-template
 spec:
-  # Managed for Observe/Create. Update is compatibility-blocked because the
-  # deployed provider sends the organization-enforced signoff field on every
-  # Repository PATCH and GitHub rejects it. The org-wide squash-only merge
-  # policy comes from the shared patch in kustomization.yaml.
+  # Provider v0.20.0 embeds terraform-provider-github v6.13.0, which omits an
+  # unchanged organization-enforced signoff field from Repository updates. The
+  # previous compatibility fence is therefore no longer needed.
   managementPolicies:
     - Observe
     - Create
+    - Update
   forProvider:
     name: platform-tenant-template
     # Pinned because this resource carries no adopted values: it is the one
@@ -21,7 +21,7 @@ spec:
     # restoring the write path (#112) unable to change it.
     visibility: public
     hasIssues: true
-    # Matches live state while Repository updates are compatibility-blocked.
+    # Matches live state and keeps Projects disabled declaratively.
     hasProjects: false
     description: "Template for platform tenants on the devantler-tech platform — framework-agnostic CI/CD plumbing kept current via template-sync."
   providerConfigRef:
