@@ -61,9 +61,8 @@ Excluded on purpose, because they also run on `pull_request`, where the actor is
 (platform and ksail `ci.yaml`, actions `enable-auto-merge.yaml`); none is targeted.
 
 Workflow paths are written repository-relative (`.github/workflows/<file>`). The REST reference
-does not say whether that is the expected form, so each policy targets a single repository. Every
-file is `disabled` until the apply workflow's read-back confirms the form: if GitHub stores a
-different one, the run fails with `MISMATCH` and prints both.
+does not say whether that is the expected form, so each policy targets a single repository. The apply workflow's read-back confirms that GitHub
+stores this form: if it stored a different one, the run would fail with `MISMATCH` and print both.
 
 ## Testing a policy before it blocks
 
@@ -72,7 +71,8 @@ GitHub's `evaluate` mode reports what a policy would block without blocking it. 
 "(GitHub Enterprise Cloud only)". This organization is on the Team plan
 (`gh api orgs/devantler-tech --jq .plan.name` returns `team`), so it cannot use `evaluate`, and a
 policy is never observed in a non-blocking mode. A policy can only be `active` or `disabled`
-here, so every checked-in file says `disabled`, and the check rejects any other value.
+here. The check rejects `evaluate`, and it rejects `active` for every file except those named in
+`approved_active` in `scripts/validate-workflow-execution-policies.sh`.
 
 Without `evaluate`, a policy is tested in two steps:
 
@@ -91,9 +91,9 @@ Without `evaluate`, a policy is tested in two steps:
    does not prove the policy is enforced.
 2. **Activate one policy on one low-risk repository first.** Start with a template repository's
    `restrict-deploy-starters-*` policy. Activation is a pull request that sets that file's
-   `enforcement` to `active`, and the apply workflow turns the policy on once it lands. The check
-   rejects `active`, so the first activation pull request also changes the check to allow it, and
-   it needs the maintainer's approval. Keep the policy `active` for a week and check that the
+   `enforcement` to `active` and adds its file name to `approved_active` in the check, and the
+   apply workflow turns the policy on once it lands. Adding a name to that list is the maintainer's
+   approval, so every activation pull request needs it. Keep the policy `active` for a week and check that the
    repository's releases and syncs still run. Rollback is reverting that pull request. Record the
    outcome on [#202](https://github.com/devantler-tech/.github/issues/202) before activating the
    next policy. The organization-wide `allow-observed-events.json` goes last.
@@ -106,7 +106,7 @@ not document an exemption from event restrictions. Confirm that those runs still
 ## Checks
 
 `bash tests/workflow-execution-policies.sh` runs in CI. It rejects an unknown top-level key or condition, a policy that names workflow files without targeting exactly one repository, an unknown
-rule, event or actor type, a non-integer actor ID, any enforcement other than `disabled`, a privileged trigger
+rule, event or actor type, a non-integer actor ID, any enforcement other than `disabled` (except `active` for a file on the approval list), a privileged trigger
 without an exception, and malformed repository or workflow targeting.
 
 `bash tests/apply-workflow-execution-policies.sh` also runs in CI. It drives the apply script

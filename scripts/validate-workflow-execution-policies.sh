@@ -11,8 +11,9 @@
 #   - is not a JSON object, or its name is not a non-empty string
 #   - has a top-level key or condition the API does not define (a mistyped optional field would
 #     otherwise be dropped silently)
-#   - uses an enforcement other than disabled (evaluate needs GitHub Enterprise Cloud, which this
-#     organization does not have; active needs maintainer approval)
+#   - uses an enforcement other than disabled, unless the file is on the approved_active list below
+#     and is active (evaluate needs GitHub Enterprise Cloud, which this organization does not have;
+#     active needs maintainer approval, given by adding the file name to that list)
 #   - has no rules, or a rule type the API does not define
 #   - names an actor without an integer id, or with a type the API does not define
 #   - allows an event the API does not define
@@ -55,16 +56,22 @@ events='["branch_protection_rule","check_run","check_suite","create","delete","d
 actor_types='["User","Bot","Team","BusinessTeam","EnterpriseTeam","IntegrationInstallation","App",
   "RepositoryRole"]'
 
+# Policy files the maintainer has approved to be active, by exact file name. Adding a name here is
+# the approval: each activation changes this list in its own reviewed pull request. See the README's
+# "Testing a policy before it blocks".
+approved_active='["restrict-deploy-starters-go-template.json"]'
+
 failed=0
 for f in "${files[@]}"; do
   # One problem per line; an empty result means the file passes.
-  problems="$(jq -r --argjson events "$events" --argjson actor_types "$actor_types" '
+  problems="$(jq -r --argjson events "$events" --argjson actor_types "$actor_types" \
+    --argjson approved_active "$approved_active" --arg file "${f##*/}" '
     def privileged: ["pull_request_target", "workflow_run"];
     if type != "object" then "not a JSON object" else
       ( if (.name | type) != "string" or .name == "" then "name must be a non-empty string" else empty end ),
       ( keys[] | select(IN("name", "enforcement", "conditions", "rules", "exception") | not)
         | "unknown key \(tojson); only name, enforcement, conditions, rules and exception are allowed" ),
-      ( if .enforcement != "disabled"
+      ( if .enforcement != "disabled" and (.enforcement != "active" or ($file | IN($approved_active[]) | not))
         then "enforcement \(.enforcement | tojson) is not disabled; evaluate needs GitHub Enterprise Cloud and active needs maintainer approval"
         else empty end ),
       ( if (.rules | type) != "array" or (.rules | length) == 0 then "rules must be a non-empty array"
