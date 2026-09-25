@@ -1,0 +1,158 @@
+name: Setup Agent Skills
+description: Install agent skills with the gh skill CLI from a newline list of "<owner/repo> <skill>[@pin]" entries, for one or more agents (e.g. github-copilot, claude-code)
+author: devantler-tech
+inputs:
+  skills:
+    description: |
+      Newline-separated list of skills to install. Each non-blank, non-comment line has the form
+      `<owner/repo> <skill>[@pin]`, where `@pin` is an optional tag, branch, or commit SHA. Blank
+      lines and lines starting with `#` are ignored.
+    required: true
+  agents:
+    description: |
+      One or more target agents passed to `gh skill install --agent`, separated by whitespace,
+      commas, or newlines (e.g. `github-copilot`, or `github-copilot claude-code`). Each skill is
+      installed once per agent, so the same list works in any agent — Copilot, Claude Code, and the
+      others `gh skill` supports.
+    required: false
+    default: github-copilot
+  scope:
+    description: Value passed to `gh skill install --scope` (`project` or `user`)
+    required: false
+    default: project
+  gh-version:
+    description: Minimum required `gh` version (must support `gh skill`)
+    required: false
+    default: 2.90.0
+  github-token:
+    description: GitHub token exposed to `gh` as `GH_TOKEN`
+    required: false
+    default: ${{ github.token }}
+  experimental-rate-limit-retry:
+    description: |
+      Opt in (default off) to five attempts for failed gh skill install registry pulls, waiting
+      60, 120, 240, and 240 seconds between attempts (eleven minutes total, plus command runtime).
+      This respects GitHub's fallback cooldown for secondary limits when response headers are
+      unavailable; it does not resolve an exhausted primary hourly quota. Off keeps the shared
+      retry.sh fast-fail defaults. Validate real burst recovery before enabling for a consumer
+      (devantler-tech/actions#514).
+    required: false
+    default: "false"
+outputs:
+  installed-skills:
+    description: Newline-separated list of `source/skill-name[@pin]` entries that were installed
+    value: ${{ steps.install.outputs.installed-skills }}
+runs:
+  using: composite
+  steps:
+    - name: 🔧 Ensure gh >= required version
+      shell: bash
+      env:
+        REQUIRED: ${{ inputs.gh-version }}
+        INSTALL_NAMESPACE: setup-agent-skills
+        GH_TOKEN: ${{ inputs.github-token }}
+      # Shared with update-agent-skills via .scripts/ensure-gh-skill.sh. Composite
+      # actions cannot share steps, but they can share a bundled script resolved
+      # relative to ${GITHUB_ACTION_PATH} (works for both local `uses: ./<action>`
+      # and external `uses: devantler-tech/.github/actions/<action>@<ref>` callers).
+      run: bash "${GITHUB_ACTION_PATH}/../../.scripts/ensure-gh-skill.sh"
+
+    - name: 📦 Install skills
+      id: install
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github-token }}
+        INPUT_SKILLS: ${{ inputs.skills }}
+        INPUT_AGENTS: ${{ inputs.agents }}
+        INPUT_SCOPE: ${{ inputs.scope }}
+        INPUT_EXPERIMENTAL_RATE_LIMIT_RETRY: ${{ inputs.experimental-rate-limit-retry }}
+      run: |
+        set -euo pipefail
+
+        # Opt-in (default-off, #514): widen the shared retry.sh envelope for the
+        # `gh skill install` registry pulls below so a transient rate-limit 403
+        # during a Dependabot burst does not red a required check. The opt-in
+        # lives in a shared, tested script so both states are covered in CI
+        # (test-agent-skills-retry-env); default keeps retry.sh's fast-fail
+        # defaults, so no existing consumer's behaviour changes until enabled.
+        # shellcheck source=/dev/null
+        source "${GITHUB_ACTION_PATH}/../../.scripts/agent-skills-retry-env.sh" "${INPUT_EXPERIMENTAL_RATE_LIMIT_RETRY:-false}"
+
+        # Bounded retry for the registry pulls below — `gh skill install` fetches
+        # each skill over the network, so a transient flake must not red a required
+        # check (reliability pillar, #247). Same shared helper + path resolution as
+        # the gh bootstrap above.
+        retry() { bash "${GITHUB_ACTION_PATH}/../../.scripts/retry.sh" "$@"; }
+        install_script="${GITHUB_ACTION_PATH}/../../.scripts/gh-skill-install.sh"
+
+        if [ -z "${INPUT_SKILLS//[[:space:]]/}" ]; then
+          echo "::error::'skills' input is empty. Provide a newline-separated list of '<owner/repo> <skill>[@pin]' entries."
+          exit 1
+        fi
+
+        # Split the agents list on whitespace, commas, and newlines.
+        # `|| [ -n "$agent" ]` keeps the final entry when there is no trailing newline.
+        agents=()
+        while IFS= read -r agent || [ -n "$agent" ]; do
+          [ -n "$agent" ] && agents+=("$agent")
+        done < <(printf '%s' "$INPUT_AGENTS" | tr ',' '\n' | tr -s '[:space:]' '\n')
+        if [ ${#agents[@]} -eq 0 ]; then
+          echo "::error::'agents' input is empty. Provide one or more agents (e.g. 'github-copilot claude-code')."
+          exit 1
+        fi
+
+        installed_file=$(mktemp)
+        status=0
+        processed=0
+
+        while IFS= read -r raw || [ -n "$raw" ]; do
+          line=${raw%%#*}
+          line=$(printf '%s' "$line" | awk '{$1=$1;print}')
+          [ -z "$line" ] && continue
+
+          # shellcheck disable=SC2086
+          set -- $line
+          if [ "$#" -ne 2 ]; then
+            echo "::error::Invalid skills entry: '$raw' — expected exactly '<owner/repo> <skill>[@pin]' (got $# whitespace-separated tokens)"
+            status=1
+            continue
+          fi
+          src="$1"
+          spec="$2"
+          pin=""
+          name="$spec"
+          case "$spec" in
+            *@*) name=${spec%@*}; pin=${spec#*@} ;;
+          esac
+
+          for agent in "${agents[@]}"; do
+            if [ -n "$pin" ]; then
+              echo "Installing ${src}/${name}@${pin} (agent=${agent}, scope=${INPUT_SCOPE})..."
+              retry bash "$install_script" "$src" "$name" --agent "$agent" --scope "$INPUT_SCOPE" --pin "$pin"
+            else
+              echo "Installing ${src}/${name} (agent=${agent}, scope=${INPUT_SCOPE})..."
+              retry bash "$install_script" "$src" "$name" --agent "$agent" --scope "$INPUT_SCOPE"
+            fi
+          done
+          # Record each skill once, regardless of how many agents it was installed for.
+          if [ -n "$pin" ]; then
+            printf '%s/%s@%s\n' "$src" "$name" "$pin" >> "$installed_file"
+          else
+            printf '%s/%s\n' "$src" "$name" >> "$installed_file"
+          fi
+          processed=$((processed + 1))
+        done <<<"$INPUT_SKILLS"
+
+        if [ "$processed" -eq 0 ] && [ "$status" -eq 0 ]; then
+          echo "::error::'skills' input contained no actionable entries (only blank lines or '#' comments)."
+          rm -f "$installed_file"
+          exit 1
+        fi
+
+        {
+          echo "installed-skills<<EOF"
+          cat "$installed_file"
+          echo "EOF"
+        } >> "$GITHUB_OUTPUT"
+        rm -f "$installed_file"
+        exit "$status"

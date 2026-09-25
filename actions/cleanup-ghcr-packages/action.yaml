@@ -1,0 +1,28 @@
+name: Cleanup GHCR Packages
+description: Clean up old GitHub Container Registry (GHCR) packages
+author: devantler-tech
+inputs:
+  older-than:
+    description: "Delete images older than this duration (e.g., 1 year)"
+    required: false
+    default: "1 year"
+  keep-n-tagged:
+    description: "Number of tagged images to keep"
+    required: false
+    default: "10"
+  package:
+    description: "Package to clean up. Defaults to the calling repository's package (resolved by the underlying cleanup action)."
+    required: false
+  dry-run:
+    description: "Simulate the cleanup without deleting anything (true/false)."
+    required: false
+    default: "false"
+runs:
+  using: "composite"
+  steps:
+    - uses: dataaxiom/ghcr-cleanup-action@cd0cdb900b5dbf3a6f2cc869f0dbb0b8211f50c4 # v1.0.16
+      with:
+        older-than: ${{ inputs.older-than }}
+        keep-n-tagged: ${{ inputs.keep-n-tagged }}
+        package: ${{ inputs.package }}
+        dry-run: ${{ inputs.dry-run }}

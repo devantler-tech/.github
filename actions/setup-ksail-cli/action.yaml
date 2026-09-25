@@ -1,0 +1,37 @@
+name: Setup KSail CLI
+description: Install KSail CLI via Homebrew
+author: devantler-tech
+
+runs:
+  using: "composite"
+  steps:
+    - name: 📦 Setup Homebrew
+      # Pinned to a branch commit, not a tag: Homebrew/actions publishes no tags
+      # or releases (main-tracked only), so the comment names the branch + why
+      # rather than a `# v<version>` — see CONTRIBUTING.md "External action pinning".
+      uses: Homebrew/actions/setup-homebrew@ac399ee818eb2bb93b838aeccd2cbaa6272e2403 # main (no upstream releases)
+      with:
+        # Install with released Homebrew, rather than checking out its moving
+        # development branch on every consumer run.
+        stable: true
+
+    - name: ⤵️ Install KSail
+      shell: bash
+      run: |
+        set -euo pipefail
+        # A required CI check must never red on transient registry/network noise
+        # (GHCR 5xx, DNS/TLS blips) when fetching the tap or downloading the cask +
+        # bottle. Bound each network pull with retry + backoff via the shared
+        # .scripts/retry.sh helper — see the reliability pillar of the actions
+        # roadmap (devantler-tech/actions#247).
+        retry() { bash "${GITHUB_ACTION_PATH}/../../.scripts/retry.sh" "$@"; }
+
+        # KSail ships as a Cask. Homebrew 6 requires non-official taps to be trusted
+        # before their code is loaded, and `brew tap` itself loads every cask in the
+        # tap: tapping an untrusted tap fails with "Refusing to load cask … from
+        # untrusted tap" / "invalid syntax in tap". Trust our own first-party tap
+        # FIRST — trust is recorded by name, so it works before the tap exists.
+        # (Local operation — no network — so it is not wrapped in retry.)
+        brew trust --tap devantler-tech/tap
+        retry brew tap devantler-tech/tap
+        retry brew install --cask devantler-tech/tap/ksail

@@ -1,0 +1,63 @@
+name: Approve PR
+description: Approve a pull request using a GitHub App identity
+author: devantler-tech
+
+inputs:
+  client-id:
+    description: GitHub App Client ID (preferred over the deprecated app-id)
+    required: false
+  app-id:
+    description: 'GitHub App ID. Deprecated: use client-id instead.'
+    required: false
+  app-private-key:
+    description: GitHub App Private Key (required unless dry-run is true)
+    required: false
+  pr-number:
+    description: Pull request number to approve
+    required: true
+  dry-run:
+    description: Validate only; do not approve the pull request
+    required: false
+    default: "false"
+
+runs:
+  using: composite
+  steps:
+    - name: 🔑 Generate GitHub App Token
+      if: inputs.dry-run != 'true'
+      uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+      id: app-token
+      with:
+        client-id: ${{ inputs.client-id }}
+        app-id: ${{ inputs.app-id }}
+        private-key: ${{ inputs.app-private-key }}
+        # Least-privilege: the token only submits a PR review (gh pr review
+        # --approve), so scope it to pull-requests instead of inheriting the
+        # App installation's blanket permissions (zizmor github-app).
+        permission-pull-requests: write
+
+    - name: ✅ Approve pull request
+      if: inputs.dry-run != 'true'
+      shell: bash
+      env:
+        GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        PR_NUMBER: ${{ inputs.pr-number }}
+        REPOSITORY: ${{ github.repository }}
+      run: |
+        # A transient GitHub API blip (5xx/secondary-rate-limit/DNS-TLS) must not
+        # red this required approval step on infra noise. Submitting the review is
+        # idempotent-in-effect (the PR stays approved), so bound the network call
+        # with retry + backoff via the shared .scripts/retry.sh helper — see the
+        # reliability pillar of the actions roadmap (devantler-tech/actions#247).
+        retry() { bash "${GITHUB_ACTION_PATH}/../../.scripts/retry.sh" "$@"; }
+
+        retry gh pr review "$PR_NUMBER" --approve --repo "$REPOSITORY"
+        echo "✅ PR #${PR_NUMBER} approved"
+
+    - name: 🔎 Dry-run notice
+      if: inputs.dry-run == 'true'
+      shell: bash
+      env:
+        PR_NUMBER: ${{ inputs.pr-number }}
+      run: |
+        echo "::notice::Dry-run enabled — PR #${PR_NUMBER} was not approved"

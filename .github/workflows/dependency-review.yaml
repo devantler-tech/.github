@@ -1,0 +1,146 @@
+name: 🛡️ Dependency Review
+
+permissions: {}
+
+on:
+  workflow_call:
+    inputs:
+      fail-on-severity:
+        description: >-
+          Block PRs on vulnerabilities of this severity or higher (`low`, `moderate`, `high`,
+          `critical`). Only applies when `warn-only` is false. Defaults to `critical`.
+        type: string
+        required: false
+        default: critical
+      fail-on-scopes:
+        description: >-
+          Comma-separated dependency scopes to block on (`runtime`, `development`, `unknown`).
+          Defaults to `runtime` so dev-only vulnerabilities don't block.
+        type: string
+        required: false
+        default: runtime
+      allow-licenses:
+        description: >-
+          Comma-separated allow-list of SPDX licenses. Empty means no allow-list is enforced.
+          Mutually exclusive with `deny-licenses`.
+        type: string
+        required: false
+        default: ""
+      deny-licenses:
+        description: >-
+          Comma-separated deny-list of SPDX licenses. Empty means no deny-list is enforced.
+          Mutually exclusive with `allow-licenses`.
+        type: string
+        required: false
+        default: ""
+      comment-summary-in-pr:
+        description: >-
+          Post the review summary as a PR comment (`always`, `on-failure`, `never`). Anything but
+          `never` requires the calling job to grant `pull-requests: write`. Defaults to `never`.
+        type: string
+        required: false
+        default: never
+      warn-only:
+        description: >-
+          When `true`, the action always succeeds (non-blocking), overriding `fail-on-severity`.
+          Defaults to `true` for safe org-wide rollout; set to `false` to enforce.
+        type: boolean
+        required: false
+        default: true
+  ### Required Workflow Triggers ###
+  pull_request:
+  merge_group:
+  ##################################
+
+jobs:
+  dependency-review:
+    runs-on: ubuntu-latest
+    # Dependency Review needs a PR diff (base..head is auto-resolved only on pull_request /
+    # pull_request_target). On any other caller event — push, merge_group, schedule, … — the
+    # underlying action has no diff to inspect and errors out, so guard with an allow-list of the
+    # supported events and let the job no-op (skipped → green) everywhere else. This keeps the
+    # reusable workflow safe to wire into a push-triggered CI without breaking it.
+    # Also skip release-please PRs (head branch `release-please--*`): they only bump versions +
+    # the changelog (no dependency changes to review). A skipped run still
+    # satisfies the required-workflow rule (skipped → green).
+    if: ${{ (github.event_name == 'pull_request' || github.event_name == 'pull_request_target') && !startsWith(github.head_ref, 'release-please--') }}
+    permissions:
+      contents: read # read the dependency graph / diff base..head
+    steps:
+      - name: 🛡️ Harden runner
+        uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
+        with:
+          egress-policy: audit
+
+      - name: 📑 Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # On the direct self-trigger (the `### Required Workflow Triggers ###`
+      # pull_request event) the `inputs` context is empty, so the `workflow_call`
+      # input defaults — including `warn-only: true` — do NOT apply. Passing those
+      # empty strings straight to the composite overrides ITS defaults too, flipping
+      # the self-trigger into enforce mode and hard-blocking this repo's own PRs (e.g.
+      # an intentionally-vulnerable test fixture). Resolve the effective values here
+      # instead, mirroring this workflow's documented defaults. The discriminator is
+      # bash-side (not a `${{ }}` expression, which would mis-coerce the boolean
+      # `warn-only: false` case): `github.event_name` is inherited from the caller on
+      # workflow_call so it can't tell the two apart, but the boolean `warn-only` input
+      # has `default: true` and is therefore never empty on a real workflow_call — only
+      # an empty value means "direct self-trigger". See #288.
+      - name: ⚙️ Resolve effective inputs
+        id: cfg
+        shell: bash
+        env:
+          IN_FAIL_ON_SEVERITY: ${{ inputs.fail-on-severity }}
+          IN_FAIL_ON_SCOPES: ${{ inputs.fail-on-scopes }}
+          IN_ALLOW_LICENSES: ${{ inputs.allow-licenses }}
+          IN_DENY_LICENSES: ${{ inputs.deny-licenses }}
+          IN_COMMENT_SUMMARY: ${{ inputs.comment-summary-in-pr }}
+          IN_WARN_ONLY: ${{ inputs.warn-only }}
+        run: |
+          set -euo pipefail
+          if [ -z "$IN_WARN_ONLY" ]; then
+            # Direct self-trigger: no workflow_call inputs → use documented defaults.
+            {
+              echo "fail-on-severity=critical"
+              echo "fail-on-scopes=runtime"
+              echo "allow-licenses="
+              echo "deny-licenses="
+              echo "comment-summary-in-pr=never"
+              echo "warn-only=true"
+            } >> "$GITHUB_OUTPUT"
+          else
+            # Called via workflow_call: input defaults applied → pass values through.
+            {
+              echo "fail-on-severity=$IN_FAIL_ON_SEVERITY"
+              echo "fail-on-scopes=$IN_FAIL_ON_SCOPES"
+              echo "allow-licenses=$IN_ALLOW_LICENSES"
+              echo "deny-licenses=$IN_DENY_LICENSES"
+              echo "comment-summary-in-pr=$IN_COMMENT_SUMMARY"
+              echo "warn-only=$IN_WARN_ONLY"
+            } >> "$GITHUB_OUTPUT"
+          fi
+
+      # Self-reference: check out THIS workflow's own repo at the exact commit it is running
+      # from (job.workflow_repository / job.workflow_sha), then call the sibling action by
+      # local path. Same-commit resolution — no release lag, no tag refs; consumer SHA-pinning
+      # policies see only the pinned actions/checkout plus a local `./` path.
+      - name: 📥 Checkout devantler-tech/.github (this workflow's commit)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ${{ job.workflow_repository }}
+          ref: ${{ job.workflow_sha }}
+          path: .devantler-tech-actions
+          persist-credentials: false
+
+      - name: 🛡️ Dependency Review
+        uses: ./.devantler-tech-actions/actions/dependency-review
+        with:
+          fail-on-severity: ${{ steps.cfg.outputs.fail-on-severity }}
+          fail-on-scopes: ${{ steps.cfg.outputs.fail-on-scopes }}
+          allow-licenses: ${{ steps.cfg.outputs.allow-licenses }}
+          deny-licenses: ${{ steps.cfg.outputs.deny-licenses }}
+          comment-summary-in-pr: ${{ steps.cfg.outputs.comment-summary-in-pr }}
+          warn-only: ${{ steps.cfg.outputs.warn-only }}

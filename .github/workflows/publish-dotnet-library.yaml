@@ -1,0 +1,52 @@
+name: 📦 Publish .NET Library
+
+on:
+  workflow_call:
+    inputs:
+      dry-run:
+        description: "Skip publish (validate workflow interface only)"
+        required: false
+        default: false
+        type: boolean
+    secrets:
+      NUGET_API_KEY:
+        required: false
+
+permissions: {}
+
+jobs:
+  publish:
+    if: ${{ !inputs.dry-run }}
+    permissions:
+      contents: read
+      packages: write
+    runs-on: ubuntu-latest
+    steps:
+      - name: 🛡️ Harden runner
+        uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
+        with:
+          egress-policy: audit
+
+      - name: 📑 Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: ⚙️ Setup .NET
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          # Provision both the previous STS (9) and the current LTS (10) so libraries
+          # targeting either TFM publish cleanly. Multiple lines install side-by-side SDKs.
+          dotnet-version: |
+            9
+            10
+
+      - name: 🚚 Publish
+        shell: bash
+        run: |
+          dotnet tool install --global dotnet-releaser
+          dotnet-releaser run --nuget-token "${NUGET_API_KEY}" --github-token "${GITHUB_TOKEN}" dotnet-releaser.toml
+        env:
+          NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

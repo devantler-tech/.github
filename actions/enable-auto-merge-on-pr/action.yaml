@@ -1,0 +1,78 @@
+name: Enable Auto Merge on PR
+description: Enable auto-merge on a pull request using GitHub CLI
+author: devantler-tech
+
+inputs:
+  pr-number:
+    description: Pull request number to enable auto-merge on
+    required: true
+  merge-method:
+    description: "Merge method to use: merge, squash, or rebase"
+    required: false
+    default: "squash"
+  dry-run:
+    description: Validate only; do not enable auto-merge
+    required: false
+    default: "false"
+  token:
+    description: >-
+      GitHub token used to arm auto-merge. Defaults to the workflow token; pass a GitHub App
+      token when the resulting merge must trigger downstream workflows — a GITHUB_TOKEN-armed
+      merge does NOT re-trigger workflows (e.g. release-please needs the post-merge push to cut the tag).
+    required: false
+    default: ${{ github.token }}
+
+runs:
+  using: composite
+  steps:
+    - name: 🔍 Check if auto-merge is enabled on repository
+      id: check-auto-merge
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.token }}
+        REPOSITORY: ${{ github.repository }}
+      run: |
+        # A transient GitHub API blip (5xx/DNS/TLS) must not red this required
+        # auto-merge step on infra noise; bound the network read with retry +
+        # backoff via the shared .scripts/retry.sh helper — see the reliability
+        # pillar of the actions roadmap (devantler-tech/actions#247). A genuine
+        # `allow_auto_merge: false` returns "false" with exit 0, so it is not
+        # retried — only an actual command failure is.
+        retry() { bash "${GITHUB_ACTION_PATH}/../../.scripts/retry.sh" "$@"; }
+
+        REPO_INFO=$(retry gh api "repos/$REPOSITORY" --jq '.allow_auto_merge')
+        echo "auto-merge-enabled=${REPO_INFO}" >> "$GITHUB_OUTPUT"
+
+        if [[ "$REPO_INFO" != "true" ]]; then
+          echo "::warning::Auto-merge is not enabled on this repository. Contact a repository admin to enable it in Settings > Pull Requests > Allow auto-merge."
+        fi
+
+    - name: 🤖 Enable auto-merge
+      if: steps.check-auto-merge.outputs.auto-merge-enabled == 'true' && inputs.dry-run != 'true'
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.token }}
+        MERGE_METHOD: ${{ inputs.merge-method }}
+        PR_NUMBER: ${{ inputs.pr-number }}
+        REPOSITORY: ${{ github.repository }}
+      run: |
+        if [[ ! "$MERGE_METHOD" =~ ^(merge|squash|rebase)$ ]]; then
+          echo "::error::Invalid merge method '${MERGE_METHOD}'. Must be 'merge', 'squash', or 'rebase'."
+          exit 1
+        fi
+
+        # Arming auto-merge is idempotent (re-arming with the same method is a
+        # no-op), so wrap the network call in retry + backoff so a transient API
+        # blip does not red this required step (#247 reliability pillar).
+        retry() { bash "${GITHUB_ACTION_PATH}/../../.scripts/retry.sh" "$@"; }
+
+        retry gh pr merge "$PR_NUMBER" --auto --"$MERGE_METHOD" --repo "$REPOSITORY"
+        echo "✅ Auto-merge enabled for PR #${PR_NUMBER} using ${MERGE_METHOD} method"
+
+    - name: 🔎 Dry-run notice
+      if: inputs.dry-run == 'true'
+      shell: bash
+      env:
+        PR_NUMBER: ${{ inputs.pr-number }}
+      run: |
+        echo "::notice::Dry-run enabled — auto-merge was not enabled on PR #${PR_NUMBER}"
