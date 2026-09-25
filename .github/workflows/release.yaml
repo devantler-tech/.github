@@ -9,7 +9,8 @@ permissions: {}
 
 jobs:
   release:
-    uses: devantler-tech/actions/.github/workflows/create-release.yaml@be13607c908d9df5e392a8acd5d13fcf358202df # v13.7.0
+    # The catalogue's own release workflow, from this commit (#235).
+    uses: ./.github/workflows/create-release.yaml
     with:
       disable-issue-side-effects: true
     secrets:

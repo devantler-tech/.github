@@ -1,0 +1,156 @@
+name: Upsert Issue
+description: Create, update, reopen, or close a GitHub issue by title. Useful for surfacing report data or recurring checks as issues.
+author: devantler-tech
+
+inputs:
+  title:
+    description: "Title of the issue to create or update"
+    required: true
+  body:
+    description: "Body content of the issue"
+    required: false
+  body-file:
+    description: "Path to a file containing the body content. Takes precedence over body."
+    required: false
+  labels:
+    description: "Comma-separated list of labels to assign to the issue"
+    required: false
+  open:
+    description: "Whether the issue should be open (true) or closed (false)"
+    required: false
+    default: "true"
+  close-comment:
+    description: "Comment to post when closing the issue. Only used when open is false."
+    required: false
+    default: "✅ Resolved — closing this issue."
+  repository:
+    description: "Repository to create/update the issue in (format: owner/repo). Defaults to the current repository."
+    required: false
+    default: ${{ github.repository }}
+  github-token:
+    description: "GitHub token with issues write permission"
+    required: false
+    default: ${{ github.token }}
+
+outputs:
+  issue-number:
+    description: "The number of the created or updated issue"
+    value: ${{ steps.upsert.outputs.issue-number }}
+  issue-url:
+    description: "The URL of the created or updated issue"
+    value: ${{ steps.upsert.outputs.issue-url }}
+
+runs:
+  using: composite
+  steps:
+    - id: upsert
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github-token }}
+        TITLE: ${{ inputs.title }}
+        BODY: ${{ inputs.body }}
+        BODY_FILE: ${{ inputs.body-file }}
+        LABELS: ${{ inputs.labels }}
+        OPEN: ${{ inputs.open }}
+        CLOSE_COMMENT: ${{ inputs.close-comment }}
+        REPO: ${{ inputs.repository }}
+      run: |
+        set -euo pipefail
+
+        # A transient GitHub API blip (5xx/secondary-rate-limit/DNS-TLS) must not
+        # red this step on infra noise — the title search hits the rate-limit-prone
+        # Search API. Bound the retry-SAFE network calls with retry + backoff via
+        # the shared .scripts/retry.sh helper (reliability pillar
+        # devantler-tech/actions#247). NOTE: `gh issue create` is deliberately NOT
+        # wrapped — it is not idempotent, so retrying a partially-succeeded create
+        # would open duplicate issues. Idempotent reads/edits (list/edit/view/close/
+        # reopen) are safe: reopening an already-open issue is a no-op success.
+        retry() { bash "${GITHUB_ACTION_PATH}/../../.scripts/retry.sh" "$@"; }
+
+        # Resolve body content
+        if [ -n "$BODY_FILE" ]; then
+          if [ ! -f "$BODY_FILE" ]; then
+            echo "::error::'body-file' not found: $BODY_FILE"
+            exit 1
+          fi
+          BODY=$(cat "$BODY_FILE")
+        fi
+
+        if [ -z "${BODY:-}" ]; then
+          echo "::error::Either 'body' or 'body-file' input must be provided"
+          exit 1
+        fi
+
+        # Find the newest issue with exactly this title in one state. Open and closed
+        # issues are searched separately, newest first, so a long history of closed
+        # copies can never push an open match out of the returned results. A failed
+        # search must fail the step: `set -e` does not reach inside `$(...)`, and an
+        # empty answer would otherwise create a duplicate issue.
+        find_issue() {
+          local issues_json
+          issues_json=$(retry gh issue list \
+            --repo "$REPO" \
+            --state "$1" \
+            --search "in:title \"${TITLE}\" sort:created-desc" \
+            --limit 100 \
+            --json number,title) || return 1
+          jq -r --arg title "$TITLE" \
+            '[ .[] | select(.title == $title) ] | max_by(.number) | .number // empty' \
+            <<< "$issues_json" || return 1
+        }
+
+        # Prefer the newest open issue; fall back to the newest closed one, so a
+        # recurring problem reopens its tracking issue instead of opening a duplicate.
+        ISSUE_NUMBER=$(find_issue open)
+        if [ -z "$ISSUE_NUMBER" ]; then
+          ISSUE_NUMBER=$(find_issue closed)
+        fi
+
+        if [ "$OPEN" = "true" ]; then
+          if [ -n "$ISSUE_NUMBER" ]; then
+            echo "Updating issue #${ISSUE_NUMBER} and ensuring it is open"
+            retry gh issue edit "$ISSUE_NUMBER" --repo "$REPO" --body "$BODY"
+            if [ -n "$LABELS" ]; then
+              retry gh issue edit "$ISSUE_NUMBER" --repo "$REPO" --add-label "$LABELS"
+            fi
+            # Decide on the live state: the title search can still list an issue
+            # as open moments after it was closed. A reopen that keeps failing
+            # fails the step, so a tracked problem is never left hidden.
+            ISSUE_STATE=$(
+              retry gh issue view "$ISSUE_NUMBER" --repo "$REPO" --json state --jq .state
+            )
+            if [ "$ISSUE_STATE" != "OPEN" ]; then
+              echo "Reopening issue #${ISSUE_NUMBER}"
+              retry gh issue reopen "$ISSUE_NUMBER" --repo "$REPO"
+            fi
+          else
+            echo "Creating new issue"
+            CREATE_ARGS=(--repo "$REPO" --title "$TITLE" --body "$BODY")
+            if [ -n "$LABELS" ]; then
+              CREATE_ARGS+=(--label "$LABELS")
+            fi
+            ISSUE_URL=$(gh issue create "${CREATE_ARGS[@]}")
+            ISSUE_NUMBER=$(echo "$ISSUE_URL" | grep -oE '[0-9]+$')
+          fi
+        else
+          if [ -n "$ISSUE_NUMBER" ]; then
+            ISSUE_STATE=$(
+              retry gh issue view "$ISSUE_NUMBER" --repo "$REPO" --json state --jq .state
+            )
+            if [ "$ISSUE_STATE" = "OPEN" ]; then
+              echo "Closing issue #${ISSUE_NUMBER}"
+              retry gh issue close "$ISSUE_NUMBER" --repo "$REPO" --comment "$CLOSE_COMMENT"
+            else
+              echo "Issue #${ISSUE_NUMBER} is already closed — nothing to do"
+            fi
+          else
+            echo "No existing issue found — nothing to do"
+          fi
+        fi
+
+        if [ -n "${ISSUE_NUMBER:-}" ]; then
+          ISSUE_URL="https://github.com/${REPO}/issues/${ISSUE_NUMBER}"
+          echo "issue-number=${ISSUE_NUMBER}" >> "$GITHUB_OUTPUT"
+          echo "issue-url=${ISSUE_URL}" >> "$GITHUB_OUTPUT"
+          echo "Result: ${ISSUE_URL}"
+        fi

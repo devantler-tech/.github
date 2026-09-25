@@ -75,7 +75,7 @@ test_zizmor_uses="$(yq -r '.jobs.test-zizmor.uses // ""' "$ci")"
 [[ "$test_zizmor_uses" == "./.github/workflows/scan-for-workflow-vulnerabilities.yaml" ]] ||
   fail "test-zizmor must remain the reusable Zizmor workflow caller"
 
-expected_test_condition="\${{ github.event_name == 'push' && !startsWith(github.head_ref, 'release-please--') && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+expected_test_condition="\${{ github.event_name == 'push' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
 test_zizmor_condition="$(yq -r '.jobs.test-zizmor.if // ""' "$ci")"
 [[ "$test_zizmor_condition" == "$expected_test_condition" ]] ||
   fail "test-zizmor must be push-only with the release exclusions intact; got: $test_zizmor_condition"

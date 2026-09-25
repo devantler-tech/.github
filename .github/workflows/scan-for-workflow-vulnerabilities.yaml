@@ -1,0 +1,70 @@
+name: 🔍 Scan for Workflow Vulnerabilities
+
+permissions: {}
+
+on:
+  workflow_call:
+  ### Required Workflow Triggers ###
+  pull_request:
+  merge_group:
+  ##################################
+
+jobs:
+  # A required workflow whose only job is skipped can remain unsatisfied.
+  # Classify every event in an unconditional, zero-permission job so merge
+  # groups complete green as a deliberate no-op while the scan stays skipped.
+  eligibility:
+    permissions: {}
+    runs-on: ubuntu-latest
+    outputs:
+      scan: ${{ steps.classify.outputs.scan }}
+    steps:
+      - name: 🛡️ Harden runner
+        uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
+        with:
+          egress-policy: audit
+
+      - name: 🔎 Classify advisory scan event
+        id: classify
+        if: github.event_name != 'merge_group'
+        run: echo "scan=true" >> "$GITHUB_OUTPUT"
+
+      - name: ✅ Complete merge-group required-workflow run
+        id: no-op
+        if: steps.classify.outputs.scan != 'true'
+        run: >-
+          echo "::notice::The pull-request advisory scan already ran;
+          completing this merge-group workflow as a safe no-op."
+
+  zizmor:
+    needs: eligibility
+    if: needs.eligibility.outputs.scan == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+      contents: read # only needed for private repos
+      actions: read # only needed for private repos
+    steps:
+      - name: 🛡️ Harden runner
+        uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
+        with:
+          egress-policy: audit
+
+      - name: 📑 Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: 🔍 Check for zizmor config
+        id: config
+        run: |
+          if [ -f "zizmor.yml" ]; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: 🌈 Zizmor
+        uses: zizmorcore/zizmor-action@cc914d7f3750a2d13d75c7f184a1060aa0e9d482 # v0.6.4
+        with:
+          config: ${{ steps.config.outputs.exists == 'true' && 'zizmor.yml' || '' }}

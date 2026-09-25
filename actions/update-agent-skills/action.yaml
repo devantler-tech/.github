@@ -1,0 +1,179 @@
+name: Update Agent Skills
+description: Run `gh skill update --all` against installed skills and report any changes
+author: devantler-tech
+inputs:
+  dir:
+    description: Directory to scan for installed skills (passed to `gh skill update --dir`)
+    required: false
+    default: "."
+  dry-run:
+    description: When `true`, pass `--dry-run` to `gh skill update` (report without modifying files)
+    required: false
+    default: "false"
+  unpin:
+    description: When `true`, pass `--unpin` to `gh skill update` (clear pins and include pinned skills)
+    required: false
+    default: "false"
+  mark-internal:
+    description: >-
+      When `true`, set `metadata.internal: true` on every SKILL.md under `dir` after updating, so
+      discovery tools such as `npx skills` do not offer vendored skills as the repository's own.
+      Re-applied on every run because an upstream update replaces the whole file. Ignored with `dry-run`.
+    required: false
+    default: "false"
+  gh-version:
+    description: Minimum required `gh` version (must support `gh skill`)
+    required: false
+    default: 2.90.0
+  github-token:
+    description: GitHub token exposed to `gh` as `GH_TOKEN`
+    required: false
+    default: ${{ github.token }}
+outputs:
+  changed:
+    description: "`true` when at least one SKILL.md was modified, `false` otherwise"
+    value: ${{ steps.update.outputs.changed }}
+  updated-skills:
+    description: Raw stdout from `gh skill update --all` (blank when nothing changed)
+    value: ${{ steps.update.outputs.updated-skills }}
+runs:
+  using: composite
+  steps:
+    - name: 🔧 Ensure gh >= required version
+      shell: bash
+      env:
+        REQUIRED: ${{ inputs.gh-version }}
+        INSTALL_NAMESPACE: update-agent-skills
+        GH_TOKEN: ${{ inputs.github-token }}
+      # Shared with setup-agent-skills via .scripts/ensure-gh-skill.sh. Composite
+      # actions cannot share steps, but they can share a bundled script resolved
+      # relative to ${GITHUB_ACTION_PATH} (works for both local `uses: ./<action>`
+      # and external `uses: devantler-tech/.github/actions/<action>@<ref>` callers).
+      run: bash "${GITHUB_ACTION_PATH}/../../.scripts/ensure-gh-skill.sh"
+
+    - name: 🔄 Update skills
+      id: update
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github-token }}
+        INPUT_DIR: ${{ inputs.dir }}
+        INPUT_DRY_RUN: ${{ inputs.dry-run }}
+        INPUT_UNPIN: ${{ inputs.unpin }}
+        INPUT_MARK_INTERNAL: ${{ inputs.mark-internal }}
+      run: |
+        set -euo pipefail
+
+        # Bounded retry for the registry pulls below — `gh skill update` checks each
+        # skill's source over the network, so a transient flake must not red a
+        # required check (reliability pillar, #247). Same shared helper + path
+        # resolution as the gh bootstrap above.
+        retry() { bash "${GITHUB_ACTION_PATH}/../../.scripts/retry.sh" "$@"; }
+
+        if [ ! -d "$INPUT_DIR" ]; then
+          echo "::error::Directory not found: $INPUT_DIR"
+          exit 1
+        fi
+
+        # Snapshot SKILL.md contents before running so we can detect modifications
+        # without relying on git being present in the caller's environment.
+        if ! command -v shasum >/dev/null 2>&1; then
+          echo "::error::'shasum' is required on the runner to detect SKILL.md changes but was not found on PATH."
+          exit 1
+        fi
+        before=$(mktemp)
+        find "$INPUT_DIR" -type f -name SKILL.md -print0 \
+          | sort -z \
+          | xargs -0 -r shasum -a 256 >"$before"
+
+        # Discover all parent directories of skill subdirectories under INPUT_DIR.
+        # gh skill update --dir X discovers X/*/SKILL.md and writes back to X/<skill>/SKILL.md.
+        # Passing the immediate parent of each skill dir (e.g. .agents/skills or plugins/<p>/skills)
+        # ensures discovery and writes land in the same place.
+        # Use a while-read loop instead of mapfile for bash 3.2 compatibility (macOS).
+        roots=()
+        while IFS= read -r root; do
+          roots+=("$root")
+        done < <(
+          find "$INPUT_DIR" -type f -name SKILL.md -print0 \
+            | while IFS= read -r -d '' md; do
+                skill_dir=$(dirname "$md")
+                parent_dir=$(dirname "$skill_dir")
+                echo "$parent_dir"
+              done \
+            | sort -u
+        )
+
+        if [ ${#roots[@]} -eq 0 ]; then
+          echo "No installed skills found."
+          echo "changed=false" >> "$GITHUB_OUTPUT"
+          {
+            echo "updated-skills<<EOF"
+            echo "No installed skills found."
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+          rm -f "$before"
+          exit 0
+        fi
+
+        out=$(mktemp)
+        status=0
+        for root in "${roots[@]}"; do
+          root_flags=(--all --dir "$root")
+          case "$INPUT_DRY_RUN" in
+            true|1|yes) root_flags+=(--dry-run) ;;
+          esac
+          case "$INPUT_UNPIN" in
+            true|1|yes) root_flags+=(--unpin) ;;
+          esac
+          echo "::group::Updating skills in $root"
+          if ! retry gh skill update "${root_flags[@]}" 2>&1 | tee -a "$out"; then
+            echo "::error::'gh skill update ${root_flags[*]}' failed."
+            status=1
+          fi
+          echo "::endgroup::"
+        done
+
+        # An upstream update replaces the whole SKILL.md, so re-apply the internal flag after every
+        # update rather than once. Dry-run promises no modification, so it never tags.
+        case "$INPUT_MARK_INTERNAL" in
+          true|1|yes)
+            case "$INPUT_DRY_RUN" in
+              true|1|yes) echo "Skipping mark-internal: dry-run leaves SKILL.md files untouched." ;;
+              *)
+                echo "::group::Marking skills internal in $INPUT_DIR"
+                if ! bash "${GITHUB_ACTION_PATH}/mark-internal.sh" "$INPUT_DIR" 2>&1 | tee -a "$out"; then
+                  echo "::error::Marking skills internal under $INPUT_DIR failed."
+                  status=1
+                fi
+                echo "::endgroup::"
+                ;;
+            esac
+            ;;
+        esac
+
+        after=$(mktemp)
+        find "$INPUT_DIR" -type f -name SKILL.md -print0 \
+          | sort -z \
+          | xargs -0 -r shasum -a 256 >"$after"
+
+        if cmp -s "$before" "$after"; then
+          echo "changed=false" >> "$GITHUB_OUTPUT"
+        else
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+        fi
+
+        # Strip spinner carriage-returns + ANSI escape sequences before exposing stdout as an output.
+        cleaned=$(sed -e 's/\r/\n/g' -e 's/\x1B\[[0-9;]*[a-zA-Z]//g' "$out" \
+          | grep -vE '^Checking .* installed skill' \
+          | sed '/^$/d')
+        {
+          echo "updated-skills<<EOF"
+          printf '%s\n' "$cleaned"
+          echo "EOF"
+        } >> "$GITHUB_OUTPUT"
+
+        rm -f "$before" "$after" "$out"
+
+        if [ "$status" -ne 0 ]; then
+          exit 1
+        fi

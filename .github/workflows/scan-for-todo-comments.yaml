@@ -1,0 +1,76 @@
+name: 📝 Scan for TODO Comments
+
+on:
+  workflow_call:
+    inputs:
+      dry-run:
+        description: "Skip issue creation (validate workflow interface only)"
+        required: false
+        default: false
+        type: boolean
+      ignore:
+        description: "Regular expression matching repository-relative paths to ignore"
+        required: false
+        default: ""
+        type: string
+    secrets:
+      APP_PRIVATE_KEY:
+        required: true
+
+permissions: {}
+
+jobs:
+  todos:
+    if: ${{ !inputs.dry-run }}
+    permissions:
+      contents: read
+      issues: write
+    runs-on: ubuntu-latest
+    steps:
+      - name: 🛡️ Harden runner
+        uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
+        with:
+          egress-policy: audit
+
+      - name: 📑 Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # Self-reference: check out THIS workflow's own repo at the exact commit it is running
+      # from (job.workflow_repository / job.workflow_sha), then call the sibling action by
+      # local path. Same-commit resolution — no release lag, no tag refs; consumer SHA-pinning
+      # policies see only the pinned actions/checkout plus a local `./` path. The composite's
+      # own internal checkout then re-syncs the workspace (git clean removes this untracked
+      # dir), so the todo-comment scan never sees the actions repo's sources. (Lowercase on
+      # purpose: the scanner keys on the uppercase marker, so naming it here would file an issue.)
+      - name: 📥 Checkout devantler-tech/.github (this workflow's commit)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ${{ job.workflow_repository }}
+          ref: ${{ job.workflow_sha }}
+          path: .devantler-tech-actions
+          persist-credentials: false
+
+      - name: 📝 Create issues from TODOs
+        uses: ./.devantler-tech-actions/actions/create-issues-from-todos
+        with:
+          client-id: ${{ vars.APP_CLIENT_ID }}
+          app-private-key: ${{ secrets.APP_PRIVATE_KEY }}
+          project: organization/devantler-tech/5
+          ignore: ${{ inputs.ignore }}
+
+      # The sibling composite runs its own actions/checkout, whose git clean deletes this
+      # untracked self-checkout mid-job. That is intended (it hides the actions sources from
+      # the todo scan above), but the runner re-reads the composite's action.yaml from disk to
+      # run its post-cleanup steps — which then fails with "Can't find action.yml". Re-materialise
+      # the directory AFTER the scan so the post phase can reload it; the scanner has already run,
+      # so it still never sees the actions repo's own sources.
+      - name: 📥 Restore devantler-tech/.github for post-cleanup
+        if: ${{ always() }}
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ${{ job.workflow_repository }}
+          ref: ${{ job.workflow_sha }}
+          path: .devantler-tech-actions
+          persist-credentials: false
