@@ -243,6 +243,17 @@ OWN="$work/own-job.yaml" perl -0pi -e '
     or die "no gate needs list\n";
   s/^(  ci-required-checks:\n(?:.*\n)*?          JOB_RESULTS: [^\n]*\n(?:            \$\{\{ needs\.[^\n]+\n)+)/$1            \${{ needs.validate-manifests.result }}\n/m
     or die "no JOB_RESULTS list\n";
+  # This repository releases with semantic-release and opens no release-please pull requests, and a
+  # head branch name is contributor-controlled. Keeping the source repository'"'"'s branch-name exemption
+  # would let any pull request named `release-please--*` skip every job, which the gate reads as a pass.
+  s/!startsWith\(github\.head_ref, \x27release-please--\x27\) && //g;
+  s/^ *!startsWith\(github\.head_ref, \x27release-please--\x27\) &&\n//mg;
+  s{  # The suite is also skipped for a release-please\n  # release commit [^\n]*\n(?:  # [^\n]*\n)*?  # check green so the release auto-merges\.\n}{  # The suite also skips a push whose head commit is a `chore(main): release …` release commit,\n  # which only bumps versions and the changelog. A pull request is never skipped by its branch\n  # name: a head branch is contributor-controlled, and the inline gate reads skipped as success.\n}
+    or die "no release-skip comment\n";
+  die "a release-please branch exemption is left in CI\n" if /release-please--/;
 ' "$ci"
+# The tests that pin CI's exact job conditions follow the same condition.
+perl -0pi -e 's/!startsWith\(github\.head_ref, \x27release-please--\x27\) && //g or die "no release-please exemption in $ARGV\n"' \
+  "$dst/.github/tests/test-test-script-wiring.sh" "$dst/.github/tests/test-zizmor-routing.sh"
 
 echo "imported ${#names[@]} composite actions and $(wc -l <"$dst/.github/imported-workflows.txt" | tr -d ' ') workflows"

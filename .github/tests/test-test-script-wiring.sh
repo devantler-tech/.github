@@ -160,7 +160,7 @@ for condition in 'false' '${{ false }}' '${{ github.event_name == "never" }}'; d
 done
 yq '.jobs.tests.if = false | .jobs.tests.steps += [{"run": "bash .github/tests/test-sentinel.sh"}]' "$work/base.yaml" >"$ci"
 blocked 'boolean false test job'
-CONDITION="\${{ github.event_name != 'merge_group' && !startsWith(github.head_ref, 'release-please--') && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}" \
+CONDITION="\${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}" \
   yq '.jobs.tests.if = strenv(CONDITION) | .jobs.tests.steps += [{"run": "bash .github/tests/test-sentinel.sh"}]' "$work/base.yaml" >"$ci"
 run_guard || fail 'supported CI event scheduling gate rejected'
 echo 'PASS: supported merge-group and release scheduling exclusions'
