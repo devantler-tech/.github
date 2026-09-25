@@ -104,6 +104,7 @@ rewrite_paths() {
     s{(\$root/|\$\{root\}/|\$repo_root/|\$\{repo_root\}/)($n)/}{$1actions/$2/}g;
     s{(\$root/|\$\{root\}/)($n)(?=["\x27])}{$1actions/$2}g;             # $root/<action>"
     s{(\$\{\w+:-)($n)/}{$1actions/$2/}g;                              # ${var:-<action>/...}
+    s{(GITHUB_WORKSPACE\}?/)($n)(?=/)}{$1actions/$2}g;                    # $GITHUB_WORKSPACE/<action>/...
     s{(?<![\w*./-])\*/action\.yaml}{actions/*/action.yaml}g;             # enumerations of every action
   ' "$@"
 }
