@@ -59,27 +59,44 @@ active_count="$(printf '%s\n' "$active_repositories" | grep -c . || true)"
 [[ "$active_count" -ge 10 ]] ||
   fail "active Repository set collapsed to $active_count entries"
 
-# ksail and platform were adopted before the provider split GitHub Pages into
-# its own managed resource, so their live CRs still carry provider-owned
-# spec.forProvider.pages state. The GitHub App intentionally has no Pages write
-# permission, and Update would keep retrying that deprecated field on every
-# reconciliation. Hold these two Repository resources at Observe-only until
-# #232 completes a clean re-adoption without the stale field.
-for pages_contained_repository in ksail platform; do
-  pages_contained_policies="$(
-    yq -N "
-      select(
-        .kind == \"Repository\" and
-        .metadata.name == \"$pages_contained_repository\"
-      ) |
-      .spec.managementPolicies |
-      sort |
-      join(\",\")
+# ksail and platform host GitHub Pages sites built by workflows. They were
+# adopted while LateInitialize copied the provider's deprecated `pages` field
+# into desired state, including a `source` GitHub does not report for workflow
+# builds (and, for platform, an empty cname). That permanent diff made every
+# update call the Pages API, which the GitHub App deliberately cannot write
+# (#232). Declaring `pages` exactly as GitHub reports it replaces the stale list
+# as a whole (the CRD gives it no list type, so server-side apply treats it as
+# atomic), so the provider sees no Pages change and never calls that API.
+declare_pages() {
+  local name="$1" want_cname="$2" got
+  got="$(
+    yq -N -o=json -I=0 "
+      select(.kind == \"Repository\" and .metadata.name == \"$name\") |
+      {
+        \"policies\": (.spec.managementPolicies | sort | join(\",\")),
+        \"pages\": .spec.forProvider.pages
+      }
     " "$render"
   )"
-  [[ "$pages_contained_policies" == "Observe" ]] ||
-    fail "$pages_contained_repository must remain Observe-only until its deprecated Pages state is cleanly re-adopted: $pages_contained_policies"
-done
+  [[ -n "$got" ]] || fail "$name Repository resource is missing"
+  [[ "$(yq -N '.policies' <<<"$got")" == "Create,Observe,Update" ]] ||
+    fail "$name must be managed with Observe/Create/Update once its Pages state is declared: $got"
+  [[ "$(yq -N '.pages | length' <<<"$got")" == "1" ]] ||
+    fail "$name must declare exactly one forProvider.pages entry: $got"
+  [[ "$(yq -N '.pages[0].buildType' <<<"$got")" == "workflow" ]] ||
+    fail "$name Pages must declare buildType: workflow, as GitHub reports it: $got"
+  [[ "$(yq -N '.pages[0] | has("source")' <<<"$got")" == "false" ]] ||
+    fail "$name Pages must not declare a source; GitHub reports none for a workflow build: $got"
+  if [[ -n "$want_cname" ]]; then
+    [[ "$(yq -N '.pages[0].cname' <<<"$got")" == "$want_cname" ]] ||
+      fail "$name Pages must declare cname: $want_cname, as GitHub reports it: $got"
+  else
+    [[ "$(yq -N '.pages[0] | has("cname")' <<<"$got")" == "false" ]] ||
+      fail "$name Pages must not declare a cname; GitHub reports none: $got"
+  fi
+}
+declare_pages ksail ksail.devantler.tech
+declare_pages platform ""
 
 # LateInitialize copies live-only values into forProvider, and everything in
 # forProvider is sent on update PATCHes, so LateInitialize is what turns a

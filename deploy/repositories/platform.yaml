@@ -7,19 +7,19 @@ metadata:
     # (owner comes from the ProviderConfig credentials).
     crossplane.io/external-name: platform
 spec:
-  # Temporarily Observe-only under #232. This resource was adopted before the
-  # provider split GitHub Pages into its own managed resource, so the live CR
-  # retains provider-owned deprecated Pages state. The GitHub App deliberately
-  # has no Pages write permission; keeping Update enabled would retry that stale
-  # field indefinitely. Restore Create/Update only after a clean re-adoption
-  # proves the field is absent.
-  managementPolicies: ["Observe"]
+  managementPolicies: ["Observe", "Create", "Update"]
   forProvider:
     name: platform
     visibility: public
     archived: false
     description: "DevantlerTech Platform - including deployment artifacts for running the platform in CI/CD and in Talos Omni."
     homepageUrl: "http://platform.devantler.tech/"
+    # Declared exactly as GitHub reports this workflow-built site, with no
+    # `source` or `cname` (GitHub reports neither). The GitHub App cannot write
+    # Pages, so any difference here would retry a Pages update forever;
+    # declaring the whole list replaces stale provider state (#232).
+    pages:
+      - buildType: workflow
     topics: ["infrastructure"]
   providerConfigRef:
     kind: ProviderConfig

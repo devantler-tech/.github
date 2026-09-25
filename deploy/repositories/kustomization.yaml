@@ -26,10 +26,8 @@ resources:
   - dotnet-template.yaml
   - homebrew-tap.yaml
   - fleet-gitops.yaml
-  # Active repositories temporarily contained at Observe-only while #232
-  # removes provider-owned deprecated Pages state from their live CRs. The
-  # declarations remain complete and the shared policy patch still renders, but
-  # Crossplane issues no writes until clean re-adoption is verified.
+  # These two also host workflow-built GitHub Pages sites, so each declares
+  # `pages` exactly as GitHub reports it (#232).
   - platform.yaml
   - ksail.yaml
   # Observe-only (read-only mirror; Crossplane writes nothing). They are listed

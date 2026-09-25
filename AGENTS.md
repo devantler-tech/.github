@@ -60,9 +60,9 @@ for the architecture, the GitHub App credential setup, and the Observe-first ado
   [upstream #2077](https://github.com/integrations/terraform-provider-github/issues/2077) omits the
   unchanged field when another setting needs an update. Active repositories can therefore use
   `Update` while keeping the enforced live value explicit. The `platform` and `ksail` Repository
-  resources remain a deliberate temporary exception under issue #232: their live CRs retain
-  provider-owned deprecated Pages state from an older adoption, so they stay exactly Observe-only
-  until a clean re-adoption proves that field is absent. After a repository's one-time
+  resources host workflow-built Pages sites that the GitHub App cannot write, so each declares the
+  deprecated `pages` field exactly as GitHub reports it. Declaring the whole list replaces stale
+  provider state and leaves no Pages diff for an update to send (issue #232). After a repository's one-time
   `archived: true` update lands, move it to exactly `Observe`: GitHub makes archived repositories
   read-only, and retaining `Update` or `LateInitialize` lets newly exposed provider fields create a
   permanent update loop. `tests/repository-update-policy.sh` pins both invariants. Verify
