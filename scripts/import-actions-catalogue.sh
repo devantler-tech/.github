@@ -106,6 +106,7 @@ rewrite_paths() {
     s{(\$\{\w+:-)($n)/}{$1actions/$2/}g;                              # ${var:-<action>/...}
     s{(GITHUB_WORKSPACE\}?/)($n)(?=/)}{$1actions/$2}g;                    # $GITHUB_WORKSPACE/<action>/...
     s{(-C\s+)($n)(?=\s|$)}{$1actions/$2}gm;                                # go -C <action>
+    s{^([ \t]+)($n)([ \t]*)$}{$1actions/$2$3}gm;                         # a scope list, one path per line
     s{(\$fixture/|\$\{fixture\}/)($n)(?=[/"\x27])}{$1actions/$2}g;             # a throwaway copy of the layout
     s{(?<![\w*./-])\*/action\.yaml}{actions/*/action.yaml}g;             # enumerations of every action
   ' "$@"
