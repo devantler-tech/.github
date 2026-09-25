@@ -162,6 +162,32 @@ seeded_signoff="$(
 [[ -z "$seeded_signoff" ]] ||
   fail "signoff must be declared in forProvider, not the create-only initProvider: $seeded_signoff"
 
+# Every RepositoryPermissions must require actions pinned to a full commit SHA,
+# observe the live settings it adopts, and never claim Delete: deleting the
+# resource resets the repository's Actions permissions to GitHub's defaults.
+permissions_count="$(
+  yq -N 'select(.kind == "RepositoryPermissions") | .metadata.name' "$render" |
+    grep -c . || true
+)"
+[[ "$permissions_count" -ge 10 ]] ||
+  fail "RepositoryPermissions set collapsed to $permissions_count entries"
+
+unsafe_permissions="$(
+  yq -N '
+    select(
+      .kind == "RepositoryPermissions" and
+      (
+        .spec.forProvider.shaPinningRequired != true or
+        (.spec.managementPolicies | contains(["Delete"])) or
+        ((.spec.managementPolicies | contains(["Observe"])) != true)
+      )
+    ) |
+    .metadata.name
+  ' "$render"
+)"
+[[ -z "$unsafe_permissions" ]] ||
+  fail "RepositoryPermissions must require SHA pinning, observe, and exclude Delete: $unsafe_permissions"
+
 # This template's roadmap lives in its own GitHub Issues, so the active
 # Repository resource must keep that tracker enabled. As with signoff above, an
 # absent optional bool is not "unmanaged": provider zero-value behaviour makes

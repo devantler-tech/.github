@@ -11,17 +11,13 @@
 # repo's live `enabled`/`allowedActions` first, so turning SHA-pinning on never
 # disturbs them.
 #
-# Scope = every repo managed in ../labels/. `actions` joined the policy in
-# devantler-tech/actions#426 once its first-party tag-pin accommodations were
-# reverted (actions#541) — it had been excluded only while those tags existed.
-# Bring a new repo under this policy by adding `<repo>.yaml` here.
+# Scope = every managed repository; tests/declarative-coverage.sh fails when one
+# is missing. Bring a new repo under this policy by adding `<repo>.yaml` here.
 #
-# REQUIRES a provider-upjet-github release embedding terraform-provider-github
-# >= 6.11.0 (where `sha_pinning_required` was added). The field is ABSENT in the
-# currently-deployed v0.19.1 (which pins TF provider 6.6.0), so this directory
-# must not be reconciled until that provider bump ships + the
-# `repositorypermissions.actions.github.m.upbound.io` MRD is activated in the
-# platform MRAP. Tracking: crossplane-contrib/provider-upjet-github#288.
+# The field needs provider-upjet-github v0.20.0 or later (terraform-provider-github
+# >= 6.11.0), with the `repositorypermissions.actions.github.m.upbound.io`
+# resource definition active in the platform. Local `./` and self-repository `$/`
+# references stay allowed under enforcement (verified live on platform, #121).
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
@@ -39,6 +35,10 @@ resources:
   - dotnet-template.yaml
   - homebrew-tap.yaml
   - world-at-ruin.yaml
+  - monorepo.yaml
+  - aws.yaml
+  - kyverno-policies.yaml
+  - provider-upjet-unifi.yaml
   # Private repos.
   - ascoachingogvaner.yaml
   - wedding-app.yaml

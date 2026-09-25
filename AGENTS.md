@@ -88,6 +88,7 @@ for the architecture, the GitHub App credential setup, and the Observe-first ado
 | `deploy/team-memberships/` | one explicit user-to-team membership per file |
 | `deploy/team-repositories/` | one team-to-repository permission grant per file |
 | `deploy/labels/<repo>.yaml` | one `IssueLabels` per repo; canonical taxonomy in `labels/kustomization.yaml` |
+| `deploy/repository-permissions/<repo>.yaml` | one `RepositoryPermissions` per repo; requires actions pinned to a full commit SHA |
 | `deploy/provider-config.yaml` | the provider-upjet-github `ProviderConfig` (App credentials) |
 | `deploy/external-secret.yaml` | the `ExternalSecret` sourcing the GitHub App credentials |
 | `deploy/kustomization.yaml` | top-level kustomization wiring the above + the shared repo-settings patch |
