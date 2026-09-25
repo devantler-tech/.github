@@ -62,7 +62,8 @@ for the architecture, the GitHub App credential setup, and the Observe-first ado
   `Update` while keeping the enforced live value explicit. The `platform` and `ksail` Repository
   resources host workflow-built Pages sites that the GitHub App cannot write, so each declares the
   deprecated `pages` field exactly as GitHub reports it. Declaring the whole list replaces stale
-  provider state and leaves no Pages diff for an update to send (issue #232). After a repository's one-time
+  provider state and leaves no Pages diff for an update to send. They stay exactly Observe-only
+  until the live resources read that declaration back, then return to Create/Update (issue #232). After a repository's one-time
   `archived: true` update lands, move it to exactly `Observe`: GitHub makes archived repositories
   read-only, and retaining `Update` or `LateInitialize` lets newly exposed provider fields create a
   permanent update loop. `tests/repository-update-policy.sh` pins both invariants. Verify

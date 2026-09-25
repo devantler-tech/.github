@@ -26,8 +26,9 @@ resources:
   - dotnet-template.yaml
   - homebrew-tap.yaml
   - fleet-gitops.yaml
-  # These two also host workflow-built GitHub Pages sites, so each declares
-  # `pages` exactly as GitHub reports it (#232).
+  # These two host workflow-built GitHub Pages sites. Each declares `pages`
+  # exactly as GitHub reports it and stays Observe-only until the live resource
+  # reads that declaration back; Create/Update return after that (#232).
   - platform.yaml
   - ksail.yaml
   # Observe-only (read-only mirror; Crossplane writes nothing). They are listed

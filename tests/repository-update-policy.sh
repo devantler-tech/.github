@@ -67,6 +67,9 @@ active_count="$(printf '%s\n' "$active_repositories" | grep -c . || true)"
 # (#232). Declaring `pages` exactly as GitHub reports it replaces the stale list
 # as a whole (the CRD gives it no list type, so server-side apply treats it as
 # atomic), so the provider sees no Pages change and never calls that API.
+#
+# The rollout is staged: both stay Observe-only until the live resources read back
+# exactly the declared `pages`, and only then return to Observe/Create/Update.
 declare_pages() {
   local name="$1" want_cname="$2" got
   got="$(
@@ -79,8 +82,8 @@ declare_pages() {
     " "$render"
   )"
   [[ -n "$got" ]] || fail "$name Repository resource is missing"
-  [[ "$(yq -N '.policies' <<<"$got")" == "Create,Observe,Update" ]] ||
-    fail "$name must be managed with Observe/Create/Update once its Pages state is declared: $got"
+  [[ "$(yq -N '.policies' <<<"$got")" == "Observe" ]] ||
+    fail "$name must stay Observe-only until the live resource reads back the declared Pages state: $got"
   [[ "$(yq -N '.pages | length' <<<"$got")" == "1" ]] ||
     fail "$name must declare exactly one forProvider.pages entry: $got"
   [[ "$(yq -N '.pages[0].buildType' <<<"$got")" == "workflow" ]] ||

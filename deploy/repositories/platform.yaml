@@ -7,7 +7,10 @@ metadata:
     # (owner comes from the ProviderConfig credentials).
     crossplane.io/external-name: platform
 spec:
-  managementPolicies: ["Observe", "Create", "Update"]
+  # Observe-only while the declared `pages` below replaces the stale provider
+  # state in the live resource. Create/Update return once the live resource reads
+  # back exactly the declared `pages` (#232).
+  managementPolicies: ["Observe"]
   forProvider:
     name: platform
     visibility: public
