@@ -6,7 +6,7 @@
 #
 # SOURCE this script (don't execute it) so the exports land in the caller's
 # shell:
-#   source "${GITHUB_ACTION_PATH}/../.scripts/agent-skills-retry-env.sh" "<true|false>"
+#   source "${GITHUB_ACTION_PATH}/../../.scripts/agent-skills-retry-env.sh" "<true|false>"
 #
 # When the first argument is exactly "true", it widens the shared retry.sh
 # envelope (5 attempts, waiting 60, 120, 240, 240 seconds). GitHub prescribes

@@ -102,16 +102,20 @@ rewrite_paths() {
     s{(\.devantler-tech-actions/)($n)(?=["\x27\s/]|$)}{$1actions/$2}gm;  # same-commit self-checkout
     s{(?<![\w./-])($n)/}{actions/$1/}g;                                  # <action>/... relative to the root
     s{(\$root/|\$\{root\}/|\$repo_root/|\$\{repo_root\}/)($n)/}{$1actions/$2/}g;
-    s{(\$root/|\$\{root\}/)($n)(?=["\x27])}{$1actions/$2}g;             # $root/<action>"
+    s{(\$root/|\$\{root\}/|\$repo_root/|\$\{repo_root\}/)($n)(?=["\x27])}{$1actions/$2}g;             # $root/<action>"
     s{(\$\{\w+:-)($n)/}{$1actions/$2/}g;                              # ${var:-<action>/...}
     s{(GITHUB_WORKSPACE\}?/)($n)(?=/)}{$1actions/$2}g;                    # $GITHUB_WORKSPACE/<action>/...
     s{(-C\s+)($n)(?=\s|$)}{$1actions/$2}gm;                                # go -C <action>
+    s{(\$fixture/|\$\{fixture\}/)($n)(?=[/"\x27])}{$1actions/$2}g;             # a throwaway copy of the layout
     s{(?<![\w*./-])\*/action\.yaml}{actions/*/action.yaml}g;             # enumerations of every action
   ' "$@"
 }
 # Composite actions sit one level deeper, so their shared scripts are two levels up.
 rewrite_action_script_paths() {
   perl -0pi -e 's{(ACTION_PATH\}?|github\.action_path \}\})/\.\./\.scripts/}{$1/../../.scripts/}g' "$@"
+  # A script inside an action directory that finds the repository root as its own parent now
+  # needs one more level, so `root` still means the repository root the other rewrites assume.
+  perl -0pi -e 's{(dirname "\$0"\)/\.\.)(?=")}{$1/..}g' "$@"
 }
 # Consumer-facing documentation names the new home. Workflow code is left alone: its remote pins
 # name commits that exist only in devantler-tech/actions until #235's follow-up repoints them.
@@ -166,7 +170,9 @@ done
 rewrite_identity "${identity_files[@]}"
 action_files=()
 while IFS= read -r f; do action_files+=("$f"); done < <(find "$dst/actions" -type f ! -name CHANGELOG.md | text_files)
-rewrite_action_script_paths "${action_files[@]}"
+# Every imported file that spells how an action reaches its shared scripts follows the move: the
+# actions themselves, the scripts' usage notes, and the tests that assert the exact line.
+rewrite_action_script_paths "${files[@]}"
 doc_files=()
 while IFS= read -r f; do doc_files+=("$f"); done < <(find "$dst/actions" -type f -name '*.md' ! -name CHANGELOG.md | text_files)
 

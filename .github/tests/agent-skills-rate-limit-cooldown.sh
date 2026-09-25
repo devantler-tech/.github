@@ -91,7 +91,7 @@ run_case() {
   (
     unset RETRY_MAX_ATTEMPTS RETRY_BASE_DELAY RETRY_MAX_DELAY
     export PATH="$tmp/bin:$PATH" CASE_DIR="$case_dir" SCENARIO="$scenario"
-    export GITHUB_ACTION_PATH="$repo_root/setup-agent-skills"
+    export GITHUB_ACTION_PATH="$repo_root/actions/setup-agent-skills"
     export GITHUB_OUTPUT="$case_dir/output" TMPDIR="$case_dir"
     export INPUT_SKILLS='devantler-tech/agent-skills ways-of-working@v1.5.0'
     export INPUT_AGENTS=claude-code INPUT_SCOPE=project

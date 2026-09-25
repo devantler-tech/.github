@@ -7,13 +7,13 @@ repo_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 fixture="$tmp/repo"
-mkdir -p "$fixture/.scripts" "$fixture/setup-agent-skills"
+mkdir -p "$fixture/.scripts" "$fixture/actions/setup-agent-skills"
 
 reset_fixture() {
   cp "$repo_root/.scripts/agent-skills-retry-env.sh" \
     "$repo_root/.scripts/retry.sh" \
     "$repo_root/.scripts/gh-skill-install.sh" "$fixture/.scripts/"
-  cp "$repo_root/actions/setup-agent-skills/action.yaml" "$fixture/setup-agent-skills/"
+  cp "$repo_root/actions/setup-agent-skills/action.yaml" "$fixture/actions/setup-agent-skills/"
 }
 
 assert_rejected() {
@@ -53,7 +53,7 @@ assert_rejected extra-attempt 'bounded-exhaustion: expected 5 CLI calls, got 6'
 
 reset_fixture
 yq -i '.inputs.experimental-rate-limit-retry.default = "true"' \
-  "$fixture/setup-agent-skills/action.yaml"
+  "$fixture/actions/setup-agent-skills/action.yaml"
 assert_rejected implicit-rollout "omitted-input: expected delays '5,10', got '60,120'"
 
 reset_fixture

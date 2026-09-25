@@ -3,7 +3,7 @@
 # Stubs git so the suite never needs a real repository or network.
 set -euo pipefail
 
-root="$(cd "$(dirname "$0")/.." && pwd)"
+root="$(cd "$(dirname "$0")/../.." && pwd)"
 guard="${root}/actions/guard-installed-skill-edits/guard-installed-skill-edits.sh"
 fail() { echo "FAIL: $*" >&2; exit 1; }
 pass() { echo "PASS: $*"; }

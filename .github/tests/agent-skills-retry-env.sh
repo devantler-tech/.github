@@ -78,7 +78,7 @@ esac
 # finished writing: the writer takes SIGPIPE (141) and pipefail promotes that to the
 # pipeline status, so a SATISFIED assertion is recorded as a violation.
 # shellcheck disable=SC2016  # match the literal source line, not an expansion
-src_needle='source "${GITHUB_ACTION_PATH}/../.scripts/agent-skills-retry-env.sh" "${INPUT_EXPERIMENTAL_RATE_LIMIT_RETRY:-false}"'
+src_needle='source "${GITHUB_ACTION_PATH}/../../.scripts/agent-skills-retry-env.sh" "${INPUT_EXPERIMENTAL_RATE_LIMIT_RETRY:-false}"'
 install_run="$(yq -r '.runs.steps[] | select(.id=="install") | .run' "$ay")"
 if [[ $install_run != *"$src_needle"* ]]; then
   echo "::error::setup-agent-skills must source agent-skills-retry-env.sh with INPUT_EXPERIMENTAL_RATE_LIMIT_RETRY"

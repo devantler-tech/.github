@@ -4,7 +4,7 @@
 # Ensures a `gh` CLI that exposes the `gh skill` command is on PATH, installing a
 # pinned cli/cli release when the runner's gh is missing or too old. Invoked by both
 # actions/setup-agent-skills/ and actions/update-agent-skills/ via
-#   bash "${GITHUB_ACTION_PATH}/../.scripts/ensure-gh-skill.sh"
+#   bash "${GITHUB_ACTION_PATH}/../../.scripts/ensure-gh-skill.sh"
 # so the logic lives in one place — composite actions cannot share steps directly,
 # but they can share a script bundled in the same repository (resolved relative to
 # ${GITHUB_ACTION_PATH}, which works for both local `uses: ./<action>` callers and

@@ -14,7 +14,7 @@
 # `uses: devantler-tech/.github/actions/<action>@<ref>` consumers.
 #
 # Usage:
-#   bash "${GITHUB_ACTION_PATH}/../.scripts/retry.sh" <command> [args...]
+#   bash "${GITHUB_ACTION_PATH}/../../.scripts/retry.sh" <command> [args...]
 #
 # Tunable via environment (sensible CI defaults):
 #   RETRY_MAX_ATTEMPTS   total attempts before giving up         (default 3)
