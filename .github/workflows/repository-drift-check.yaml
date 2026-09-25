@@ -17,6 +17,14 @@ on:
     - cron: "17 5 * * *"
   workflow_dispatch:
 
+# The report job opens or closes one tracking issue from the run's outcome, so
+# runs finish in start order: an older failure must never reopen the issue
+# after a newer success closed it. Queue rather than cancel, so no scheduled
+# result is discarded.
+concurrency:
+  group: repository-drift-check-${{ github.ref }}
+  cancel-in-progress: false
+
 permissions: {}
 
 jobs:

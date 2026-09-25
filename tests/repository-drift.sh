@@ -449,4 +449,25 @@ expect_report_mutant_rejected "extra permission" \
 expect_report_mutant_rejected "open and close use different titles" \
   '(.jobs."report-drift-check".steps[] | select(.with.open == "false") | .with.title) = "Other title"'
 
+# Runs must finish in start order, or an older failure can reopen the issue a
+# newer success just closed. Queue them rather than cancel, so no result is lost.
+concurrency_contract='
+  [
+    (.concurrency.group // "" | test("^repository-drift-check-")),
+    .concurrency."cancel-in-progress" == false
+  ] | all
+'
+[[ "$(yq "$concurrency_contract" "$workflow")" == "true" ]] ||
+  fail "drift-check runs must be serialized so an older result cannot overwrite a newer one"
+expect_concurrency_mutant_rejected() {
+  local label="$1" mutation="$2" mutated
+  mutated="$work/concurrency-mutant.yaml"
+  yq "$mutation" "$workflow" >"$mutated"
+  [[ "$(yq "$concurrency_contract" "$mutated")" == "false" ]] ||
+    fail "concurrency contract accepted a mutant: $label"
+}
+expect_concurrency_mutant_rejected "no concurrency" 'del(.concurrency)'
+expect_concurrency_mutant_rejected "cancels in progress" '.concurrency."cancel-in-progress" = true'
+expect_concurrency_mutant_rejected "cancel-in-progress unset" 'del(.concurrency."cancel-in-progress")'
+
 echo "repository-drift: OK — comparison, private redaction, REST/GraphQL settings, fail-closed reads and failure reporting"
