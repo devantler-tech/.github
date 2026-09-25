@@ -162,6 +162,55 @@ seeded_signoff="$(
 [[ -z "$seeded_signoff" ]] ||
   fail "signoff must be declared in forProvider, not the create-only initProvider: $seeded_signoff"
 
+# Every RepositoryPermissions must require actions pinned to a full commit SHA,
+# observe the live settings it adopts, update so the requirement is actually
+# applied (an Observe-only resource reconciles green while enforcing nothing),
+# and never claim Delete: deleting the resource resets the repository's Actions
+# permissions to GitHub's defaults.
+permissions_count="$(
+  yq -N 'select(.kind == "RepositoryPermissions") | .metadata.name' "$render" |
+    grep -c . || true
+)"
+[[ "$permissions_count" -ge 10 ]] ||
+  fail "RepositoryPermissions set collapsed to $permissions_count entries"
+
+unsafe_permissions="$(
+  yq -N '
+    select(
+      .kind == "RepositoryPermissions" and
+      (
+        .spec.forProvider.shaPinningRequired != true or
+        (.spec.managementPolicies | contains(["Delete"])) or
+        ((.spec.managementPolicies | contains(["Observe"])) != true) or
+        ((.spec.managementPolicies | contains(["Update"])) != true)
+      )
+    ) |
+    .metadata.name
+  ' "$render"
+)"
+[[ -z "$unsafe_permissions" ]] ||
+  fail "RepositoryPermissions must require SHA pinning, observe, update, and exclude Delete: $unsafe_permissions"
+
+# The shared patch makes every RepositoryPermissions send an update. Without
+# LateInitialize that update would carry provider defaults for whatever the
+# manifest leaves out, overwriting the repository's live Actions policy, so a
+# resource either late-initializes or declares both settings itself.
+unadopted_permissions="$(
+  yq -N '
+    select(
+      .kind == "RepositoryPermissions" and
+      ((.spec.managementPolicies | contains(["LateInitialize"])) != true) and
+      (
+        (.spec.forProvider | has("enabled")) != true or
+        (.spec.forProvider | has("allowedActions")) != true
+      )
+    ) |
+    .metadata.name
+  ' "$render"
+)"
+[[ -z "$unadopted_permissions" ]] ||
+  fail "RepositoryPermissions must LateInitialize or declare enabled and allowedActions: $unadopted_permissions"
+
 # This template's roadmap lives in its own GitHub Issues, so the active
 # Repository resource must keep that tracker enabled. As with signoff above, an
 # absent optional bool is not "unmanaged": provider zero-value behaviour makes

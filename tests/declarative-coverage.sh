@@ -9,8 +9,8 @@
 #
 # Coverage is read from the RENDERED output of `kubectl kustomize deploy/`,
 # never from the filenames on disk, because only rendered resources reconcile:
-#   - a manifest not listed in its directory's kustomization.yaml renders to
-#     nothing (repository-permissions/ is deliberately in that state today), and
+#   - a manifest not listed in its directory's kustomization.yaml, or a
+#     directory not listed in deploy/kustomization.yaml, renders to nothing, and
 #   - a renamed file whose forProvider still names the old repo would look
 #     declared under a filename-based check while reconciling the old repo.
 # Both are exactly the partial-rename / partial-add drift this guard exists to
@@ -44,6 +44,7 @@ dimensions=(
   'labels:select(.kind=="IssueLabels")|.spec.forProvider.repository'
   'team-admins:select(.kind=="TeamRepository" and .spec.forProvider.teamIdRef.name=="admins")|.spec.forProvider.repository'
   'team-maintainers:select(.kind=="TeamRepository" and .spec.forProvider.teamIdRef.name=="maintainers")|.spec.forProvider.repository'
+  'repository-permissions:select(.kind=="RepositoryPermissions")|.spec.forProvider.repository'
 )
 
 # Deliberate omissions, as "<dimension>/<repo>".
