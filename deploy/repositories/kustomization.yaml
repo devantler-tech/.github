@@ -38,6 +38,10 @@ resources:
   - world-at-ruin.yaml
   - ascoachingogvaner.yaml
   - wedding-app.yaml
+  # Observe-first adoption (Observe + LateInitialize): mirrors live settings into
+  # forProvider before Create/Update are enabled (#115).
+  - dot-github.yaml
+  - monorepo.yaml
 # Org-wide repo settings applied to EVERY Repository, single source of truth
 # (auto-applies to every future repo). This includes the Observe-only ones:
 # Crossplane never writes those, but scripts/check-repository-drift.sh compares

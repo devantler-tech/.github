@@ -52,19 +52,14 @@ dimensions=(
 # silence a fresh failure without a tracked reason. The guard fails on a stale
 # exemption, so this list cannot rot.
 exemptions=(
-  # Tracked in devantler-tech/.github#115 — pre-existing gaps found when this
-  # guard was introduced. Exempted so the guard can land green and ratchet:
-  # it fails on any NEW drift while these are closed separately.
+  # actions is merged into this repository and then archived (#164). It is
+  # declared in archived-repositories/ at that point (#240), not adopted first.
   "repositories/actions"
-  "repositories/.github"
-  "repositories/monorepo"
-  "team-maintainers/agent-plugins"
-  "team-maintainers/agent-skills"
-  "team-maintainers/ascoachingogvaner"
-  "team-maintainers/.github"
+  # fleet-gitops is private; the Maintainers team deliberately stays off it
+  # (maintainer decision on #115, 2026-09-25).
   "team-maintainers/fleet-gitops"
+  # maintenance is being retired (#84), so it gets no new grant.
   "team-maintainers/maintenance"
-  "team-maintainers/wedding-app"
 )
 
 is_exempt() {
