@@ -188,6 +188,10 @@ perl -pe 's/^# /## / if $. == 1' "$src/README.md" >"$work/catalogue.md"
 rewrite_paths "$work/catalogue.md"
 rewrite_docs "$work/catalogue.md" "${doc_files[@]}" "${action_files[@]}" "$dst"/.scripts/*.sh
 qualify_issue_refs "$work/catalogue.md" "${doc_files[@]}"
+# A documented example pinned to a source-repository commit names a commit this repository does not
+# have once its path is rewritten, so it becomes the full-SHA placeholder.
+perl -0pi -e 's{(devantler-tech/\.github/(?:actions/[\w-]+|\.github/workflows/[\w.-]+))\@[0-9a-f]{40}(?: # v[\w.-]+)?}{$1\@<full-commit-sha> # vX.Y.Z}g' \
+  "$work/catalogue.md" "${doc_files[@]}"
 # The catalogue's contributor guide moves to actions/, so the README's link follows it.
 perl -0pi -e 's{\[CONTRIBUTING\.md\]\(CONTRIBUTING\.md\)}{[actions/CONTRIBUTING.md](actions/CONTRIBUTING.md)} or die "no CONTRIBUTING link in the catalogue README\n"' \
   "$work/catalogue.md"

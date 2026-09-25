@@ -30,7 +30,7 @@ jobs:
     needs: [build, test]
     if: ${{ always() }}
     steps:
-      - uses: devantler-tech/.github/actions/aggregate-job-checks@1f66c91d45d374ceac9fe830a783444ebc9be958 # v3.2.0
+      - uses: devantler-tech/.github/actions/aggregate-job-checks@<full-commit-sha> # vX.Y.Z
         with:
           job-results: "${{ needs.build.result }} ${{ needs.test.result }}"
 ```
@@ -63,7 +63,7 @@ GitHub documents only `success`, `failure`, `cancelled` and `skipped` for `needs
     needs: [build, lint, test]
     if: ${{ always() }}
     steps:
-      - uses: devantler-tech/.github/actions/aggregate-job-checks@1f66c91d45d374ceac9fe830a783444ebc9be958 # v3.2.0
+      - uses: devantler-tech/.github/actions/aggregate-job-checks@<full-commit-sha> # vX.Y.Z
         with:
           job-results: >-
             ${{ needs.build.result }}
