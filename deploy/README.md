@@ -14,11 +14,13 @@ reconcile the live GitHub org to match these manifests — including reverting
 out-of-band changes made in the GitHub UI.
 
 - `repositories/` — one `Repository` per managed repo.
-- `repositories/platform.yaml` and `repositories/ksail.yaml` are temporarily
-  Observe-only under [#232](https://github.com/devantler-tech/.github/issues/232):
-  their live CRs retain provider-owned deprecated Pages state from an older
-  adoption, while the GitHub App intentionally lacks Pages write permission.
-  Clean re-adoption must prove that field is absent before Create/Update returns.
+- `repositories/platform.yaml` and `repositories/ksail.yaml` host
+  workflow-built GitHub Pages sites. The GitHub App intentionally cannot write
+  Pages, so each declares the deprecated `pages` field exactly as GitHub reports
+  it (no `source`, and a `cname` only where one is set). Any difference would
+  retry a Pages update forever. Both stay Observe-only until the live resources
+  read that declaration back, then return to Create/Update
+  ([#232](https://github.com/devantler-tech/.github/issues/232)).
 - `archived-repositories/` — one `Repository` per archived (or archival-bound)
   repo, kept outside `repositories/` so its shared merge-policy patch never
   targets a read-only repo (each patched reconcile would 422). Observe-first,
