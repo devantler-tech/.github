@@ -79,6 +79,8 @@ jobs:
           owner: ${{ github.repository_owner }}
           repositories: ${{ steps.targets.outputs.list }}
           permission-metadata: read
+          # Read-only access to the Pages sites that Repository resources declare.
+          permission-pages: read
 
       - name: 🔍 Compare declared and live repository settings
         env:

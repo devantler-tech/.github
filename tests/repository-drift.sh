@@ -228,6 +228,41 @@ expect_status "$work/collapsed" 2 "a collapsed render"
 grep -Fq "collapsed to" "$work/collapsed/stderr" ||
   fail "a collapsed render must say so"
 
+# --- 12. Pages settings come from the Pages endpoint -------------------------
+# The repository object has no Pages settings, so a declared `pages` list is read
+# from the repository's Pages site and compared in the provider's shape, using only
+# the keys the declaration names. $2 is the declared list, $3 the live Pages object.
+pages_fixture() {
+  local dir="$1" declared="$2" live_pages="$3"
+  build_fixture "$dir"
+  DECLARED="$declared" perl -0pi -e 's/^(    name: fixture-repo-1\n)/$1$ENV{DECLARED}/m or die "no fixture-repo-1\n"' \
+    "$dir/render.yaml"
+  if [[ -n "$live_pages" ]]; then
+    printf '%s\n' "$live_pages" >"$dir/live/fixture-repo-1.pages.json"
+  fi
+}
+cname_pages=$'    pages:\n      - buildType: workflow\n        cname: pages.example.invalid\n'
+live_cname='{"build_type": "workflow", "cname": "pages.example.invalid", "source": {"branch": "main", "path": "/"}}'
+pages_fixture "$work/pages" "$cname_pages" "$live_cname"
+expect_status "$work/pages" 0 "declared Pages settings that match the Pages endpoint"
+
+pages_fixture "$work/pages-no-cname" $'    pages:\n      - buildType: workflow\n' '{"build_type": "workflow", "cname": null}'
+expect_status "$work/pages-no-cname" 0 "a site with no custom domain declaring none"
+
+pages_fixture "$work/pages-drift" "$cname_pages" '{"build_type": "workflow", "cname": "other.example.invalid"}'
+expect_status "$work/pages-drift" 1 "a Pages custom domain that differs"
+grep -Fq 'DRIFT fixture-repo-1.pages' "$work/pages-drift/stdout" ||
+  fail "Pages drift must be reported against the pages field"
+
+pages_fixture "$work/pages-missing" "$cname_pages" ""
+expect_status "$work/pages-missing" 2 "declared Pages settings with no Pages site"
+
+pages_fixture "$work/pages-unmapped" $'    pages:\n      - buildType: legacy\n        source:\n          - branch: main\n' \
+  '{"build_type": "legacy", "source": {"branch": "main", "path": "/"}}'
+expect_status "$work/pages-unmapped" 2 "a declared Pages key this check cannot compare"
+grep -Fq 'pages.source' "$work/pages-unmapped/stderr" ||
+  fail "the uncomparable Pages key must be named"
+
 # Exercise the real gh transport path, including the REST omissions observed
 # with an installation token. The fake accepts only the expected read requests.
 transport="$work/transport"
