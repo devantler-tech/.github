@@ -1,6 +1,6 @@
 {
   "name": "Only portfolio identities may start deploy and publish workflows in go-template",
-  "enforcement": "disabled",
+  "enforcement": "active",
   "conditions": {
     "repository_name": {
       "include": [

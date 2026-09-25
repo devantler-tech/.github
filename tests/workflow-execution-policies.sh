@@ -127,6 +127,31 @@ expect named-files-by-property 1 \
   "$named | del(.conditions.repository_name) | .conditions.repository_property = {\"include\": [{\"name\": \"tier\", \"property_values\": [\"prod\"]}]}" "$single"
 expect all-files-all-repositories 0 '.conditions.workflow_path = {"include": ["~ALL"], "exclude": []}'
 
+# Moving a policy to active is the maintainer's call, one file at a time: only a file on the
+# validator's approval list may be active, and approval never allows evaluate.
+# expect_file <case> <file-name> <want-exit> <jq-edit> [<message-fragment>]
+expect_file() {
+  local name="$1" file="$2" want="$3" edit="$4" fragment="${5:-}" dir out rc
+  dir="$tmp/$name"
+  mkdir "$dir"
+  jq "$edit" <<<"$base" >"$dir/$file"
+  rc=0
+  out="$(bash "$validate" "$dir" 2>&1)" || rc=$?
+  [ "$rc" = "$want" ] || fail "$name: exit $rc, want $want: $out"
+  if [ -n "$fragment" ]; then
+    grep -qF -- "$fragment" <<<"$out" || fail "$name: output lacks '$fragment': $out"
+  fi
+}
+approved=restrict-deploy-starters-go-template.json
+expect_file approved-active "$approved" 0 '.enforcement = "active"'
+expect_file approved-disabled "$approved" 0 '.'
+expect_file approved-evaluate "$approved" 1 '.enforcement = "evaluate"' 'evaluate needs GitHub Enterprise Cloud'
+expect_file approved-unknown-enforcement "$approved" 1 '.enforcement = "enforce"' 'is not disabled'
+expect_file unapproved-active restrict-deploy-starters-ksail.json 1 '.enforcement = "active"' \
+  'active needs maintainer approval'
+# The approval is for the exact file name, not a name that merely contains it.
+expect_file approved-name-prefix "x-$approved" 1 '.enforcement = "active"' 'active needs maintainer approval'
+
 # Not JSON at all.
 mkdir "$tmp/broken"
 printf '{"name": ' >"$tmp/broken/policy.json"
