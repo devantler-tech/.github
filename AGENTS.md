@@ -152,6 +152,10 @@ Repo-specific watch-list for the daily engineer:
   It runs daily at 05:17 UTC and on `workflow_dispatch`. The scoped App token reads repository
   settings through REST and fills missing merge-policy fields through GraphQL. Both reads must
   identify the same repository and visibility; missing fields or partial responses fail the check.
+  A failing scheduled or dispatched run on `main` opens or updates the issue *Scheduled repository
+  drift check is failing on main*, and the next passing run closes it; triage that issue like any
+  other breakage. Runs are queued rather than overlapping, so an older result never overwrites a
+  newer one. `tests/repository-drift.sh` pins that wiring.
 - **Workflow execution policies are applied by a workflow, not Crossplane.**
   `apply-workflow-execution-policies.yaml` runs when a change to `workflow-execution-policies/` or
   its reconciler lands on `main`, daily at 05:43 UTC, and on `workflow_dispatch`. It mints a token

@@ -17,6 +17,14 @@ on:
     - cron: "17 5 * * *"
   workflow_dispatch:
 
+# The report job opens or closes one tracking issue from the run's outcome, so
+# runs finish in start order: an older failure must never reopen the issue
+# after a newer success closed it. Queue rather than cancel, so no scheduled
+# result is discarded.
+concurrency:
+  group: repository-drift-check-${{ github.ref }}
+  cancel-in-progress: false
+
 permissions: {}
 
 jobs:
@@ -76,3 +84,41 @@ jobs:
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
         run: bash scripts/check-repository-drift.sh
+
+  # The daily schedule is the only thing that runs this check, and nothing else
+  # reads its results, so a red run stays invisible: it once failed eleven
+  # scheduled runs in a row before anyone noticed. Mirror the outcome into one
+  # tracking issue instead: a failing scheduled or dispatched run on main opens
+  # or updates it, and the next passing one closes it.
+  report-drift-check:
+    name: 📣 Report the drift check result
+    needs: [repository-drift-check]
+    if: >-
+      !cancelled()
+      && github.repository == 'devantler-tech/.github'
+      && github.ref == 'refs/heads/main'
+      && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write # open, update, or close the tracking issue
+    steps:
+      - name: 📣 Open or update the tracking issue
+        if: needs.repository-drift-check.result != 'success'
+        uses: devantler-tech/actions/upsert-issue@da153eb43b8333f13094abb151a48dc11e431988 # v13.7.4
+        with:
+          title: "Scheduled repository drift check is failing on main"
+          body: |
+            The `🔍 Repository drift check` run below did not pass on `main`.
+
+            - Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+            - Result: `${{ needs.repository-drift-check.result }}`
+
+            Read the failing step first. A failure at `🔑 Get GitHub App Token` means the App credential needs attention. A `DRIFT` line from the compare step means a declared repository setting never reached the live repository: fix the resource in `deploy/`, never the live repository. This issue is updated by every failing run and closed by the next passing one.
+      - name: ✅ Close the tracking issue
+        if: needs.repository-drift-check.result == 'success'
+        uses: devantler-tech/actions/upsert-issue@da153eb43b8333f13094abb151a48dc11e431988 # v13.7.4
+        with:
+          title: "Scheduled repository drift check is failing on main"
+          open: "false"
+          body: "The scheduled repository drift check passes on main."
+          close-comment: "✅ ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }} passed on `main`, so the repository drift check is green again. Closing."

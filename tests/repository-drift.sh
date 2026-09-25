@@ -404,4 +404,70 @@ expect_transport_status "$dir" 2 "unmapped declaration after GraphQL read"
 grep -Fq 'inventedSetting but the live repository object has no "invented_setting" field' "$dir/stderr" ||
   fail "GraphQL completion must not hide unrelated missing fields"
 
-echo "repository-drift: OK — comparison, private redaction, REST/GraphQL settings and fail-closed reads"
+# The workflow runs on a schedule that nobody watches, so a red run must be
+# mirrored into one tracking issue: a failing scheduled or dispatched run on main
+# opens or updates it, and the next passing one closes it.
+workflow="$repo_root/.github/workflows/repository-drift-check.yaml"
+readonly workflow
+export expected_report_if="!cancelled() && github.repository == 'devantler-tech/.github' && github.ref == 'refs/heads/main' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')"
+export expected_report_failure_if="needs.repository-drift-check.result != 'success'"
+export expected_report_success_if="needs.repository-drift-check.result == 'success'"
+report_contract='
+  (.jobs."report-drift-check" // {}) | [
+    ((.needs // []) | length) == 1,
+    (.needs // [])[0] == "repository-drift-check",
+    .if == strenv(expected_report_if),
+    ((.permissions // {}) | keys | length) == 1,
+    .permissions.issues == "write",
+    (has("continue-on-error") | not),
+    ([(.steps // [])[] | select((.uses // "") | test("^devantler-tech/actions/upsert-issue@[0-9a-f]{40}$"))] | length) == 2,
+    ([(.steps // [])[] | .with.title] | unique | length) == 1,
+    ([(.steps // [])[] | select(.if == strenv(expected_report_failure_if) and ((.with.open // "true") == "true"))] | length) == 1,
+    ([(.steps // [])[] | select(.if == strenv(expected_report_success_if) and .with.open == "false")] | length) == 1
+  ] | all
+'
+[[ "$(yq "$report_contract" "$workflow")" == "true" ]] ||
+  fail "scheduled drift-check failures must be mirrored into one tracking issue"
+
+# Each mutant removes one part of the contract; every one must be caught.
+expect_report_mutant_rejected() {
+  local label="$1" mutation="$2" mutated
+  mutated="$work/report-mutant.yaml"
+  yq "$mutation" "$workflow" >"$mutated"
+  [[ "$(yq "$report_contract" "$mutated")" == "false" ]] ||
+    fail "report contract accepted a mutant: $label"
+}
+expect_report_mutant_rejected "report job removed" 'del(.jobs."report-drift-check")'
+expect_report_mutant_rejected "runs on pull requests" \
+  '.jobs."report-drift-check".if |= sub(" && github.ref == .refs/heads/main."; "")'
+expect_report_mutant_rejected "skipped when the check fails" \
+  '.jobs."report-drift-check".if |= sub("!cancelled"; "success")'
+expect_report_mutant_rejected "never closes" \
+  'del(.jobs."report-drift-check".steps[] | select(.with.open == "false"))'
+expect_report_mutant_rejected "extra permission" \
+  '.jobs."report-drift-check".permissions.contents = "write"'
+expect_report_mutant_rejected "open and close use different titles" \
+  '(.jobs."report-drift-check".steps[] | select(.with.open == "false") | .with.title) = "Other title"'
+
+# Runs must finish in start order, or an older failure can reopen the issue a
+# newer success just closed. Queue them rather than cancel, so no result is lost.
+concurrency_contract='
+  [
+    (.concurrency.group // "" | test("^repository-drift-check-")),
+    .concurrency."cancel-in-progress" == false
+  ] | all
+'
+[[ "$(yq "$concurrency_contract" "$workflow")" == "true" ]] ||
+  fail "drift-check runs must be serialized so an older result cannot overwrite a newer one"
+expect_concurrency_mutant_rejected() {
+  local label="$1" mutation="$2" mutated
+  mutated="$work/concurrency-mutant.yaml"
+  yq "$mutation" "$workflow" >"$mutated"
+  [[ "$(yq "$concurrency_contract" "$mutated")" == "false" ]] ||
+    fail "concurrency contract accepted a mutant: $label"
+}
+expect_concurrency_mutant_rejected "no concurrency" 'del(.concurrency)'
+expect_concurrency_mutant_rejected "cancels in progress" '.concurrency."cancel-in-progress" = true'
+expect_concurrency_mutant_rejected "cancel-in-progress unset" 'del(.concurrency."cancel-in-progress")'
+
+echo "repository-drift: OK — comparison, private redaction, REST/GraphQL settings, fail-closed reads and failure reporting"
