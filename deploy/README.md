@@ -49,10 +49,10 @@ out-of-band changes made in the GitHub UI.
   importability matrix and the push/tag/Actions-policy analysis.
 - `repository-rulesets/` — one `RepositoryRuleset` per file (`<verb>-on-<repo>.yaml`),
   each a repo-scoped rule adopted Observe-first.
-- `repository-permissions/` — one `RepositoryPermissions` per managed repo enforcing
+- `repository-permissions/` — one `RepositoryPermissions` per active (non-archived) managed repo enforcing
   **Require actions to be pinned to a full-length commit SHA**
   (`sha_pinning_required`). The policy is asserted once via a shared patch in
-  `repository-permissions/kustomization.yaml`; scope is **every managed repo**, and
+  `repository-permissions/kustomization.yaml`; scope is **every active managed repo**, and
   `tests/declarative-coverage.sh` fails when one is missing. Local `./` and
   self-repository `$/` references stay allowed; reusable workflows can still be
   referenced by tag.
