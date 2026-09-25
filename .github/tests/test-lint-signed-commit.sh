@@ -20,7 +20,7 @@ caller_workflow="${1:-.github/workflows/lint.yaml}"
 signer_workflow="${2:-.github/workflows/apply-signed-fixes.yaml}"
 consumer_relative_signer="./${signer_workflow#./}"
 workflow_source_signer="\$/${signer_workflow#./}"
-immutable_source_signer_re="^devantler-tech/actions/${signer_workflow#./}@[0-9a-f]{40}$"
+immutable_source_signer_re="^devantler-tech/[.]github/${signer_workflow#./}@[0-9a-f]{40}$"
 
 fail() {
   echo "FAIL: $*" >&2
