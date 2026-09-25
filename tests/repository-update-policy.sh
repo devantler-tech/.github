@@ -163,8 +163,10 @@ seeded_signoff="$(
   fail "signoff must be declared in forProvider, not the create-only initProvider: $seeded_signoff"
 
 # Every RepositoryPermissions must require actions pinned to a full commit SHA,
-# observe the live settings it adopts, and never claim Delete: deleting the
-# resource resets the repository's Actions permissions to GitHub's defaults.
+# observe the live settings it adopts, update so the requirement is actually
+# applied (an Observe-only resource reconciles green while enforcing nothing),
+# and never claim Delete: deleting the resource resets the repository's Actions
+# permissions to GitHub's defaults.
 permissions_count="$(
   yq -N 'select(.kind == "RepositoryPermissions") | .metadata.name' "$render" |
     grep -c . || true
@@ -179,14 +181,15 @@ unsafe_permissions="$(
       (
         .spec.forProvider.shaPinningRequired != true or
         (.spec.managementPolicies | contains(["Delete"])) or
-        ((.spec.managementPolicies | contains(["Observe"])) != true)
+        ((.spec.managementPolicies | contains(["Observe"])) != true) or
+        ((.spec.managementPolicies | contains(["Update"])) != true)
       )
     ) |
     .metadata.name
   ' "$render"
 )"
 [[ -z "$unsafe_permissions" ]] ||
-  fail "RepositoryPermissions must require SHA pinning, observe, and exclude Delete: $unsafe_permissions"
+  fail "RepositoryPermissions must require SHA pinning, observe, update, and exclude Delete: $unsafe_permissions"
 
 # The shared patch makes every RepositoryPermissions send an update. Without
 # LateInitialize that update would carry provider defaults for whatever the
