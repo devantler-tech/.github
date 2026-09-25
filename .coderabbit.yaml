@@ -10,14 +10,20 @@
 # defined below, so this change stays scoped to docstrings.
 inheritance: true
 reviews:
+  # When CodeRabbit is rate-limited (or otherwise errors), do not fail the outward
+  # review/commit status (monorepo#2344, devantler-tech/actions#730). A failing `CodeRabbit`
+  # status forces mergeStateStatus=UNSTABLE even when every required check is green. The
+  # schema default is already false; pin it so an inherited UI/org override cannot re-enable
+  # failing statuses.
+  fail_commit_status: false
   pre_merge_checks:
     # Docstring Coverage measures a single coverage percentage across a PR's changed files
     # and cannot be scoped per-path (the only path mechanism, reviews.path_filters, would
     # drop the files from the whole review rather than from just this metric).
     #
-    # This repository holds no Go — or any other docstring-bearing — production code: it is
-    # declarative org configuration (deploy/**.yaml), workflow templates, docs and a bash
-    # test script. So the metric has nothing to measure here and reports 0.00% against an
+    # This repository is mostly declarative org configuration (deploy/**.yaml), workflows,
+    # composite actions, docs and shell tests; its little Go is test fixtures and one small
+    # validator. So the metric mostly has nothing to measure and can report 0.00% against an
     # 80% threshold, blocking merges on a documentation gap that does not exist (e.g. #103,
     # whose only failed pre-merge check was Docstring Coverage 0.00% on a changeset of YAML
     # manifests, a bash test and Markdown).
