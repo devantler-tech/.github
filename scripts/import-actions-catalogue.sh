@@ -124,6 +124,10 @@ rewrite_docs() {
   perl -0pi -e '
     s{(?<![\w./-])devantler-tech/actions/\.github/workflows/}{devantler-tech/.github/.github/workflows/}g;
     s{(?<![\w./-])devantler-tech/actions/(?=[\w<])}{devantler-tech/.github/actions/}g;
+    # URLs to files: a workflow signing identity, and blob/tree links. Issue URLs stay as history.
+    s{https://github\.com/devantler-tech/actions/\.github/workflows/}{https://github.com/devantler-tech/.github/.github/workflows/}g;
+    s{https://github\.com/devantler-tech/actions/(blob|tree)/main/\.github/}{https://github.com/devantler-tech/.github/$1/main/.github/}g;
+    s{https://github\.com/devantler-tech/actions/(blob|tree)/main/([a-z][a-z0-9-]*)(?=[/)\s`"]|$)}{https://github.com/devantler-tech/.github/$1/main/actions/$2}gm;
   ' "$@"
 }
 # Bare issue numbers in imported Markdown name the source repository's issues, so they are qualified.
@@ -184,6 +188,9 @@ perl -pe 's/^# /## / if $. == 1' "$src/README.md" >"$work/catalogue.md"
 rewrite_paths "$work/catalogue.md"
 rewrite_docs "$work/catalogue.md" "${doc_files[@]}" "${action_files[@]}" "$dst"/.scripts/*.sh
 qualify_issue_refs "$work/catalogue.md" "${doc_files[@]}"
+# The catalogue's contributor guide moves to actions/, so the README's link follows it.
+perl -0pi -e 's{\[CONTRIBUTING\.md\]\(CONTRIBUTING\.md\)}{[actions/CONTRIBUTING.md](actions/CONTRIBUTING.md)} or die "no CONTRIBUTING link in the catalogue README\n"' \
+  "$work/catalogue.md"
 {
   awk -v b="$begin_marker" '$0 == b { exit } { line[NR] = $0; n = NR }
     END { while (n > 0 && line[n] == "") n--; for (i = 1; i <= n; i++) print line[i] }' "$dst/README.md"
@@ -224,6 +231,9 @@ OWN="$work/own-job.yaml" perl -0pi -e '
     or die "no Release Please semantics job\n";
   s/\n      - name: \S+ Setup Node\n        uses: actions\/setup-node\@[^\n]+\n        with:\n          node-version: \d+\n\n      - name: [^\n]+\n        run: npm ci --ignore-scripts --prefix \.github\/tests\/release-please\n\n      - name: [^\n]+\n        run: npm test --prefix \.github\/tests\/release-please\n/\n/
     or die "no Release Please engine steps\n";
+  # The live OIDC self-test asserts the token names a workflow in the repository it runs from.
+  s{^(            )devantler-tech/actions/\.github/workflows/\*\@\*\) ;;\n}{$1devantler-tech/.github/.github/workflows/*\@*) ;;\n}m
+    or die "no live OIDC job_workflow_ref case arm\n";
   s/^(  ci-required-checks:\n)/$own\n$1/m or die "no ci-required-checks job\n";
   s/^(  ci-required-checks:\n(?:.*\n)*?    needs:\n(?:      - [^\n]+\n)+)/$1      - validate-manifests\n/m
     or die "no gate needs list\n";

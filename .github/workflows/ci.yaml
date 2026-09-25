@@ -3871,7 +3871,7 @@ jobs:
           # The claim must exist and name a workflow in this repository. An empty value is the exact
           # failure the expression-context version of this guard had, and it must never come back.
           case "$ref" in
-            devantler-tech/actions/.github/workflows/*@*) ;;
+            devantler-tech/.github/.github/workflows/*@*) ;;
             "") echo "::error::OIDC job_workflow_ref claim resolved EMPTY"; exit 1 ;;
             *) echo "::error::unexpected job_workflow_ref shape: $ref"; exit 1 ;;
           esac

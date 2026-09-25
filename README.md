@@ -540,7 +540,7 @@ jobs:
 
 [.github/workflows/publish-manifests.yaml](.github/workflows/publish-manifests.yaml) is a workflow used to publish a Kubernetes manifests directory to GHCR as a cosign-signed OCI artifact — **with no container image build**. Use it for repos that ship only manifests (e.g. GitOps/Crossplane desired-state) rather than an application: it pushes the manifests directory as a Flux-compatible OCI artifact (`ghcr.io/<owner>/<repo>/manifests`, tagged with the semantic version derived from the git tag — e.g. `1.2.3` from a `v1.2.3` tag — plus `latest`), then signs the artifact by digest with keyless cosign (Fulcio/Rekor via GitHub OIDC). It is the manifests-only sibling of `publish-app.yaml` (which additionally builds and signs a container image).
 
-Because the signing happens inside this reusable workflow, the cosign certificate identity (OIDC `subject`) is this workflow's path — `https://github.com/devantler-tech/actions/.github/workflows/publish-manifests.yaml@<ref>` — not the caller's. Verifiers (e.g. a Flux `OCIRepository` `verify.matchOIDCIdentity`) must match that.
+Because the signing happens inside this reusable workflow, the cosign certificate identity (OIDC `subject`) is this workflow's path — `https://github.com/devantler-tech/.github/.github/workflows/publish-manifests.yaml@<ref>` — not the caller's. Verifiers (e.g. a Flux `OCIRepository` `verify.matchOIDCIdentity`) must match that.
 
 #### Usage
 
@@ -823,7 +823,7 @@ jobs:
       mark-internal: true
 ```
 
-The workflow assumes skills were previously installed with [`devantler-tech/.github/actions/setup-agent-skills`](https://github.com/devantler-tech/actions/tree/main/setup-agent-skills) (or `gh skill install` directly) — the committed `SKILL.md` files carry the upstream pointers.
+The workflow assumes skills were previously installed with [`devantler-tech/.github/actions/setup-agent-skills`](https://github.com/devantler-tech/.github/tree/main/actions/setup-agent-skills) (or `gh skill install` directly) — the committed `SKILL.md` files carry the upstream pointers.
 
 #### Secrets and Inputs
 
@@ -903,6 +903,6 @@ Rollout and flag retirement are tracked in [devantler-tech/actions#1170](https:/
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for conventions and guidelines.
+See [actions/CONTRIBUTING.md](actions/CONTRIBUTING.md) for conventions and guidelines.
 
 <!-- END actions catalogue -->
