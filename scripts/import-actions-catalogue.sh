@@ -111,7 +111,7 @@ rewrite_paths() {
 }
 # Composite actions sit one level deeper, so their shared scripts are two levels up.
 rewrite_action_script_paths() {
-  perl -0pi -e 's{(GITHUB_ACTION_PATH\}?|github\.action_path \}\})/\.\./\.scripts/}{$1/../../.scripts/}g' "$@"
+  perl -0pi -e 's{(ACTION_PATH\}?|github\.action_path \}\})/\.\./\.scripts/}{$1/../../.scripts/}g' "$@"
 }
 # Consumer-facing documentation names the new home. Workflow code is left alone: its remote pins
 # name commits that exist only in devantler-tech/actions until #235's follow-up repoints them.

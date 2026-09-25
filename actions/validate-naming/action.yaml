@@ -55,7 +55,7 @@ runs:
         cd "$GITHUB_WORKSPACE"
         temporary=$(mktemp -d "$RUNNER_TEMP/validate-naming.XXXXXX")
         trap 'rm -rf "$temporary"' EXIT
-        bash "$ACTION_PATH/../.scripts/retry.sh" go -C "$ACTION_PATH" mod download
+        bash "$ACTION_PATH/../../.scripts/retry.sh" go -C "$ACTION_PATH" mod download
         go -C "$ACTION_PATH" build -mod=readonly -trimpath -o "$temporary/validate-naming" .
         "$temporary/validate-naming" --root "$WORKING_DIRECTORY" --config "$CONFIG_FILE"
         echo "validated=true" >> "$GITHUB_OUTPUT"

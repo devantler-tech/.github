@@ -55,7 +55,7 @@ runs:
         cd "$GITHUB_WORKSPACE"
         temporary=$(mktemp -d "$RUNNER_TEMP/validate-shell-pipelines.XXXXXX")
         trap 'rm -rf "$temporary"' EXIT
-        bash "$ACTION_PATH/../.scripts/retry.sh" go -C "$ACTION_PATH" mod download
+        bash "$ACTION_PATH/../../.scripts/retry.sh" go -C "$ACTION_PATH" mod download
         go -C "$ACTION_PATH" build -mod=readonly -trimpath -o "$temporary/validate-shell-pipelines" .
         "$temporary/validate-shell-pipelines" --root "$WORKING_DIRECTORY" --paths "$SCAN_PATHS"
         echo "validated=true" >> "$GITHUB_OUTPUT"
