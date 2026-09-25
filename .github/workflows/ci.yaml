@@ -64,9 +64,9 @@ jobs:
           GOFLAGS: ""
           GOTOOLCHAIN: local
         run: |
-          go -C validate-retired-repo-links test -race -cover ./...
-          go -C validate-retired-repo-links vet ./...
-          go -C validate-retired-repo-links build -mod=readonly -o "$RUNNER_TEMP/retired-repo-links" .
+          go -C actions/validate-retired-repo-links test -race -cover ./...
+          go -C actions/validate-retired-repo-links vet ./...
+          go -C actions/validate-retired-repo-links build -mod=readonly -o "$RUNNER_TEMP/retired-repo-links" .
           result=0
           "$RUNNER_TEMP/retired-repo-links" --root .github/fixtures/retired-repo-links --config invalid.json > "$RUNNER_TEMP/retired-links.log" 2>&1 || result=$?
           cat "$RUNNER_TEMP/retired-links.log"
@@ -191,8 +191,8 @@ jobs:
           GOFLAGS: ""
           GOTOOLCHAIN: local
         run: |
-          go -C validate-shell-pipelines test -race -cover ./...
-          go -C validate-shell-pipelines vet ./...
+          go -C actions/validate-shell-pipelines test -race -cover ./...
+          go -C actions/validate-shell-pipelines vet ./...
 
   test-validate-shell-pipelines-disabled:
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.head_ref, 'release-please--') && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
@@ -276,8 +276,8 @@ jobs:
         env:
           GOWORK: "off"
         run: |
-          go -C validate-naming test -race -cover ./...
-          go -C validate-naming vet ./...
+          go -C actions/validate-naming test -race -cover ./...
+          go -C actions/validate-naming vet ./...
 
   test-validate-naming-disabled:
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.head_ref, 'release-please--') && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
@@ -361,7 +361,7 @@ jobs:
           GOFLAGS: ""
           GOTOOLCHAIN: local
         run: |
-          go -C validate-naming build -mod=readonly -o "$RUNNER_TEMP/validate-naming" .
+          go -C actions/validate-naming build -mod=readonly -o "$RUNNER_TEMP/validate-naming" .
           result=0
           "$RUNNER_TEMP/validate-naming" --root .github/fixtures/validate-naming --config invalid.yaml > "$RUNNER_TEMP/naming-failure.log" 2>&1 || result=$?
           cat "$RUNNER_TEMP/naming-failure.log"
