@@ -420,7 +420,7 @@ report_contract='
     ((.permissions // {}) | keys | length) == 1,
     .permissions.issues == "write",
     (has("continue-on-error") | not),
-    ([(.steps // [])[] | select((.uses // "") | test("^devantler-tech/actions/upsert-issue@[0-9a-f]{40}$"))] | length) == 2,
+    ([(.steps // [])[] | select((.uses // "") | test("^devantler-tech/\\.github/actions/upsert-issue@[0-9a-f]{40}$"))] | length) == 2,
     ([(.steps // [])[] | .with.title] | unique | length) == 1,
     ([(.steps // [])[] | select(.if == strenv(expected_report_failure_if) and ((.with.open // "true") == "true"))] | length) == 1,
     ([(.steps // [])[] | select(.if == strenv(expected_report_success_if) and .with.open == "false")] | length) == 1
