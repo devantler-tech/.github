@@ -18,8 +18,7 @@ out-of-band changes made in the GitHub UI.
   workflow-built GitHub Pages sites. The GitHub App intentionally cannot write
   Pages, so each declares the deprecated `pages` field exactly as GitHub reports
   it (no `source`, and a `cname` only where one is set). Any difference would
-  retry a Pages update forever. Both stay Observe-only until the live resources
-  read that declaration back, then return to Create/Update
+  retry a Pages update forever
   ([#232](https://github.com/devantler-tech/.github/issues/232)).
 - `archived-repositories/` — one `Repository` per archived (or archival-bound)
   repo, kept outside `repositories/` so its shared merge-policy patch never
