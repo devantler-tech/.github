@@ -227,4 +227,23 @@ platform_tenant_management_policies="$(
 [[ "$platform_tenant_management_policies" == "Create,Observe,Update" ]] ||
   fail "platform-tenant-template must restore Update under provider v0.20.0: $platform_tenant_management_policies"
 
+# .github and monorepo finished Observe + LateInitialize adoption (#115). An
+# Observe-only declaration would leave the shared merge policy unapplied to
+# .github while Crossplane still reported success, so both must keep writing.
+for adopted in dot-github monorepo; do
+  adopted_policies="$(
+    yq -N "
+      select(
+        .kind == \"Repository\" and
+        .metadata.name == \"$adopted\"
+      ) |
+      .spec.managementPolicies |
+      sort |
+      join(\",\")
+    " "$render"
+  )"
+  [[ "$adopted_policies" == "Create,Observe,Update" ]] ||
+    fail "$adopted must run on Observe/Create/Update now that adoption is complete: ${adopted_policies:-<absent>}"
+done
+
 echo "repository-update-policy: OK — $archived_count archived repositories are Observe-only; $active_count active repositories declare safe update policy"

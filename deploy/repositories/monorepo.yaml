@@ -7,11 +7,11 @@ metadata:
     # (owner comes from the ProviderConfig credentials).
     crossplane.io/external-name: monorepo
 spec:
-  # Observe-first adoption: LateInitialize copies the live settings into
-  # forProvider and nothing is written. Create/Update follow once the live
-  # resource carries every setting, because an optional setting left unset would
-  # otherwise be sent as its zero value (#115).
-  managementPolicies: ["Observe", "LateInitialize"]
+  # Adopted with Observe + LateInitialize, which copied the live settings into
+  # forProvider (#115). This repository hosts a workflow-built Pages site, but
+  # provider state carries no `pages` field, so an update sends no Pages change
+  # (compare ksail.yaml, #232).
+  managementPolicies: ["Observe", "Create", "Update"]
   forProvider:
     name: monorepo
     visibility: public
