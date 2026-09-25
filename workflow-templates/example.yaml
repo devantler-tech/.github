@@ -6,12 +6,20 @@ on:
   pull_request:
     branches: [$default-branch]
 
+# Grant nothing by default; each job asks for only what it needs.
+permissions: {}
+
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
+      # Actions are pinned to a full commit SHA, so a moved tag cannot change what runs.
       - name: 📄 Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Run a one-line script
         run: echo "Hello from your new workflow!"
