@@ -31,11 +31,25 @@ fail() {
 allowed='^[[:space:]]*dotnet tool install --global ([A-Za-z0-9._-]+) --version [0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?[[:space:]]*$'
 
 # Joins shell lines continued with trailing backslashes before matching, so split
-# commands cannot bypass detection. Whole-line comments are ignored.
+# commands cannot bypass detection. Whole-line comments are ignored, but any pending
+# continuation buffer is flushed before skipping comments, switching files or exiting.
 scan_installs() {
   awk '
-    FNR == 1 { buf = ""; start_line = 0 }
-    /^[[:space:]]*#/ { next }
+    function flush_buf() {
+      if (buf != "") {
+        if (buf ~ /dotnet[[:space:]]+tool[[:space:]]+(install|update)/) {
+          print (FILENAME ? FILENAME : "stdin") ":" start_line ":" buf
+        }
+        buf = ""
+        start_line = 0
+      }
+    }
+
+    FNR == 1 { flush_buf() }
+    /^[[:space:]]*#/ {
+      flush_buf()
+      next
+    }
     /[[:space:]]*\\[[:space:]]*$/ {
       sub(/[[:space:]]*\\[[:space:]]*$/, "")
       if (buf == "") { start_line = FNR }
@@ -47,6 +61,7 @@ scan_installs() {
         line = buf $0
         buf = ""
         fnr = start_line
+        start_line = 0
       } else {
         line = $0
         fnr = FNR
@@ -55,13 +70,21 @@ scan_installs() {
         print (FILENAME ? FILENAME : "stdin") ":" fnr ":" line
       }
     }
+    END {
+      flush_buf()
+    }
   ' "$@"
 }
+
+search_roots=()
+for dir in .github/workflows .github/actions .github/scripts actions .scripts scripts; do
+  [[ -d "$dir" ]] && search_roots+=("$dir")
+done
 
 target_files=()
 while IFS= read -r f; do
   [[ -n "$f" ]] && target_files+=("$f")
-done < <(find .github/workflows .github/actions actions .scripts scripts -type f \( -name '*.yaml' -o -name '*.yml' -o -name '*.sh' \) 2>/dev/null | sort)
+done < <(find "${search_roots[@]}" -type f \( -name '*.yaml' -o -name '*.yml' -o -name '*.sh' \) 2>/dev/null | sort)
 
 [[ ${#target_files[@]} -gt 0 ]] || fail "found no workflow, action or script files to scan"
 
@@ -114,6 +137,25 @@ continued_scan="$(printf '%s\n' \
   '            install --global dotnet-releaser' | scan_installs)"
 if (check "$continued_scan") 2>/dev/null; then
   fail "negative control passed: unpinned install split across lines was not rejected"
+fi
+
+# Negative control: an unpinned install continued with a backslash before an EOF comment
+# must be flushed and rejected.
+eof_comment_scan="$(printf '%s\n' \
+  '          dotnet tool install --global dotnet-releaser --version 0.24.0' \
+  "          dotnet tool install --global evil-tool \\" \
+  '          # end of file comment' | scan_installs)"
+if (check "$eof_comment_scan") 2>/dev/null; then
+  fail "negative control passed: unpinned install before EOF comment was not rejected"
+fi
+
+# Negative control: an unpinned install continued with a backslash at raw EOF must be flushed
+# and rejected.
+raw_eof_scan="$(printf '%s\n' \
+  '          dotnet tool install --global dotnet-releaser --version 0.24.0' \
+  "          dotnet tool install --global evil-tool \\" | scan_installs)"
+if (check "$raw_eof_scan") 2>/dev/null; then
+  fail "negative control passed: unpinned install at raw EOF was not rejected"
 fi
 
 # Negative control: dotnet-releaser pinned only in an unrelated workflow must not satisfy
