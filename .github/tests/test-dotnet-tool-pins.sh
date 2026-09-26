@@ -23,16 +23,25 @@ installs="$(grep -rnE 'dotnet tool install' .github/workflows actions --include=
   grep -vE '^[^:]+:[0-9]+:[[:space:]]*#' || true)"
 [[ -n "$installs" ]] || fail "found no 'dotnet tool install' lines — refusing to pass vacuously"
 
+# One line can chain several commands (`a; b`, `a && b`). Each install command is checked on
+# its own, so a pinned install cannot lend its `--version` to an unpinned one on the same line.
+releaser_pinned=false
 while IFS= read -r line; do
   where="${line%%:*}:$(printf '%s' "$line" | cut -d: -f2)"
   command="${line#*:*:}"
-  version="$(printf '%s\n' "$command" | sed -nE 's/.*--version[[:space:]=]+([^[:space:]]+).*/\1/p')"
-  [[ -n "$version" ]] || fail "$where installs a .NET tool without --version: ${command#"${command%%[![:space:]]*}"}"
-  [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]] ||
-    fail "$where pins '$version', which is not an exact version"
+  while IFS= read -r segment; do
+    [[ "$segment" == *"dotnet tool install"* ]] || continue
+    segment="${segment#"${segment%%[![:space:]]*}"}"
+    version="$(printf '%s\n' "$segment" | sed -nE 's/.*--version[[:space:]=]+([^[:space:]]+).*/\1/p')"
+    [[ -n "$version" ]] || fail "$where installs a .NET tool without --version: $segment"
+    [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]] ||
+      fail "$where pins '$version', which is not an exact version"
+    if [[ "$where" == .github/workflows/* && "$segment" =~ (^|[[:space:]])dotnet-releaser([[:space:]]|$) ]]; then
+      releaser_pinned=true
+    fi
+  done < <(printf '%s\n' "$command" | sed -E 's/(;|&&|\|\||\|)/\n/g')
 done <<<"$installs"
 
-grep -rqE 'dotnet tool install.*dotnet-releaser.*--version[[:space:]=]+[0-9]+\.[0-9]+\.[0-9]+' .github/workflows ||
-  fail "no workflow installs dotnet-releaser at an exact --version"
+"$releaser_pinned" || fail "no workflow installs dotnet-releaser at an exact --version"
 
 echo "ok   every .NET tool install is pinned to an exact version"
