@@ -29,14 +29,22 @@ fail() {
 }
 
 allowed='^[[:space:]]*dotnet tool install --global ([A-Za-z0-9._-]+) --version [0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?[[:space:]]*$'
+# YAML is never parsed here by hand. Every `run:` value in a workflow or action is read with
+# yq, which applies YAML's own folding, chomping and indentation-indicator rules, so the text
+# checked is exactly the script the runner executes. Hand-rolled folding kept missing header
+# spellings (>, >-, >2-, a trailing comment, an explicit indentation indicator); a parser has
+# no spellings to miss. A file yq cannot parse fails the check rather than being skipped.
+command -v yq >/dev/null 2>&1 || fail "yq is required to read workflow and action run: scripts"
+command -v jq >/dev/null 2>&1 || fail "jq is required to read workflow and action run: scripts"
 
-# Joins shell lines continued with trailing backslashes before matching, so split
-# commands cannot bypass detection. Whole-line comments and step names are ignored,
-# but any pending continuation buffer is flushed before skipping comments, switching
-# files or exiting. YAML folded scalars (run: > or run: >-) are folded so multiline
-# commands are checked.
+# scan_installs: reads shell text and prints <label>:<line>:<command> for every command that
+# mentions a .NET tool install or update. Lines continued with a trailing backslash are joined
+# first, so a split command cannot bypass detection; whole-line comments are ignored, and a
+# pending continuation is flushed before a comment, a new file or the end of input.
 scan_installs() {
-  awk '
+  awk -v label="${SCAN_LABEL:-}" -v offset="${SCAN_OFFSET:-0}" '
+    function where() { return (label != "" ? label : (FILENAME && FILENAME != "-" ? FILENAME : "stdin")) }
+
     function norm(s,   t) {
       t = s
       gsub(/\\/, "", t)
@@ -52,7 +60,7 @@ scan_installs() {
     function flush_buf() {
       if (buf != "") {
         if (is_tool_cmd(buf)) {
-          print (FILENAME ? FILENAME : "stdin") ":" start_line ":" buf
+          print where() ":" (start_line + offset) ":" buf
         }
         buf = ""
         start_line = 0
@@ -60,51 +68,9 @@ scan_installs() {
       glue = 0
     }
 
-    function flush_folded() {
-      if (folded_buf != "") {
-        if (is_tool_cmd(folded_buf)) {
-          print (FILENAME ? FILENAME : "stdin") ":" folded_start ":" folded_buf
-        }
-        folded_buf = ""
-        folded_indent = 0
-        in_folded = 0
-      }
-    }
-
-    FNR == 1 { flush_buf(); flush_folded() }
+    FNR == 1 { flush_buf() }
     /^[[:space:]]*#/ {
       flush_buf()
-      next
-    }
-    /^[[:space:]]*-?[[:space:]]*name:/ {
-      flush_buf()
-      if (!is_tool_cmd($0)) {
-        next
-      }
-    }
-
-    in_folded {
-      match($0, /^[[:space:]]*/)
-      cur_indent = RLENGTH
-      if (cur_indent >= folded_indent && NF > 0) {
-        folded_buf = (folded_buf == "" ? "" : folded_buf " ") $0
-        sub(/^[[:space:]]*/, "", folded_buf)
-        next
-      } else if (NF == 0) {
-        next
-      } else {
-        flush_folded()
-      }
-    }
-
-    # A folded header may carry chomping/indentation indicators (>-, >2, >2-) and a comment.
-    /^[[:space:]]*(-[[:space:]]+)?run:[[:space:]]*>[1-9+-]*([[:space:]]+#.*)?[[:space:]]*$/ {
-      flush_buf()
-      in_folded = 1
-      match($0, /^[[:space:]]*/)
-      folded_indent = RLENGTH + 2
-      folded_start = FNR
-      folded_buf = ""
       next
     }
 
@@ -135,14 +101,34 @@ scan_installs() {
         fnr = FNR
       }
       if (is_tool_cmd(line)) {
-        print (FILENAME ? FILENAME : "stdin") ":" fnr ":" line
+        print where() ":" (fnr + offset) ":" line
       }
     }
     END {
       flush_buf()
-      flush_folded()
     }
   ' "$@"
+}
+
+# scan_yaml <file>: scans every run: value in a workflow or action file, reporting each hit at
+# the run: key's line plus its line inside the script. Returns non-zero when yq cannot parse
+# the file, so an unreadable file can never read as one with no installs.
+scan_yaml() {
+  local file="$1" runs line encoded
+  runs="$(yq -o=json '[explode(.) | .. | select(tag == "!!map") | select(has("run")) | .run | select(tag == "!!str") | {"line": line, "run": .}]' "$file")" ||
+    return 1
+  while IFS=$'\t' read -r line encoded; do
+    [[ -n "$line" ]] || continue
+    printf '%s' "$encoded" | base64 --decode | SCAN_LABEL="$file" SCAN_OFFSET="$line" scan_installs
+  done < <(printf '%s' "$runs" | jq -r '.[] | [(.line | tostring), (.run | @base64)] | @tsv')
+}
+
+# scan_file <file>: YAML goes through the parser, shell scripts are scanned as they are.
+scan_file() {
+  case "$1" in
+    *.yaml | *.yml) scan_yaml "$1" ;;
+    *) scan_installs "$1" ;;
+  esac
 }
 
 search_roots=()
@@ -157,11 +143,13 @@ done < <(find "${search_roots[@]}" -type f \( -name '*.yaml' -o -name '*.yml' -o
 
 [[ ${#target_files[@]} -gt 0 ]] || fail "found no workflow, action or script files to scan"
 
-# Every line that mentions installing or updating a .NET tool, except whole-line comments.
-installs="$(scan_installs "${target_files[@]}")"
+# Every command that mentions installing or updating a .NET tool, except whole-line comments.
+installs=""
+for f in "${target_files[@]}"; do
+  found="$(scan_file "$f")" || fail "$f could not be parsed as YAML — refusing to skip it"
+  [[ -n "$found" ]] && installs+="${installs:+$'\n'}$found"
+done
 [[ -n "$installs" ]] || fail "found no 'dotnet tool install' lines — refusing to pass vacuously"
-
-# check <grep -n lines>: fail on any line outside the allowed shape, or when publish-dotnet-library.yaml
 # does not pin dotnet-releaser.
 check() {
   local line where command releaser_pinned=false
@@ -227,28 +215,49 @@ if (check "$raw_eof_scan") 2>/dev/null; then
   fail "negative control passed: unpinned install at raw EOF was not rejected"
 fi
 
-# Negative control: an unpinned install split across lines in a YAML folded scalar (run: >)
-# must be detected and rejected.
-folded_scalar_scan="$(printf '%s\n' \
-  '    - name: Publish' \
-  '      run: >' \
-  '        dotnet tool' \
-  '        install --global evil-tool' | scan_installs)"
-if (check "$pinned
-$folded_scalar_scan") 2>/dev/null; then
-  fail "negative control passed: unpinned install split across folded scalar lines was not rejected"
-fi
+# Negative controls: unpinned installs folded across lines by YAML itself must be read the way
+# YAML reads them — a plain folded header, one with a chomping indicator and a comment, and one
+# with an explicit indentation indicator whose body sits a single space deeper.
+fixture_dir="$(mktemp -d)"
+trap 'rm -rf "$fixture_dir"' EXIT
 
-# Negative control: a folded header with indicators and a trailing comment still folds.
-commented_folded_scan="$(printf '%s\n' \
-  '    - name: Publish' \
-  '      run: >- # explanation' \
-  '        dotnet' \
-  '        tool' \
-  '        install --global evil-tool' | scan_installs)"
-if (check "$pinned
-$commented_folded_scan") 2>/dev/null; then
-  fail "negative control passed: unpinned install under a commented folded header was not rejected"
+printf '%s\n' \
+  'jobs:' \
+  '  publish:' \
+  '    steps:' \
+  '      - name: Publish' \
+  '        run: |' \
+  '          dotnet tool install --global dotnet-releaser --version 0.24.0' >"$fixture_dir/pinned.yaml"
+pinned_yaml_scan="$(scan_yaml "$fixture_dir/pinned.yaml")" || fail "positive control failed: pinned fixture did not parse"
+[[ -n "$pinned_yaml_scan" ]] || fail "positive control failed: a pinned install in a run: block was not found"
+(check "${pinned_yaml_scan//$fixture_dir\/pinned.yaml/.github/workflows/publish-dotnet-library.yaml}") ||
+  fail "positive control failed: a pinned install in a run: block was rejected"
+
+for header in '>' '>- # explanation' '>1'; do
+  body_indent='          '
+  [[ "$header" == '>1' ]] && body_indent='         '
+  printf '%s\n' \
+    'jobs:' \
+    '  publish:' \
+    '    steps:' \
+    '      - name: Publish' \
+    "        run: $header" \
+    "${body_indent}dotnet" \
+    "${body_indent}tool" \
+    "${body_indent}install --global evil-tool" >"$fixture_dir/folded.yaml"
+  folded_scan="$(scan_yaml "$fixture_dir/folded.yaml")" || fail "folded fixture ($header) did not parse"
+  # An empty scan would let the check below fail on a blank line and look like a rejection.
+  [[ "$folded_scan" == *evil-tool* ]] || fail "negative control found no install folded under 'run: $header'"
+  if (check "$pinned
+$folded_scan") 2>/dev/null; then
+    fail "negative control passed: unpinned install folded under 'run: $header' was not rejected"
+  fi
+done
+
+# Negative control: a file yq cannot parse must fail the scan, never read as empty.
+printf '%s\n' 'jobs: [unclosed' >"$fixture_dir/broken.yaml"
+if scan_yaml "$fixture_dir/broken.yaml" >/dev/null 2>&1; then
+  fail "negative control passed: an unparseable YAML file was scanned as if it had no installs"
 fi
 
 # Negative control: an unpinned command where 'dotnet tool' is split on its own line
