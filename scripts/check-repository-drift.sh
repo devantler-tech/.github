@@ -181,6 +181,29 @@ while IFS= read -r entry; do
   live="$(complete_repository_settings "$entry" "$live" "$repo")" ||
     abort "could not complete repository settings for '$repo'"
 
+  # Pages settings are not on the repository object; they come from the
+  # repository's Pages site. Only a resource that declares `pages` reads it, and
+  # the live value takes the provider's shape with exactly the keys this check
+  # can compare. A declared key outside those is refused rather than skipped.
+  if jq -e '.declared | has("pages")' >/dev/null <<<"$entry"; then
+    unreadable="$(jq -r '[.declared.pages[] | keys[] | select(. != "buildType" and . != "cname")] | unique | join(", ")' <<<"$entry")" ||
+      abort "failed to read the declared Pages settings for '$repo'"
+    [[ -z "$unreadable" ]] ||
+      abort "$repo$where declares pages.$unreadable, which this check cannot compare"
+    if [[ -n "$live_dir" ]]; then
+      pages_file="$live_dir/$repo.pages.json"
+      [[ -f "$pages_file" ]] || abort "no live Pages fixture for '$repo' at $pages_file"
+      pages="$(cat "$pages_file")"
+    else
+      pages="$(gh api "repos/$owner/$repo/pages")" ||
+        abort "failed to read the live Pages site for '$owner/$repo'"
+    fi
+    live="$(jq -c --argjson pages "$pages" '
+      if ($pages.build_type | type) != "string" then error("the live Pages site has no build_type") else . end
+      | .pages = [{buildType: $pages.build_type} + (if ($pages.cname // "") != "" then {cname: $pages.cname} else {} end)]
+    ' <<<"$live")" || abort "could not read the live Pages settings for '$repo'"
+  fi
+
   # A declared field with no counterpart on the live object means the mapping
   # is wrong or the API changed shape. Silently skipping it would let a whole
   # class of settings go unchecked while the run still reported success, so it
