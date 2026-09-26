@@ -42,8 +42,8 @@ jobs:
       # local path. Same-commit resolution — no release lag, no tag refs; consumer SHA-pinning
       # policies see only the pinned actions/checkout plus a local `./` path. The composite's
       # own internal checkout then re-syncs the workspace (git clean removes this untracked
-      # dir), so the todo-comment scan never sees the actions repo's sources. (Lowercase on
-      # purpose: the scanner keys on the uppercase marker, so naming it here would file an issue.)
+      # dir), so the to-do comment scan never sees the actions repo's sources. (Always hyphenated
+      # here: the scanner matches the marker in any letter case, so naming it would file an issue.)
       - name: 📥 Checkout devantler-tech/.github (this workflow's commit)
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -62,7 +62,7 @@ jobs:
 
       # The sibling composite runs its own actions/checkout, whose git clean deletes this
       # untracked self-checkout mid-job. That is intended (it hides the actions sources from
-      # the todo scan above), but the runner re-reads the composite's action.yaml from disk to
+      # the to-do scan above), but the runner re-reads the composite's action.yaml from disk to
       # run its post-cleanup steps — which then fails with "Can't find action.yml". Re-materialise
       # the directory AFTER the scan so the post phase can reload it; the scanner has already run,
       # so it still never sees the actions repo's own sources.

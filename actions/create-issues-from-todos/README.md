@@ -16,9 +16,9 @@ Scan code for TODO comments and automatically create corresponding GitHub issues
 
 ## What counts as a TODO
 
-The scanner treats the uppercase marker as a TODO wherever it appears in a comment, including
-in ordinary prose, and titles the issue with the text that follows it. When a comment only
-describes TODOs, write the word in lowercase, or exclude the file with `ignore`.
+The scanner treats the marker as a TODO in any letter case, wherever it appears in a comment,
+including in ordinary prose, and titles the issue with the text that follows it. When a comment
+only describes TODOs, hyphenate the word (`to-do`), or exclude the file with `ignore`.
 
 ## Usage
 
