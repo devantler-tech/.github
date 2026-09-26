@@ -29,7 +29,7 @@ runs:
   using: composite
   steps:
     - name: 📊 Upload coverage to GitHub Code Quality
-      uses: actions/upload-code-coverage@b51da2c3c1b23e04d2d6477cfc34350b1f5cd3e9 # v1.2.0
+      uses: actions/upload-code-coverage@d8e329117199404bba6fc81efe8093dc7c015e34 # v1.4.2
       with:
         file: ${{ inputs.file }}
         language: ${{ inputs.language }}
