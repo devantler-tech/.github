@@ -31,13 +31,15 @@ fail() {
 allowed='^[[:space:]]*dotnet tool install --global ([A-Za-z0-9._-]+) --version [0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?[[:space:]]*$'
 
 # Joins shell lines continued with trailing backslashes before matching, so split
-# commands cannot bypass detection. Whole-line comments are ignored, but any pending
-# continuation buffer is flushed before skipping comments, switching files or exiting.
+# commands cannot bypass detection. Whole-line comments and step names are ignored,
+# but any pending continuation buffer is flushed before skipping comments, switching
+# files or exiting. YAML folded scalars (run: > or run: >-) are folded so multiline
+# commands are checked.
 scan_installs() {
   awk '
     function flush_buf() {
       if (buf != "") {
-        if (buf ~ /dotnet[[:space:]]+tool[[:space:]]+(install|update)/) {
+        if (buf ~ /dotnet[[:space:]]+tool/ || buf ~ /^[[:space:]]*tool[[:space:]]+(install|update)([[:space:]]|$)/) {
           print (FILENAME ? FILENAME : "stdin") ":" start_line ":" buf
         }
         buf = ""
@@ -45,11 +47,51 @@ scan_installs() {
       }
     }
 
-    FNR == 1 { flush_buf() }
+    function flush_folded() {
+      if (folded_buf != "") {
+        if (folded_buf ~ /dotnet[[:space:]]+tool/ || folded_buf ~ /tool[[:space:]]+(install|update)([[:space:]]|$)/) {
+          print (FILENAME ? FILENAME : "stdin") ":" folded_start ":" folded_buf
+        }
+        folded_buf = ""
+        folded_indent = 0
+        in_folded = 0
+      }
+    }
+
+    FNR == 1 { flush_buf(); flush_folded() }
     /^[[:space:]]*#/ {
       flush_buf()
       next
     }
+    /^[[:space:]]*-?[[:space:]]*name:/ {
+      flush_buf()
+      next
+    }
+
+    in_folded {
+      match($0, /^[[:space:]]*/)
+      cur_indent = RLENGTH
+      if (cur_indent >= folded_indent && NF > 0) {
+        folded_buf = (folded_buf == "" ? "" : folded_buf " ") $0
+        sub(/^[[:space:]]*/, "", folded_buf)
+        next
+      } else if (NF == 0) {
+        next
+      } else {
+        flush_folded()
+      }
+    }
+
+    /^[[:space:]]*(-[[:space:]]+)?run:[[:space:]]*>[+-]?[[:space:]]*$/ {
+      flush_buf()
+      in_folded = 1
+      match($0, /^[[:space:]]*/)
+      folded_indent = RLENGTH + 2
+      folded_start = FNR
+      folded_buf = ""
+      next
+    }
+
     /[[:space:]]*\\[[:space:]]*$/ {
       sub(/[[:space:]]*\\[[:space:]]*$/, "")
       if (buf == "") { start_line = FNR }
@@ -66,12 +108,13 @@ scan_installs() {
         line = $0
         fnr = FNR
       }
-      if (line ~ /dotnet[[:space:]]+tool[[:space:]]+(install|update)/) {
+      if (line ~ /dotnet[[:space:]]+tool/ || line ~ /^[[:space:]]*tool[[:space:]]+(install|update)([[:space:]]|$)/) {
         print (FILENAME ? FILENAME : "stdin") ":" fnr ":" line
       }
     }
     END {
       flush_buf()
+      flush_folded()
     }
   ' "$@"
 }
@@ -156,6 +199,28 @@ raw_eof_scan="$(printf '%s\n' \
   "          dotnet tool install --global evil-tool \\" | scan_installs)"
 if (check "$raw_eof_scan") 2>/dev/null; then
   fail "negative control passed: unpinned install at raw EOF was not rejected"
+fi
+
+# Negative control: an unpinned install split across lines in a YAML folded scalar (run: >)
+# must be detected and rejected.
+folded_scalar_scan="$(printf '%s\n' \
+  '    - name: Publish' \
+  '      run: >' \
+  '        dotnet tool' \
+  '        install --global evil-tool' | scan_installs)"
+if (check "$pinned
+$folded_scalar_scan") 2>/dev/null; then
+  fail "negative control passed: unpinned install split across folded scalar lines was not rejected"
+fi
+
+# Negative control: an unpinned command where 'dotnet tool' is split on its own line
+# must be caught and rejected.
+split_keyword_scan="$(printf '%s\n' \
+  '          dotnet tool install --global dotnet-releaser --version 0.24.0' \
+  '          dotnet tool' \
+  '          install --global evil-tool' | scan_installs)"
+if (check "$split_keyword_scan") 2>/dev/null; then
+  fail "negative control passed: split dotnet tool command was not rejected"
 fi
 
 # Negative control: dotnet-releaser pinned only in an unrelated workflow must not satisfy
