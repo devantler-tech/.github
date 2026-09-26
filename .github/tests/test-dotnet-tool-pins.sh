@@ -97,7 +97,8 @@ scan_installs() {
       }
     }
 
-    /^[[:space:]]*(-[[:space:]]+)?run:[[:space:]]*>[+-]?[[:space:]]*$/ {
+    # A folded header may carry chomping/indentation indicators (>-, >2, >2-) and a comment.
+    /^[[:space:]]*(-[[:space:]]+)?run:[[:space:]]*>[1-9+-]*([[:space:]]+#.*)?[[:space:]]*$/ {
       flush_buf()
       in_folded = 1
       match($0, /^[[:space:]]*/)
@@ -236,6 +237,18 @@ folded_scalar_scan="$(printf '%s\n' \
 if (check "$pinned
 $folded_scalar_scan") 2>/dev/null; then
   fail "negative control passed: unpinned install split across folded scalar lines was not rejected"
+fi
+
+# Negative control: a folded header with indicators and a trailing comment still folds.
+commented_folded_scan="$(printf '%s\n' \
+  '    - name: Publish' \
+  '      run: >- # explanation' \
+  '        dotnet' \
+  '        tool' \
+  '        install --global evil-tool' | scan_installs)"
+if (check "$pinned
+$commented_folded_scan") 2>/dev/null; then
+  fail "negative control passed: unpinned install under a commented folded header was not rejected"
 fi
 
 # Negative control: an unpinned command where 'dotnet tool' is split on its own line
