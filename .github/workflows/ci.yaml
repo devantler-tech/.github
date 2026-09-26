@@ -3126,6 +3126,10 @@ jobs:
         shell: bash
         run: bash .github/tests/test-dotnet-tool-pins.sh
 
+      - name: 🔏 Check publish-app signs the manifests artifact by its pushed digest
+        shell: bash
+        run: bash .github/tests/test-publish-app-signs-by-digest.sh
+
       - name: 📝 Check TODO scanner ignore-input forwarding
         shell: bash
         run: bash .github/tests/test-scan-todo-ignore-input.sh
