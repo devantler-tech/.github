@@ -161,11 +161,19 @@ jobs:
           set -euo pipefail
           VERSION="${REF_NAME#v}"
           ARTIFACT="${REGISTRY}/${IMAGE_NAME}/manifests"
-          flux push artifact "oci://${ARTIFACT}:${VERSION}" \
+          # Sign the digest this push produced, never the tag re-resolved later: a tag
+          # moved by an overlapping release or another writer would otherwise get a
+          # signature over bytes this run did not publish.
+          PUSHED="$(flux push artifact "oci://${ARTIFACT}:${VERSION}" \
             --path="${DEPLOY_PATH}" \
             --source="${SERVER_URL}/${REPOSITORY}" \
             --revision="${REF_NAME}@sha1:${SHA}" \
-            --creds "${ACTOR}:${GH_TOKEN}"
+            --creds "${ACTOR}:${GH_TOKEN}" \
+            --output json)"
+          ARTIFACT_DIGEST="$(printf '%s' "$PUSHED" | jq -r '.digest // ""')"
+          if ! printf '%s' "$ARTIFACT_DIGEST" | grep -Eq '^sha256:[0-9a-f]{64}$'; then
+            echo "::error::flux push did not report the pushed artifact digest"; exit 1
+          fi
           flux tag artifact "oci://${ARTIFACT}:${VERSION}" --tag latest --creds "${ACTOR}:${GH_TOKEN}"
-          cosign sign --yes "${ARTIFACT}:${VERSION}"
+          cosign sign --yes "${ARTIFACT}@${ARTIFACT_DIGEST}"
           cosign sign --yes "${IMAGE}@${DIGEST}"
