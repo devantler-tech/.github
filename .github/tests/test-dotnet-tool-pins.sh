@@ -54,7 +54,7 @@ scan_installs() {
 
     function is_tool_cmd(s,   t) {
       t = norm(s)
-      return (t ~ /dotnet[[:space:]]+tool/ || t ~ /^[[:space:]]*tool[[:space:]]+(install|update)([[:space:]]|$)/)
+      return (t ~ /tool[[:space:]]+(install|update)([[:space:]]|$)/ || (t ~ /dotnet[[:space:]]+tool/ && t !~ /dotnet[[:space:]]+tool[[:space:]]+(list|run|restore|search)([[:space:]]|$)/))
     }
 
     function flush_buf() {
@@ -254,6 +254,21 @@ $folded_scan") 2>/dev/null; then
   fi
 done
 
+# Negative control: a run: key with quotes ('run': >) must be parsed by YAML and rejected when unpinned.
+printf '%s\n' \
+  'jobs:' \
+  '  publish:' \
+  '    steps:' \
+  '      - name: Publish' \
+  "        'run': >" \
+  '          dotnet tool install --global evil-tool' >"$fixture_dir/quoted_run.yaml"
+quoted_run_scan="$(scan_yaml "$fixture_dir/quoted_run.yaml")" || fail "quoted run fixture did not parse"
+[[ "$quoted_run_scan" == *evil-tool* ]] || fail "negative control found no install under \"'run': >\""
+if (check "$pinned
+$quoted_run_scan") 2>/dev/null; then
+  fail "negative control passed: unpinned install under \"'run': >\" was not rejected"
+fi
+
 # Negative control: a file yq cannot parse must fail the scan, never read as empty.
 printf '%s\n' 'jobs: [unclosed' >"$fixture_dir/broken.yaml"
 if scan_yaml "$fixture_dir/broken.yaml" >/dev/null 2>&1; then
@@ -278,6 +293,25 @@ quoted_cmd_scan="$(printf '%s\n' \
 if (check "$quoted_cmd_scan") 2>/dev/null; then
   fail "negative control passed: quoted dotnet executable was not rejected"
 fi
+
+# Negative control: variable-invoked tool install ("$DOTNET" tool install) must reach
+# the check and be rejected.
+var_cmd_scan="$(printf '%s\n' \
+  '          "$DOTNET" tool install --global evil-tool' | scan_installs)"
+[[ "$var_cmd_scan" == *evil-tool* ]] || fail "negative control found no install under variable invocation"
+if (check "$pinned
+$var_cmd_scan") 2>/dev/null; then
+  fail "negative control passed: variable-invoked tool install was not rejected"
+fi
+
+# Positive control: non-install dotnet tool subcommands (list, run, restore, search) must be ignored.
+non_install_scan="$(printf '%s\n' \
+  '          dotnet tool list' \
+  '          dotnet tool run some-tool' \
+  '          dotnet tool restore' \
+  '          dotnet tool search some-tool' | scan_installs)"
+[[ -z "$non_install_scan" ]] || fail "positive control failed: benign dotnet tool subcommands were detected as tool installs: $non_install_scan"
+(check "$pinned${non_install_scan:+$'\n'$non_install_scan}") || fail "positive control failed: benign dotnet tool subcommands were rejected"
 
 # Negative control: a tool install placed after a name: command prefix must not be skipped
 # as workflow metadata.
