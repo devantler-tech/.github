@@ -64,7 +64,8 @@ grep -qxF "cosign sign --yes ghcr.io/devantler-tech/app/manifests@$pushed_digest
   fail "manifests artifact was not signed by the pushed digest; calls: $(cat "$scratch/calls")"
 grep -qxF "cosign sign --yes ghcr.io/devantler-tech/app@$image_digest" "$scratch/calls" ||
   fail "image was not signed by its build digest; calls: $(cat "$scratch/calls")"
-if grep -E '^cosign sign' "$scratch/calls" | grep -vqE '@sha256:[0-9a-f]{64}$'; then
+grep -E '^cosign sign' "$scratch/calls" >"$scratch/signs" || fail "no cosign signature was made"
+if grep -vqE '@sha256:[0-9a-f]{64}$' "$scratch/signs"; then
   fail "a cosign signature targets a tag; calls: $(cat "$scratch/calls")"
 fi
 echo "ok   manifests artifact signed by the digest flux push reported"
