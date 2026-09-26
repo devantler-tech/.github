@@ -65,10 +65,11 @@ scan_installs() {
         if (is_tool_cmd(folded_buf)) {
           print (FILENAME ? FILENAME : "stdin") ":" folded_start ":" folded_buf
         }
-        folded_buf = ""
-        folded_indent = 0
-        in_folded = 0
       }
+      folded_buf = ""
+      folded_indent = 0
+      in_folded = 0
+      base_indent = 0
     }
 
     FNR == 1 { flush_buf(); flush_folded() }
@@ -86,13 +87,21 @@ scan_installs() {
     in_folded {
       match($0, /^[[:space:]]*/)
       cur_indent = RLENGTH
-      if (cur_indent >= folded_indent && NF > 0) {
+      if (NF == 0) {
+        next
+      }
+      if (folded_indent == 0) {
+        if (cur_indent > base_indent) {
+          folded_indent = cur_indent
+        } else {
+          flush_folded()
+        }
+      }
+      if (in_folded && cur_indent >= folded_indent) {
         folded_buf = (folded_buf == "" ? "" : folded_buf " ") $0
         sub(/^[[:space:]]*/, "", folded_buf)
         next
-      } else if (NF == 0) {
-        next
-      } else {
+      } else if (in_folded) {
         flush_folded()
       }
     }
@@ -100,11 +109,22 @@ scan_installs() {
     # A folded header may carry chomping/indentation indicators (>-, >2, >2-) and a comment.
     /^[[:space:]]*(-[[:space:]]+)?run:[[:space:]]*>[1-9+-]*([[:space:]]+#.*)?[[:space:]]*$/ {
       flush_buf()
+      flush_folded()
       in_folded = 1
       match($0, /^[[:space:]]*/)
-      folded_indent = RLENGTH + 2
+      base_indent = RLENGTH
       folded_start = FNR
       folded_buf = ""
+      folded_indent = 0
+
+      # Parse explicit indentation indicator if present
+      hdr = $0
+      sub(/^[[:space:]]*(-[[:space:]]+)?run:[[:space:]]*>/, "", hdr)
+      sub(/([[:space:]]+#.*)?$/, "", hdr)
+      if (match(hdr, /[1-9]/)) {
+        ind = substr(hdr, RSTART, 1) + 0
+        folded_indent = base_indent + ind
+      }
       next
     }
 
@@ -249,6 +269,19 @@ commented_folded_scan="$(printf '%s\n' \
 if (check "$pinned
 $commented_folded_scan") 2>/dev/null; then
   fail "negative control passed: unpinned install under a commented folded header was not rejected"
+fi
+
+# Negative control: a folded header with an explicit indentation indicator (run: >1)
+# whose body is indented only 1 space must be detected and rejected when unpinned.
+folded_indicator_scan="$(printf '%s\n' \
+  '    - name: Publish' \
+  '      run: >1' \
+  '       dotnet' \
+  '       tool' \
+  '       install --global evil-tool' | scan_installs)"
+if (check "$pinned
+$folded_indicator_scan") 2>/dev/null; then
+  fail "negative control passed: unpinned install with explicit indentation indicator >1 was not rejected"
 fi
 
 # Negative control: an unpinned command where 'dotnet tool' is split on its own line
