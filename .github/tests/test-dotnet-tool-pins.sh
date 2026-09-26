@@ -57,6 +57,7 @@ scan_installs() {
         buf = ""
         start_line = 0
       }
+      glue = 0
     }
 
     function flush_folded() {
@@ -106,15 +107,25 @@ scan_installs() {
       next
     }
 
+    # A backslash directly after a character continues the same token (dot\ + net is
+    # dotnet), so the next line is glued on without its indentation; a backslash after
+    # whitespace separates tokens and is joined with a space.
     /[[:space:]]*\\[[:space:]]*$/ {
-      sub(/[[:space:]]*\\[[:space:]]*$/, "")
+      piece = $0
+      spans = (piece ~ /[^[:space:]]\\[[:space:]]*$/)
+      sub(/[[:space:]]*\\[[:space:]]*$/, "", piece)
+      if (glue) { sub(/^[[:space:]]+/, "", piece) }
       if (buf == "") { start_line = FNR }
-      buf = buf $0 " "
+      buf = buf piece (spans ? "" : " ")
+      glue = spans
       next
     }
     {
       if (buf != "") {
-        line = buf $0
+        piece = $0
+        if (glue) { sub(/^[[:space:]]+/, "", piece) }
+        glue = 0
+        line = buf piece
         buf = ""
         fnr = start_line
         start_line = 0
@@ -271,6 +282,16 @@ escaped_dotnet_scan="$(printf '%s\n' \
   '          d\otnet tool install --global evil-tool' | scan_installs)"
 if (check "$escaped_dotnet_scan") 2>/dev/null; then
   fail "negative control passed: escaped dotnet executable was not rejected"
+fi
+
+# Negative control: a continuation inside a token (dot\ + net) joins to dotnet in Bash, so it
+# must reach the check and be rejected.
+token_split_scan="$(printf '%s\n' \
+  '          dotnet tool install --global dotnet-releaser --version 0.24.0' \
+  '          dot\' \
+  '          net tool install --global evil-tool' | scan_installs)"
+if (check "$token_split_scan") 2>/dev/null; then
+  fail "negative control passed: tool command split inside a token was not rejected"
 fi
 
 # Negative control: dotnet-releaser pinned only in an unrelated workflow must not satisfy
