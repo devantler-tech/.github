@@ -29,6 +29,9 @@ releaser_pinned=false
 while IFS= read -r line; do
   where="${line%%:*}:$(printf '%s' "$line" | cut -d: -f2)"
   command="${line#*:*:}"
+  # Drop a trailing shell comment first, so a `--version` written only in a comment cannot
+  # satisfy the check for the install before it.
+  command="$(printf '%s\n' "$command" | sed -E 's/(^|[[:space:]])#.*$//')"
   while IFS= read -r segment; do
     [[ "$segment" == *"dotnet tool install"* ]] || continue
     segment="${segment#"${segment%%[![:space:]]*}"}"
