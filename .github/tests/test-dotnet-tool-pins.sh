@@ -37,9 +37,21 @@ allowed='^[[:space:]]*dotnet tool install --global ([A-Za-z0-9._-]+) --version [
 # commands are checked.
 scan_installs() {
   awk '
+    function norm(s,   t) {
+      t = s
+      gsub(/\\/, "", t)
+      gsub(/["'\'']/, "", t)
+      return t
+    }
+
+    function is_tool_cmd(s,   t) {
+      t = norm(s)
+      return (t ~ /dotnet[[:space:]]+tool/ || t ~ /^[[:space:]]*tool[[:space:]]+(install|update)([[:space:]]|$)/)
+    }
+
     function flush_buf() {
       if (buf != "") {
-        if (buf ~ /["'\'']?dotnet["'\'']?[[:space:]]+["'\'']?tool["'\'']?/ || buf ~ /^[[:space:]]*tool[[:space:]]+(install|update)([[:space:]]|$)/) {
+        if (is_tool_cmd(buf)) {
           print (FILENAME ? FILENAME : "stdin") ":" start_line ":" buf
         }
         buf = ""
@@ -49,7 +61,7 @@ scan_installs() {
 
     function flush_folded() {
       if (folded_buf != "") {
-        if (folded_buf ~ /["'\'']?dotnet["'\'']?[[:space:]]+["'\'']?tool["'\'']?/ || folded_buf ~ /tool[[:space:]]+(install|update)([[:space:]]|$)/) {
+        if (is_tool_cmd(folded_buf)) {
           print (FILENAME ? FILENAME : "stdin") ":" folded_start ":" folded_buf
         }
         folded_buf = ""
@@ -65,7 +77,7 @@ scan_installs() {
     }
     /^[[:space:]]*-?[[:space:]]*name:/ {
       flush_buf()
-      if ($0 !~ /["'\'']?dotnet["'\'']?[[:space:]]+["'\'']?tool["'\'']?/ && $0 !~ /tool[[:space:]]+(install|update)([[:space:]]|$)/) {
+      if (!is_tool_cmd($0)) {
         next
       }
     }
@@ -110,7 +122,7 @@ scan_installs() {
         line = $0
         fnr = FNR
       }
-      if (line ~ /["'\'']?dotnet["'\'']?[[:space:]]+["'\'']?tool["'\'']?/ || line ~ /^[[:space:]]*tool[[:space:]]+(install|update)([[:space:]]|$)/) {
+      if (is_tool_cmd(line)) {
         print (FILENAME ? FILENAME : "stdin") ":" fnr ":" line
       }
     }
@@ -241,6 +253,24 @@ name_prefix_scan="$(printf '%s\n' \
   '          name: || dotnet tool install --global evil-tool' | scan_installs)"
 if (check "$name_prefix_scan") 2>/dev/null; then
   fail "negative control passed: tool install after name: prefix was not rejected"
+fi
+
+# Negative control: an escaped tool subcommand (dotnet t\ool) must reach the check
+# and be rejected.
+escaped_tool_scan="$(printf '%s\n' \
+  '          dotnet tool install --global dotnet-releaser --version 0.24.0' \
+  '          dotnet t\ool install --global evil-tool' | scan_installs)"
+if (check "$escaped_tool_scan") 2>/dev/null; then
+  fail "negative control passed: escaped tool subcommand was not rejected"
+fi
+
+# Negative control: an escaped dotnet executable (d\otnet tool) must reach the check
+# and be rejected.
+escaped_dotnet_scan="$(printf '%s\n' \
+  '          dotnet tool install --global dotnet-releaser --version 0.24.0' \
+  '          d\otnet tool install --global evil-tool' | scan_installs)"
+if (check "$escaped_dotnet_scan") 2>/dev/null; then
+  fail "negative control passed: escaped dotnet executable was not rejected"
 fi
 
 # Negative control: dotnet-releaser pinned only in an unrelated workflow must not satisfy
