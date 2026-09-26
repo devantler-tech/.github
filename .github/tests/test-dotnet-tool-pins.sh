@@ -39,7 +39,7 @@ scan_installs() {
   awk '
     function flush_buf() {
       if (buf != "") {
-        if (buf ~ /dotnet[[:space:]]+tool/ || buf ~ /^[[:space:]]*tool[[:space:]]+(install|update)([[:space:]]|$)/) {
+        if (buf ~ /["'\'']?dotnet["'\'']?[[:space:]]+["'\'']?tool["'\'']?/ || buf ~ /^[[:space:]]*tool[[:space:]]+(install|update)([[:space:]]|$)/) {
           print (FILENAME ? FILENAME : "stdin") ":" start_line ":" buf
         }
         buf = ""
@@ -49,7 +49,7 @@ scan_installs() {
 
     function flush_folded() {
       if (folded_buf != "") {
-        if (folded_buf ~ /dotnet[[:space:]]+tool/ || folded_buf ~ /tool[[:space:]]+(install|update)([[:space:]]|$)/) {
+        if (folded_buf ~ /["'\'']?dotnet["'\'']?[[:space:]]+["'\'']?tool["'\'']?/ || folded_buf ~ /tool[[:space:]]+(install|update)([[:space:]]|$)/) {
           print (FILENAME ? FILENAME : "stdin") ":" folded_start ":" folded_buf
         }
         folded_buf = ""
@@ -65,7 +65,9 @@ scan_installs() {
     }
     /^[[:space:]]*-?[[:space:]]*name:/ {
       flush_buf()
-      next
+      if ($0 !~ /["'\'']?dotnet["'\'']?[[:space:]]+["'\'']?tool["'\'']?/ && $0 !~ /tool[[:space:]]+(install|update)([[:space:]]|$)/) {
+        next
+      }
     }
 
     in_folded {
@@ -108,7 +110,7 @@ scan_installs() {
         line = $0
         fnr = FNR
       }
-      if (line ~ /dotnet[[:space:]]+tool/ || line ~ /^[[:space:]]*tool[[:space:]]+(install|update)([[:space:]]|$)/) {
+      if (line ~ /["'\'']?dotnet["'\'']?[[:space:]]+["'\'']?tool["'\'']?/ || line ~ /^[[:space:]]*tool[[:space:]]+(install|update)([[:space:]]|$)/) {
         print (FILENAME ? FILENAME : "stdin") ":" fnr ":" line
       }
     }
@@ -221,6 +223,24 @@ split_keyword_scan="$(printf '%s\n' \
   '          install --global evil-tool' | scan_installs)"
 if (check "$split_keyword_scan") 2>/dev/null; then
   fail "negative control passed: split dotnet tool command was not rejected"
+fi
+
+# Negative control: a quoted dotnet executable form ("dotnet" tool) must reach the check
+# and be rejected.
+quoted_cmd_scan="$(printf '%s\n' \
+  '          dotnet tool install --global dotnet-releaser --version 0.24.0' \
+  '          "dotnet" tool install --global evil-tool' | scan_installs)"
+if (check "$quoted_cmd_scan") 2>/dev/null; then
+  fail "negative control passed: quoted dotnet executable was not rejected"
+fi
+
+# Negative control: a tool install placed after a name: command prefix must not be skipped
+# as workflow metadata.
+name_prefix_scan="$(printf '%s\n' \
+  '          dotnet tool install --global dotnet-releaser --version 0.24.0' \
+  '          name: || dotnet tool install --global evil-tool' | scan_installs)"
+if (check "$name_prefix_scan") 2>/dev/null; then
+  fail "negative control passed: tool install after name: prefix was not rejected"
 fi
 
 # Negative control: dotnet-releaser pinned only in an unrelated workflow must not satisfy
