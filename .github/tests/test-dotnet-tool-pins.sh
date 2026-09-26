@@ -2,11 +2,20 @@
 
 # Pins how the reusable workflows and composite actions install .NET tools (#265).
 #
-#   1. Every `dotnet tool install` names an exact `--version`. An unpinned install takes
+#   1. Every line that installs or updates a .NET tool has exactly one allowed shape:
+#
+#        dotnet tool install --global <tool> --version <exact version>
+#
+#      on a line of its own, with nothing before or after it. An unpinned install takes
 #      whatever upstream released last, and publish-dotnet-library.yaml runs dotnet-releaser
 #      with the NuGet API key and a write-capable token.
 #   2. dotnet-releaser in particular stays pinned, so removing its install line cannot make
 #      this check pass vacuously.
+#
+# The check is an allow-list, not a shell parser. Chained commands, trailing comments,
+# quoting, escapes and line continuations each gave an earlier parser a way to miss an
+# unpinned install; here any of them simply fails, and the fix is to put the install on its
+# own line in the shape above.
 #
 # The pins are bumped by hand after reviewing the upstream release. A Dependabot-tracked tool
 # manifest is deliberately not used: adding one turns on GitHub's automatic NuGet dependency
@@ -19,52 +28,50 @@ fail() {
   exit 1
 }
 
-# strip_comment <text>: the text up to an unquoted `#` that starts a word, as the shell reads
-# it. A `#` inside single or double quotes is data, so `echo " # x"; dotnet tool install …`
-# keeps the install that follows it.
-strip_comment() {
-  local text=$1 out="" quote="" prev=" " ch i
-  for ((i = 0; i < ${#text}; i++)); do
-    ch=${text:i:1}
-    if [[ -n "$quote" ]]; then
-      [[ "$ch" == "$quote" ]] && quote=""
-    elif [[ "$ch" == "'" || "$ch" == '"' ]]; then
-      quote=$ch
-    elif [[ "$ch" == "#" && "$prev" =~ [[:space:]] ]]; then
-      break
-    fi
-    out+=$ch
-    prev=$ch
-  done
-  printf '%s\n' "$out"
-}
+allowed='^[[:space:]]*dotnet tool install --global ([A-Za-z0-9._-]+) --version [0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?[[:space:]]*$'
 
-installs="$(grep -rnE 'dotnet tool install' .github/workflows actions --include='*.yaml' --include='*.yml' |
-  grep -vE '^[^:]+:[0-9]+:[[:space:]]*#' || true)"
+# Every line that mentions installing or updating a .NET tool, except whole-line comments.
+installs="$(grep -rnE 'dotnet[[:space:]]+tool[[:space:]]+(install|update)' .github/workflows actions \
+  --include='*.yaml' --include='*.yml' | grep -vE '^[^:]+:[0-9]+:[[:space:]]*#' || true)"
 [[ -n "$installs" ]] || fail "found no 'dotnet tool install' lines — refusing to pass vacuously"
 
-# One line can chain several commands (`a; b`, `a && b`). Each install command is checked on
-# its own, so a pinned install cannot lend its `--version` to an unpinned one on the same line.
-releaser_pinned=false
-while IFS= read -r line; do
-  where="${line%%:*}:$(printf '%s' "$line" | cut -d: -f2)"
-  command="${line#*:*:}"
-  # Drop a trailing shell comment first, so a `--version` written only in a comment cannot
-  # satisfy the check for the install before it.
-  command="$(strip_comment "$command")"
-  while IFS= read -r segment; do
-    [[ "$segment" == *"dotnet tool install"* ]] || continue
-    segment="${segment#"${segment%%[![:space:]]*}"}"
-    version="$(printf '%s\n' "$segment" | sed -nE 's/.*--version[[:space:]=]+([^[:space:]]+).*/\1/p')"
-    [[ -n "$version" ]] || fail "$where installs a .NET tool without --version: $segment"
-    [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]] ||
-      fail "$where pins '$version', which is not an exact version"
-    if [[ "$where" == .github/workflows/* && "$segment" =~ (^|[[:space:]])dotnet-releaser([[:space:]]|$) ]]; then
+# check <grep -n lines>: fail on any line outside the allowed shape, or when no workflow pins
+# dotnet-releaser.
+check() {
+  local line where command releaser_pinned=false
+  while IFS= read -r line; do
+    where="${line%%:*}:$(printf '%s' "$line" | cut -d: -f2)"
+    command="${line#*:*:}"
+    [[ "$command" =~ $allowed ]] ||
+      fail "$where must be exactly 'dotnet tool install --global <tool> --version <x.y.z>' on its own line: ${command#"${command%%[![:space:]]*}"}"
+    if [[ "$where" == .github/workflows/* && "${BASH_REMATCH[1]}" == dotnet-releaser ]]; then
       releaser_pinned=true
     fi
-  done < <(printf '%s\n' "$command" | sed -E 's/(;|&&|\|\||\|)/\n/g')
-done <<<"$installs"
+  done <<<"$1"
+  "$releaser_pinned" || fail "no workflow installs dotnet-releaser at an exact --version"
+}
 
-"$releaser_pinned" || fail "no workflow installs dotnet-releaser at an exact --version"
+# Negative controls: shapes that earlier versions of this check let through, each placed on
+# a line after a correctly pinned releaser install so only the shape itself can fail it.
+pinned='.github/workflows/x.yaml:1:          dotnet tool install --global dotnet-releaser --version 0.24.0'
+(check "$pinned") || fail "positive control failed: a correctly pinned install was rejected"
+while IFS= read -r bad; do
+  if (check "$pinned
+.github/workflows/x.yaml:2:$bad") 2>/dev/null; then
+    fail "negative control passed: $bad"
+  fi
+done <<'EOF'
+          dotnet tool install --global dotnet-releaser
+          dotnet tool install --global dotnet-releaser; dotnet tool install --global reportgenerator --version 5.5.10
+          dotnet tool install --global dotnet-releaser # --version 0.24.0
+          dotnet tool install --global dotnet-releaser;# --version 0.24.0
+          echo " # note"; dotnet tool install --global reportgenerator
+          echo "a \" # b"; dotnet tool install --global dotnet-releaser
+          dotnet tool install --global dotnet-releaser --version 0.24.0 \
+          dotnet tool update --global dotnet-releaser
+          dotnet  tool  install --global dotnet-releaser --version latest
+EOF
+
+check "$installs"
 
 echo "ok   every .NET tool install is pinned to an exact version"
