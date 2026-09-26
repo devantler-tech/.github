@@ -30,9 +30,43 @@ fail() {
 
 allowed='^[[:space:]]*dotnet tool install --global ([A-Za-z0-9._-]+) --version [0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?[[:space:]]*$'
 
+# Joins shell lines continued with trailing backslashes before matching, so split
+# commands cannot bypass detection. Whole-line comments are ignored.
+scan_installs() {
+  awk '
+    FNR == 1 { buf = ""; start_line = 0 }
+    /^[[:space:]]*#/ { next }
+    /[[:space:]]*\\[[:space:]]*$/ {
+      sub(/[[:space:]]*\\[[:space:]]*$/, "")
+      if (buf == "") { start_line = FNR }
+      buf = buf $0 " "
+      next
+    }
+    {
+      if (buf != "") {
+        line = buf $0
+        buf = ""
+        fnr = start_line
+      } else {
+        line = $0
+        fnr = FNR
+      }
+      if (line ~ /dotnet[[:space:]]+tool[[:space:]]+(install|update)/) {
+        print (FILENAME ? FILENAME : "stdin") ":" fnr ":" line
+      }
+    }
+  ' "$@"
+}
+
+target_files=()
+while IFS= read -r f; do
+  [[ -n "$f" ]] && target_files+=("$f")
+done < <(find .github/workflows actions -type f \( -name '*.yaml' -o -name '*.yml' \) 2>/dev/null | sort)
+
+[[ ${#target_files[@]} -gt 0 ]] || fail "found no workflow or action YAML files to scan"
+
 # Every line that mentions installing or updating a .NET tool, except whole-line comments.
-installs="$(grep -rnE 'dotnet[[:space:]]+tool[[:space:]]+(install|update)' .github/workflows actions \
-  --include='*.yaml' --include='*.yml' | grep -vE '^[^:]+:[0-9]+:[[:space:]]*#' || true)"
+installs="$(scan_installs "${target_files[@]}")"
 [[ -n "$installs" ]] || fail "found no 'dotnet tool install' lines — refusing to pass vacuously"
 
 # check <grep -n lines>: fail on any line outside the allowed shape, or when no workflow pins
@@ -71,6 +105,16 @@ done <<'EOF'
           dotnet tool update --global dotnet-releaser
           dotnet  tool  install --global dotnet-releaser --version latest
 EOF
+
+# Negative control: an unpinned install split across lines with a backslash must reach
+# the pin check and be rejected.
+continued_scan="$(printf '%s\n' \
+  '          dotnet tool install --global dotnet-releaser --version 0.24.0' \
+  "          dotnet tool \\" \
+  '            install --global dotnet-releaser' | scan_installs)"
+if (check "$continued_scan") 2>/dev/null; then
+  fail "negative control passed: unpinned install split across lines was not rejected"
+fi
 
 check "$installs"
 
