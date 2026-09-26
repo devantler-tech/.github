@@ -288,7 +288,7 @@ fi
 # must reach the check and be rejected.
 token_split_scan="$(printf '%s\n' \
   '          dotnet tool install --global dotnet-releaser --version 0.24.0' \
-  '          dot\' \
+  "          dot\\" \
   '          net tool install --global evil-tool' | scan_installs)"
 if (check "$token_split_scan") 2>/dev/null; then
   fail "negative control passed: tool command split inside a token was not rejected"
