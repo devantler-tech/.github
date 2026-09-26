@@ -51,13 +51,3 @@ updates:
       default-days: 7
     ignore:
       - dependency-name: "*"
-  # The .NET tools the reusable workflows install. publish-dotnet-library.yaml runs in the
-  # CALLER's checkout, so it cannot read this manifest and pins the same version inline;
-  # this manifest exists so Dependabot proposes bumps, and
-  # .github/tests/test-dotnet-tool-pins.sh fails until the inline pin matches it.
-  - package-ecosystem: nuget
-    directory: /.github/tools/dotnet
-    schedule:
-      interval: daily
-    cooldown:
-      default-days: 7

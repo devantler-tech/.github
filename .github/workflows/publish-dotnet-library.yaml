@@ -46,8 +46,8 @@ jobs:
         shell: bash
         run: |
           # Pinned: this tool runs with the NuGet key and a write token, so an unreviewed
-          # upstream release must never reach them. Dependabot bumps the tracked copy in
-          # .github/tools/dotnet/.config/dotnet-tools.json; keep this in step with it.
+          # upstream release must never reach them. Bump it by hand after reviewing the release;
+          # .github/tests/test-dotnet-tool-pins.sh fails on an unpinned install.
           dotnet tool install --global dotnet-releaser --version 0.24.0
           dotnet-releaser run --nuget-token "${NUGET_API_KEY}" --github-token "${GITHUB_TOKEN}" dotnet-releaser.toml
         env:
