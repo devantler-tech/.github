@@ -61,16 +61,16 @@ scan_installs() {
 target_files=()
 while IFS= read -r f; do
   [[ -n "$f" ]] && target_files+=("$f")
-done < <(find .github/workflows actions -type f \( -name '*.yaml' -o -name '*.yml' \) 2>/dev/null | sort)
+done < <(find .github/workflows .github/actions actions .scripts scripts -type f \( -name '*.yaml' -o -name '*.yml' -o -name '*.sh' \) 2>/dev/null | sort)
 
-[[ ${#target_files[@]} -gt 0 ]] || fail "found no workflow or action YAML files to scan"
+[[ ${#target_files[@]} -gt 0 ]] || fail "found no workflow, action or script files to scan"
 
 # Every line that mentions installing or updating a .NET tool, except whole-line comments.
 installs="$(scan_installs "${target_files[@]}")"
 [[ -n "$installs" ]] || fail "found no 'dotnet tool install' lines — refusing to pass vacuously"
 
-# check <grep -n lines>: fail on any line outside the allowed shape, or when no workflow pins
-# dotnet-releaser.
+# check <grep -n lines>: fail on any line outside the allowed shape, or when publish-dotnet-library.yaml
+# does not pin dotnet-releaser.
 check() {
   local line where command releaser_pinned=false
   while IFS= read -r line; do
@@ -78,20 +78,20 @@ check() {
     command="${line#*:*:}"
     [[ "$command" =~ $allowed ]] ||
       fail "$where must be exactly 'dotnet tool install --global <tool> --version <x.y.z>' on its own line: ${command#"${command%%[![:space:]]*}"}"
-    if [[ "$where" == .github/workflows/* && "${BASH_REMATCH[1]}" == dotnet-releaser ]]; then
+    if [[ "$where" == .github/workflows/publish-dotnet-library.yaml:* && "${BASH_REMATCH[1]}" == dotnet-releaser ]]; then
       releaser_pinned=true
     fi
   done <<<"$1"
-  "$releaser_pinned" || fail "no workflow installs dotnet-releaser at an exact --version"
+  "$releaser_pinned" || fail "publish-dotnet-library.yaml does not install dotnet-releaser at an exact --version"
 }
 
 # Negative controls: shapes that earlier versions of this check let through, each placed on
 # a line after a correctly pinned releaser install so only the shape itself can fail it.
-pinned='.github/workflows/x.yaml:1:          dotnet tool install --global dotnet-releaser --version 0.24.0'
+pinned='.github/workflows/publish-dotnet-library.yaml:1:          dotnet tool install --global dotnet-releaser --version 0.24.0'
 (check "$pinned") || fail "positive control failed: a correctly pinned install was rejected"
 while IFS= read -r bad; do
   if (check "$pinned
-.github/workflows/x.yaml:2:$bad") 2>/dev/null; then
+.github/workflows/publish-dotnet-library.yaml:2:$bad") 2>/dev/null; then
     fail "negative control passed: $bad"
   fi
 done <<'EOF'
@@ -114,6 +114,13 @@ continued_scan="$(printf '%s\n' \
   '            install --global dotnet-releaser' | scan_installs)"
 if (check "$continued_scan") 2>/dev/null; then
   fail "negative control passed: unpinned install split across lines was not rejected"
+fi
+
+# Negative control: dotnet-releaser pinned only in an unrelated workflow must not satisfy
+# the publishing workflow requirement.
+unrelated_workflow='.github/workflows/other.yaml:1:          dotnet tool install --global dotnet-releaser --version 0.24.0'
+if (check "$unrelated_workflow") 2>/dev/null; then
+  fail "negative control passed: dotnet-releaser pinned in an unrelated workflow satisfied the publishing workflow requirement"
 fi
 
 check "$installs"
