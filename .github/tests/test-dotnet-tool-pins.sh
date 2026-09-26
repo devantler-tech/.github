@@ -19,6 +19,26 @@ fail() {
   exit 1
 }
 
+# strip_comment <text>: the text up to an unquoted `#` that starts a word, as the shell reads
+# it. A `#` inside single or double quotes is data, so `echo " # x"; dotnet tool install …`
+# keeps the install that follows it.
+strip_comment() {
+  local text=$1 out="" quote="" prev=" " ch i
+  for ((i = 0; i < ${#text}; i++)); do
+    ch=${text:i:1}
+    if [[ -n "$quote" ]]; then
+      [[ "$ch" == "$quote" ]] && quote=""
+    elif [[ "$ch" == "'" || "$ch" == '"' ]]; then
+      quote=$ch
+    elif [[ "$ch" == "#" && "$prev" =~ [[:space:]] ]]; then
+      break
+    fi
+    out+=$ch
+    prev=$ch
+  done
+  printf '%s\n' "$out"
+}
+
 installs="$(grep -rnE 'dotnet tool install' .github/workflows actions --include='*.yaml' --include='*.yml' |
   grep -vE '^[^:]+:[0-9]+:[[:space:]]*#' || true)"
 [[ -n "$installs" ]] || fail "found no 'dotnet tool install' lines — refusing to pass vacuously"
@@ -31,7 +51,7 @@ while IFS= read -r line; do
   command="${line#*:*:}"
   # Drop a trailing shell comment first, so a `--version` written only in a comment cannot
   # satisfy the check for the install before it.
-  command="$(printf '%s\n' "$command" | sed -E 's/(^|[[:space:]])#.*$//')"
+  command="$(strip_comment "$command")"
   while IFS= read -r segment; do
     [[ "$segment" == *"dotnet tool install"* ]] || continue
     segment="${segment#"${segment%%[![:space:]]*}"}"
