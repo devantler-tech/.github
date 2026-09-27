@@ -75,18 +75,19 @@ declared_count="$(wc -l <"$work/declared" | tr -d ' ')"
 [[ "$declared_count" -ge 10 ]] ||
   abort "only ${declared_count} declared repositories rendered — refusing to run on a collapsed set"
 
-# Declared repositories deploy/ expects to be live and unarchived.
-yq -N 'select(.kind == "Repository" and .spec.forProvider.archived != true) | .spec.forProvider.name' \
-  "$render" | grep -vE '^$|^null$|^---$' | sort -u >"$work/declared-active" ||
-  abort "reading the declared active repositories failed"
+# Every live line must be exactly "<name> <true|false>". A line that is not
+# would drop out of the active set below without being reported, so reject it.
+malformed="$(grep -cvE '^[A-Za-z0-9._-]+ (true|false)$' "$live" || true)"
+[[ "$malformed" -eq 0 ]] ||
+  abort "the live listing has ${malformed} line(s) that are not '<name> <true|false>'"
 
 awk '$2 == "false" { print $1 }' "$live" | sort -u >"$work/live-active"
 awk '{ print $1 }' "$live" | sort -u >"$work/live-all"
 
-# The listing has to see every repository deploy/ declares — private ones
-# included. If it cannot, it could just as well be missing an undeclared private
-# repository, and a clean result would be a pass over a partial org.
-unseen="$(comm -23 "$work/declared-active" "$work/live-all")"
+# The listing has to see every repository deploy/ declares, archived and private
+# ones included. If it cannot, it could just as well be missing an undeclared
+# private repository, and a clean result would be a pass over a partial org.
+unseen="$(comm -23 "$work/declared" "$work/live-all")"
 if [[ -n "$unseen" ]]; then
   while IFS= read -r repo; do
     echo "UNSEEN ${repo} — declared in deploy/ but absent from the live listing" >&2

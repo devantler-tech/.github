@@ -135,4 +135,19 @@ EOF
 run_check "$work/collapsed"
 [[ "$rc" -eq 2 ]] || fail "a render with too few repositories should fail closed with 2, got rc=$rc: $out"
 
+# 9. A live line whose archived value is neither true nor false would drop out of
+#    the active set unreported: fail closed.
+build_fixture "$work/malformed"
+echo "brand-new null" >>"$work/malformed/live.txt"
+run_check "$work/malformed"
+[[ "$rc" -eq 2 ]] || fail "a malformed live line should fail closed with 2, got rc=$rc: $out"
+
+# 10. An ARCHIVED declared repository missing from the listing is unseen too.
+build_fixture "$work/unseen-archived"
+grep -v '^fixture-repo-10 ' "$work/unseen-archived/live.txt" >"$work/unseen-archived/live.tmp"
+mv "$work/unseen-archived/live.tmp" "$work/unseen-archived/live.txt"
+run_check "$work/unseen-archived"
+[[ "$rc" -eq 2 && "$out" == *"UNSEEN fixture-repo-10"* ]] ||
+  fail "a listing that misses an archived declared repository should fail closed, got rc=$rc: $out"
+
 echo "repository-coverage test: all cases passed"

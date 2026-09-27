@@ -17,9 +17,11 @@ on:
     - cron: "29 5 * * *"
   workflow_dispatch:
 
-# The report job opens or closes one tracking issue from the run's outcome, so
-# runs finish in start order: an older failure must never reopen the issue
-# after a newer success closed it.
+# The report job opens or closes one tracking issue from the run's outcome.
+# Serialising runs keeps two of them from updating it at the same time. It does
+# not order them: GitHub may start a later run first, or drop a pending one. The
+# check runs once a day, and every run reads the whole live org rather than a
+# change, so the next run corrects any out-of-order result.
 concurrency:
   group: repository-coverage-check-${{ github.ref }}
   cancel-in-progress: false
