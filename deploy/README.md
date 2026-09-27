@@ -119,9 +119,9 @@ Issue [#95](https://github.com/devantler-tech/.github/issues/95) and PR
 the separate `Admins` team, its explicit maintainer membership, and its
 repository grants in both disabled and enabled states. Issue
 [#102](https://github.com/devantler-tech/.github/issues/102) activates that
-policy for the 21 active portfolio repositories, including `kyverno-policies`
-and `world-at-ruin`. The archived `reusable-workflows` repository remains
-excluded.
+policy; it covers the 23 active portfolio repositories, including
+`kyverno-policies`, `world-at-ruin`, `cloudflare` and `data-product-controller`.
+The archived `reusable-workflows` repository remains excluded.
 
 The active policy is fully declarative and omits both `Delete` management and
 external names, so it cannot delete teams, memberships, or grants. Validate the
