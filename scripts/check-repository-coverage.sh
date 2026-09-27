@@ -15,8 +15,9 @@
 #   REPOSITORY_COVERAGE_OWNER   org to list (default devantler-tech)
 #   REPOSITORY_COVERAGE_RENDER  pre-rendered deploy/ manifest; default renders deploy/
 #   REPOSITORY_COVERAGE_LIVE    file of "<name> <archived>" lines standing in for the
-#                               live listing; default reads the GitHub API. Used by
-#                               tests to stay hermetic.
+#                               live listing; default reads the GitHub API with a
+#                               GitHub App installation token that must cover every
+#                               repository. Used by tests to stay hermetic.
 #
 # Exit codes:
 #   0  every live, non-archived repository is declared (or deliberately exempt)
@@ -58,6 +59,17 @@ fi
 if [[ -z "$live" ]]; then
   command -v gh >/dev/null || abort "required tool 'gh' not found"
   live="$work/live.txt"
+  # An App installation limited to selected repositories lists only those, and
+  # the listing still succeeds. Declared repositories are usually among the
+  # selected ones, so the unseen check below would pass while an undeclared
+  # private repository outside the selection stays invisible. Only an
+  # installation on every repository can see one created later. Reading the
+  # installation's own selection needs no extra permission, where the org's
+  # private repository count needs organization administration.
+  selection="$(gh api 'installation/repositories?per_page=1' --jq '.repository_selection')" ||
+    abort "reading the App installation's repository selection failed; run this with a GitHub App installation token"
+  [[ "$selection" == "all" ]] ||
+    abort "the App installation covers '${selection:-unknown}' repositories, not all, so it cannot see an undeclared repository outside its selection"
   # Captured, never streamed: a pagination that fails part-way exits non-zero
   # after printing the pages it did read, and a truncated list would pass.
   gh api --paginate "orgs/${owner}/repos?type=all&per_page=100" \

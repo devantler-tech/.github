@@ -151,8 +151,8 @@ Repo-specific watch-list for the daily engineer:
   [`scripts/check-repository-coverage.sh`](scripts/check-repository-coverage.sh) daily at 05:29 UTC
   and on `workflow_dispatch`, and fails on an `UNDECLARED` live, non-archived repository. Its App
   token reads metadata across every installed repository, because scoping it to the declared ones
-  would hide an undeclared private repository; it fails closed when the listing misses a declared
-  one. A failing run on `main` opens the issue *Scheduled repository coverage check is failing on
+  would hide an undeclared private repository; it fails closed when the App installation is
+  limited to selected repositories or the listing misses a declared one. A failing run on `main` opens the issue *Scheduled repository coverage check is failing on
   main*, and the next passing run closes it.
 - **Declared settings that never landed.** `repository-drift-check.yaml` runs
   [`scripts/check-repository-drift.sh`](scripts/check-repository-drift.sh) and fails when a
