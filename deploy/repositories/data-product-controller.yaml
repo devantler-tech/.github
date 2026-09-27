@@ -5,8 +5,15 @@ metadata:
   annotations:
     crossplane.io/external-name: data-product-controller
 spec:
-  # The adopted repository is Synced/Ready. Apply the shared repository policy.
-  managementPolicies: ["Observe", "Create", "Update"]
+  # Observe-only: the first stage of the Observe-first adoption flow. Crossplane
+  # mirrors this repository read-only and writes nothing, so adopting it cannot
+  # change the live repository. The visibility and description below state the
+  # live values. The shared patch in kustomization.yaml still declares the org's
+  # merge policy here, so scripts/check-repository-drift.sh reports any live
+  # setting that diverges from it. Enabling Create/Update is a separate,
+  # deliberate step once this resource reports Synced/Ready.
+  managementPolicies:
+    - Observe
   forProvider:
     name: data-product-controller
     visibility: public

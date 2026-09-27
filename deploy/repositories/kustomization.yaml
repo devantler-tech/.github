@@ -26,8 +26,6 @@ resources:
   - dotnet-template.yaml
   - homebrew-tap.yaml
   - fleet-gitops.yaml
-  - cloudflare.yaml
-  - data-product-controller.yaml
   # Adopted with Observe + LateInitialize, then promoted once their live
   # settings had been copied into forProvider (#115).
   - dot-github.yaml
@@ -38,10 +36,13 @@ resources:
   - ksail.yaml
   # Observe-only (read-only mirror; Crossplane writes nothing). They are listed
   # apart because of their management policy, not their visibility. Promoting
-  # them to Observe/Create/Update remains a separate decision for each resource.
+  # them to Observe/Create/Update waits on the provider repin tracked on
+  # devantler-tech/platform#2800 (see world-at-ruin.yaml for why).
   - world-at-ruin.yaml
   - ascoachingogvaner.yaml
   - wedding-app.yaml
+  - cloudflare.yaml
+  - data-product-controller.yaml
 # Org-wide repo settings applied to EVERY Repository, single source of truth
 # (auto-applies to every future repo). This includes the Observe-only ones:
 # Crossplane never writes those, but scripts/check-repository-drift.sh compares
