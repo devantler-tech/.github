@@ -276,10 +276,10 @@ platform_tenant_management_policies="$(
 [[ "$platform_tenant_management_policies" == "Create,Observe,Update" ]] ||
   fail "platform-tenant-template must restore Update under provider v0.20.0: $platform_tenant_management_policies"
 
-# .github and monorepo finished Observe + LateInitialize adoption (#115). An
-# Observe-only declaration would leave the shared merge policy unapplied to
-# .github while Crossplane still reported success, so both must keep writing.
-for adopted in dot-github monorepo; do
+# These repositories completed Observe-first adoption. An Observe-only
+# declaration leaves the shared merge policy unapplied while Crossplane still
+# reports success, so each must keep writing.
+for adopted in dot-github monorepo cloudflare data-product-controller; do
   adopted_policies="$(
     yq -N "
       select(
