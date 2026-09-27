@@ -247,6 +247,23 @@ for adopted in cloudflare data-product-controller; do
   )"
   [[ "$adopted_issues" == "true" ]] ||
     fail "$adopted must declare forProvider.hasIssues: true so its issue tracker remains enabled"
+
+  # Their first promotion reset every undeclared setting to the provider's
+  # default (#311). Keep them Observe-only until every live non-default
+  # setting is declared; promoting them is a deliberate change to this check.
+  adopted_policies="$(
+    yq -N "
+      select(
+        .kind == \"Repository\" and
+        .metadata.name == \"$adopted\"
+      ) |
+      .spec.managementPolicies |
+      sort |
+      join(\",\")
+    " "$render"
+  )"
+  [[ "$adopted_policies" == "Observe" ]] ||
+    fail "$adopted must stay Observe-only until every live non-default setting is declared (#311): ${adopted_policies:-<absent>}"
 done
 
 # These discovery topics were removed only because the previous provider could
