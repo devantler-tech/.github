@@ -230,9 +230,9 @@ platform_tenant_issues="$(
 [[ "$platform_tenant_issues" == "true" ]] ||
   fail "platform-tenant-template must declare forProvider.hasIssues: true so its issue roadmap remains available"
 
-# cloudflare and data-product-controller use GitHub Issues. Their resources
-# must declare hasIssues: true so an update does not apply the provider's
-# false zero value and disable Issues.
+# cloudflare and data-product-controller were promoted without declaring
+# hasIssues, and the first update switched their Issues off (#311). Both use
+# Issues, so each must declare hasIssues: true.
 for adopted in cloudflare data-product-controller; do
   adopted_issues="$(
     yq -N "
@@ -246,24 +246,7 @@ for adopted in cloudflare data-product-controller; do
     " "$render"
   )"
   [[ "$adopted_issues" == "true" ]] ||
-    fail "$adopted must declare forProvider.hasIssues: true so its issue tracker remains enabled"
-
-  # Their first promotion reset every undeclared setting to the provider's
-  # default (#311). Keep them Observe-only until every live non-default
-  # setting is declared; promoting them is a deliberate change to this check.
-  adopted_policies="$(
-    yq -N "
-      select(
-        .kind == \"Repository\" and
-        .metadata.name == \"$adopted\"
-      ) |
-      .spec.managementPolicies |
-      sort |
-      join(\",\")
-    " "$render"
-  )"
-  [[ "$adopted_policies" == "Observe" ]] ||
-    fail "$adopted must stay Observe-only until every live non-default setting is declared (#311): ${adopted_policies:-<absent>}"
+    fail "$adopted must declare forProvider.hasIssues: true so its issue tracker stays enabled (#311)"
 done
 
 # These discovery topics were removed only because the previous provider could
@@ -312,10 +295,10 @@ platform_tenant_management_policies="$(
 [[ "$platform_tenant_management_policies" == "Create,Observe,Update" ]] ||
   fail "platform-tenant-template must restore Update under provider v0.20.0: $platform_tenant_management_policies"
 
-# .github and monorepo finished Observe + LateInitialize adoption (#115). An
-# Observe-only declaration would leave the shared merge policy unapplied to
-# .github while Crossplane still reported success, so both must keep writing.
-for adopted in dot-github monorepo; do
+# These repositories completed Observe-first adoption. An Observe-only
+# declaration leaves the shared merge policy unapplied while Crossplane still
+# reports success, so each must keep writing.
+for adopted in dot-github monorepo cloudflare data-product-controller; do
   adopted_policies="$(
     yq -N "
       select(
