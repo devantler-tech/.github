@@ -1,0 +1,98 @@
+name: 🧭 Repository coverage check
+
+# Fails when a live, non-archived repository in the org is not declared in
+# deploy/.
+#
+# deploy/ can only govern the repositories it names. One created in the GitHub
+# UI and never added gets no team grants, labels or settings, and the other
+# checks cannot see it: the coverage test compares deploy/ with itself, and the
+# drift check reads only declared repositories. This compares the live org with
+# deploy/.
+#
+# It reports the state of the live org, which no individual PR controls, so it
+# belongs on a schedule and must never gate a merge.
+
+on:
+  schedule:
+    - cron: "29 5 * * *"
+  workflow_dispatch:
+
+# The report job opens or closes one tracking issue from the run's outcome, so
+# runs finish in start order: an older failure must never reopen the issue
+# after a newer success closed it.
+concurrency:
+  group: repository-coverage-check-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions: {}
+
+jobs:
+  repository-coverage-check:
+    name: 🧭 Repository coverage check
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read # checkout
+    steps:
+      - name: 📑 Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: 🔑 Get GitHub App Token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        id: app-token
+        with:
+          app-id: ${{ vars.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+          # Least privilege: metadata read only. This is a deliberate, scoped
+          # exception to zizmor's github-app audit, which asks for a
+          # `repositories:` list. The question here is which repositories exist,
+          # so any list would have to come from deploy/ — and a token scoped to
+          # the declared repositories cannot see the undeclared private
+          # repository this check exists to find. The workflow's own
+          # GITHUB_TOKEN sees public repositories only. The check fails closed if
+          # the listing misses any declared repository.
+          owner: ${{ github.repository_owner }} # zizmor: ignore[github-app]
+          permission-metadata: read
+
+      - name: 🧭 Compare live repositories with deploy/
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: bash scripts/check-repository-coverage.sh
+
+  # Nothing else reads a scheduled result, so a red run would stay invisible.
+  # Mirror the outcome into one tracking issue: a failing scheduled or
+  # dispatched run on main opens or updates it, and the next passing one closes
+  # it.
+  report-coverage-check:
+    name: 📣 Report the coverage check result
+    needs: [repository-coverage-check]
+    if: >-
+      !cancelled()
+      && github.repository == 'devantler-tech/.github'
+      && github.ref == 'refs/heads/main'
+      && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write # open, update, or close the tracking issue
+    steps:
+      - name: 📣 Open or update the tracking issue
+        if: needs.repository-coverage-check.result != 'success'
+        uses: devantler-tech/.github/actions/upsert-issue@1209919e756fced214333eb4afb92b4d86275960 # v2.0.0
+        with:
+          title: "Scheduled repository coverage check is failing on main"
+          body: |
+            The `🧭 Repository coverage check` run below did not pass on `main`.
+
+            - Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+            - Result: `${{ needs.repository-coverage-check.result }}`
+
+            Read the failing step first. A failure at `🔑 Get GitHub App Token` means the App credential needs attention. An `UNDECLARED` line names a live repository that `deploy/` does not declare: adopt it in `deploy/` (Observe-first), never by changing the live repository. A `STALE-EXEMPTION` line names an exemption in `scripts/check-repository-coverage.sh` to remove, and an `UNSEEN` line means the listing could not see the whole org. This issue is updated by every failing run and closed by the next passing one.
+      - name: ✅ Close the tracking issue
+        if: needs.repository-coverage-check.result == 'success'
+        uses: devantler-tech/.github/actions/upsert-issue@1209919e756fced214333eb4afb92b4d86275960 # v2.0.0
+        with:
+          title: "Scheduled repository coverage check is failing on main"
+          open: "false"
+          body: "The scheduled repository coverage check passes on main."
+          close-comment: "✅ ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }} passed on `main`, so the repository coverage check is green again. Closing."

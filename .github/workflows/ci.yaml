@@ -5554,6 +5554,11 @@ jobs:
       - name: 🧪 Test repository drift check
         run: bash tests/repository-drift.sh
 
+      # The live comparison runs on a schedule (repository-coverage-check.yaml);
+      # this pins its logic against fixtures, so it stays offline and PR-safe.
+      - name: 🧪 Test repository coverage check
+        run: bash tests/repository-coverage.sh
+
   ci-required-checks:
     name: CI - Required Checks
     if: ${{ always() }}

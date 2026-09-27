@@ -113,13 +113,14 @@ bash tests/signing-rule-retirement.sh  # retained signing-rule identity and safe
 bash tests/release-contract.sh          # deploy/ changes must trigger a release
 bash tests/deploy-deletions.sh          # removed deploy/ resources must be acknowledged per resource
 bash tests/repository-drift.sh          # declared-vs-live comparison logic
+bash tests/repository-coverage.sh       # live-org-vs-deploy/ comparison logic
 bash tests/workflow-execution-inventory.sh # who and what can start each workflow
 bash tests/workflow-execution-actors.sh  # live actor IDs/types observed per workflow and event
 bash tests/workflow-execution-policies.sh # reviewed execution policies are valid desired state
 bash tests/apply-workflow-execution-policies.sh # the policy reconciler, against an offline API stand-in
 ```
 
-Those thirteen commands are the baseline checks that `ci.yaml`'s `validate-manifests` job runs; the
+Those fourteen commands are the baseline checks that `ci.yaml`'s `validate-manifests` job runs; the
 same workflow also runs the catalogue's tests (see [Actions catalogue](#actions-catalogue)). Pull requests additionally pass
 their changed paths and title through `scripts/validate-release-contract.sh` and their base/head
 renders plus the pull-request body through `scripts/validate-deploy-deletions.sh` (every managed
@@ -146,7 +147,13 @@ Repo-specific watch-list for the daily engineer:
 
 - **Drift / coverage.** New repos in the org, or org/repo/team settings changed in the UI, mean
   `deploy/` is now behind reality. Bringing them under management (Observe-first) is `roadmap`/
-  `enhancement` work — never a UI fix.
+  `enhancement` work — never a UI fix. `repository-coverage-check.yaml` runs
+  [`scripts/check-repository-coverage.sh`](scripts/check-repository-coverage.sh) daily at 05:29 UTC
+  and on `workflow_dispatch`, and fails on an `UNDECLARED` live, non-archived repository. Its App
+  token reads metadata across every installed repository, because scoping it to the declared ones
+  would hide an undeclared private repository; it fails closed when the listing misses a declared
+  one. A failing run on `main` opens the issue *Scheduled repository coverage check is failing on
+  main*, and the next passing run closes it.
 - **Declared settings that never landed.** `repository-drift-check.yaml` runs
   [`scripts/check-repository-drift.sh`](scripts/check-repository-drift.sh) and fails when a
   `forProvider` field disagrees with the live repository. Cluster state cannot answer this alone: a
@@ -209,7 +216,8 @@ actions/<action-name>/            # One directory per composite action
 ├── workflows/                    # ALL workflows (GitHub requires it). A workflow with `workflow_call` is a
 │                                 # catalogue product; the others (ci, release, cd, deploy-guards,
 │                                 # apply-workflow-execution-policies, repository-drift-check,
-│                                 # stale-repository-identifier) belong to this repository.
+│                                 # repository-coverage-check, stale-repository-identifier)
+│                                 # belong to this repository.
 ├── actions/                      # internal composite actions the reusable workflows check out and run
 ├── fixtures/                     # fixtures for the action `test-<action>` jobs
 ├── scripts/                      # helpers the reusable workflows run
