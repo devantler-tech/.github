@@ -11,7 +11,8 @@ spec:
   # live values. The shared patch in kustomization.yaml still declares the org's
   # merge policy here, so scripts/check-repository-drift.sh reports any live
   # setting that diverges from it. Enabling Create/Update is a separate,
-  # deliberate step once this resource reports Synced/Ready.
+  # deliberate step once this resource reports Synced/Ready and all live
+  # non-default settings are declared.
   managementPolicies:
     - Observe
   forProvider:
@@ -19,6 +20,7 @@ spec:
     visibility: public
     archived: false
     description: "A cloud-native controller for composable, self-describing data products."
+    hasIssues: true
   providerConfigRef:
     kind: ProviderConfig
     name: default

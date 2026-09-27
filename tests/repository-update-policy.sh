@@ -230,6 +230,25 @@ platform_tenant_issues="$(
 [[ "$platform_tenant_issues" == "true" ]] ||
   fail "platform-tenant-template must declare forProvider.hasIssues: true so its issue roadmap remains available"
 
+# cloudflare and data-product-controller use GitHub Issues. Their resources
+# must declare hasIssues: true so an update does not apply the provider's
+# false zero value and disable Issues.
+for adopted in cloudflare data-product-controller; do
+  adopted_issues="$(
+    yq -N "
+      select(
+        .kind == \"Repository\" and
+        .metadata.name == \"$adopted\"
+      ) |
+      .spec.forProvider.hasIssues |
+      select(tag == \"!!bool\") |
+      select(. == true)
+    " "$render"
+  )"
+  [[ "$adopted_issues" == "true" ]] ||
+    fail "$adopted must declare forProvider.hasIssues: true so its issue tracker remains enabled"
+done
+
 # These discovery topics were removed only because the previous provider could
 # not update any other Repository field under organization-enforced signoff.
 # v0.20.0 removes that compatibility boundary, so both declarations must stay
