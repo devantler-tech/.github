@@ -12,6 +12,8 @@ spec:
     visibility: public
     archived: false
     description: "Declarative, cluster-independent Cloudflare infrastructure for devantler-tech"
+    # Issues are used here; an undeclared bool takes the provider default (false) on update (#311).
+    hasIssues: true
   providerConfigRef:
     kind: ProviderConfig
     name: default
