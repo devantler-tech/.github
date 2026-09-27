@@ -1,0 +1,30 @@
+# Issue labels for devantler-tech/data-product-controller. The canonical org taxonomy (22 labels)
+# is appended to every IssueLabels by the shared patch in kustomization.yaml; this
+# file adds only data-product-controller's repo-specific extras (the dependency/ecosystem labels
+# Dependabot/Renovate apply), declared so the authoritative set doesn't strip a
+# label in use. Every label the repository carried when adopted is either
+# canonical or listed here. See ../README.md.
+apiVersion: repo.github.m.upbound.io/v1alpha1
+kind: IssueLabels
+metadata:
+  name: data-product-controller
+  annotations:
+    crossplane.io/external-name: data-product-controller
+spec:
+  managementPolicies:
+    - Observe
+    - Create
+    - Update
+    - LateInitialize
+  forProvider:
+    repository: data-product-controller
+    label:
+      - name: "dependencies"
+        color: "0366d6"
+      - name: "github_actions"
+        color: "000000"
+      - name: "go"
+        color: "16e2e2"
+  providerConfigRef:
+    kind: ProviderConfig
+    name: default

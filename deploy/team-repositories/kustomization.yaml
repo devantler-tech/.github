@@ -27,6 +27,8 @@ resources:
   - grant-maintainers-on-dot-github.yaml
   - grant-maintainers-on-ascoachingogvaner.yaml
   - grant-maintainers-on-wedding-app.yaml
+  - grant-maintainers-on-cloudflare.yaml
+  - grant-maintainers-on-data-product-controller.yaml
   # Active Admins policy (one admin grant per active repository).
   - grant-admins-on-dot-github.yaml
   - grant-admins-on-actions.yaml
@@ -49,3 +51,5 @@ resources:
   - grant-admins-on-unifi.yaml
   - grant-admins-on-wedding-app.yaml
   - grant-admins-on-world-at-ruin.yaml
+  - grant-admins-on-cloudflare.yaml
+  - grant-admins-on-data-product-controller.yaml

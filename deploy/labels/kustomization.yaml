@@ -39,6 +39,8 @@ resources:
   - dotnet-template.yaml
   - homebrew-tap.yaml
   - actions.yaml
+  - cloudflare.yaml
+  - data-product-controller.yaml
   # Private repos.
   - ascoachingogvaner.yaml
   - wedding-app.yaml
