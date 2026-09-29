@@ -1,12 +1,28 @@
-# Existing repository ruleset, adopted Observe-first (read-only). external-name =
-# the bare numeric ruleset id — the upjet provider stores RepositoryRuleset `id`
-# from-provider, exactly like ../organization-rulesets/. (The Terraform
-# `<repo>:<ruleset_id>` form is the *import* id, NOT the stored external-name; a
-# `<repo>:`-prefixed value fails the provider's strconv.ParseInt and the resource
-# never observes.) Identity-only forProvider — see ./README.md for the convention.
+# Existing repository ruleset, adopted Observe-first and promoted to Observe +
+# Update (platform#3097). external-name = the bare numeric ruleset id — the upjet
+# provider stores RepositoryRuleset `id` from-provider, exactly like
+# ../organization-rulesets/. (The Terraform `<repo>:<ruleset_id>` form is the
+# *import* id, NOT the stored external-name; a `<repo>:`-prefixed value fails the
+# provider's strconv.ParseInt and the resource never observes.)
 #
 # platform's "Require merge queue" rule on the default branch (merge_queue is a
 # repo-only rule type; org rulesets cannot carry it).
+#
+# Update without LateInitialize applies exactly what is declared here, so the
+# full observed ruleset is backfilled: rules, the ~DEFAULT_BRANCH condition and
+# the OrganizationAdmin bypass actor. A disposable probe on platform-template
+# proved that shape round-trips under Update — the bypass actor survived a
+# timeout change and the ruleset was not re-applied across reconciles — before
+# this promotion (evidence on platform#3097). Per the provider CRD, `actorId` is
+# left unset for OrganizationAdmin.
+#
+# checkResponseTimeoutMinutes 60 -> 90: a merge-group run's p90 is ~22 minutes
+# and its maximum ~68, and the only two checks_timed_out evictions in 30 days
+# were a lock wait behind a failing group and a ~40-minute hosted-runner queue.
+# 90 minutes absorbs that queueing without hiding a genuinely hung run.
+#
+# No Create and no Delete: the ruleset already exists, and removing this file
+# must orphan it on GitHub rather than delete the production merge gate.
 apiVersion: repo.github.m.upbound.io/v1alpha1
 kind: RepositoryRuleset
 metadata:
@@ -14,12 +30,37 @@ metadata:
   annotations:
     crossplane.io/external-name: "5275020" # numeric ruleset id
 spec:
-  managementPolicies: ["Observe"]
+  managementPolicies:
+    - Observe
+    - Update
   forProvider:
     repository: platform
     name: Require merge queue
     target: branch
     enforcement: active
+    bypassActors:
+      - actorType: OrganizationAdmin
+        bypassMode: always
+    conditions:
+      - refName:
+          - include: ["~DEFAULT_BRANCH"]
+            exclude: []
+    rules:
+      - creation: false
+        deletion: false
+        nonFastForward: false
+        requiredLinearHistory: false
+        requiredSignatures: false
+        update: false
+        updateAllowsFetchAndMerge: false
+        mergeQueue:
+          - checkResponseTimeoutMinutes: 90
+            groupingStrategy: ALLGREEN
+            maxEntriesToBuild: 1
+            maxEntriesToMerge: 1
+            mergeMethod: SQUASH
+            minEntriesToMerge: 1
+            minEntriesToMergeWaitMinutes: 5
   providerConfigRef:
     kind: ProviderConfig
     name: default
