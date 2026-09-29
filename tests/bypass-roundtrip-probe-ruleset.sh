@@ -46,7 +46,7 @@ assert_json() {
 assert_value "enforcement" "disabled" '.spec.forProvider.enforcement'
 assert_value "target repository" "platform-template" '.spec.forProvider.repository'
 assert_value "target" "branch" '.spec.forProvider.target'
-assert_value "external-name" "null" '.metadata.annotations."crossplane.io/external-name"'
+assert_value "external-name" "24193850" '.metadata.annotations."crossplane.io/external-name"'
 # Observe + Create + Update mirrors the planned promotion; Delete lets removing the
 # file clean the probe up. LateInitialize would copy observed values into spec and
 # hide exactly the round-trip this probe measures.
@@ -55,7 +55,7 @@ assert_json "management policy" '["Observe","Create","Update","Delete"]' '.spec.
 assert_json "bypass actors" '[{"actorType":"OrganizationAdmin","bypassMode":"always"}]' '.spec.forProvider.bypassActors'
 assert_json "target branch" '["~DEFAULT_BRANCH"]' '.spec.forProvider.conditions[0].refName[0].include'
 assert_value "rule count" "1" '.spec.forProvider.rules | length'
-assert_json "merge queue" '[{"checkResponseTimeoutMinutes":60,"groupingStrategy":"ALLGREEN","maxEntriesToBuild":1,"maxEntriesToMerge":1,"mergeMethod":"SQUASH","minEntriesToMerge":1,"minEntriesToMergeWaitMinutes":5}]' '.spec.forProvider.rules[0].mergeQueue'
+assert_json "merge queue" '[{"checkResponseTimeoutMinutes":90,"groupingStrategy":"ALLGREEN","maxEntriesToBuild":1,"maxEntriesToMerge":1,"mergeMethod":"SQUASH","minEntriesToMerge":1,"minEntriesToMergeWaitMinutes":5}]' '.spec.forProvider.rules[0].mergeQueue'
 
 # The probe must not be mistaken for the production gate's promotion.
 gate='select(.kind == "RepositoryRuleset" and .metadata.name == "platform-require-merge-queue")'
