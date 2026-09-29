@@ -8,3 +8,4 @@ kind: Kustomization
 resources:
   - require-cla-gate-on-world-at-ruin.yaml
   - require-merge-queue-on-platform.yaml
+  - probe-bypass-roundtrip-on-platform-template.yaml

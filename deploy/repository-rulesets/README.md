@@ -19,6 +19,7 @@ observes.
 |---|---|---|---|
 | `require-cla-gate-on-world-at-ruin.yaml` | `world-at-ruin` | Require CLA gate | Managed (net-new; Observe + Create + Update + LateInitialize) |
 | `require-merge-queue-on-platform.yaml` | `platform` | Require merge queue | Observe (read-only import) |
+| `probe-bypass-roundtrip-on-platform-template.yaml` | `platform-template` | Probe - bypass round-trip (disabled) | Disposable probe (net-new; Observe + Create + Update + Delete) — see the file header; remove once platform#3097 has its evidence |
 
 Most files here are Observe-first imports of a ruleset created out of band, so they carry a
 numeric `crossplane.io/external-name`. A **net-new** ruleset is the exception: it has no
