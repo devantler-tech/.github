@@ -27,11 +27,19 @@
 #   3. The ruleset's `updated_at` does not move across several reconcile
 #      intervals (no re-apply loop from an actorId diff).
 #   4. A follow-up change to checkResponseTimeoutMinutes lands through Update
-#      and the bypass actor survives it.
+#      and the bypass actor survives it. (Step 4 is this file at 90 minutes.)
+#
+# The external-name is pinned to the id the first reconcile created. Without
+# LateInitialize the provider never wrote that id back onto the resource, so a
+# provider restart would have lost track of it and created a second probe. The
+# real promotion keeps its imported external-name, so pinning here also makes
+# the probe match it.
 apiVersion: repo.github.m.upbound.io/v1alpha1
 kind: RepositoryRuleset
 metadata:
   name: platform-template-probe-bypass-roundtrip
+  annotations:
+    crossplane.io/external-name: "24193850"
 spec:
   managementPolicies:
     - Observe
@@ -59,7 +67,7 @@ spec:
         update: false
         updateAllowsFetchAndMerge: false
         mergeQueue:
-          - checkResponseTimeoutMinutes: 60
+          - checkResponseTimeoutMinutes: 90
             groupingStrategy: ALLGREEN
             maxEntriesToBuild: 1
             maxEntriesToMerge: 1
