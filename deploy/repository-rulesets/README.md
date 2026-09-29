@@ -23,5 +23,6 @@ observes.
 
 Most files here are Observe-first imports of a ruleset created out of band, so they carry a
 numeric `crossplane.io/external-name`. A **net-new** ruleset is the exception: it has no
-external-name and is managed (never `Delete`), so Crossplane creates it on first reconcile.
+external-name and is managed (never `Delete`, except the disposable probe above), so Crossplane
+creates it on first reconcile.
 `../organization-rulesets/protect-release-tags.yaml` is the org-level precedent for that shape.
