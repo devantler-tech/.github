@@ -5524,6 +5524,9 @@ jobs:
       - name: 🧪 Test World at Ruin trusted-regression ruleset
         run: bash tests/world-at-ruin-regression-ruleset.sh
 
+      - name: 🧪 Test disposable bypass round-trip probe ruleset
+        run: bash tests/bypass-roundtrip-probe-ruleset.sh
+
       - name: 🧪 Test independent Monorepo CI aggregate ruleset
         run: bash tests/ci-aggregate-ruleset.sh
 

@@ -1,0 +1,71 @@
+# DISPOSABLE PROBE — enforcement is `disabled`, so this ruleset changes nothing
+# for anyone pushing to or merging into platform-template. Remove it once the
+# evidence below is recorded on devantler-tech/platform#3097.
+#
+# Why it exists: platform's "Require merge queue" ruleset
+# (./require-merge-queue-on-platform.yaml) is an Observe-only import. Raising its
+# 60-minute check timeout means promoting it to Observe + Update with the full
+# observed rules/conditions/bypassActors backfilled. That ruleset carries one
+# OrganizationAdmin bypass actor, and no managed ruleset in this repository has
+# ever carried a bypass actor, so nobody has seen how the provider round-trips
+# one under Update. Getting it wrong could silently drop the admin bypass on the
+# production merge gate, or re-apply the ruleset on every reconcile.
+#
+# This probe mirrors that ruleset's shape exactly — the same rule block, the same
+# ~DEFAULT_BRANCH condition and the same OrganizationAdmin bypass — on a
+# low-traffic repository, disabled. Per the provider CRD, `actorId` is left unset
+# for OrganizationAdmin ("this argument should not be set in those cases").
+#
+# Management: Observe + Create + Update, like the planned promotion, which never
+# late-initializes. Plus Delete, and only here, so that removing this file deletes
+# the probe ruleset instead of orphaning it on GitHub.
+#
+# Evidence to read after it reconciles:
+#   1. REST `repos/devantler-tech/platform-template/rulesets/<id>` lists exactly
+#      one bypass actor: OrganizationAdmin, bypass_mode always.
+#   2. The managed resource is Synced=True and Ready=True.
+#   3. The ruleset's `updated_at` does not move across several reconcile
+#      intervals (no re-apply loop from an actorId diff).
+#   4. A follow-up change to checkResponseTimeoutMinutes lands through Update
+#      and the bypass actor survives it.
+apiVersion: repo.github.m.upbound.io/v1alpha1
+kind: RepositoryRuleset
+metadata:
+  name: platform-template-probe-bypass-roundtrip
+spec:
+  managementPolicies:
+    - Observe
+    - Create
+    - Update
+    - Delete
+  forProvider:
+    repository: platform-template
+    name: Probe - bypass round-trip (disabled, platform#3097)
+    target: branch
+    enforcement: disabled
+    bypassActors:
+      - actorType: OrganizationAdmin
+        bypassMode: always
+    conditions:
+      - refName:
+          - include: ["~DEFAULT_BRANCH"]
+            exclude: []
+    rules:
+      - creation: false
+        deletion: false
+        nonFastForward: false
+        requiredLinearHistory: false
+        requiredSignatures: false
+        update: false
+        updateAllowsFetchAndMerge: false
+        mergeQueue:
+          - checkResponseTimeoutMinutes: 60
+            groupingStrategy: ALLGREEN
+            maxEntriesToBuild: 1
+            maxEntriesToMerge: 1
+            mergeMethod: SQUASH
+            minEntriesToMerge: 1
+            minEntriesToMergeWaitMinutes: 5
+  providerConfigRef:
+    kind: ProviderConfig
+    name: default
