@@ -18,13 +18,19 @@ observes.
 | File | Repo | Ruleset | Policy |
 |---|---|---|---|
 | `require-cla-gate-on-world-at-ruin.yaml` | `world-at-ruin` | Require CLA gate | Managed (net-new; Observe + Create + Update + LateInitialize) |
-| `require-merge-queue-on-platform.yaml` | `platform` | Require merge queue | Observe (read-only import) |
-| `probe-bypass-roundtrip-on-platform-template.yaml` | `platform-template` | Probe - bypass round-trip (disabled) | Disposable probe (net-new; Observe + Create + Update + Delete) — see the file header; remove once platform#3097 has its evidence |
+| `require-merge-queue-on-platform.yaml` | `platform` | Require merge queue | Managed import (Observe + Update; full ruleset backfilled, no LateInitialize, no Delete) |
 
 Most files here are Observe-first imports of a ruleset created out of band, so they carry a
 numeric `crossplane.io/external-name`. A **net-new** ruleset is the exception: it has no
-external-name and is managed (never `Delete`, except the disposable probe above), so Crossplane
+external-name and is managed (never `Delete`), so Crossplane
 creates it on first reconcile. Keep `LateInitialize` on a net-new ruleset: without it the
 provider never writes the created id back as the external-name, so a provider restart would
-create a second copy. The disposable probe has no `LateInitialize`, so its id is pinned by hand.
+create a second copy.
 `../organization-rulesets/protect-release-tags.yaml` is the org-level precedent for that shape.
+
+An **imported** ruleset promoted past Observe (today only `require-merge-queue-on-platform.yaml`)
+takes `Observe` + `Update` and nothing else: no `Create`, because it already exists, and no
+`Delete`, so removing the file orphans the ruleset instead of deleting a live gate. Without
+`LateInitialize`, Update applies exactly what the file declares, so the file must carry the
+**whole** observed ruleset — every rule, condition and bypass actor — or the next reconcile
+removes what it left out. Leave `actorId` unset for an `OrganizationAdmin` bypass actor.
