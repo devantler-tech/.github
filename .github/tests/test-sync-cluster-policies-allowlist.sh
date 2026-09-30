@@ -25,6 +25,14 @@ if [ ! -s "$script" ] || [ "$(cat "$script")" = "null" ]; then
   fail "no verify-allowlist step found in $workflow"
 fi
 
+# The guard only protects the caller if it runs before the step that empties the target.
+verify_index="$(yq '.jobs["sync-policies"].steps | to_entries[] | select(.value.id == "verify-allowlist") | .key' "$workflow")"
+copy_index="$(yq '.jobs["sync-policies"].steps | to_entries[] | select(.value.name == "Copy Cluster Policies to the target directory") | .key' "$workflow")"
+if [ -z "$verify_index" ] || [ -z "$copy_index" ] || [ "$verify_index" -ge "$copy_index" ]; then
+  fail "verify-allowlist (step $verify_index) must run before the target copy (step $copy_index)"
+fi
+echo "ok: verify-allowlist runs before the target copy"
+
 upstream="$work/upstream"
 mkdir -p "$upstream/best-practices/add-ns-quota" "$upstream/other/create-pod-antiaffinity"
 touch "$upstream/best-practices/add-ns-quota/add-ns-quota.yaml" \
@@ -87,6 +95,10 @@ refuses "a re-include through a symlinked directory is never kept, even into .gi
   '*\n!alias/config\n' "re-includes 'alias/config'"
 refuses "a re-include of a symlinked file is never kept" \
   '*\n!other/linked.yaml\n' "re-includes 'other/linked.yaml'"
+refuses "a re-include with a repeated separator is never kept, even though it resolves" \
+  '*\n!best-practices//add-ns-quota/add-ns-quota.yaml\n' "re-includes 'best-practices//add-ns-quota/add-ns-quota.yaml'"
+refuses "a re-include that is only a name prefix of an upstream directory is never kept" \
+  '*\n!best-practices/add-ns\n' "re-includes 'best-practices/add-ns'"
 
 out="$(run "two missing paths" '*\n!gone/a.yaml\n!gone/b.yaml\n')" && fail "two missing paths — expected failure"
 for p in gone/a.yaml gone/b.yaml; do

@@ -62,6 +62,12 @@ jobs:
           # the path. Glob re-includes (`!other/*`) may legitimately match nothing.
           policyignore="$PWD/.policyignore"
           [ -f "$policyignore" ] || exit 0
+          # Accept a literal re-include only when it names what the filter below can
+          # actually keep: a file that step enumerates, or a directory above one. The
+          # same enumeration is reused here, so no spelling of a path (`..`, absolute,
+          # `.git`, a symlink, `a//b`) can pass a check the filter would not honour.
+          kept="$(cd "$KYVERNO_POLICIES_TEMP_DIR" && find . -type f -not -path './.git/*' | sed 's|^\./||')" ||
+            { echo "::error::could not enumerate the upstream clone"; exit 1; }
           missing=()
           while IFS= read -r line || [[ -n "$line" ]]; do
             line="${line%$'\r'}"
@@ -69,21 +75,9 @@ jobs:
             path="${line#!}"
             path="${path%/}"
             [[ -z "$path" || "$path" == *[\*\?\[]* ]] && continue
-            # The filter keeps only clone-relative paths outside .git, so a path that
-            # escapes the clone, is absolute, or points into .git can never be kept:
-            # count it as missing rather than letting an existence check pass it.
-            case "/$path/" in */../* | */./* | //* | /.git/*) missing+=("$path"); continue ;; esac
-            # The filter enumerates with `find -type f`, which never follows a symlink,
-            # so a path with any symlinked component (e.g. `alias -> .git`) is never
-            # kept either — even though `-e` would follow it and report it present.
-            prefix="$KYVERNO_POLICIES_TEMP_DIR"
-            symlinked=0
-            IFS=/ read -r -a parts <<<"$path"
-            for part in "${parts[@]}"; do
-              prefix="$prefix/$part"
-              [ -L "$prefix" ] && { symlinked=1; break; }
-            done
-            [ "$symlinked" -eq 0 ] && [ -e "$KYVERNO_POLICIES_TEMP_DIR/$path" ] || missing+=("$path")
+            RE_INCLUDE="$path" awk 'BEGIN { p = ENVIRON["RE_INCLUDE"]; n = length(p) }
+              $0 == p || substr($0, 1, n + 1) == p "/" { found = 1; exit }
+              END { exit !found }' <<<"$kept" || missing+=("$path")
           done < "$policyignore"
           if [ "${#missing[@]}" -gt 0 ]; then
             for path in "${missing[@]}"; do
