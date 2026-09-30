@@ -63,17 +63,17 @@ remote_sha="$(jq -er '.object.sha' <<<"$remote_ref")" || fail "generated remote 
 [[ "$remote_sha" == "$current_sha" ]] ||
   fail "generated remote branch moved after the sync action (expected $current_sha, found $remote_sha)"
 
-# Shared-workflow pins never move backwards (#1239). Template sync copies the TEMPLATE's
-# devantler-tech/actions pins over the target's, so a template that lags its consumer would
+# Catalogue pins never move backwards (#1239, #256). Template sync copies the TEMPLATE's
+# pins over the target's, so a template that lags its consumer would
 # downgrade it: devantler-tech/wedding-app#332 replaced three v13.6.0 pins with v13.5.1 while every
 # check stayed green, because both pins were approved. Each changed pin is therefore ordered against
 # the target's pin for the same path with GitHub's compare API (commit ancestry, never the mutable
 # `# vX.Y.Z` comment). Where the template's pin is behind or diverged, the target's whole line is
 # kept; only that corrected tree is signed. An ordering the API cannot answer, a regressive line
 # the template also reshaped, or a line moved onto the older of two pins the target keeps for one
-# path fails closed before anything is signed.
-actions_repo="devantler-tech/actions"
-pin_pattern="${actions_repo}(/[^@[:space:]]*)?@[0-9a-f]{40}"
+# path fails closed before anything is signed. Comparisons stay within each catalogue's history.
+# Moving from the retired actions catalogue to .github is allowed; moving back is refused.
+pin_pattern='devantler-tech/(actions|\.github)(/[^@[:space:]]*)?@[0-9a-f]{40}'
 work="$(mktemp -d)" || fail "could not create a work directory"
 trap 'rm -rf "$work"' EXIT
 
@@ -92,11 +92,39 @@ ref_count() {
   { grep -oF -- "$3" <<<"$content" || true; } | wc -l
 }
 
+pin_repository() {
+  local path="${1%@*}"
+  path="${path#devantler-tech/}"
+  printf 'devantler-tech/%s\n' "${path%%/*}"
+}
+
+pin_component() {
+  # Only catalogue paths that moved are paired across repositories. Reusable workflows keep
+  # their path; public composite actions move from the old root into .github's actions/.
+  local path="${1%@*}"
+  case "$path" in
+    devantler-tech/actions/.github/workflows/*) printf 'workflow:%s\n' "${path#devantler-tech/actions/.github/workflows/}" ;;
+    devantler-tech/.github/.github/workflows/*) printf 'workflow:%s\n' "${path#devantler-tech/.github/.github/workflows/}" ;;
+    devantler-tech/actions/.github/*) printf '%s\n' "$path" ;;
+    devantler-tech/actions/*) printf 'action:%s\n' "${path#devantler-tech/actions/}" ;;
+    devantler-tech/.github/actions/*) printf 'action:%s\n' "${path#devantler-tech/.github/actions/}" ;;
+    *) printf '%s\n' "$path" ;;
+  esac
+}
+
 order_pins() {
-  # order_pins <target-pin> <template-ref>: the compare API's status for the template's pin
-  # relative to the target's. Anything but a known status fails closed.
-  local comparison status
-  if ! comparison="$(gh api "repos/${actions_repo}/compare/${1}...${2##*@}" </dev/null)" ||
+  # order_pins <target-ref> <template-ref>: order within one history, or allow the explicit
+  # forward catalogue migration. Never compare commits across unrelated repositories.
+  local comparison status target_repo template_repo
+  target_repo="$(pin_repository "$1")"
+  template_repo="$(pin_repository "$2")"
+  if [[ "$target_repo" != "$template_repo" ]]; then
+    [[ "$target_repo" == devantler-tech/actions && "$template_repo" == devantler-tech/.github ]] ||
+      fail "refusing to move ${1} back to the retired catalogue at ${2}; refusing to sign"
+    printf 'migrated\n'
+    return
+  fi
+  if ! comparison="$(gh api "repos/${target_repo}/compare/${1##*@}...${2##*@}" </dev/null)" ||
     ! status="$(jq -er '.status' <<<"$comparison")"; then
     fail "could not order ${2} against the target's ${1}; refusing to sign an unverified pin change"
   fi
@@ -154,11 +182,12 @@ while IFS= read -r -d '' path; do
   [[ -n "$old_pins" ]] || continue
   while IFS= read -r new_ref; do
     new_pin="${new_ref##*@}"
+    component="$(pin_component "$new_ref")"
     # How many distinct pins the target keeps for this path. With more than one, a restore cannot
     # know which of them each line had, so any downgrade there fails closed instead of guessing.
     same_path=0
     while IFS= read -r old_ref; do
-      if [[ "${old_ref%@*}" == "${new_ref%@*}" ]]; then same_path=$((same_path + 1)); fi
+      if [[ "$(pin_component "$old_ref")" == "$component" ]]; then same_path=$((same_path + 1)); fi
     done <<<"$old_pins"
     if grep -qxF -- "$new_ref" <<<"$old_pins"; then
       # The target already carries this pin, so it is not new to the file. But where the target
@@ -170,18 +199,18 @@ while IFS= read -r -d '' path; do
       base_count="$(ref_count "$base_sha" "$path" "$new_ref")"
       ((head_count > base_count)) || continue
       while IFS= read -r old_ref; do
-        [[ "${old_ref%@*}" == "${new_ref%@*}" && "$old_ref" != "$new_ref" ]] || continue
-        status="$(order_pins "${old_ref##*@}" "$new_ref")"
-        [[ "$status" == ahead || "$status" == identical ]] ||
+        [[ "$(pin_component "$old_ref")" == "$component" && "$old_ref" != "$new_ref" ]] || continue
+        status="$(order_pins "$old_ref" "$new_ref")"
+        [[ "$status" == ahead || "$status" == identical || "$status" == migrated ]] ||
           fail "${path} pins ${new_ref%@*} at more than one commit and the sync moved a line onto ${new_pin}, which is ${status} the target's ${old_ref##*@}; refusing to sign a downgrade it cannot isolate"
       done <<<"$old_pins"
       continue
     fi
     while IFS= read -r old_ref; do
-      [[ "${old_ref%@*}" == "${new_ref%@*}" ]] || continue
-      status="$(order_pins "${old_ref##*@}" "$new_ref")"
+      [[ "$(pin_component "$old_ref")" == "$component" ]] || continue
+      status="$(order_pins "$old_ref" "$new_ref")"
       case "$status" in
-        ahead | identical) continue ;;
+        ahead | identical | migrated) continue ;;
       esac
       ((same_path == 1)) ||
         fail "${path} pins ${new_ref%@*} at more than one commit and the template's ${new_pin} is ${status} the target's ${old_ref##*@}; refusing to sign a downgrade it cannot isolate"

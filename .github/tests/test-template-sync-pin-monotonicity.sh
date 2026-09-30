@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-# Template sync must never move a consumer backwards on a devantler-tech/actions pin (#1239).
+# Template sync must never move a consumer backwards on a catalogue pin (#1239, #256).
 # devantler-tech/wedding-app#332 was a green sync PR that replaced three v13.6.0 pins with the
 # template's older v13.5.1 ones: both pins were approved, so only ORDER relative to the target
 # could catch it. The signing helper therefore orders every changed pin against the target's with
@@ -16,7 +16,7 @@ set -euo pipefail
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 helper="$repo_root/.github/scripts/replace-template-sync-commit.sh"
 
-# Real release commits of devantler-tech/actions: v13.5.1 is an ancestor of v13.6.0.
+# Real legacy release commits, also used as synthetic OIDs in the new catalogue fixtures.
 v1351="a147ead8b8bc937fbfb1974e3698c7e32f95517d"
 v1360="759ff9b2526cd1b142b49c5dc1616118a1ef44d9"
 fork="cccccccccccccccccccccccccccccccccccccccc"
@@ -53,8 +53,8 @@ done
 printf '%s %s\n' "$method" "$endpoint" >>"$FAKE_GH_LOG"
 
 case "$method $endpoint" in
-  "GET repos/devantler-tech/actions/compare/"*)
-    range="${endpoint#repos/devantler-tech/actions/compare/}"
+  "GET repos/${COMPARE_REPO}/compare/"*)
+    range="${endpoint#repos/${COMPARE_REPO}/compare/}"
     status="$(sed -n "s/^${range} //p" "$FAKE_COMPARE")"
     [[ -n "$status" ]] || exit 97
     jq -n --arg s "$status" '{status:$s}'
@@ -113,14 +113,14 @@ workflow() {
   mkdir -p "$(dirname "$file")"
   {
     printf 'name: fixture\non: push\njobs:\n  call:\n'
-    printf '    uses: devantler-tech/actions/.github/workflows/%s@%s # %s\n' "$name" "$2" "$3"
+    printf '    uses: %s/.github/workflows/%s@%s # %s\n' "$COMPARE_REPO" "$name" "$2" "$3"
     [[ -z "${4:-}" ]] || printf '    # %s\n' "$4"
   } >"$file"
 }
 
 # new_case <name>: a fixture repo on its base commit; prints its path.
 new_case() {
-  local dir="$test_root/$1"
+  local dir="$test_root/${COMPARE_REPO##*/}-$1"
   mkdir -p "$dir/bin" "$dir/repo"
   write_fake_gh "$dir/bin"
   git -C "$dir/repo" init -q -b main
@@ -170,187 +170,297 @@ tree_with() {
   rm -f "$index"
 }
 
-# ── 1. The wedding-app#332 reproduction: three v13.6.0 pins, template on v13.5.1 ──────────────
-dir="$(new_case downgrade)"
-r="$dir/repo"
-for f in cd release template-sync; do workflow "$r/.github/workflows/$f.yaml" "$v1360" v13.6.0; done
-printf 'base readme\n' >"$r/README.md"
-commit_all "$r" base
-base="$(git -C "$r" rev-parse HEAD)"
-for f in cd release template-sync; do cp "$r/.github/workflows/$f.yaml" "$dir/keep-$f.yaml"; done
-git -C "$r" switch -q -c chore/template-sync_deadbee
-workflow "$r/.github/workflows/cd.yaml" "$v1351" v13.5.1 "a new step from the template"
-workflow "$r/.github/workflows/release.yaml" "$v1351" v13.5.1
-workflow "$r/.github/workflows/template-sync.yaml" "$v1351" v13.5.1
-printf 'synced readme\n' >"$r/README.md"
-commit_all "$r" "chore: sync template"
-printf '%s...%s behind\n' "$v1360" "$v1351" >"$dir/compare"
-# Expected: the template's legitimate edits survive (README, the new comment line in cd.yaml);
-# every pin line is the target's v13.6.0 line, byte for byte.
-workflow "$dir/expect/cd.yaml" "$v1360" v13.6.0 "a new step from the template"
-expected="$(tree_with "$dir" \
-  ".github/workflows/cd.yaml=$dir/expect/cd.yaml" \
-  ".github/workflows/release.yaml=$dir/keep-release.yaml" \
-  ".github/workflows/template-sync.yaml=$dir/keep-template-sync.yaml")"
-run_case "$dir" "$expected"
-[[ "$rc" -eq 0 ]] || fail "downgrade — the helper failed instead of signing the corrected tree (signed '$(cat "$dir/wrong-tree" 2>/dev/null)'): $(cat "$dir/error")"
-# The workflow captures stdout as the signing result, so it must be the sha alone: a warning there
-# would be swallowed into that variable instead of becoming an annotation.
-[[ "$(cat "$dir/output")" == "$SIGNED_SHA" ]] ||
-  fail "downgrade — stdout must be only the signed sha: $(cat "$dir/output")"
-[[ "$(grep -c '^::warning file=\.github/workflows/' "$dir/error")" -eq 3 ]] ||
-  fail "downgrade — expected one ::warning:: per omitted pin on stderr: $(cat "$dir/error")"
-grep -qx "POST repos/example/consumer/git/trees" "$dir/gh.log" || fail "downgrade — no corrected tree was created"
-echo "ok: the wedding-app#332 downgrade is omitted from all three files and the rest of the sync is kept"
+# Run the entire ordering contract in each catalogue. The fake API rejects comparisons sent
+# to the wrong repository, even when the SHA pair happens to match a fixture.
+for COMPARE_REPO in devantler-tech/actions devantler-tech/.github; do
+  export COMPARE_REPO
+  echo "catalogue: $COMPARE_REPO"
 
-# ── 2. A forward upgrade and an unchanged pin are signed exactly as synced ─────────────────────
-dir="$(new_case forward)"
-r="$dir/repo"
-workflow "$r/.github/workflows/cd.yaml" "$v1351" v13.5.1
-workflow "$r/.github/workflows/release.yaml" "$v1360" v13.6.0
-commit_all "$r" base
-base="$(git -C "$r" rev-parse HEAD)"
-git -C "$r" switch -q -c chore/template-sync_deadbee
-workflow "$r/.github/workflows/cd.yaml" "$v1360" v13.6.0
-workflow "$r/.github/workflows/release.yaml" "$v1360" v13.6.0 "an unrelated template edit"
-commit_all "$r" "chore: sync template"
-printf '%s...%s ahead\n' "$v1351" "$v1360" >"$dir/compare"
-run_case "$dir" "$(git -C "$r" rev-parse 'HEAD^{tree}')"
-[[ "$rc" -eq 0 ]] || fail "forward — the helper refused a forward upgrade: $(cat "$dir/error")"
-! grep -q '::warning' "$dir/output" "$dir/error" || fail "forward — a forward upgrade was reported as omitted"
-! grep -q "git/trees" "$dir/gh.log" || fail "forward — the synced tree was rewritten"
-[[ "$(grep -c '/compare/' "$dir/gh.log")" -eq 1 ]] ||
-  fail "forward — only the changed pin should be ordered: $(cat "$dir/gh.log")"
-echo "ok: a forward upgrade and an equal pin are signed exactly as synced"
+  # ── 1. The wedding-app#332 reproduction: three v13.6.0 pins, template on v13.5.1 ──────────────
+  dir="$(new_case downgrade)"
+  r="$dir/repo"
+  for f in cd release template-sync; do workflow "$r/.github/workflows/$f.yaml" "$v1360" v13.6.0; done
+  printf 'base readme\n' >"$r/README.md"
+  commit_all "$r" base
+  base="$(git -C "$r" rev-parse HEAD)"
+  for f in cd release template-sync; do cp "$r/.github/workflows/$f.yaml" "$dir/keep-$f.yaml"; done
+  git -C "$r" switch -q -c chore/template-sync_deadbee
+  workflow "$r/.github/workflows/cd.yaml" "$v1351" v13.5.1 "a new step from the template"
+  workflow "$r/.github/workflows/release.yaml" "$v1351" v13.5.1
+  workflow "$r/.github/workflows/template-sync.yaml" "$v1351" v13.5.1
+  printf 'synced readme\n' >"$r/README.md"
+  commit_all "$r" "chore: sync template"
+  printf '%s...%s behind\n' "$v1360" "$v1351" >"$dir/compare"
+  # Expected: the template's legitimate edits survive (README, the new comment line in cd.yaml);
+  # every pin line is the target's v13.6.0 line, byte for byte.
+  workflow "$dir/expect/cd.yaml" "$v1360" v13.6.0 "a new step from the template"
+  expected="$(tree_with "$dir" \
+    ".github/workflows/cd.yaml=$dir/expect/cd.yaml" \
+    ".github/workflows/release.yaml=$dir/keep-release.yaml" \
+    ".github/workflows/template-sync.yaml=$dir/keep-template-sync.yaml")"
+  run_case "$dir" "$expected"
+  [[ "$rc" -eq 0 ]] || fail "downgrade — the helper failed instead of signing the corrected tree (signed '$(cat "$dir/wrong-tree" 2>/dev/null)'): $(cat "$dir/error")"
+  # The workflow captures stdout as the signing result, so it must be the sha alone: a warning there
+  # would be swallowed into that variable instead of becoming an annotation.
+  [[ "$(cat "$dir/output")" == "$SIGNED_SHA" ]] ||
+    fail "downgrade — stdout must be only the signed sha: $(cat "$dir/output")"
+  [[ "$(grep -c '^::warning file=\.github/workflows/' "$dir/error")" -eq 3 ]] ||
+    fail "downgrade — expected one ::warning:: per omitted pin on stderr: $(cat "$dir/error")"
+  grep -qx "POST repos/example/consumer/git/trees" "$dir/gh.log" || fail "downgrade — no corrected tree was created"
+  echo "ok: the wedding-app#332 downgrade is omitted from all three files and the rest of the sync is kept"
 
-# ── 3. Diverged history is not forward: the target's pin is kept ───────────────────────────────
-dir="$(new_case diverged)"
-r="$dir/repo"
-workflow "$r/.github/workflows/cd.yaml" "$v1360" v13.6.0
-commit_all "$r" base
-base="$(git -C "$r" rev-parse HEAD)"
-cp "$r/.github/workflows/cd.yaml" "$dir/keep-cd.yaml"
-git -C "$r" switch -q -c chore/template-sync_deadbee
-workflow "$r/.github/workflows/cd.yaml" "$fork" v13.7.0
-printf 'more\n' >"$r/extra.txt"
-commit_all "$r" "chore: sync template"
-printf '%s...%s diverged\n' "$v1360" "$fork" >"$dir/compare"
-run_case "$dir" "$(tree_with "$dir" ".github/workflows/cd.yaml=$dir/keep-cd.yaml")"
-[[ "$rc" -eq 0 ]] || fail "diverged — the helper failed instead of keeping the target's pin: $(cat "$dir/error")"
-grep -q '^::warning' "$dir/error" || fail "diverged — the omitted pin was not reported"
-echo "ok: a pin whose history diverged from the target's is not treated as an upgrade"
+  # ── 2. A forward upgrade and an unchanged pin are signed exactly as synced ─────────────────────
+  dir="$(new_case forward)"
+  r="$dir/repo"
+  workflow "$r/.github/workflows/cd.yaml" "$v1351" v13.5.1
+  workflow "$r/.github/workflows/release.yaml" "$v1360" v13.6.0
+  commit_all "$r" base
+  base="$(git -C "$r" rev-parse HEAD)"
+  git -C "$r" switch -q -c chore/template-sync_deadbee
+  workflow "$r/.github/workflows/cd.yaml" "$v1360" v13.6.0
+  workflow "$r/.github/workflows/release.yaml" "$v1360" v13.6.0 "an unrelated template edit"
+  commit_all "$r" "chore: sync template"
+  printf '%s...%s ahead\n' "$v1351" "$v1360" >"$dir/compare"
+  run_case "$dir" "$(git -C "$r" rev-parse 'HEAD^{tree}')"
+  [[ "$rc" -eq 0 ]] || fail "forward — the helper refused a forward upgrade: $(cat "$dir/error")"
+  ! grep -q '::warning' "$dir/output" "$dir/error" || fail "forward — a forward upgrade was reported as omitted"
+  ! grep -q "git/trees" "$dir/gh.log" || fail "forward — the synced tree was rewritten"
+  [[ "$(grep -c '/compare/' "$dir/gh.log")" -eq 1 ]] ||
+    fail "forward — only the changed pin should be ordered: $(cat "$dir/gh.log")"
+  echo "ok: a forward upgrade and an equal pin are signed exactly as synced"
 
-# ── 4. An ordering the API cannot answer fails closed, before anything is signed ───────────────
-dir="$(new_case unordered)"
-r="$dir/repo"
-workflow "$r/.github/workflows/cd.yaml" "$v1360" v13.6.0
-commit_all "$r" base
-base="$(git -C "$r" rev-parse HEAD)"
-git -C "$r" switch -q -c chore/template-sync_deadbee
-workflow "$r/.github/workflows/cd.yaml" "$v1351" v13.5.1
-commit_all "$r" "chore: sync template"
-run_case "$dir" "$(git -C "$r" rev-parse 'HEAD^{tree}')"
-[[ "$rc" -ne 0 ]] || fail "unordered — the helper signed a pin change it could not order"
-[[ ! -f "$dir/updated" ]] || fail "unordered — the branch was moved"
-! grep -q "git/commits" "$dir/gh.log" || fail "unordered — a commit was created"
-grep -q "could not order" "$dir/error" || fail "unordered — the refusal does not name the ordering: $(cat "$dir/error")"
-echo "ok: a pin the compare API cannot order is refused before signing"
+  # ── 3. Diverged history is not forward: the target's pin is kept ───────────────────────────────
+  dir="$(new_case diverged)"
+  r="$dir/repo"
+  workflow "$r/.github/workflows/cd.yaml" "$v1360" v13.6.0
+  commit_all "$r" base
+  base="$(git -C "$r" rev-parse HEAD)"
+  cp "$r/.github/workflows/cd.yaml" "$dir/keep-cd.yaml"
+  git -C "$r" switch -q -c chore/template-sync_deadbee
+  workflow "$r/.github/workflows/cd.yaml" "$fork" v13.7.0
+  printf 'more\n' >"$r/extra.txt"
+  commit_all "$r" "chore: sync template"
+  printf '%s...%s diverged\n' "$v1360" "$fork" >"$dir/compare"
+  run_case "$dir" "$(tree_with "$dir" ".github/workflows/cd.yaml=$dir/keep-cd.yaml")"
+  [[ "$rc" -eq 0 ]] || fail "diverged — the helper failed instead of keeping the target's pin: $(cat "$dir/error")"
+  grep -q '^::warning' "$dir/error" || fail "diverged — the omitted pin was not reported"
+  echo "ok: a pin whose history diverged from the target's is not treated as an upgrade"
 
-# ── 5. A regressive line the template also moved cannot be restored safely: fail closed ────────
-dir="$(new_case moved)"
-r="$dir/repo"
-workflow "$r/.github/workflows/cd.yaml" "$v1360" v13.6.0
-commit_all "$r" base
-base="$(git -C "$r" rev-parse HEAD)"
-git -C "$r" switch -q -c chore/template-sync_deadbee
-sed "s|^    uses: devantler-tech/actions/.github/workflows/cd.yaml@$v1360 # v13.6.0|      uses: devantler-tech/actions/.github/workflows/cd.yaml@$v1351 # v13.5.1|" \
-  "$r/.github/workflows/cd.yaml" >"$dir/moved.yaml"
-mv "$dir/moved.yaml" "$r/.github/workflows/cd.yaml"
-commit_all "$r" "chore: sync template"
-printf '%s...%s behind\n' "$v1360" "$v1351" >"$dir/compare"
-run_case "$dir" "$(git -C "$r" rev-parse 'HEAD^{tree}')"
-[[ "$rc" -ne 0 ]] || fail "moved — the helper signed a downgrade it could not restore"
-[[ ! -f "$dir/updated" ]] || fail "moved — the branch was moved"
-grep -q "cannot restore" "$dir/error" || fail "moved — the refusal does not explain itself: $(cat "$dir/error")"
-echo "ok: a downgrade on a line the template also reshaped is refused rather than guessed at"
+  # ── 4. An ordering the API cannot answer fails closed, before anything is signed ───────────────
+  dir="$(new_case unordered)"
+  r="$dir/repo"
+  workflow "$r/.github/workflows/cd.yaml" "$v1360" v13.6.0
+  commit_all "$r" base
+  base="$(git -C "$r" rev-parse HEAD)"
+  git -C "$r" switch -q -c chore/template-sync_deadbee
+  workflow "$r/.github/workflows/cd.yaml" "$v1351" v13.5.1
+  commit_all "$r" "chore: sync template"
+  run_case "$dir" "$(git -C "$r" rev-parse 'HEAD^{tree}')"
+  [[ "$rc" -ne 0 ]] || fail "unordered — the helper signed a pin change it could not order"
+  [[ ! -f "$dir/updated" ]] || fail "unordered — the branch was moved"
+  ! grep -q "git/commits" "$dir/gh.log" || fail "unordered — a commit was created"
+  grep -q "could not order" "$dir/error" || fail "unordered — the refusal does not name the ordering: $(cat "$dir/error")"
+  echo "ok: a pin the compare API cannot order is refused before signing"
 
-# ── 6–8. A target that pins one path at two commits: a line moved onto the older pin is caught ──
-# The template's pin is then already in the target's file, so it is not a NEW pin; only the line
-# count shows that one of the target's lines moved onto it.
-mixed() {
-  # mixed <file> <job-a pin> <job-a version> <job-b pin> <job-b version> [extra comment]
-  mkdir -p "$(dirname "$1")"
+  # ── 5. A regressive line the template also moved cannot be restored safely: fail closed ────────
+  dir="$(new_case moved)"
+  r="$dir/repo"
+  workflow "$r/.github/workflows/cd.yaml" "$v1360" v13.6.0
+  commit_all "$r" base
+  base="$(git -C "$r" rev-parse HEAD)"
+  git -C "$r" switch -q -c chore/template-sync_deadbee
+  sed "s|^    uses: $COMPARE_REPO/.github/workflows/cd.yaml@$v1360 # v13.6.0|      uses: $COMPARE_REPO/.github/workflows/cd.yaml@$v1351 # v13.5.1|" \
+    "$r/.github/workflows/cd.yaml" >"$dir/moved.yaml"
+  mv "$dir/moved.yaml" "$r/.github/workflows/cd.yaml"
+  commit_all "$r" "chore: sync template"
+  printf '%s...%s behind\n' "$v1360" "$v1351" >"$dir/compare"
+  run_case "$dir" "$(git -C "$r" rev-parse 'HEAD^{tree}')"
+  [[ "$rc" -ne 0 ]] || fail "moved — the helper signed a downgrade it could not restore"
+  [[ ! -f "$dir/updated" ]] || fail "moved — the branch was moved"
+  grep -q "cannot restore" "$dir/error" || fail "moved — the refusal does not explain itself: $(cat "$dir/error")"
+  echo "ok: a downgrade on a line the template also reshaped is refused rather than guessed at"
+
+  # ── 6–8. A target that pins one path at two commits: a line moved onto the older pin is caught ──
+  # The template's pin is then already in the target's file, so it is not a NEW pin; only the line
+  # count shows that one of the target's lines moved onto it.
+  mixed() {
+    # mixed <file> <job-a pin> <job-a version> <job-b pin> <job-b version> [extra comment]
+    mkdir -p "$(dirname "$1")"
+    {
+      printf 'name: fixture\non: push\njobs:\n'
+      printf '  a:\n    uses: %s/.github/workflows/cd.yaml@%s # %s\n' "$COMPARE_REPO" "$2" "$3"
+      printf '  b:\n    uses: %s/.github/workflows/cd.yaml@%s # %s\n' "$COMPARE_REPO" "$4" "$5"
+      [[ -z "${6:-}" ]] || printf '# %s\n' "$6"
+    } >"$1"
+  }
+
+  dir="$(new_case mixed-downgrade)"
+  r="$dir/repo"
+  mixed "$r/.github/workflows/cd.yaml" "$v1360" v13.6.0 "$v1351" v13.5.1
+  commit_all "$r" base
+  base="$(git -C "$r" rev-parse HEAD)"
+  git -C "$r" switch -q -c chore/template-sync_deadbee
+  mixed "$r/.github/workflows/cd.yaml" "$v1351" v13.5.1 "$v1351" v13.5.1
+  commit_all "$r" "chore: sync template"
+  printf '%s...%s behind\n' "$v1360" "$v1351" >"$dir/compare"
+  run_case "$dir" "$(git -C "$r" rev-parse 'HEAD^{tree}')"
+  [[ "$rc" -ne 0 ]] || fail "mixed-downgrade — the helper signed a line moved onto the older of the target's two pins"
+  [[ ! -f "$dir/updated" ]] || fail "mixed-downgrade — the branch was moved"
+  ! grep -q "git/commits" "$dir/gh.log" || fail "mixed-downgrade — a commit was created"
+  grep -q "more than one commit" "$dir/error" || fail "mixed-downgrade — the refusal does not explain itself: $(cat "$dir/error")"
+  echo "ok: a line moved onto the older of the target's two pins for a path is refused"
+
+  dir="$(new_case mixed-unchanged)"
+  r="$dir/repo"
+  mixed "$r/.github/workflows/cd.yaml" "$v1360" v13.6.0 "$v1351" v13.5.1
+  commit_all "$r" base
+  base="$(git -C "$r" rev-parse HEAD)"
+  git -C "$r" switch -q -c chore/template-sync_deadbee
+  mixed "$r/.github/workflows/cd.yaml" "$v1360" v13.6.0 "$v1351" v13.5.1 "an unrelated template edit"
+  commit_all "$r" "chore: sync template"
+  run_case "$dir" "$(git -C "$r" rev-parse 'HEAD^{tree}')"
+  [[ "$rc" -eq 0 ]] || fail "mixed-unchanged — the helper refused a sync that moved no pin: $(cat "$dir/error")"
+  ! grep -q '/compare/' "$dir/gh.log" || fail "mixed-unchanged — pins that did not move were ordered"
+  echo "ok: a file that keeps both of the target's pins where they were syncs as usual"
+
+  dir="$(new_case mixed-upgrade)"
+  r="$dir/repo"
+  mixed "$r/.github/workflows/cd.yaml" "$v1360" v13.6.0 "$v1351" v13.5.1
+  commit_all "$r" base
+  base="$(git -C "$r" rev-parse HEAD)"
+  git -C "$r" switch -q -c chore/template-sync_deadbee
+  mixed "$r/.github/workflows/cd.yaml" "$v1360" v13.6.0 "$v1360" v13.6.0
+  commit_all "$r" "chore: sync template"
+  printf '%s...%s ahead\n' "$v1351" "$v1360" >"$dir/compare"
+  run_case "$dir" "$(git -C "$r" rev-parse 'HEAD^{tree}')"
+  [[ "$rc" -eq 0 ]] || fail "mixed-upgrade — the helper refused moving a line up to the target's newer pin: $(cat "$dir/error")"
+  ! grep -q "git/trees" "$dir/gh.log" || fail "mixed-upgrade — the synced tree was rewritten"
+  echo "ok: a line moved up to the newer of the target's two pins syncs as usual"
+
+  # ── 9. A new, older pin over a target with two pins for the path: no restore can be right ──────
+  # Restoring would put one target line back on every line, and which one depends on sort order: here
+  # the middle pin sorts first, so job a would be signed from the newest pin down to the middle one.
+  newest="dddddddddddddddddddddddddddddddddddddddd"
+  middle="1111111111111111111111111111111111111111"
+  oldest="0000000000000000000000000000000000000000"
+  dir="$(new_case mixed-new-downgrade)"
+  r="$dir/repo"
+  mixed "$r/.github/workflows/cd.yaml" "$newest" v3 "$middle" v2
+  commit_all "$r" base
+  base="$(git -C "$r" rev-parse HEAD)"
+  git -C "$r" switch -q -c chore/template-sync_deadbee
+  mixed "$r/.github/workflows/cd.yaml" "$oldest" v1 "$oldest" v1
+  commit_all "$r" "chore: sync template"
+  printf '%s...%s behind\n' "$middle" "$oldest" "$newest" "$oldest" >"$dir/compare"
+  run_case "$dir" "$(git -C "$r" rev-parse 'HEAD^{tree}')"
+  [[ "$rc" -ne 0 ]] || fail "mixed-new-downgrade — the helper signed a restore it could not attribute to each line"
+  [[ ! -f "$dir/updated" ]] || fail "mixed-new-downgrade — the branch was moved"
+  ! grep -q "git/commits" "$dir/gh.log" || fail "mixed-new-downgrade — a commit was attempted before refusing"
+  grep -q "more than one commit" "$dir/error" || fail "mixed-new-downgrade — the refusal does not explain itself: $(cat "$dir/error")"
+  echo "ok: an older pin over a target with two pins for the path is refused rather than guessed at"
+
+done
+
+# Migration fixtures contain complete references: workflow paths stay the same, while public
+# composite actions move beneath actions/. Different catalogue histories are never compared.
+references() {
+  local file="$1" ref job=0
+  shift
+  mkdir -p "$(dirname "$file")"
   {
     printf 'name: fixture\non: push\njobs:\n'
-    printf '  a:\n    uses: devantler-tech/actions/.github/workflows/cd.yaml@%s # %s\n' "$2" "$3"
-    printf '  b:\n    uses: devantler-tech/actions/.github/workflows/cd.yaml@%s # %s\n' "$4" "$5"
-    [[ -z "${6:-}" ]] || printf '# %s\n' "$6"
-  } >"$1"
+    for ref in "$@"; do
+      job=$((job + 1))
+      printf '  job%s:\n' "$job"
+      case "$ref" in
+        */.github/workflows/*) printf '    uses: %s\n' "$ref" ;;
+        *) printf '    runs-on: ubuntu-latest\n    steps:\n      - uses: %s\n' "$ref" ;;
+      esac
+    done
+  } >"$file"
 }
 
-dir="$(new_case mixed-downgrade)"
-r="$dir/repo"
-mixed "$r/.github/workflows/cd.yaml" "$v1360" v13.6.0 "$v1351" v13.5.1
-commit_all "$r" base
-base="$(git -C "$r" rev-parse HEAD)"
-git -C "$r" switch -q -c chore/template-sync_deadbee
-mixed "$r/.github/workflows/cd.yaml" "$v1351" v13.5.1 "$v1351" v13.5.1
-commit_all "$r" "chore: sync template"
-printf '%s...%s behind\n' "$v1360" "$v1351" >"$dir/compare"
-run_case "$dir" "$(git -C "$r" rev-parse 'HEAD^{tree}')"
-[[ "$rc" -ne 0 ]] || fail "mixed-downgrade — the helper signed a line moved onto the older of the target's two pins"
-[[ ! -f "$dir/updated" ]] || fail "mixed-downgrade — the branch was moved"
-! grep -q "git/commits" "$dir/gh.log" || fail "mixed-downgrade — a commit was created"
-grep -q "more than one commit" "$dir/error" || fail "mixed-downgrade — the refusal does not explain itself: $(cat "$dir/error")"
-echo "ok: a line moved onto the older of the target's two pins for a path is refused"
+assert_unsigned() {
+  [[ "$rc" -ne 0 ]] || fail "$1 — a catalogue rollback was signed"
+  [[ ! -f "$dir/updated" ]] || fail "$1 — the branch was moved"
+  ! grep -qE '^(POST|PATCH) ' "$dir/gh.log" || fail "$1 — a write was attempted"
+  grep -q 'retired catalogue' "$dir/error" || fail "$1 — refusal did not explain the rollback: $(cat "$dir/error")"
+}
 
-dir="$(new_case mixed-unchanged)"
-r="$dir/repo"
-mixed "$r/.github/workflows/cd.yaml" "$v1360" v13.6.0 "$v1351" v13.5.1
-commit_all "$r" base
-base="$(git -C "$r" rev-parse HEAD)"
-git -C "$r" switch -q -c chore/template-sync_deadbee
-mixed "$r/.github/workflows/cd.yaml" "$v1360" v13.6.0 "$v1351" v13.5.1 "an unrelated template edit"
-commit_all "$r" "chore: sync template"
-run_case "$dir" "$(git -C "$r" rev-parse 'HEAD^{tree}')"
-[[ "$rc" -eq 0 ]] || fail "mixed-unchanged — the helper refused a sync that moved no pin: $(cat "$dir/error")"
-! grep -q '/compare/' "$dir/gh.log" || fail "mixed-unchanged — pins that did not move were ordered"
-echo "ok: a file that keeps both of the target's pins where they were syncs as usual"
+for component in workflow action; do
+  if [[ "$component" == workflow ]]; then
+    legacy="devantler-tech/actions/.github/workflows/cd.yaml"
+    current="devantler-tech/.github/.github/workflows/cd.yaml"
+  else
+    legacy="devantler-tech/actions/setup-env"
+    current="devantler-tech/.github/actions/setup-env"
+  fi
 
-dir="$(new_case mixed-upgrade)"
-r="$dir/repo"
-mixed "$r/.github/workflows/cd.yaml" "$v1360" v13.6.0 "$v1351" v13.5.1
-commit_all "$r" base
-base="$(git -C "$r" rev-parse HEAD)"
-git -C "$r" switch -q -c chore/template-sync_deadbee
-mixed "$r/.github/workflows/cd.yaml" "$v1360" v13.6.0 "$v1360" v13.6.0
-commit_all "$r" "chore: sync template"
-printf '%s...%s ahead\n' "$v1351" "$v1360" >"$dir/compare"
-run_case "$dir" "$(git -C "$r" rev-parse 'HEAD^{tree}')"
-[[ "$rc" -eq 0 ]] || fail "mixed-upgrade — the helper refused moving a line up to the target's newer pin: $(cat "$dir/error")"
-! grep -q "git/trees" "$dir/gh.log" || fail "mixed-upgrade — the synced tree was rewritten"
-echo "ok: a line moved up to the newer of the target's two pins syncs as usual"
+  dir="$(new_case "$component-migrate")"
+  r="$dir/repo"
+  references "$r/.github/workflows/cd.yaml" "$legacy@$v1360"
+  commit_all "$r" base
+  base="$(git -C "$r" rev-parse HEAD)"
+  git -C "$r" switch -q -c chore/template-sync_deadbee
+  references "$r/.github/workflows/cd.yaml" "$current@$fork"
+  commit_all "$r" "chore: sync template"
+  run_case "$dir" "$(git -C "$r" rev-parse 'HEAD^{tree}')"
+  [[ "$rc" -eq 0 ]] || fail "$component-migrate — migration was refused: $(cat "$dir/error")"
+  ! grep -qE '/compare/|git/trees' "$dir/gh.log" || fail "$component-migrate — migration was compared across repositories or rewritten"
+  echo "ok: $component migrates to the new catalogue without comparing unrelated histories"
 
-# ── 9. A new, older pin over a target with two pins for the path: no restore can be right ──────
-# Restoring would put one target line back on every line, and which one depends on sort order: here
-# the middle pin sorts first, so job a would be signed from the newest pin down to the middle one.
-newest="dddddddddddddddddddddddddddddddddddddddd"
-middle="1111111111111111111111111111111111111111"
-oldest="0000000000000000000000000000000000000000"
-dir="$(new_case mixed-new-downgrade)"
-r="$dir/repo"
-mixed "$r/.github/workflows/cd.yaml" "$newest" v3 "$middle" v2
-commit_all "$r" base
-base="$(git -C "$r" rev-parse HEAD)"
-git -C "$r" switch -q -c chore/template-sync_deadbee
-mixed "$r/.github/workflows/cd.yaml" "$oldest" v1 "$oldest" v1
-commit_all "$r" "chore: sync template"
-printf '%s...%s behind\n' "$middle" "$oldest" "$newest" "$oldest" >"$dir/compare"
-run_case "$dir" "$(git -C "$r" rev-parse 'HEAD^{tree}')"
-[[ "$rc" -ne 0 ]] || fail "mixed-new-downgrade — the helper signed a restore it could not attribute to each line"
-[[ ! -f "$dir/updated" ]] || fail "mixed-new-downgrade — the branch was moved"
-! grep -q "git/commits" "$dir/gh.log" || fail "mixed-new-downgrade — a commit was attempted before refusing"
-grep -q "more than one commit" "$dir/error" || fail "mixed-new-downgrade — the refusal does not explain itself: $(cat "$dir/error")"
-echo "ok: an older pin over a target with two pins for the path is refused rather than guessed at"
+  # Even an equal SHA must not allow moving back to the retired repository.
+  dir="$(new_case "$component-rollback")"
+  r="$dir/repo"
+  references "$r/.github/workflows/cd.yaml" "$current@$v1360"
+  commit_all "$r" base
+  base="$(git -C "$r" rev-parse HEAD)"
+  git -C "$r" switch -q -c chore/template-sync_deadbee
+  references "$r/.github/workflows/cd.yaml" "$legacy@$v1360"
+  commit_all "$r" "chore: sync template"
+  run_case "$dir" "$(git -C "$r" rev-parse 'HEAD^{tree}')"
+  assert_unsigned "$component-rollback"
+  echo "ok: $component cannot move back to the retired catalogue, even at the same SHA"
 
-echo "PASS: template sync keeps every devantler-tech/actions pin at or ahead of the target's"
+  dir="$(new_case "$component-mixed-rollback")"
+  r="$dir/repo"
+  references "$r/.github/workflows/cd.yaml" "$legacy@$v1351" "$current@$v1360"
+  commit_all "$r" base
+  base="$(git -C "$r" rev-parse HEAD)"
+  git -C "$r" switch -q -c chore/template-sync_deadbee
+  references "$r/.github/workflows/cd.yaml" "$legacy@$v1351" "$legacy@$v1351"
+  commit_all "$r" "chore: sync template"
+  run_case "$dir" "$(git -C "$r" rev-parse 'HEAD^{tree}')"
+  assert_unsigned "$component-mixed-rollback"
+  echo "ok: an existing legacy $component pin cannot hide a catalogue rollback"
+
+  dir="$(new_case "$component-mixed-migrate")"
+  r="$dir/repo"
+  references "$r/.github/workflows/cd.yaml" "$legacy@$v1351" "$current@$v1360"
+  commit_all "$r" base
+  base="$(git -C "$r" rev-parse HEAD)"
+  git -C "$r" switch -q -c chore/template-sync_deadbee
+  references "$r/.github/workflows/cd.yaml" "$current@$v1360" "$current@$v1360"
+  commit_all "$r" "chore: sync template"
+  run_case "$dir" "$(git -C "$r" rev-parse 'HEAD^{tree}')"
+  [[ "$rc" -eq 0 ]] || fail "$component-mixed-migrate — migration onto an existing pin was refused: $(cat "$dir/error")"
+  ! grep -qE '/compare/|git/trees' "$dir/gh.log" || fail "$component-mixed-migrate — migration was compared or rewritten"
+  echo "ok: remaining legacy $component calls can migrate onto an existing current pin"
+
+  dir="$(new_case "$component-migrate-with-downgrade")"
+  r="$dir/repo"
+  references "$r/.github/workflows/cd.yaml" "$legacy@$fork" "$current@$v1360"
+  commit_all "$r" base
+  base="$(git -C "$r" rev-parse HEAD)"
+  git -C "$r" switch -q -c chore/template-sync_deadbee
+  references "$r/.github/workflows/cd.yaml" "$current@$v1351" "$current@$v1351"
+  commit_all "$r" "chore: sync template"
+  printf '%s...%s behind\n' "$v1360" "$v1351" >"$dir/compare"
+  run_case "$dir" "$(git -C "$r" rev-parse 'HEAD^{tree}')"
+  [[ "$rc" -ne 0 ]] || fail "$component-migrate-with-downgrade — migration hid a current-catalogue downgrade"
+  ! grep -qE '^(POST|PATCH) ' "$dir/gh.log" || fail "$component-migrate-with-downgrade — a write was attempted"
+  grep -q 'more than one commit' "$dir/error" || fail "$component-migrate-with-downgrade — wrong refusal: $(cat "$dir/error")"
+  echo "ok: $component migration does not excuse downgrading an existing current pin"
+done
+
+echo "PASS: template sync keeps catalogue pins ordered and migration forward-only"
