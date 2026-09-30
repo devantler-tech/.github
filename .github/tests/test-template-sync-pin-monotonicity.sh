@@ -21,6 +21,7 @@ v1351="a147ead8b8bc937fbfb1974e3698c7e32f95517d"
 v1360="759ff9b2526cd1b142b49c5dc1616118a1ef44d9"
 fork="cccccccccccccccccccccccccccccccccccccccc"
 
+# Report the behavioral assertion that failed and stop the suite.
 fail() {
   echo "FAIL: $*" >&2
   exit 1
@@ -33,8 +34,8 @@ trap 'rm -rf "$test_root"' EXIT
 
 export SIGNED_SHA="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 
+# Write an offline API executable that validates the exact tree and branch publication.
 write_fake_gh() {
-  # Write an offline API executable that validates the exact tree and branch publication.
   cat >"$1/gh" <<'FAKE_GH'
 #!/usr/bin/env bash
 set -euo pipefail
@@ -107,8 +108,8 @@ FAKE_GH
   chmod +x "$1/gh"
 }
 
+# workflow <file> <sha> <version> [extra step name]: write a complete reusable-workflow caller.
 workflow() {
-  # workflow <file> <sha> <version> [extra step name]
   local file="$1" name
   name="${file##*/}"
   mkdir -p "$(dirname "$file")"
@@ -119,9 +120,8 @@ workflow() {
   } >"$file"
 }
 
-# new_case <name>: a fixture repo on its base commit; prints its path.
+# new_case <name>: create an isolated Git repository and API fixture; print its path.
 new_case() {
-  # Create an isolated Git repository and API fixture for one behavior scenario.
   local dir="$test_root/${COMPARE_REPO##*/}-$1"
   mkdir -p "$dir/bin" "$dir/repo"
   write_fake_gh "$dir/bin"
@@ -133,15 +133,15 @@ new_case() {
   printf '%s\n' "$dir"
 }
 
+# Commit only the disposable fixture repository supplied by the caller.
 commit_all() {
-  # Commit only the disposable fixture repository supplied by the caller.
   git -C "$1" add -A
   git -C "$1" commit -q -m "$2"
 }
 
 # run_case <dir> <expected-tree> → sets rc; stdout/stderr in <dir>/output and <dir>/error.
+# Execute the real signing helper and capture its status, output and API calls.
 run_case() {
-  # Execute the real signing helper and capture its status, output and API calls.
   local dir="$1"
   export EXPECTED_TREE="$2"
   export EXPECTED_PARENT="$base"
@@ -160,8 +160,8 @@ run_case() {
 }
 
 # tree_with <dir> <path=file-with-content>... : HEAD's tree with those paths overwritten.
+# Build an independent expected Git tree by replacing the specified fixture contents.
 tree_with() {
-  # Build an independent expected Git tree by replacing the specified fixture contents.
   local dir="$1" index spec path blob
   shift
   index="$(mktemp)"
@@ -288,8 +288,9 @@ for COMPARE_REPO in devantler-tech/actions devantler-tech/.github; do
   # ── 6–8. A target that pins one path at two commits: a line moved onto the older pin is caught ──
   # The template's pin is then already in the target's file, so it is not a NEW pin; only the line
   # count shows that one of the target's lines moved onto it.
+  # mixed <file> <job-a pin> <job-a version> <job-b pin> <job-b version> [extra comment]
+  # Write two independently pinned jobs so occurrence changes can be tested.
   mixed() {
-    # mixed <file> <job-a pin> <job-a version> <job-b pin> <job-b version> [extra comment]
     mkdir -p "$(dirname "$1")"
     {
       printf 'name: fixture\non: push\njobs:\n'
@@ -368,8 +369,8 @@ done
 
 # Migration fixtures contain complete references: workflow paths stay the same, while public
 # composite actions move beneath actions/. Different catalogue histories are never compared.
+# Write workflow calls or action steps using the complete references supplied by the test.
 references() {
-  # Write workflow calls or action steps using the complete references supplied by the test.
   local file="$1" ref job=0
   shift
   mkdir -p "$(dirname "$file")"
@@ -386,8 +387,8 @@ references() {
   } >"$file"
 }
 
+# Require an explained catalogue rollback refusal before any remote mutation.
 assert_unsigned() {
-  # Require an explained catalogue rollback refusal before any remote mutation.
   [[ "$rc" -ne 0 ]] || fail "$1 — a catalogue rollback was signed"
   [[ ! -f "$dir/updated" ]] || fail "$1 — the branch was moved"
   ! grep -qE '^(POST|PATCH) ' "$dir/gh.log" || fail "$1 — a write was attempted"
@@ -513,6 +514,82 @@ for component in workflow action; do
         ;;
     esac
     echo "ok: $component cross-file $move"
+  done
+
+  # Removing a newer current pin must not be hidden by migration in a different file. Exercise
+  # an existing destination and an entirely renamed destination, including API failure paths.
+  for destination in existing renamed; do
+    for ordering in behind diverged ahead identical unknown; do
+      dir="$(new_case "$component-migrate-$destination-$ordering")"
+      r="$dir/repo"
+      references "$r/.github/workflows/current.yaml" "$current@$v1360"
+      references "$r/.github/workflows/legacy.yaml" "$legacy@$fork"
+      commit_all "$r" base
+      base="$(git -C "$r" rev-parse HEAD)"
+      git -C "$r" switch -q -c chore/template-sync_deadbee
+      rm "$r/.github/workflows/current.yaml"
+      new_file="$r/.github/workflows/legacy.yaml"
+      if [[ "$destination" == renamed ]]; then
+        rm "$new_file"
+        new_file="$r/.github/workflows/renamed.yaml"
+      fi
+      references "$new_file" "$current@$v1351"
+      commit_all "$r" "chore: sync template"
+      if [[ "$ordering" != unknown ]]; then
+        printf '%s...%s %s\n' "$v1360" "$v1351" "$ordering" >"$dir/compare"
+      fi
+      run_case "$dir" "$(git -C "$r" rev-parse 'HEAD^{tree}')"
+      case "$ordering" in
+        ahead | identical)
+          [[ "$rc" -eq 0 ]] || fail "$component-migrate-$destination-$ordering — safe migration refused: $(cat "$dir/error")"
+          ! grep -q 'git/trees' "$dir/gh.log" || fail "$component-migrate-$destination-$ordering — safe tree rewritten"
+          ;;
+        *)
+          [[ "$rc" -ne 0 ]] || fail "$component-migrate-$destination-$ordering — unverified replacement signed"
+          ! grep -qE '^(POST|PATCH) ' "$dir/gh.log" || fail "$component-migrate-$destination-$ordering — a write was attempted"
+          grep -q 'refusing to sign' "$dir/error" || fail "$component-migrate-$destination-$ordering — wrong refusal: $(cat "$dir/error")"
+          ;;
+      esac
+      grep -qx "GET repos/devantler-tech/.github/compare/$v1360...$v1351" "$dir/gh.log" ||
+        fail "$component-migrate-$destination-$ordering — removed current pin was never compared"
+      echo "ok: $component migration across $destination files orders the removed pin ($ordering)"
+    done
+  done
+
+  # Version ordering also applies when a file is renamed without a catalogue migration.
+  for COMPARE_REPO in devantler-tech/actions devantler-tech/.github; do
+    export COMPARE_REPO
+    ref="$legacy"
+    [[ "$COMPARE_REPO" == devantler-tech/actions ]] || ref="$current"
+    for ordering in behind diverged ahead identical unknown; do
+      dir="$(new_case "$component-renamed-version-$ordering")"
+      r="$dir/repo"
+      references "$r/.github/workflows/old.yaml" "$ref@$v1360"
+      commit_all "$r" base
+      base="$(git -C "$r" rev-parse HEAD)"
+      git -C "$r" switch -q -c chore/template-sync_deadbee
+      rm "$r/.github/workflows/old.yaml"
+      references "$r/.github/workflows/new.yaml" "$ref@$v1351"
+      commit_all "$r" "chore: sync template"
+      if [[ "$ordering" != unknown ]]; then
+        printf '%s...%s %s\n' "$v1360" "$v1351" "$ordering" >"$dir/compare"
+      fi
+      run_case "$dir" "$(git -C "$r" rev-parse 'HEAD^{tree}')"
+      case "$ordering" in
+        ahead | identical)
+          [[ "$rc" -eq 0 ]] || fail "$component-renamed-version-$ordering — safe rename refused: $(cat "$dir/error")"
+          ! grep -q 'git/trees' "$dir/gh.log" || fail "$component-renamed-version-$ordering — safe tree rewritten"
+          ;;
+        *)
+          [[ "$rc" -ne 0 ]] || fail "$component-renamed-version-$ordering — unverified rename signed"
+          ! grep -qE '^(POST|PATCH) ' "$dir/gh.log" || fail "$component-renamed-version-$ordering — a write was attempted"
+          grep -q 'refusing to sign' "$dir/error" || fail "$component-renamed-version-$ordering — wrong refusal: $(cat "$dir/error")"
+          ;;
+      esac
+      grep -qx "GET repos/$COMPARE_REPO/compare/$v1360...$v1351" "$dir/gh.log" ||
+        fail "$component-renamed-version-$ordering — moved pin was never compared"
+      echo "ok: $COMPARE_REPO $component rename orders the removed pin ($ordering)"
+    done
   done
 done
 
