@@ -9,8 +9,12 @@ inputs:
     description: 'GitHub App ID. Deprecated: use client-id instead.'
     required: false
   app-private-key:
-    description: GitHub App Private Key
-    required: true
+    description: GitHub App Private Key (required unless optional-project-auth is true and project is empty)
+    required: false
+  optional-project-auth:
+    description: Opt in to generating an App token only for configured project integration
+    required: false
+    default: 'false'
   project:
     description: GitHub Project to add issues to
     required: false
@@ -21,7 +25,24 @@ inputs:
 runs:
   using: composite
   steps:
+    - name: Validate project authentication
+      if: ${{ inputs.optional-project-auth == 'true' }}
+      shell: bash
+      env:
+        PROJECT: ${{ inputs.project }}
+        APP_PRIVATE_KEY: ${{ inputs.app-private-key }}
+        CLIENT_ID: ${{ inputs.client-id }}
+        APP_ID: ${{ inputs.app-id }}
+      run: |
+        if [[ -n "$PROJECT" ]]; then
+          if [[ -z "$APP_PRIVATE_KEY" || ( -z "$CLIENT_ID" && -z "$APP_ID" ) ||
+                ( -n "$CLIENT_ID" && -n "$APP_ID" ) ]]; then
+            echo "::error::Project integration requires app-private-key and exactly one of client-id or app-id."
+            exit 1
+          fi
+        fi
     - name: 🔑 Generate GitHub App Token
+      if: ${{ inputs.optional-project-auth != 'true' || inputs.project != '' }}
       uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
       id: app-token
       with:

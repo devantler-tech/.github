@@ -449,10 +449,10 @@ jobs:
   # ── create-issues-from-todos ────────────────────────────────
   test-create-issues-from-todos:
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    name: "[Test] Create Issues From TODOs - Offline Wrapper"
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      issues: write
     steps:
       - name: 🔒 Harden Runner
         uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
@@ -496,12 +496,32 @@ jobs:
             exit 1
           }
 
-      - name: 🧪 Run create-issues-from-todos
+      - name: 🧪 Verify wrapper behavior
+        run: bash .github/tests/test-todo-action.sh
+
+      - name: 🧪 Reject independent wrapper regressions
+        run: bash .github/tests/test-todo-action-blocks.sh
+
+      - name: 🧪 Verify offline CI boundaries
+        run: bash .github/tests/test-todo-action-ci.sh
+
+      - name: 🧪 Prepare offline Docker fixture
+        env:
+          TODO_EXPECTED_TOKEN: ${{ github.token }}
+          TODO_EXPECTED_BEFORE: ${{ github.event.before || github.base_ref }}
+          TODO_EXPECTED_COMMITS: ${{ toJSON(github.event.commits) }}
+          TODO_EXPECTED_DIFF: ${{ github.event.pull_request.diff_url }}
+          TODO_EXPECTED_IGNORE: '^\.github/tests/'
+        run: bash .github/tests/todo-action-smoke.sh prepare
+
+      - name: 🧪 Run actual create-issues-from-todos wrapper offline
         uses: ./actions/create-issues-from-todos
         with:
-          client-id: ${{ vars.APP_CLIENT_ID }}
-          app-private-key: ${{ secrets.APP_PRIVATE_KEY }}
-          project: organization/devantler-tech/5
+          ignore: '^\.github/tests/'
+          optional-project-auth: 'true'
+
+      - name: 🧪 Verify actual Docker arguments and forwarded inputs
+        run: bash .github/tests/todo-action-smoke.sh verify
 
   # ── dependency-review ───────────────────────────────────────
   test-dependency-review:
