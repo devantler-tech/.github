@@ -69,6 +69,10 @@ jobs:
             path="${line#!}"
             path="${path%/}"
             [[ -z "$path" || "$path" == *[\*\?\[]* ]] && continue
+            # The filter keeps only clone-relative paths outside .git, so a path that
+            # escapes the clone, is absolute, or points into .git can never be kept:
+            # count it as missing rather than letting an existence check pass it.
+            case "/$path/" in */../* | */./* | //* | /.git/*) missing+=("$path"); continue ;; esac
             [ -e "$KYVERNO_POLICIES_TEMP_DIR/$path" ] || missing+=("$path")
           done < "$policyignore"
           if [ "${#missing[@]}" -gt 0 ]; then

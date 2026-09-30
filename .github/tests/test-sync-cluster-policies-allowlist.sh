@@ -29,6 +29,7 @@ upstream="$work/upstream"
 mkdir -p "$upstream/best-practices/add-ns-quota" "$upstream/other/create-pod-antiaffinity"
 touch "$upstream/best-practices/add-ns-quota/add-ns-quota.yaml" \
   "$upstream/other/create-pod-antiaffinity/create-pod-antiaffinity.yaml"
+mkdir -p "$upstream/.git" && touch "$upstream/.git/config"
 
 # run <label> <policyignore content | "-" for no file> [script]
 run() {
@@ -73,6 +74,13 @@ refuses "a literal re-include that upstream dropped" \
 refuses "a final re-include without a trailing newline is still checked" \
   '*\n!gone/policy.yaml' \
   "re-includes 'gone/policy.yaml'"
+
+refuses "a re-include into .git is never kept, even though it exists" \
+  '*\n!.git/config\n' "re-includes '.git/config'"
+refuses "a re-include that escapes the clone is never kept" \
+  '*\n!../upstream/best-practices/add-ns-quota/add-ns-quota.yaml\n' "re-includes '../upstream/"
+refuses "an absolute re-include is never kept, even when the file exists" \
+  '*\n!/etc/hosts\n' "re-includes '/etc/hosts'"
 
 out="$(run "two missing paths" '*\n!gone/a.yaml\n!gone/b.yaml\n')" && fail "two missing paths — expected failure"
 for p in gone/a.yaml gone/b.yaml; do
