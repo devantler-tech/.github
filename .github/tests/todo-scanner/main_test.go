@@ -10,6 +10,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestLanguageRulesTravelThroughTheIsolatedTLSProxy(t *testing.T) {
@@ -43,6 +44,35 @@ func TestLanguageRulesTravelThroughTheIsolatedTLSProxy(t *testing.T) {
 	}
 	if err := fixture.verify(); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestTLSProxyReturnsRejectedRequestWithoutHanging(t *testing.T) {
+	fixture := newReplay([]exchange{{Method: "GET", Path: "/expected", Raw: true, Status: 200, Response: "fixture"}})
+	pair, ca, err := certificate()
+	if err != nil {
+		t.Fatal(err)
+	}
+	fixture.certificate = pair
+	server := httptest.NewServer(fixture)
+	defer server.Close()
+	proxy, err := url.Parse(server.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	roots := x509.NewCertPool()
+	roots.AppendCertsFromPEM(ca)
+	transport := &http.Transport{Proxy: http.ProxyURL(proxy), TLSClientConfig: &tls.Config{RootCAs: roots, MinVersion: tls.VersionTLS12}}
+	defer transport.CloseIdleConnections()
+	client := &http.Client{Transport: transport, Timeout: 2 * time.Second}
+	response, err := client.Get("https://raw.githubusercontent.com/unexpected")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer response.Body.Close()
+	_, err = io.ReadAll(response.Body)
+	if err != nil || response.StatusCode != 502 || fixture.verify() == nil {
+		t.Fatalf("rejection did not finish: %d, %v", response.StatusCode, err)
 	}
 }
 

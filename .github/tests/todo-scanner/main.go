@@ -165,6 +165,9 @@ func (f *replay) connect(w http.ResponseWriter, _ *http.Request) {
 		f.ServeHTTP(response, r)
 		_ = r.Body.Close()
 		result := response.Result()
+		// Rejections also need a length: an EOF-delimited error would otherwise
+		// hang Requests while this tunnel waits for the next keep-alive request.
+		result.ContentLength = int64(response.Body.Len())
 		err = result.Write(secured)
 		_ = result.Body.Close()
 		if err != nil || r.Close {
@@ -257,6 +260,9 @@ func run() error {
 	scannerErr := cmd.Run()
 	fmt.Print(output.String())
 	if ctx.Err() != nil {
+		if err := fixture.verify(); err != nil {
+			return fmt.Errorf("scanner timed out: %w", err)
+		}
 		return errors.New("scanner timed out")
 	}
 	if scannerErr != nil {

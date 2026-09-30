@@ -475,9 +475,10 @@ jobs:
         run: go test -race ./...
 
       - name: 🧪 Verify required scanner CI boundary
-        run: |
-          bash .github/tests/test-todo-scanner-ci.sh
-          bash .github/tests/test-todo-scanner-inputs.sh
+        run: bash .github/tests/test-todo-scanner-ci.sh
+
+      - name: 🧪 Reject invalid scanner scenarios
+        run: bash .github/tests/test-todo-scanner-inputs.sh
 
       - name: 🧪 Exercise the real pinned scanner offline
         run: bash .github/tests/test-todo-scanner.sh
