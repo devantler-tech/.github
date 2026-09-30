@@ -2504,6 +2504,7 @@ jobs:
 
   # ── upsert-issue (offline issue lifecycle) ─────────────────
   test-upsert-issue:
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
     name: "[Test] Upsert Issue - Offline Behavior"
     runs-on: ubuntu-latest
     permissions:

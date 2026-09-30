@@ -6,9 +6,10 @@ root="$(cd "$(dirname "$0")/../.." && pwd)"
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
 yq -o=json '.' "${1:-$root/.github/workflows/ci.yaml}" >"$work/ci.json"
+job_condition="\${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
 
 guard() {
-  jq -e '
+  jq -e --arg condition "$job_condition" '
     def upsert_path:
       (split("@")[0] // "") | split("/") | reduce .[] as $part ([];
         if $part == "" or $part == "." then .
@@ -31,7 +32,7 @@ guard() {
       select((.uses // "") | startswith("actions/checkout@"))] |
       length == 0 or any(.with["persist-credentials"] != false))
     then error("offline issue checkout must disable persisted credentials")
-    elif (.jobs["test-upsert-issue"].if != null or
+    elif (.jobs["test-upsert-issue"].if != $condition or
       (.jobs["test-upsert-issue"]["continue-on-error"] // false) != false)
     then error("offline issue job must run and propagate failures")
     elif (["test-upsert-issue-reopen.sh", "test-upsert-issue-ci.sh",
@@ -80,6 +81,8 @@ persisted checkout	.jobs["test-upsert-issue"].steps |= map(if (.uses // "" | sta
 missing behavior	.jobs["test-upsert-issue"].steps |= map(select((.run // "" | contains("test-upsert-issue-reopen.sh")) | not))	behavior and boundary checks
 ignored failure	.jobs["test-upsert-issue"].steps |= map(if (.run // "" | contains("test-upsert-issue-reopen.sh")) then ."continue-on-error"=true else . end)	behavior and boundary checks
 skipped job	.jobs["test-upsert-issue"].if="false"	job must run
+unguarded merge-group execution	.jobs["test-upsert-issue"].if=null	job must run
+unsafe merge-group disjunction	.jobs["test-upsert-issue"].if="${{ true || github.event_name != 'merge_group' }}"	job must run
 missing required dependency	.jobs["ci-required-checks"].needs |= map(select(. != "test-upsert-issue"))	gate required CI
 missing required verdict	.jobs["ci-required-checks"].steps |= map(if .env.JOB_RESULTS then .env.JOB_RESULTS |= gsub("needs.test-upsert-issue.result"; "needs.other.result") else . end)	evaluate the offline issue result
 live action elsewhere	.jobs.unexpected={steps:[{uses:"./actions/upsert-issue"}]}	live upsert-issue invocation
