@@ -704,6 +704,8 @@ other*
 
 Patterns are evaluated per file with last-match-wins, so a `!` re-include still applies even when a broad earlier pattern matched its parent directory.
 
+A literal `!` re-include (one without glob characters) must still exist upstream. If upstream moves or drops that policy, the run fails and names the path before the target directory changes. Without that check it would open a pull request that deletes your vendored copy.
+
 #### Usage
 
 ```yaml

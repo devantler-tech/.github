@@ -3962,6 +3962,26 @@ jobs:
     secrets:
       APP_PRIVATE_KEY: ${{ secrets.APP_PRIVATE_KEY }}
 
+  test-sync-cluster-policies-allowlist:
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    name: "[Test] Sync Cluster Policies - Allowlist Miss Fails Closed"
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: 🛡️ Harden runner
+        uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
+        with:
+          egress-policy: audit
+
+      - name: 📄 Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: 🧪 Assert a vanished allowlisted policy fails the sync before the target changes
+        run: bash .github/tests/test-sync-cluster-policies-allowlist.sh
+
   test-update-agent-skills:
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
     name: "[Test] Update Agent Skills - Dry Run"
@@ -5654,6 +5674,7 @@ jobs:
       - test-scan-for-todo-comments
       - test-scan-for-todo-comments-ignore
       - test-sync-cluster-policies
+      - test-sync-cluster-policies-allowlist
       - test-update-agent-skills
       - test-update-agent-skills-per-skill
       - test-template-sync
@@ -5781,6 +5802,7 @@ jobs:
             ${{ needs.test-scan-for-todo-comments.result }}
             ${{ needs.test-scan-for-todo-comments-ignore.result }}
             ${{ needs.test-sync-cluster-policies.result }}
+            ${{ needs.test-sync-cluster-policies-allowlist.result }}
             ${{ needs.test-update-agent-skills.result }}
             ${{ needs.test-update-agent-skills-per-skill.result }}
             ${{ needs.test-template-sync.result }}

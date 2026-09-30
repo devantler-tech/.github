@@ -52,6 +52,39 @@ jobs:
           git clone --filter=blob:none --sparse https://github.com/kyverno/policies "$KYVERNO_POLICIES_TEMP_DIR"
           cd "$KYVERNO_POLICIES_TEMP_DIR"
           git sparse-checkout set --no-cone '*/' ':!.*'
+      - name: Verify allowlisted policies still exist upstream
+        id: verify-allowlist
+        run: |
+          # A literal `!path` re-include names one upstream policy the caller vendors.
+          # If upstream moved or dropped it, the filter below would keep nothing for it
+          # and the copy step would delete the caller's vendored copy in a sync PR
+          # (platform#4256). Fail here instead, before the target changes, and name
+          # the path. Glob re-includes (`!other/*`) may legitimately match nothing.
+          policyignore="$PWD/.policyignore"
+          [ -f "$policyignore" ] || exit 0
+          # Accept a literal re-include only when it names what the filter below can
+          # actually keep: a file that step enumerates, or a directory above one. The
+          # same enumeration is reused here, so no spelling of a path (`..`, absolute,
+          # `.git`, a symlink, `a//b`) can pass a check the filter would not honour.
+          kept="$(cd "$KYVERNO_POLICIES_TEMP_DIR" && find . -type f -not -path './.git/*' | sed 's|^\./||')" ||
+            { echo "::error::could not enumerate the upstream clone"; exit 1; }
+          missing=()
+          while IFS= read -r line || [[ -n "$line" ]]; do
+            line="${line%$'\r'}"
+            [[ "$line" == '!'* ]] || continue
+            path="${line#!}"
+            path="${path%/}"
+            [[ -z "$path" || "$path" == *[\*\?\[]* ]] && continue
+            RE_INCLUDE="$path" awk 'BEGIN { p = ENVIRON["RE_INCLUDE"]; n = length(p) }
+              $0 == p || substr($0, 1, n + 1) == p "/" { found = 1; exit }
+              END { exit !found }' <<<"$kept" || missing+=("$path")
+          done < "$policyignore"
+          if [ "${#missing[@]}" -gt 0 ]; then
+            for path in "${missing[@]}"; do
+              echo "::error::.policyignore re-includes '$path', but upstream kyverno/policies no longer has it. Repoint or remove that line, or vendor the policy yourself."
+            done
+            exit 1
+          fi
       - name: Remove blacklisted policies
         run: |
           # .policyignore is gitignore-style: ordered patterns where a leading `!`
