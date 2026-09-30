@@ -981,6 +981,11 @@ jobs:
           fi
           echo "Tests ran on Microsoft.Testing.Platform without the coverage extension ✅"
 
+      - name: 🧪 Exercise consumer-root testing with the workflow helper checkout
+        if: runner.os == 'Linux'
+        shell: bash
+        run: bash .github/tests/test-dotnet-helper-checkout.sh .github/workflows/run-dotnet-tests.yaml hosted
+
   test-run-dotnet-tests-preserves-source-mapping:
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
     name: "[Test] Run .NET Tests - Preserve Source Mapping"
@@ -2968,6 +2973,10 @@ jobs:
       - name: 🧪 Prove the consumer scope catches regressions
         shell: bash
         run: bash .github/tests/test-shell-pipeline-adoption.sh
+
+      - name: 🧪 Verify the .NET workflow helper cannot contaminate consumer scans
+        shell: bash
+        run: bash .github/tests/test-dotnet-helper-checkout.sh
 
   # ── lint-readme-parity ──────────────────────────────────────
   lint-readme-parity:
