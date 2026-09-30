@@ -47,6 +47,10 @@ Credential-free runs also skip the token-bearing GitHub Code Quality upload.
 
 ## Reusable workflow
 
+The reusable workflow checks out only this action in its helper directory. Catalogue test
+projects and sample coverage reports are excluded, so testing from the consumer repository's
+root detects coverage support and merges reports from the consumer's own files.
+
 The reusable workflow is credential-free on pull requests by default. Trusted same-repository
 human-authored pull requests that need private GitHub Packages can opt in explicitly:
 

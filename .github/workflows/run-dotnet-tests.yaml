@@ -57,6 +57,9 @@ jobs:
           repository: ${{ job.workflow_repository }}
           ref: ${{ job.workflow_sha }}
           path: .devantler-tech-actions
+          # Consumer-root scans must never see the catalogue's projects or coverage fixtures.
+          sparse-checkout: /actions/run-dotnet-tests/
+          sparse-checkout-cone-mode: false
           persist-credentials: false
 
       - name: 🔎 Snapshot authenticated GitHub Packages source
