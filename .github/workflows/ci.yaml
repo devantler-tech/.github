@@ -480,6 +480,9 @@ jobs:
       - name: 🧪 Reject invalid scanner scenarios
         run: bash .github/tests/test-todo-scanner-inputs.sh
 
+      - name: 🧪 Require completed scanner scenarios
+        run: bash .github/tests/test-todo-scanner-verdict.sh
+
       - name: 🧪 Exercise the real pinned scanner offline
         run: bash .github/tests/test-todo-scanner.sh
 

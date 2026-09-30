@@ -106,9 +106,16 @@ for ((i=0; i<count; i++)); do
         else error("unmapped action expression") end
       else . end))' "$work/action.json" >"$TODO_CASE_DIR/env.json"
   jq -j 'to_entries[] | .key,"\u0000",.value,"\u0000"' "$TODO_CASE_DIR/env.json" >"$TODO_CASE_DIR/env"
-  (
+  if ! (
     while IFS= read -r -d '' key && IFS= read -r -d '' value; do export "$key=$value"; done <"$TODO_CASE_DIR/env"
     bash "$work/scanner.sh"
-  )
+  ) >"$TODO_CASE_DIR/result" 2>&1; then
+    cat "$TODO_CASE_DIR/result"
+    exit 1
+  fi
+  cat "$TODO_CASE_DIR/result"
+  name="$(jq -r .Name "$TODO_CASE_DIR/case.json")"
+  requests="$(jq '.Exchanges | length' "$TODO_CASE_DIR/case.json")"
+  bash "$root/.github/tests/todo-scanner-verdict.sh" "$TODO_CASE_DIR/result" "$name" "$requests"
 done
 echo "PASS: $count real pinned scanner scenarios with no network"
