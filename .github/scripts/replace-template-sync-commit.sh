@@ -63,17 +63,17 @@ remote_sha="$(jq -er '.object.sha' <<<"$remote_ref")" || fail "generated remote 
 [[ "$remote_sha" == "$current_sha" ]] ||
   fail "generated remote branch moved after the sync action (expected $current_sha, found $remote_sha)"
 
-# Shared-workflow pins never move backwards (#1239). Template sync copies the TEMPLATE's
-# devantler-tech/actions pins over the target's, so a template that lags its consumer would
+# Catalogue pins never move backwards (#1239, #256). Template sync copies the TEMPLATE's
+# pins over the target's, so a template that lags its consumer would
 # downgrade it: devantler-tech/wedding-app#332 replaced three v13.6.0 pins with v13.5.1 while every
 # check stayed green, because both pins were approved. Each changed pin is therefore ordered against
 # the target's pin for the same path with GitHub's compare API (commit ancestry, never the mutable
 # `# vX.Y.Z` comment). Where the template's pin is behind or diverged, the target's whole line is
 # kept; only that corrected tree is signed. An ordering the API cannot answer, a regressive line
 # the template also reshaped, or a line moved onto the older of two pins the target keeps for one
-# path fails closed before anything is signed.
-actions_repo="devantler-tech/actions"
-pin_pattern="${actions_repo}(/[^@[:space:]]*)?@[0-9a-f]{40}"
+# path fails closed before anything is signed. Comparisons stay within each catalogue's history.
+# Moving from the retired actions catalogue to .github is allowed; moving back is refused.
+pin_pattern='devantler-tech/(actions|\.github)(/[^@[:space:]]*)?@[0-9a-f]{40}'
 work="$(mktemp -d)" || fail "could not create a work directory"
 trap 'rm -rf "$work"' EXIT
 
@@ -92,16 +92,53 @@ ref_count() {
   { grep -oF -- "$3" <<<"$content" || true; } | wc -l
 }
 
+# Return the owning repository of a matched, immutable catalogue reference.
+pin_repository() {
+  local path="${1%@*}"
+  path="${path#devantler-tech/}"
+  printf 'devantler-tech/%s\n' "${path%%/*}"
+}
+
+# Pair only catalogue paths that moved. Reusable workflows keep their path; public composite
+# actions move from the old root into .github's actions/.
+pin_component() {
+  local path="${1%@*}"
+  case "$path" in
+    devantler-tech/actions/.github/workflows/*) printf 'workflow:%s\n' "${path#devantler-tech/actions/.github/workflows/}" ;;
+    devantler-tech/.github/.github/workflows/*) printf 'workflow:%s\n' "${path#devantler-tech/.github/.github/workflows/}" ;;
+    devantler-tech/actions/.github/*) printf '%s\n' "$path" ;;
+    devantler-tech/actions/*) printf 'action:%s\n' "${path#devantler-tech/actions/}" ;;
+    devantler-tech/.github/actions/*) printf 'action:%s\n' "${path#devantler-tech/.github/actions/}" ;;
+    *) printf '%s\n' "$path" ;;
+  esac
+}
+
+# order_pins <target-ref> <template-ref>: order within one history, or allow the explicit
+# forward catalogue migration. Never compare commits across unrelated repositories.
 order_pins() {
-  # order_pins <target-pin> <template-ref>: the compare API's status for the template's pin
-  # relative to the target's. Anything but a known status fails closed.
-  local comparison status
-  if ! comparison="$(gh api "repos/${actions_repo}/compare/${1}...${2##*@}" </dev/null)" ||
+  local comparison status target_repo template_repo cache
+  target_repo="$(pin_repository "$1")"
+  template_repo="$(pin_repository "$2")"
+  if [[ "$target_repo" != "$template_repo" ]]; then
+    [[ "$target_repo" == devantler-tech/actions && "$template_repo" == devantler-tech/.github ]] ||
+      fail "refusing to move ${1} back to the retired catalogue at ${2}; refusing to sign"
+    printf 'migrated\n'
+    return
+  fi
+  # The final-tree guard can revisit a pair already ordered by the per-file repair. Reuse that
+  # immutable, repository-scoped result instead of spending another API request.
+  cache="$work/order-${target_repo##*/}-${1##*@}-${2##*@}"
+  if [[ -f "$cache" ]]; then
+    status="$(cat "$cache")" || fail "could not read the verified pin ordering"
+  elif ! comparison="$(gh api "repos/${target_repo}/compare/${1##*@}...${2##*@}" </dev/null)" ||
     ! status="$(jq -er '.status' <<<"$comparison")"; then
     fail "could not order ${2} against the target's ${1}; refusing to sign an unverified pin change"
   fi
   case "$status" in
-    ahead | identical | behind | diverged) printf '%s\n' "$status" ;;
+    ahead | identical | behind | diverged)
+      printf '%s\n' "$status" >"$cache" || fail "could not retain the verified pin ordering"
+      printf '%s\n' "$status"
+      ;;
     *) fail "unexpected compare status '$status' for ${2}; refusing to sign" ;;
   esac
 }
@@ -147,6 +184,51 @@ restore_pin() {
 
 git diff -z --name-only --no-renames "$base_sha" HEAD >"$work/changed" ||
   fail "could not list the files the sync commit changed"
+
+# Emit revision, component, complete reference and occurrence count across changed paths. Unchanged
+# paths cancel out of the deltas; counting occurrences also covers consolidated duplicate calls.
+catalogue_counts() {
+  local revision="$1" label="$2" path refs ref count
+  while IFS= read -r -d '' path; do
+    refs="$(pins_at "$revision" "$path")"
+    [[ -n "$refs" ]] || continue
+    while IFS= read -r ref; do
+      count="$(ref_count "$revision" "$path" "$ref")" || fail "could not count $ref in $path"
+      printf '%s\t%s\t%s\t%s\n' "$label" "$(pin_component "$ref")" \
+        "$ref" "$count"
+    done <<<"$refs"
+  done <"$work/changed"
+}
+
+# Compare lost and gained occurrences in the final local tree. Per-file repairs have already
+# restored safe lines; any remaining replacement across paths must itself be forward-only.
+guard_cross_file_pins() {
+  local candidate="$1" old_ref new_ref status
+  catalogue_counts "$base_sha" base >"$work/catalogue-counts"
+  catalogue_counts "$candidate" head >>"$work/catalogue-counts"
+  awk -F '\t' '
+    { counts[$1, $3] += $4; components[$3] = $2 }
+    END {
+      for (old_ref in components) {
+        if (counts["base", old_ref] <= counts["head", old_ref]) continue
+        for (new_ref in components) {
+          if (components[old_ref] == components[new_ref] &&
+              counts["head", new_ref] > counts["base", new_ref]) {
+            print old_ref "\t" new_ref
+          }
+        }
+      }
+    }
+  ' "$work/catalogue-counts" >"$work/replacements" || fail "could not compare catalogue counts"
+  while IFS=$'\t' read -r old_ref new_ref; do
+    status="$(order_pins "$old_ref" "$new_ref")"
+    case "$status" in
+      ahead | identical | migrated) continue ;;
+      *) fail "sync replaced ${old_ref} across files with ${new_ref}, which is ${status}; refusing to sign" ;;
+    esac
+  done <"$work/replacements"
+}
+
 while IFS= read -r -d '' path; do
   new_pins="$(pins_at HEAD "$path")"
   [[ -n "$new_pins" ]] || continue
@@ -154,11 +236,12 @@ while IFS= read -r -d '' path; do
   [[ -n "$old_pins" ]] || continue
   while IFS= read -r new_ref; do
     new_pin="${new_ref##*@}"
+    component="$(pin_component "$new_ref")"
     # How many distinct pins the target keeps for this path. With more than one, a restore cannot
     # know which of them each line had, so any downgrade there fails closed instead of guessing.
     same_path=0
     while IFS= read -r old_ref; do
-      if [[ "${old_ref%@*}" == "${new_ref%@*}" ]]; then same_path=$((same_path + 1)); fi
+      if [[ "$(pin_component "$old_ref")" == "$component" ]]; then same_path=$((same_path + 1)); fi
     done <<<"$old_pins"
     if grep -qxF -- "$new_ref" <<<"$old_pins"; then
       # The target already carries this pin, so it is not new to the file. But where the target
@@ -170,18 +253,18 @@ while IFS= read -r -d '' path; do
       base_count="$(ref_count "$base_sha" "$path" "$new_ref")"
       ((head_count > base_count)) || continue
       while IFS= read -r old_ref; do
-        [[ "${old_ref%@*}" == "${new_ref%@*}" && "$old_ref" != "$new_ref" ]] || continue
-        status="$(order_pins "${old_ref##*@}" "$new_ref")"
-        [[ "$status" == ahead || "$status" == identical ]] ||
+        [[ "$(pin_component "$old_ref")" == "$component" && "$old_ref" != "$new_ref" ]] || continue
+        status="$(order_pins "$old_ref" "$new_ref")"
+        [[ "$status" == ahead || "$status" == identical || "$status" == migrated ]] ||
           fail "${path} pins ${new_ref%@*} at more than one commit and the sync moved a line onto ${new_pin}, which is ${status} the target's ${old_ref##*@}; refusing to sign a downgrade it cannot isolate"
       done <<<"$old_pins"
       continue
     fi
     while IFS= read -r old_ref; do
-      [[ "${old_ref%@*}" == "${new_ref%@*}" ]] || continue
-      status="$(order_pins "${old_ref##*@}" "$new_ref")"
+      [[ "$(pin_component "$old_ref")" == "$component" ]] || continue
+      status="$(order_pins "$old_ref" "$new_ref")"
       case "$status" in
-        ahead | identical) continue ;;
+        ahead | identical | migrated) continue ;;
       esac
       ((same_path == 1)) ||
         fail "${path} pins ${new_ref%@*} at more than one commit and the template's ${new_pin} is ${status} the target's ${old_ref##*@}; refusing to sign a downgrade it cannot isolate"
@@ -194,6 +277,7 @@ while IFS= read -r -d '' path; do
   done <<<"$new_pins"
 done <"$work/changed"
 
+candidate_tree="$tree_sha"
 if ((${#corrected[@]} > 0)); then
   # Build the corrected tree locally, then have GitHub build it from the posted content, and sign
   # only if both agree byte for byte.
@@ -211,6 +295,15 @@ if ((${#corrected[@]} > 0)); then
       fail "could not encode the corrected $path"
   done
   local_tree="$(GIT_INDEX_FILE="$index" git write-tree)" || fail "could not write the corrected tree"
+  candidate_tree="$local_tree"
+fi
+
+# Check the actual proposed result, including restored pin lines, before GitHub receives any write.
+# This also catches a deleted current pin hidden by a migration elsewhere, and ordinary renamed
+# files whose replacement version is older even though their catalogue did not change.
+guard_cross_file_pins "$candidate_tree"
+
+if ((${#corrected[@]} > 0)); then
   tree_payload="$(jq -n --arg base "$tree_sha" --argjson tree "$entries" '{base_tree:$base,tree:$tree}')" ||
     fail "could not build the corrected tree payload"
   tree_response="$(gh api -X POST "repos/${GITHUB_REPOSITORY}/git/trees" --input - <<<"$tree_payload")" ||
