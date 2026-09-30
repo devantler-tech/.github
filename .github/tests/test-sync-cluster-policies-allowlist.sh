@@ -70,6 +70,10 @@ refuses "a literal re-include that upstream dropped" \
   '*\n!best-practices/add-ns-quota/add-ns-quota.yaml\n!other/spread-pods-across-topology/spread-pods-across-topology.yaml\n' \
   "re-includes 'other/spread-pods-across-topology/spread-pods-across-topology.yaml'"
 
+refuses "a final re-include without a trailing newline is still checked" \
+  '*\n!gone/policy.yaml' \
+  "re-includes 'gone/policy.yaml'"
+
 out="$(run "two missing paths" '*\n!gone/a.yaml\n!gone/b.yaml\n')" && fail "two missing paths — expected failure"
 for p in gone/a.yaml gone/b.yaml; do
   grep -qF "'$p'" <<<"$out" || fail "two missing paths — every missing path must be named ($p absent): $out"
