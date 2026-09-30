@@ -29,7 +29,8 @@ guard() {
     then error("checkout must not persist credentials")
     elif ([.jobs|to_entries[]|.key as $name|.value.steps[]?|
       select((.uses // "")|action_path)|select($name != "test-create-issues-from-todos" or
-        ((.with // {})|keys) != ["ignore"])] | length > 0)
+        (((.with // {})|keys) != ["ignore","optional-project-auth"] or
+          .with["optional-project-auth"] != "true"))] | length > 0)
     then error("live to-do action invocation in catalogue CI")
     elif ([$job.steps[]|select(.uses == "./actions/create-issues-from-todos")] |
       length != 1 or any(.if != null or (.["continue-on-error"] // false) != false))
@@ -95,6 +96,7 @@ workflow shadow directory	.defaults.run["working-directory"]="shadow"	all behavi
 swapped fixture order	.jobs["test-create-issues-from-todos"].steps |= map(if .run == "bash .github/tests/todo-action-smoke.sh prepare" then .run="bash .github/tests/todo-action-smoke.sh verify" elif .run == "bash .github/tests/todo-action-smoke.sh verify" then .run="bash .github/tests/todo-action-smoke.sh prepare" else . end)	prepare before the action
 action before fixture	.jobs["test-create-issues-from-todos"].steps |= ([.[]|select(.uses == "./actions/create-issues-from-todos")] + [.[]|select(.uses != "./actions/create-issues-from-todos")])	prepare before the action
 live project	.jobs["test-create-issues-from-todos"].steps |= map(if .uses == "./actions/create-issues-from-todos" then .with.project="organization/devantler-tech/5" else . end)	live to-do action invocation
+missing authentication opt-in	.jobs["test-create-issues-from-todos"].steps |= map(if .uses == "./actions/create-issues-from-todos" then del(.with["optional-project-auth"]) else . end)	live to-do action invocation
 live action elsewhere	.jobs.other={steps:[{uses:"./actions/create-issues-from-todos"}]}	live to-do action invocation
 equivalent live action path	.jobs.other={steps:[{uses:"./actions/other/../create-issues-from-todos/."}]}	live to-do action invocation
 missing hosted action	.jobs["test-create-issues-from-todos"].steps |= map(select(.uses != "./actions/create-issues-from-todos"))	actual hosted action
@@ -102,4 +104,4 @@ skipped hosted action	.jobs["test-create-issues-from-todos"].steps |= map(if .us
 missing required dependency	.jobs["ci-required-checks"].needs |= map(select(. != "test-create-issues-from-todos"))	gate required CI
 missing required verdict	.jobs["ci-required-checks"].steps |= map(if .env.JOB_RESULTS then .env.JOB_RESULTS |= gsub("needs.test-create-issues-from-todos.result";"needs.other.result") else . end)	evaluate the action smoke result
 CASES
-echo 'PASS: 30 CI mutations preserve the offline to-do action smoke boundary'
+echo 'PASS: 31 CI mutations preserve the offline to-do action smoke boundary'

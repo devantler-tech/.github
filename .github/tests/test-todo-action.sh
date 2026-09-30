@@ -8,13 +8,18 @@ trap 'rm -rf "$work"' EXIT
 yq -o=json '.' "$action" >"$work/action.json"
 # Stop the fixture with a focused diagnostic when an observed result differs.
 fail() { echo "FAIL: $*" >&2; exit 1; }
-condition="\${{ inputs.project != '' }}"
-jq -e --arg condition "$condition" '
+condition="\${{ inputs.optional-project-auth != 'true' || inputs.project != '' }}"
+validation_condition="\${{ inputs.optional-project-auth == 'true' }}"
+jq -e --arg condition "$condition" --arg validation "$validation_condition" '
   .inputs["app-private-key"].required == false and
+  .inputs["optional-project-auth"].default == "false" and
   ([.runs.steps[] | select(.id == "app-token")] | length == 1 and
-    all(.if == $condition and .with["permission-organization-projects"] == "write")) and
+    all(.if == $condition and .with["permission-organization-projects"] == "write" and
+      .with["client-id"] == "${{ inputs.client-id }}" and
+      .with["app-id"] == "${{ inputs.app-id }}" and
+      .with["private-key"] == "${{ inputs.app-private-key }}")) and
   .runs.steps[0].name == "Validate project authentication" and
-  .runs.steps[0].if == null and
+  .runs.steps[0].if == $validation and
   ([.runs.steps[] | select(.name == "📝 Create issues from TODOs")] | all(
     .env.INPUT_TOKEN == "${{ github.token }}" and
     .env.INPUT_PROJECT == "${{ inputs.project }}" and
@@ -50,6 +55,12 @@ project_env() {
 run_case() (
   local label="$1" project="$2" key="$3" client="$4" app="$5"
   local failures="$6" attempts="$7" expected="$8" erase="$9" status=0
+  local opt_in="${11:-true}" app_token=''
+  if [[ "$opt_in" == default ]]; then
+    opt_in="$(jq -r '.inputs["optional-project-auth"].default' "$work/action.json")"
+  fi
+  # The guarded expressions above bind these two states to the hosted action.
+  if [[ "$opt_in" != true || -n "$project" ]]; then app_token=offline-project-token; fi
   local ignore=$'^ignored/|path with spaces/\\nquoted"pattern'
   if (( $# >= 10 )); then ignore="${10}"; fi
   export RUNNER_TEMP="$work/$label/temp" GITHUB_WORKSPACE="$work/$label/workspace with spaces"
@@ -60,8 +71,7 @@ run_case() (
   export TODO_EXPECTED_BEFORE=fixture-base TODO_EXPECTED_DIFF=https://example.invalid/pull.diff
   export TODO_EXPECTED_COMMITS=$'[{"message":"first line\\nsecond line \\"quoted\\""}]'
   export TODO_EXPECTED_IGNORE="$ignore"
-  export TODO_EXPECTED_TOKEN=offline-token TODO_EXPECTED_PROJECT="$project" TODO_EXPECTED_PROJECT_SECRET=""
-  [[ -z "$project" ]] || TODO_EXPECTED_PROJECT_SECRET=offline-project-token
+  export TODO_EXPECTED_TOKEN=offline-token TODO_EXPECTED_PROJECT="$project" TODO_EXPECTED_PROJECT_SECRET="$app_token"
   export TODO_FAILURES="$failures" TODO_EXPECTED_ATTEMPTS="$attempts" RETRY_BASE_DELAY=0
   mkdir -p "$RUNNER_TEMP" "$GITHUB_WORKSPACE" "$GITHUB_ACTION_PATH" "$GITHUB_ACTION_PATH/../../.scripts"
   cp "$root/.scripts/retry.sh" "$GITHUB_ACTION_PATH/../../.scripts/retry.sh"
@@ -69,17 +79,19 @@ run_case() (
     --arg ignore "$TODO_EXPECTED_IGNORE" --arg commits "$TODO_EXPECTED_COMMITS" \
     --arg repo "$GITHUB_REPOSITORY" --arg sha "$GITHUB_SHA" --arg actor "$GITHUB_ACTOR" \
     --arg api "$GITHUB_API_URL" --arg server "$GITHUB_SERVER_URL" --arg before "$TODO_EXPECTED_BEFORE" \
-    --arg diff "$TODO_EXPECTED_DIFF" '
+    --arg diff "$TODO_EXPECTED_DIFF" --arg app_token "$app_token" '
     {"${{ inputs.project }}":$project,"${{ inputs.app-private-key }}":$key,
      "${{ inputs.client-id }}":$client,"${{ inputs.app-id }}":$app,"${{ inputs.ignore }}":$ignore,
      "${{ github.repository }}":$repo,"${{ github.sha }}":$sha,"${{ github.actor }}":$actor,
      "${{ github.api_url }}":$api,"${{ github.server_url }}":$server,"${{ github.token }}":"offline-token",
      "${{ github.event.before || github.base_ref }}":$before,"${{ toJSON(github.event.commits) }}":$commits,
      "${{ github.event.pull_request.diff_url }}":$diff,
-     "${{ steps.app-token.outputs.token }}":(if $project == "" then "" else "offline-project-token" end)}' \
+     "${{ steps.app-token.outputs.token }}":$app_token}' \
     >"$work/context.json"
-  project_env 'Validate project authentication'
-  bash "$work/Validate project authentication.sh" >"$work/validation.log" 2>&1 || status=$?
+  if [[ "$opt_in" == true ]]; then
+    project_env 'Validate project authentication'
+    bash "$work/Validate project authentication.sh" >"$work/validation.log" 2>&1 || status=$?
+  fi
   if [[ "$expected" == invalid ]]; then
     [[ "$status" == 1 ]] || fail "$label: invalid project credentials were accepted"
     echo "PASS: $label rejected before checkout or Docker"
@@ -111,4 +123,7 @@ run_case project-conflicting-identities organization/offline/1 offline-key offli
 run_case transient-recovery '' '' '' '' 2 3 0 false
 run_case terminal-failure '' '' '' '' -1 3 73 false
 run_case preserved-helper-after-checkout '' '' '' '' 2 3 0 true
-echo 'PASS: 10 offline to-do wrapper scenarios preserve inputs, credentials and failures'
+run_case default-auth-client '' offline-key offline-client '' 0 1 0 false '' default
+run_case default-auth-legacy-app '' offline-key '' 12345 0 1 0 false '' default
+run_case default-auth-project organization/offline/1 offline-key offline-client '' 0 1 0 false '' false
+echo 'PASS: 13 offline to-do wrapper scenarios preserve both flag states, inputs, credentials and failures'

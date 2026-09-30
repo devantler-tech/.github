@@ -9,8 +9,12 @@ inputs:
     description: 'GitHub App ID. Deprecated: use client-id instead.'
     required: false
   app-private-key:
-    description: GitHub App Private Key (required when project is configured)
+    description: GitHub App Private Key (required unless optional-project-auth is true and project is empty)
     required: false
+  optional-project-auth:
+    description: Opt in to generating an App token only for configured project integration
+    required: false
+    default: 'false'
   project:
     description: GitHub Project to add issues to
     required: false
@@ -22,6 +26,7 @@ runs:
   using: composite
   steps:
     - name: Validate project authentication
+      if: ${{ inputs.optional-project-auth == 'true' }}
       shell: bash
       env:
         PROJECT: ${{ inputs.project }}
@@ -37,7 +42,7 @@ runs:
           fi
         fi
     - name: 🔑 Generate GitHub App Token
-      if: ${{ inputs.project != '' }}
+      if: ${{ inputs.optional-project-auth != 'true' || inputs.project != '' }}
       uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
       id: app-token
       with:

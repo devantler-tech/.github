@@ -8,11 +8,12 @@ Scan code for TODO comments and automatically create corresponding GitHub issues
 |------|-------------|----------|---------|
 | `client-id` | GitHub App Client ID for project integration (preferred over the deprecated `app-id`) | ❌¹ | - |
 | `app-id` | GitHub App ID. **Deprecated** — use `client-id` instead | ❌¹ | - |
-| `app-private-key` | GitHub App Private Key for project integration | ❌¹ | - |
+| `app-private-key` | GitHub App Private Key | ❌¹ | - |
+| `optional-project-auth` | Opt in to generating an App token only when a project is configured | ❌ | `"false"` |
 | `project` | GitHub Project to add issues to | ❌ | - |
 | `ignore` | Regular expression matching repository-relative paths to ignore | ❌ | `""` |
 
-¹ When `project` is configured, provide `app-private-key` and exactly one of `client-id` or `app-id`. Prefer `client-id`; `app-id` is deprecated. Invalid project credentials fail before checkout or scanning. Without a project, no App token is generated and these inputs are unnecessary.
+¹ By default, provide `app-private-key` and one of `client-id` or `app-id`, preserving existing callers' App authentication. Prefer `client-id`; `app-id` is deprecated. With `optional-project-auth: 'true'`, App authentication is only needed for a configured project; invalid project credentials fail before checkout or scanning. Without a project, this opt-in skips App-token generation and needs no App inputs.
 
 ## What counts as a TODO
 
@@ -29,6 +30,7 @@ steps:
   - name: Create issues from TODOs
     uses: devantler-tech/.github/actions/create-issues-from-todos@<full-commit-sha> # vX.Y.Z
     with:
+      optional-project-auth: 'true'
       ignore: "^third_party/"
 ```
 
@@ -48,7 +50,7 @@ Replace `<full-commit-sha>` with the immutable commit of a reviewed catalogue re
 
 ## Testing
 
-The catalogue's action smoke runs with contents-read permission against an offline Docker stand-in, without App credentials or live tracker updates. The actual action wrapper is exercised, including exact Docker arguments, environment forwarding and the preserved retry helper. Independent mutations verify that missing forwarding, retry bypasses, swallowed failures, live credentials and omitted required checks fail CI.
+The catalogue's action smoke opts in to optional project authentication and runs with contents-read permission against an offline Docker stand-in, without App credentials or live tracker updates. The actual action wrapper is exercised, including exact Docker arguments, environment forwarding and the preserved retry helper. Offline cases cover both input states and retain the default path's App-token forwarding; structural guards bind the authentication conditions and existing App inputs. Independent mutations verify that missing forwarding, retry bypasses, swallowed failures, live credentials and omitted required checks fail CI.
 
 Run from the catalogue root:
 

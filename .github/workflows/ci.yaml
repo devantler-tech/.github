@@ -518,6 +518,7 @@ jobs:
         uses: ./actions/create-issues-from-todos
         with:
           ignore: '^\.github/tests/'
+          optional-project-auth: 'true'
 
       - name: 🧪 Verify actual Docker arguments and forwarded inputs
         run: bash .github/tests/todo-action-smoke.sh verify

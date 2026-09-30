@@ -23,6 +23,9 @@ while IFS=$'\t' read -r label mutation diagnostic; do
   echo "PASS: rejects $label"
 done <<'CASES'
 unconditional project token	.runs.steps |= map(if .id == "app-token" then .if=null else . end)	project authentication must be optional
+default-on project authentication	.inputs["optional-project-auth"].default="true"	project authentication must be optional
+unconditional new validation	.runs.steps[0].if=null	project authentication must be optional
+lost legacy App inputs	.runs.steps |= map(if .id == "app-token" then del(.with["private-key"]) else . end)	project authentication must be optional
 missing credential validation	.runs.steps[0].run=":"	invalid project credentials were accepted
 missing ignore forwarding	.runs.steps |= map(if .name == "📝 Create issues from TODOs" then .run |= sub("--env INPUT_IGNORE"; "--env INPUT_OMITTED") else . end)	exact Docker projection or retry count changed
 missing commit forwarding	.runs.steps |= map(if .name == "📝 Create issues from TODOs" then .run |= sub("--env INPUT_COMMITS"; "--env INPUT_OMITTED") else . end)	exact Docker projection or retry count changed
@@ -35,4 +38,4 @@ missing preserved helper	.runs.steps |= map(if .name == "🧰 Preserve retry hel
 mutable image tag	.runs.steps |= map(if .name == "📝 Create issues from TODOs" then .env.TODO_TO_ISSUE_IMAGE |= split("@")[0] else . end)	project authentication must be optional
 lower image floor	.runs.steps |= map(if .name == "📝 Create issues from TODOs" then .env.TODO_TO_ISSUE_IMAGE |= sub("v5.1.15"; "v5.0.0") else . end)	project authentication must be optional
 CASES
-echo 'PASS: 12 independent to-do action mutations are rejected'
+echo 'PASS: 15 independent to-do action mutations are rejected'
