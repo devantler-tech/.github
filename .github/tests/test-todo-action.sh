@@ -6,6 +6,7 @@ action="${1:-$root/actions/create-issues-from-todos/action.yaml}"
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
 yq -o=json '.' "$action" >"$work/action.json"
+# Stop the fixture with a focused diagnostic when an observed result differs.
 fail() { echo "FAIL: $*" >&2; exit 1; }
 condition="\${{ inputs.project != '' }}"
 jq -e --arg condition "$condition" '
