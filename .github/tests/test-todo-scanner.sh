@@ -31,7 +31,7 @@ image="$(jq -er '.runs.steps[] | select(.name == "📝 Create issues from TODOs"
   echo 'FAIL: immutable scanner image is required' >&2; exit 1;
 }
 # Pull before the disposable container loses its network. No registry credentials.
-docker pull "$image"
+bash "$root/.scripts/retry.sh" docker pull "$image"
 (cd "$fixture" && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o "$work/runner" .)
 mkdir -p "$work/bin" "$work/temp"
 cp "$root/.scripts/retry.sh" "$work/temp/devantler-actions-retry.sh"

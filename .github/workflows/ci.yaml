@@ -483,6 +483,9 @@ jobs:
       - name: 🧪 Require completed scanner scenarios
         run: bash .github/tests/test-todo-scanner-verdict.sh
 
+      - name: 🧪 Verify registry pull recovery
+        run: bash .github/tests/test-todo-scanner-pull.sh
+
       - name: 🧪 Exercise the real pinned scanner offline
         run: bash .github/tests/test-todo-scanner.sh
 
