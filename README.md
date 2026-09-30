@@ -737,7 +737,7 @@ jobs:
 
 With `use-app-token: true`, the sync protects pins in both `devantler-tech/.github` and the retired `devantler-tech/actions` catalogue. Within each repository, it compares commit ancestry: wherever the template pins a shared workflow or action to an older or diverged commit, the sync keeps this repository's line and says so in a warning. It stops without signing instead when it cannot keep that line safely: the template also changed the rest of the line, or a file here pins the same component at more than one commit and the template moved one of those lines to the older pin. Equal pins and upgrades sync as usual.
 
-Migration from `devantler-tech/actions` to `devantler-tech/.github` is allowed without comparing the two repositories' separate histories. Reusable workflows keep their `.github/workflows/` path; public actions move beneath `actions/` in the new catalogue. Once a consumer uses the new location for a component, a template that moves it back to the retired catalogue is refused before signing. Migrating other calls does not permit downgrading a pin already in the new catalogue.
+Migration from `devantler-tech/actions` to `devantler-tech/.github` is allowed without comparing the two repositories' separate histories. Reusable workflows keep their `.github/workflows/` path; public actions move beneath `actions/` in the new catalogue. Once a consumer uses the new location for a component, a template that moves it back to the retired catalogue is refused before signing, including when files are renamed or calls are consolidated across files. Unchanged use of both catalogues, removals, and forward migrations remain allowed. Migrating other calls does not permit downgrading a pin already in the new catalogue.
 
 #### Usage
 

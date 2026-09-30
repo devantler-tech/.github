@@ -34,6 +34,7 @@ trap 'rm -rf "$test_root"' EXIT
 export SIGNED_SHA="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 
 write_fake_gh() {
+  # Write an offline API executable that validates the exact tree and branch publication.
   cat >"$1/gh" <<'FAKE_GH'
 #!/usr/bin/env bash
 set -euo pipefail
@@ -120,6 +121,7 @@ workflow() {
 
 # new_case <name>: a fixture repo on its base commit; prints its path.
 new_case() {
+  # Create an isolated Git repository and API fixture for one behavior scenario.
   local dir="$test_root/${COMPARE_REPO##*/}-$1"
   mkdir -p "$dir/bin" "$dir/repo"
   write_fake_gh "$dir/bin"
@@ -132,12 +134,14 @@ new_case() {
 }
 
 commit_all() {
+  # Commit only the disposable fixture repository supplied by the caller.
   git -C "$1" add -A
   git -C "$1" commit -q -m "$2"
 }
 
 # run_case <dir> <expected-tree> → sets rc; stdout/stderr in <dir>/output and <dir>/error.
 run_case() {
+  # Execute the real signing helper and capture its status, output and API calls.
   local dir="$1"
   export EXPECTED_TREE="$2"
   export EXPECTED_PARENT="$base"
@@ -157,6 +161,7 @@ run_case() {
 
 # tree_with <dir> <path=file-with-content>... : HEAD's tree with those paths overwritten.
 tree_with() {
+  # Build an independent expected Git tree by replacing the specified fixture contents.
   local dir="$1" index spec path blob
   shift
   index="$(mktemp)"
@@ -364,6 +369,7 @@ done
 # Migration fixtures contain complete references: workflow paths stay the same, while public
 # composite actions move beneath actions/. Different catalogue histories are never compared.
 references() {
+  # Write workflow calls or action steps using the complete references supplied by the test.
   local file="$1" ref job=0
   shift
   mkdir -p "$(dirname "$file")"
@@ -381,6 +387,7 @@ references() {
 }
 
 assert_unsigned() {
+  # Require an explained catalogue rollback refusal before any remote mutation.
   [[ "$rc" -ne 0 ]] || fail "$1 — a catalogue rollback was signed"
   [[ ! -f "$dir/updated" ]] || fail "$1 — the branch was moved"
   ! grep -qE '^(POST|PATCH) ' "$dir/gh.log" || fail "$1 — a write was attempted"
@@ -461,6 +468,52 @@ for component in workflow action; do
   ! grep -qE '^(POST|PATCH) ' "$dir/gh.log" || fail "$component-migrate-with-downgrade — a write was attempted"
   grep -q 'more than one commit' "$dir/error" || fail "$component-migrate-with-downgrade — wrong refusal: $(cat "$dir/error")"
   echo "ok: $component migration does not excuse downgrading an existing current pin"
+
+  # A rename is a deletion and an addition to the per-file guard. Exercise both directions,
+  # unchanged coexistence, and duplicate occurrences so set membership cannot hide a rollback.
+  for move in rollback consolidate forward current coexist delete add-retired; do
+    dir="$(new_case "$component-cross-file-$move")"
+    r="$dir/repo"
+    old_file="$r/.github/workflows/old name.yaml"
+    new_file="$r/.github/workflows/new name.yaml"
+    case "$move" in
+      forward) references "$old_file" "$legacy@$v1360" ;;
+      consolidate) references "$old_file" "$current@$v1360" "$current@$v1360" ;;
+      *) references "$old_file" "$current@$v1360" ;;
+    esac
+    case "$move" in
+      consolidate | coexist | delete) references "$new_file" "$legacy@$v1351" ;;
+    esac
+    commit_all "$r" base
+    base="$(git -C "$r" rev-parse HEAD)"
+    git -C "$r" switch -q -c chore/template-sync_deadbee
+    case "$move" in
+      coexist)
+        printf '# unrelated template edit\n' >>"$old_file"
+        printf '# unrelated template edit\n' >>"$new_file"
+        ;;
+      add-retired) references "$new_file" "$legacy@$v1351" ;;
+      *)
+        rm "$old_file"
+        case "$move" in
+          rollback) references "$new_file" "$legacy@$v1360" ;;
+          consolidate) references "$new_file" "$legacy@$v1351" "$legacy@$v1351" "$legacy@$v1351" ;;
+          forward | current) references "$new_file" "$current@$v1360" ;;
+          delete) printf '# unrelated template edit\n' >>"$new_file" ;;
+        esac
+        ;;
+    esac
+    commit_all "$r" "chore: sync template"
+    run_case "$dir" "$(git -C "$r" rev-parse 'HEAD^{tree}')"
+    case "$move" in
+      rollback | consolidate) assert_unsigned "$component-cross-file-$move" ;;
+      *)
+        [[ "$rc" -eq 0 ]] || fail "$component-cross-file-$move — safe change refused: $(cat "$dir/error")"
+        ! grep -qE '/compare/|git/trees' "$dir/gh.log" || fail "$component-cross-file-$move — histories compared or tree rewritten"
+        ;;
+    esac
+    echo "ok: $component cross-file $move"
+  done
 done
 
 echo "PASS: template sync keeps catalogue pins ordered and migration forward-only"

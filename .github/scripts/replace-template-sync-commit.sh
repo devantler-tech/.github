@@ -93,6 +93,7 @@ ref_count() {
 }
 
 pin_repository() {
+  # Return the owning repository of a matched, immutable catalogue reference.
   local path="${1%@*}"
   path="${path#devantler-tech/}"
   printf 'devantler-tech/%s\n' "${path%%/*}"
@@ -175,6 +176,38 @@ restore_pin() {
 
 git diff -z --name-only --no-renames "$base_sha" HEAD >"$work/changed" ||
   fail "could not list the files the sync commit changed"
+
+catalogue_counts() {
+  # Emit revision, repository, component and occurrence count across changed paths. Unchanged
+  # paths cancel out of the deltas; counting occurrences also covers consolidated duplicate calls.
+  local revision="$1" label="$2" path refs ref
+  while IFS= read -r -d '' path; do
+    refs="$(pins_at "$revision" "$path")"
+    [[ -n "$refs" ]] || continue
+    while IFS= read -r ref; do
+      printf '%s\t%s\t%s\t%s\n' "$label" "$(pin_repository "$ref")" \
+        "$(pin_component "$ref")" "$(ref_count "$revision" "$path" "$ref")"
+    done <<<"$refs"
+  done <"$work/changed"
+}
+
+# A renamed or consolidated workflow can remove a current pin from one path and add a retired
+# pin to another. Detect that rollback before the per-file ordering checks or any write request.
+catalogue_counts "$base_sha" base >"$work/catalogue-counts"
+catalogue_counts HEAD head >>"$work/catalogue-counts"
+rollbacks="$(awk -F '\t' '
+  { counts[$1, $2, $3] += $4; components[$3] = 1 }
+  END {
+    for (component in components) {
+      if (counts["head", "devantler-tech/.github", component] < counts["base", "devantler-tech/.github", component] &&
+          counts["head", "devantler-tech/actions", component] > counts["base", "devantler-tech/actions", component]) {
+        print component
+      }
+    }
+  }
+' "$work/catalogue-counts")" || fail "could not compare catalogue counts"
+[[ -z "$rollbacks" ]] || fail "${rollbacks} moved back to the retired catalogue; refusing to sign"
+
 while IFS= read -r -d '' path; do
   new_pins="$(pins_at HEAD "$path")"
   [[ -n "$new_pins" ]] || continue
