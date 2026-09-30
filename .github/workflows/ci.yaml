@@ -447,6 +447,48 @@ jobs:
           dry-run: "true"
 
   # ── create-issues-from-todos ────────────────────────────────
+  test-todo-scanner:
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    name: "[Test] TODO Scanner - Isolated Image"
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: 🔒 Harden Runner
+        uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
+        with:
+          egress-policy: audit
+
+      - name: 📑 Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: 🔧 Setup Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: .github/tests/todo-scanner/go.mod
+          cache: false
+
+      - name: 🧪 Verify fixture rejects unexpected operations
+        working-directory: .github/tests/todo-scanner
+        run: go test -race ./...
+
+      - name: 🧪 Verify required scanner CI boundary
+        run: bash .github/tests/test-todo-scanner-ci.sh
+
+      - name: 🧪 Reject invalid scanner scenarios
+        run: bash .github/tests/test-todo-scanner-inputs.sh
+
+      - name: 🧪 Require completed scanner scenarios
+        run: bash .github/tests/test-todo-scanner-verdict.sh
+
+      - name: 🧪 Verify registry pull recovery
+        run: bash .github/tests/test-todo-scanner-pull.sh
+
+      - name: 🧪 Exercise the real pinned scanner offline
+        run: bash .github/tests/test-todo-scanner.sh
+
   test-create-issues-from-todos:
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
     name: "[Test] Create Issues From TODOs - Offline Wrapper"
@@ -5516,6 +5558,7 @@ jobs:
       - test-approve-pr-credential-boundary
       - test-cleanup-ghcr-packages
       - test-create-issues-from-todos
+      - test-todo-scanner
       - test-dependency-review
       - test-diagnose-flux
       - test-enable-auto-merge-on-pr
@@ -5640,6 +5683,7 @@ jobs:
             ${{ needs.test-approve-pr-credential-boundary.result }}
             ${{ needs.test-cleanup-ghcr-packages.result }}
             ${{ needs.test-create-issues-from-todos.result }}
+            ${{ needs.test-todo-scanner.result }}
             ${{ needs.test-dependency-review.result }}
             ${{ needs.test-diagnose-flux.result }}
             ${{ needs.test-enable-auto-merge-on-pr.result }}

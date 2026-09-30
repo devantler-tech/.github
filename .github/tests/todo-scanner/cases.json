@@ -1,0 +1,148 @@
+[
+  {
+    "Name": "recognized and mixed-case comments",
+    "Files": {
+      "recognized.sh": { "Before": "", "After": "# TODO: Repair retries\n" },
+      "mixed.go": { "Before": "", "After": "// ToDo: Repair timeout\n" }
+    },
+    "Operations": [
+      {
+        "Method": "GET",
+        "Path": "/search/issues?q=repo%3Aoffline%2Ffixture+is%3Aissue+in%3Atitle+Repair+timeout&per_page=30",
+        "Status": 200,
+        "Response": "{\"total_count\":0,\"incomplete_results\":false,\"items\":[]}"
+      },
+      {
+        "Method": "POST",
+        "Path": "/repos/offline/fixture/issues",
+        "Body": "{\"title\":\"Repair timeout\",\"body\":\"https://example.invalid/offline/fixture/blob/1111111111111111111111111111111111111111/mixed.go#L1\\n\\n```golang\\n\\n// ToDo: Repair timeout\\n\\n```\",\"labels\":[],\"assignees\":[\"offline-actor\"]}",
+        "Status": 201,
+        "Response": "{\"number\":7}"
+      },
+      {
+        "Method": "GET",
+        "Path": "/search/issues?q=repo%3Aoffline%2Ffixture+is%3Aissue+in%3Atitle+Repair+retries&per_page=30",
+        "Status": 200,
+        "Response": "{\"total_count\":0,\"incomplete_results\":false,\"items\":[]}"
+      },
+      {
+        "Method": "POST",
+        "Path": "/repos/offline/fixture/issues",
+        "Body": "{\"title\":\"Repair retries\",\"body\":\"https://example.invalid/offline/fixture/blob/1111111111111111111111111111111111111111/recognized.sh#L1\\n\\n```sh\\n\\n# TODO: Repair retries\\n\\n```\",\"labels\":[],\"assignees\":[\"offline-actor\"]}",
+        "Status": 201,
+        "Response": "{\"number\":8}"
+      }
+    ],
+    "Output": ["Issue created: #7", "Issue created: #8"]
+  },
+  {
+    "Name": "ignore matches only the intended path",
+    "Files": {
+      "ignored/task.sh": { "Before": "", "After": "# TODO: Ignore this task\n" },
+      "ignored-near/task.sh": { "Before": "", "After": "# TODO: Keep this task\n" }
+    },
+    "Ignore": "^ignored/",
+    "Operations": [
+      {
+        "Method": "GET",
+        "Path": "/search/issues?q=repo%3Aoffline%2Ffixture+is%3Aissue+in%3Atitle+Keep+this+task&per_page=30",
+        "Status": 200,
+        "Response": "{\"items\":[]}"
+      },
+      {
+        "Method": "POST",
+        "Path": "/repos/offline/fixture/issues",
+        "Body": "{\"title\":\"Keep this task\",\"body\":\"https://example.invalid/offline/fixture/blob/1111111111111111111111111111111111111111/ignored-near/task.sh#L1\\n\\n```sh\\n\\n# TODO: Keep this task\\n\\n```\",\"labels\":[],\"assignees\":[\"offline-actor\"]}",
+        "Status": 201,
+        "Response": "{\"number\":9}"
+      }
+    ],
+    "Output": ["Issue created: #9"]
+  },
+  {
+    "Name": "ordinary comments produce no issues",
+    "Files": { "ordinary.sh": { "Before": "", "After": "# Ordinary comment\nprintf hello\n" } },
+    "Operations": [],
+    "Output": []
+  },
+  {
+    "Name": "existing title avoids a duplicate issue",
+    "Files": { "duplicate.sh": { "Before": "", "After": "# TODO: Already tracked\n" } },
+    "Operations": [
+      {
+        "Method": "GET",
+        "Path": "/search/issues?q=repo%3Aoffline%2Ffixture+is%3Aissue+in%3Atitle+Already+tracked&per_page=30",
+        "Status": 200,
+        "Response": "{\"total_count\":1,\"incomplete_results\":false,\"items\":[{\"number\":10,\"title\":\"Already tracked\",\"state\":\"open\",\"html_url\":\"https://example.invalid/offline/fixture/issues/10\"}]}"
+      }
+    ],
+    "Output": ["Skipping issue creation (duplicate found): #10"]
+  },
+  {
+    "Name": "removed comment closes the matching issue",
+    "Files": { "removed.sh": { "Before": "# TODO: Completed task\n", "After": "" } },
+    "Existing": [
+      {
+        "number": 11,
+        "title": "Completed task",
+        "state": "open",
+        "html_url": "https://example.invalid/offline/fixture/issues/11"
+      }
+    ],
+    "Operations": [
+      {
+        "Method": "PATCH",
+        "Path": "/repos/offline/fixture/issues/11",
+        "Body": "{\"state\":\"closed\"}",
+        "Status": 200,
+        "Response": "{\"number\":11,\"state\":\"closed\"}"
+      },
+      {
+        "Method": "POST",
+        "Path": "/repos/offline/fixture/issues/11/comments",
+        "Body": "{\"body\":\"Closed in 1111111111111111111111111111111111111111.\"}",
+        "Status": 201,
+        "Response": "{\"id\":1}"
+      }
+    ],
+    "Output": ["Issue closed"]
+  },
+  {
+    "Name": "ambiguous removed comments close neither issue",
+    "Files": { "ambiguous.sh": { "Before": "# TODO: Ambiguous task\n", "After": "" } },
+    "Existing": [
+      { "number": 12, "title": "Ambiguous task", "html_url": "https://example.invalid/offline/fixture/issues/12" },
+      { "number": 13, "title": "Ambiguous task", "html_url": "https://example.invalid/offline/fixture/issues/13" }
+    ],
+    "Operations": [],
+    "Output": ["Skipping issue closure due to ambiguous match"]
+  },
+  {
+    "Name": "diff and fallback API errors abort scanning",
+    "Files": { "error.sh": { "Before": "", "After": "# TODO: Do not create on diff error\n" } },
+    "DiffError": true,
+    "WantFailure": true,
+    "Operations": [],
+    "Output": ["Could not retrieve diff", "Fallback URL also failed"]
+  },
+  {
+    "Name": "issue API rejection is reported by the pinned scanner",
+    "Files": { "rejected.sh": { "Before": "", "After": "# TODO: Rejected task\n" } },
+    "Operations": [
+      {
+        "Method": "GET",
+        "Path": "/search/issues?q=repo%3Aoffline%2Ffixture+is%3Aissue+in%3Atitle+Rejected+task&per_page=30",
+        "Status": 200,
+        "Response": "{\"items\":[]}"
+      },
+      {
+        "Method": "POST",
+        "Path": "/repos/offline/fixture/issues",
+        "Body": "{\"title\":\"Rejected task\",\"body\":\"https://example.invalid/offline/fixture/blob/1111111111111111111111111111111111111111/rejected.sh#L1\\n\\n```sh\\n\\n# TODO: Rejected task\\n\\n```\",\"labels\":[],\"assignees\":[\"offline-actor\"]}",
+        "Status": 422,
+        "Response": "{\"message\":\"Validation Failed\",\"errors\":[{\"resource\":\"Issue\",\"field\":\"title\",\"code\":\"invalid\"}]}"
+      }
+    ],
+    "Output": ["Issue could not be created"]
+  }
+]
