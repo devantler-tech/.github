@@ -73,7 +73,17 @@ jobs:
             # escapes the clone, is absolute, or points into .git can never be kept:
             # count it as missing rather than letting an existence check pass it.
             case "/$path/" in */../* | */./* | //* | /.git/*) missing+=("$path"); continue ;; esac
-            [ -e "$KYVERNO_POLICIES_TEMP_DIR/$path" ] || missing+=("$path")
+            # The filter enumerates with `find -type f`, which never follows a symlink,
+            # so a path with any symlinked component (e.g. `alias -> .git`) is never
+            # kept either — even though `-e` would follow it and report it present.
+            prefix="$KYVERNO_POLICIES_TEMP_DIR"
+            symlinked=0
+            IFS=/ read -r -a parts <<<"$path"
+            for part in "${parts[@]}"; do
+              prefix="$prefix/$part"
+              [ -L "$prefix" ] && { symlinked=1; break; }
+            done
+            [ "$symlinked" -eq 0 ] && [ -e "$KYVERNO_POLICIES_TEMP_DIR/$path" ] || missing+=("$path")
           done < "$policyignore"
           if [ "${#missing[@]}" -gt 0 ]; then
             for path in "${missing[@]}"; do

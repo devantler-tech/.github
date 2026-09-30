@@ -30,6 +30,8 @@ mkdir -p "$upstream/best-practices/add-ns-quota" "$upstream/other/create-pod-ant
 touch "$upstream/best-practices/add-ns-quota/add-ns-quota.yaml" \
   "$upstream/other/create-pod-antiaffinity/create-pod-antiaffinity.yaml"
 mkdir -p "$upstream/.git" && touch "$upstream/.git/config"
+ln -s .git "$upstream/alias"
+ln -s create-pod-antiaffinity/create-pod-antiaffinity.yaml "$upstream/other/linked.yaml"
 
 # run <label> <policyignore content | "-" for no file> [script]
 run() {
@@ -81,6 +83,10 @@ refuses "a re-include that escapes the clone is never kept" \
   '*\n!../upstream/best-practices/add-ns-quota/add-ns-quota.yaml\n' "re-includes '../upstream/"
 refuses "an absolute re-include is never kept, even when the file exists" \
   '*\n!/etc/hosts\n' "re-includes '/etc/hosts'"
+refuses "a re-include through a symlinked directory is never kept, even into .git" \
+  '*\n!alias/config\n' "re-includes 'alias/config'"
+refuses "a re-include of a symlinked file is never kept" \
+  '*\n!other/linked.yaml\n' "re-includes 'other/linked.yaml'"
 
 out="$(run "two missing paths" '*\n!gone/a.yaml\n!gone/b.yaml\n')" && fail "two missing paths — expected failure"
 for p in gone/a.yaml gone/b.yaml; do
