@@ -1,0 +1,114 @@
+#!/usr/bin/env bash
+# Execute the action's real Docker wrapper and pinned image with network access disabled.
+set -euo pipefail
+root="$(cd "$(dirname "$0")/../.." && pwd)"
+work="$(mktemp -d)"
+trap 'rm -rf "$work"' EXIT
+fixture="$root/.github/tests/todo-scanner"
+cases="$fixture/cases.json"
+if (( $# > 0 )); then
+  [[ "$1" == --check-fixtures && $# == 2 ]] || { echo 'usage: test-todo-scanner.sh [--check-fixtures file]' >&2; exit 2; }
+  cases="$2"
+fi
+jq -e '
+  type == "array" and length > 0 and ([.[].Name]|unique|length) == length and
+  all(.[];
+    (.Name|type == "string" and length > 0) and
+    (.Files|type == "object" and length > 0) and
+    (.Files|keys|all(test("^[A-Za-z0-9._/-]+$") and (startswith("/")|not) and
+      (split("/")|all(. != ".." and . != "." and . != "")))) and
+    all(.Files[]; (.Before|type == "string") and (.After|type == "string")) and
+    (.Operations|type == "array") and (.Output|type == "array" and all(type == "string")))
+  ' "$cases" >/dev/null || { echo 'Invalid scanner scenarios' >&2; exit 1; }
+(( $# == 0 )) || exit 0
+export TODO_REAL_DOCKER
+TODO_REAL_DOCKER="$(command -v docker)"
+[[ "$TODO_REAL_DOCKER" == /* ]] || { echo 'FAIL: real Docker is required' >&2; exit 1; }
+yq -o=json '.' "$root/actions/create-issues-from-todos/action.yaml" >"$work/action.json"
+jq -er '.runs.steps[] | select(.name == "📝 Create issues from TODOs") | .run' "$work/action.json" >"$work/scanner.sh"
+image="$(jq -er '.runs.steps[] | select(.name == "📝 Create issues from TODOs") | .env.TODO_TO_ISSUE_IMAGE' "$work/action.json")"
+[[ "$image" =~ ^ghcr.io/alstr/todo-to-issue-action:v[0-9]+\.[0-9]+\.[0-9]+@sha256:[0-9a-f]{64}$ ]] || {
+  echo 'FAIL: immutable scanner image is required' >&2; exit 1;
+}
+# Pull before the disposable container loses its network. No registry credentials.
+docker pull "$image"
+(cd "$fixture" && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o "$work/runner" .)
+mkdir -p "$work/bin" "$work/temp"
+cp "$root/.scripts/retry.sh" "$work/temp/devantler-actions-retry.sh"
+cat >"$work/bin/docker" <<'SHIM'
+#!/usr/bin/env bash
+set -euo pipefail
+[[ "${1:-}" == run ]] || { echo 'Only scanner execution is allowed' >&2; exit 1; }
+shift
+exec "$TODO_REAL_DOCKER" run --platform linux/amd64 --pull never --network none \
+  --read-only --cap-drop ALL --security-opt no-new-privileges \
+  --tmpfs /tmp:rw,noexec,nosuid,size=16m \
+  --mount "type=bind,src=${TODO_CASE_DIR:?},dst=/fixture,readonly" \
+  --entrypoint /fixture/runner "$@"
+SHIM
+chmod +x "$work/bin/docker"
+export PATH="$work/bin:$PATH" RUNNER_TEMP="$work/temp" RETRY_MAX_ATTEMPTS=1
+
+count="$(jq 'length' "$cases")"
+for ((i=0; i<count; i++)); do
+  export TODO_CASE_DIR="$work/case-$i" GITHUB_WORKSPACE="$work/case-$i/workspace"
+  mkdir -p "$GITHUB_WORKSPACE"
+  cp "$work/runner" "$TODO_CASE_DIR/runner"
+  jq ".[$i]" "$cases" >"$TODO_CASE_DIR/source.json"
+  jq -r '.Files | keys[]' "$TODO_CASE_DIR/source.json" >"$TODO_CASE_DIR/files"
+  # A real Git diff provides scanner input; issue payload expectations remain literal.
+  git -C "$GITHUB_WORKSPACE" init -q
+  git -C "$GITHUB_WORKSPACE" config user.name offline-fixture
+  git -C "$GITHUB_WORKSPACE" config user.email offline@example.invalid
+  while IFS= read -r file; do
+    mkdir -p "$GITHUB_WORKSPACE/$(dirname "$file")"
+    jq -jr --arg file "$file" '.Files[$file].Before' "$TODO_CASE_DIR/source.json" >"$GITHUB_WORKSPACE/$file"
+    git -C "$GITHUB_WORKSPACE" add -- "$file"
+  done <"$TODO_CASE_DIR/files"
+  git -C "$GITHUB_WORKSPACE" -c commit.gpgsign=false commit -qm fixture
+  while IFS= read -r file; do
+    jq -jr --arg file "$file" '.Files[$file].After' "$TODO_CASE_DIR/source.json" >"$GITHUB_WORKSPACE/$file"
+  done <"$TODO_CASE_DIR/files"
+  git -C "$GITHUB_WORKSPACE" diff --no-ext-diff --no-color >"$TODO_CASE_DIR/diff"
+  jq --rawfile diff "$TODO_CASE_DIR/diff" '
+    . as $case |
+    {Name,WantFailure:(.WantFailure // false),Output,
+     Exchanges:([
+       {Method:"GET",Path:"/repos/offline/fixture/issues?per_page=100&page=1&state=open",Status:200,Response:($case.Existing // [] | tojson)},
+       {Method:"GET",Path:"/repos/offline/fixture/milestones?per_page=100&page=1&state=open",Status:200,Response:"[]"}]
+       + (if .DiffError then [
+         {Method:"GET",Path:"/repos/offline/fixture/compare/fixture-base...1111111111111111111111111111111111111111",Status:503,Response:"{\"message\":\"Offline diff failure\"}"},
+         {Method:"GET",Path:"/repos/offline/fixture/commits/1111111111111111111111111111111111111111",Status:503,Response:"{\"message\":\"Offline fallback failure\"}"}]
+       else [
+         {Method:"GET",Path:"/repos/offline/fixture/compare/fixture-base...1111111111111111111111111111111111111111",Status:200,Response:$diff},
+         {Method:"GET",Path:"/github/linguist/master/lib/linguist/languages.yml",Raw:true,Status:200,Response:"Shell:\n  extensions: [\".sh\"]\n  ace_mode: sh\nGo:\n  extensions: [\".go\"]\n  ace_mode: golang\n"},
+         {Method:"GET",Path:"/alstr/todo-to-issue-action/master/syntax.json",Raw:true,Status:200,Response:"[{\"language\":\"Shell\",\"markers\":[{\"type\":\"line\",\"pattern\":\"#\"}]},{\"language\":\"Go\",\"markers\":[{\"type\":\"line\",\"pattern\":\"//\"}]}]"}]
+       end) + .Operations)}' "$TODO_CASE_DIR/source.json" >"$TODO_CASE_DIR/case.json"
+  ignore="$(jq -r '.Ignore // ""' "$TODO_CASE_DIR/source.json")"
+  jq -n --arg ignore "$ignore" '{
+    "${{ github.repository }}":"offline/fixture",
+    "${{ github.event.before || github.base_ref }}":"fixture-base",
+    "${{ toJSON(github.event.commits) }}":"null",
+    "${{ github.event.pull_request.diff_url }}":"",
+    "${{ github.sha }}":"1111111111111111111111111111111111111111",
+    "${{ github.token }}":"offline-token",
+    "${{ inputs.project }}":"",
+    "${{ steps.app-token.outputs.token }}":"",
+    "${{ github.actor }}":"offline-actor",
+    "${{ github.api_url }}":"https://api.example.invalid",
+    "${{ github.server_url }}":"https://example.invalid",
+    "${{ inputs.ignore }}":$ignore}' >"$TODO_CASE_DIR/context.json"
+  jq -e --slurpfile context "$TODO_CASE_DIR/context.json" '
+    .runs.steps[] | select(.name == "📝 Create issues from TODOs") | .env |
+    with_entries(.value = (.value | tostring | . as $value |
+      if startswith("${{") then
+        if $context[0] | has($value) then $context[0][$value]
+        else error("unmapped action expression") end
+      else . end))' "$work/action.json" >"$TODO_CASE_DIR/env.json"
+  jq -j 'to_entries[] | .key,"\u0000",.value,"\u0000"' "$TODO_CASE_DIR/env.json" >"$TODO_CASE_DIR/env"
+  (
+    while IFS= read -r -d '' key && IFS= read -r -d '' value; do export "$key=$value"; done <"$TODO_CASE_DIR/env"
+    bash "$work/scanner.sh"
+  )
+done
+echo "PASS: $count real pinned scanner scenarios with no network"
