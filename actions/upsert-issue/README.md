@@ -61,3 +61,14 @@ steps:
       body-file: ${{ steps.report.outputs.report-path }}
       open: ${{ steps.report.outputs.has-violations }}
 ```
+
+## Testing
+
+Catalogue CI exercises the action's actual shell implementation against an offline GitHub CLI
+fixture in a job with only contents-read permission. Tests cover issue lifecycle, payloads and
+outputs, input validation, and API failures. They create no live smoke-test issue.
+
+```bash
+bash .github/tests/test-upsert-issue-reopen.sh
+bash .github/tests/test-upsert-issue-ci.sh
+```

@@ -2434,72 +2434,6 @@ jobs:
           label: code-coverage/test
           fail-on-error: "false"
 
-  # ── upsert-issue ────────────────────────────────────────────
-  test-upsert-issue-create:
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      issues: write
-    steps:
-      - name: 🔒 Harden Runner
-        uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
-        with:
-          egress-policy: audit
-
-      - name: 📑 Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-
-      - name: 🧪 Create or update an issue
-        id: upsert
-        uses: ./actions/upsert-issue
-        with:
-          title: "[test] upsert-issue smoke test"
-          body: |
-            This issue is created by the `upsert-issue` test workflow.
-            Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Verify outputs
-        env:
-          ISSUE_NUMBER: ${{ steps.upsert.outputs.issue-number }}
-          ISSUE_URL: ${{ steps.upsert.outputs.issue-url }}
-        run: |
-          if [ -z "$ISSUE_NUMBER" ]; then
-            echo "::error::issue-number output is empty"
-            exit 1
-          fi
-          echo "Issue: $ISSUE_URL"
-
-  test-upsert-issue-close:
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
-    needs: [test-upsert-issue-create]
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      issues: write
-    steps:
-      - name: 🔒 Harden Runner
-        uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
-        with:
-          egress-policy: audit
-
-      - name: 📑 Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-
-      - name: 🧪 Close the issue
-        uses: ./actions/upsert-issue
-        with:
-          title: "[test] upsert-issue smoke test"
-          body: "Closed by test."
-          open: "false"
-          close-comment: "🧪 Closed by test workflow."
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-
   # ── login-to-ghcr (negative path) ──────────────────────────
   test-login-to-ghcr-empty-token:
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
@@ -2568,9 +2502,9 @@ jobs:
             exit 1
           fi
 
-  # ── upsert-issue (negative path) ───────────────────────────
-  test-upsert-issue-missing-body:
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+  # ── upsert-issue (offline issue lifecycle) ─────────────────
+  test-upsert-issue:
+    name: "[Test] Upsert Issue - Offline Behavior"
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -2585,79 +2519,34 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: 🧪 Run upsert-issue with neither body nor body-file (expected to fail)
-        id: upsert
-        continue-on-error: true
-        uses: ./actions/upsert-issue
-        with:
-          title: "[test] upsert-issue missing-body negative test"
-
-      - name: ✅ Verify step failed as expected
+      - name: 🔒 Verify offline issue-test credentials and required-check wiring
         shell: bash
-        env:
-          OUTCOME: ${{ steps.upsert.outcome }}
-        run: |
-          if [[ "$OUTCOME" != "failure" ]]; then
-            echo "::error::Expected the action to fail when neither body nor body-file is provided, got: $OUTCOME"
-            exit 1
-          fi
+        run: bash .github/tests/test-upsert-issue-ci.sh
 
-  test-upsert-issue-missing-body-file:
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    steps:
-      - name: 🔒 Harden Runner
-        uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
-        with:
-          egress-policy: audit
-
-      - name: 📑 Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-
-      - name: 🧪 Run upsert-issue with a non-existent body-file (expected to fail)
-        id: upsert
-        continue-on-error: true
-        uses: ./actions/upsert-issue
-        with:
-          title: "[test] upsert-issue missing-body-file negative test"
-          body-file: does-not-exist.md
-
-      - name: ✅ Verify step failed as expected
-        shell: bash
-        env:
-          OUTCOME: ${{ steps.upsert.outcome }}
-        run: |
-          if [[ "$OUTCOME" != "failure" ]]; then
-            echo "::error::Expected the action to fail when body-file does not exist, got: $OUTCOME"
-            exit 1
-          fi
-
-  test-upsert-issue-reopen:
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    steps:
-      - name: 🔒 Harden Runner
-        uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
-        with:
-          egress-policy: audit
-
-      - name: 📑 Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-
-      # The live smoke test above cannot make a reopen fail or a search result go stale, so it
-      # cannot show that a closed tracking issue is always reopened or the step fails. This runs
-      # the action's own run block against a stubbed gh for each case (#1375).
-      - name: 🧪 Verify a closed tracking issue is reopened or the step fails
+      - name: 🧪 Exercise issue lifecycle, payloads and failures against an offline API
         shell: bash
         run: bash .github/tests/test-upsert-issue-reopen.sh
+
+      - name: 🧰 Prepare the offline CLI for the hosted action
+        shell: bash
+        run: bash .github/tests/upsert-issue-smoke.sh prepare
+
+      - name: 🧪 Exercise the hosted composite action against the offline CLI
+        id: upsert
+        uses: ./actions/upsert-issue
+        with:
+          title: Offline smoke fixture
+          body: Offline smoke body
+          labels: bug
+          repository: offline/fixture
+          github-token: offline-fixture
+
+      - name: ✅ Verify hosted action inputs and outputs
+        shell: bash
+        env:
+          ISSUE_NUMBER: ${{ steps.upsert.outputs.issue-number }}
+          ISSUE_URL: ${{ steps.upsert.outputs.issue-url }}
+        run: bash .github/tests/upsert-issue-smoke.sh verify
 
   # ── run-dotnet-tests (negative path) ───────────────────────
   test-run-dotnet-tests-missing-working-directory:
@@ -5638,13 +5527,9 @@ jobs:
       - test-update-agent-skills-missing-dir
       - test-update-agent-skills-mark-internal
       - test-upload-coverage
-      - test-upsert-issue-create
-      - test-upsert-issue-close
       - test-login-to-ghcr-empty-token
       - test-setup-go-toolchain-invalid-version
-      - test-upsert-issue-missing-body
-      - test-upsert-issue-missing-body-file
-      - test-upsert-issue-reopen
+      - test-upsert-issue
       - test-run-dotnet-tests-missing-working-directory
       - lint-readme-parity
       - lint-shell-pipelines
@@ -5766,13 +5651,9 @@ jobs:
             ${{ needs.test-update-agent-skills-missing-dir.result }}
             ${{ needs.test-update-agent-skills-mark-internal.result }}
             ${{ needs.test-upload-coverage.result }}
-            ${{ needs.test-upsert-issue-create.result }}
-            ${{ needs.test-upsert-issue-close.result }}
             ${{ needs.test-login-to-ghcr-empty-token.result }}
             ${{ needs.test-setup-go-toolchain-invalid-version.result }}
-            ${{ needs.test-upsert-issue-missing-body.result }}
-            ${{ needs.test-upsert-issue-missing-body-file.result }}
-            ${{ needs.test-upsert-issue-reopen.result }}
+            ${{ needs.test-upsert-issue.result }}
             ${{ needs.test-run-dotnet-tests-missing-working-directory.result }}
             ${{ needs.lint-readme-parity.result }}
             ${{ needs.lint-shell-pipelines.result }}
