@@ -59,7 +59,7 @@ flowchart TD
 | [aggregate-job-checks](actions/aggregate-job-checks/README.md) | Aggregate multiple job results into a single required check |
 | [approve-pr](actions/approve-pr/README.md) | Approve a PR using a GitHub App identity |
 | [cleanup-ghcr-packages](actions/cleanup-ghcr-packages/README.md) | Clean up old GHCR packages |
-| [create-issues-from-todos](actions/create-issues-from-todos/README.md) | Create GitHub issues from TODO comments |
+| [create-issues-from-todos](actions/create-issues-from-todos/README.md) | Create GitHub issues from TODO comments, with optional project integration |
 | [dependency-review](actions/dependency-review/README.md) | Scan a PR's dependency changes for vulnerabilities and disallowed licenses |
 | [diagnose-flux](actions/diagnose-flux/README.md) | Dump Flux reconcile state, controller logs, and failing pod logs on a stuck deploy |
 | [enable-auto-merge-on-pr](actions/enable-auto-merge-on-pr/README.md) | Enable auto-merge on a pull request |
