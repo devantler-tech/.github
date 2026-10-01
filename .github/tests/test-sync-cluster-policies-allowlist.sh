@@ -40,14 +40,16 @@ touch "$upstream/best-practices/add-ns-quota/add-ns-quota.yaml" \
 mkdir -p "$upstream/.git" && touch "$upstream/.git/config"
 ln -s .git "$upstream/alias"
 ln -s create-pod-antiaffinity/create-pod-antiaffinity.yaml "$upstream/other/linked.yaml"
+git -C "$upstream" init -q
+git -C "$upstream" add best-practices other alias
 
 # run <label> <policyignore content | "-" for no file> [script]
 run() {
   local label="$1" content="$2" body="${3:-$script}" caller
   caller="$work/caller-$(tr -c '[:alnum:]' '-' <<<"$label")"
-  mkdir -p "$caller"
+  mkdir -p "$caller/runner"
   [ "$content" = "-" ] || printf '%b' "$content" >"$caller/.policyignore"
-  (cd "$caller" && KYVERNO_POLICIES_TEMP_DIR="$upstream" bash -e "$body" 2>&1)
+  (cd "$caller" && RUNNER_TEMP="$caller/runner" KYVERNO_POLICIES_TEMP_DIR="$upstream" bash -e "$body" 2>&1)
 }
 
 passes() {
@@ -75,7 +77,7 @@ passes "a glob re-include that matches nothing is left to the filter" \
   '*\n!pod-security/*\n'
 passes "comments and plain ignore patterns are not treated as re-includes" \
   '# !gone/policy.yaml\nother/*\n'
-passes "no .policyignore at all is not this step's concern (#262)" "-"
+refuses "no .policyignore fails before syncing (#262)" "-" ".policyignore must be a readable regular file"
 
 refuses "a literal re-include that upstream dropped" \
   '*\n!best-practices/add-ns-quota/add-ns-quota.yaml\n!other/spread-pods-across-topology/spread-pods-across-topology.yaml\n' \

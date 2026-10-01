@@ -759,6 +759,8 @@ other*
 
 Patterns are evaluated per file with last-match-wins, so a `!` re-include still applies even when a broad earlier pattern matched its parent directory.
 
+The file must exist and be readable. A missing or unreadable file stops the sync before any policy changes; an explicitly empty file includes every upstream policy. Matching follows Git's path rules: basename patterns apply at every depth, a leading `/` anchors at the upstream root, `*` stays within a path component, `**` can span directories, and a trailing `/` matches directories only.
+
 A literal `!` re-include (one without glob characters) must still exist upstream. If upstream moves or drops that policy, the run fails and names the path before the target directory changes. Without that check it would open a pull request that deletes your vendored copy.
 
 #### Usage
