@@ -27,7 +27,7 @@ tightening `fail-on-severity`.
 | `fail-on-scopes` | Comma-separated dependency scopes to block on (`runtime`, `development`, `unknown`). Defaults to `runtime` so dev-only vulnerabilities don't block. | ❌ | `runtime` |
 | `allow-licenses` | Comma-separated allow-list of SPDX licenses; a dependency under any other license fails the check. Mutually exclusive with `deny-licenses`. | ❌ | - |
 | `deny-licenses` | Comma-separated deny-list of SPDX licenses; a dependency under any of these fails the check. Mutually exclusive with `allow-licenses`. | ❌ | - |
-| `comment-summary-in-pr` | Post the review summary as a PR comment (`always`, `on-failure`, `never`). Anything but `never` requires the calling job to grant `pull-requests: write`. | ❌ | `never` |
+| `comment-summary-in-pr` | Post the review summary as a PR comment (`always`, `on-failure`, `never`). Anything but `never` requires `repo-token` to have **Pull requests: write**. | ❌ | `never` |
 | `base-ref` | Base git ref to diff from. Defaulted automatically on `pull_request` / `pull_request_target`; required for other events. | ❌ | - |
 | `head-ref` | Head git ref to diff to. Defaulted automatically on `pull_request` / `pull_request_target`; required for other events. | ❌ | - |
 | `retry-on-snapshot-warnings` | Retry when the dependency snapshot is not yet available, instead of failing immediately. | ❌ | `false` |
@@ -46,9 +46,16 @@ tightening `fail-on-severity`.
 
 ## Permissions
 
-The composite reads the dependency diff with `contents: read`. Posting a PR
-comment (`comment-summary-in-pr` ≠ `never`) additionally requires the **calling
-job** to grant `pull-requests: write` — a composite cannot declare it.
+The composite reads the dependency diff with **Contents: read**. Posting a PR
+comment (`comment-summary-in-pr` ≠ `never`) additionally requires **Pull requests:
+write** on the token supplied through `repo-token`. For the default `github.token`,
+grant the calling job `contents: read` and `pull-requests: write` as shown below;
+a composite cannot declare these permissions. An independent repository-scoped
+token with those permissions can also be supplied explicitly.
+
+The [reusable workflow](../../README.md#️-dependency-review) keeps its job token
+read-only in both modes. Enable its comments with the independent `repo-token`
+secret documented there; raising that caller's job permissions alone is insufficient.
 
 ## Usage
 

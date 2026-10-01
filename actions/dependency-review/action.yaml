@@ -17,7 +17,7 @@ inputs:
     description: Comma-separated deny-list of SPDX licenses; a dependency under any of these fails the check. Mutually exclusive with allow-licenses.
     required: false
   comment-summary-in-pr:
-    description: Post the review summary as a PR comment (always, on-failure, never). Anything but never requires the calling job to grant pull-requests write.
+    description: Post the review summary as a PR comment (always, on-failure, never). Anything but never requires repo-token to have Pull requests write.
     required: false
     default: never
   base-ref:

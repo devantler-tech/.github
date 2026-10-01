@@ -36,7 +36,8 @@ on:
       comment-summary-in-pr:
         description: >-
           Post the review summary as a PR comment (`always`, `on-failure`, `never`). Anything but
-          `never` requires the calling job to grant `pull-requests: write`. Defaults to `never`.
+          `never` requires the optional `repo-token` secret with Contents read and Pull requests
+          write. Defaults to `never`.
         type: string
         required: false
         default: never
@@ -47,6 +48,12 @@ on:
         type: boolean
         required: false
         default: true
+    secrets:
+      repo-token:
+        description: >-
+          Repository-scoped token with Contents read and Pull requests write, required only
+          when comment-summary-in-pr is always or on-failure. Ignored when comments are off.
+        required: false
   ### Required Workflow Triggers ###
   pull_request:
   merge_group:
@@ -125,6 +132,31 @@ jobs:
             } >> "$GITHUB_OUTPUT"
           fi
 
+      # Keep the job token read-only for required-workflow and existing callers. A caller
+      # cannot raise the callee's GITHUB_TOKEN permissions; comment-enabled calls supply
+      # an independent, repository-scoped token, forwarded only to the review action.
+      - name: 🔐 Validate comment credential
+        id: comment-token
+        shell: bash
+        env:
+          COMMENT_MODE: ${{ steps.cfg.outputs.comment-summary-in-pr }}
+          REVIEW_TOKEN: ${{ secrets.repo-token }}
+        run: |
+          set -euo pipefail
+          case "$COMMENT_MODE" in
+            never) ;;
+            always | on-failure)
+              if [[ -z "$REVIEW_TOKEN" ]]; then
+                echo "::error::Comment-enabled dependency review requires repo-token with Contents read and Pull requests write." >&2
+                exit 1
+              fi
+              ;;
+            *)
+              echo "::error::comment-summary-in-pr must be always, on-failure, or never." >&2
+              exit 1
+              ;;
+          esac
+
       # Self-reference: check out THIS workflow's own repo at the exact commit it is running
       # from (job.workflow_repository / job.workflow_sha), then call the sibling action by
       # local path. Same-commit resolution — no release lag, no tag refs; consumer SHA-pinning
@@ -146,3 +178,4 @@ jobs:
           deny-licenses: ${{ steps.cfg.outputs.deny-licenses }}
           comment-summary-in-pr: ${{ steps.cfg.outputs.comment-summary-in-pr }}
           warn-only: ${{ steps.cfg.outputs.warn-only }}
+          repo-token: ${{ steps.cfg.outputs.comment-summary-in-pr != 'never' && secrets.repo-token || github.token }}
