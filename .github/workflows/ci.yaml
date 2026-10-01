@@ -3377,10 +3377,27 @@ jobs:
       actions: write
       contents: read
 
+  # Validate the production workflow interface without selecting a Go module.
+  # Its repository exclusion skips every executed job here; behavior is tested
+  # through the source-derived read-only entrypoint below.
+  test-validate-go-project-interface:
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    name: "[Test] Validate Go Project - Production Interface"
+    uses: ./.github/workflows/validate-go-project.yaml
+    with:
+      working-directory: ""
+      apply-signed-fixes: false
+    # These are the callee's static ceiling; no production job executes.
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+      code-quality: write
+
   test-validate-go-project:
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
     name: "[Test] Validate Go Project"
-    uses: ./.github/workflows/validate-go-project.yaml
+    uses: ./.github/workflows/validate-go-project-readonly.yaml
     # Fixture-targeted: validate the known-good Go fixture (this repo is not itself a Go module).
     with:
       working-directory: .github/tests/go-valid-fixture
@@ -3389,42 +3406,34 @@ jobs:
       # branch under test.
       apply-signed-fixes: false
     permissions:
-      contents: write
-      pull-requests: write
-      issues: write
+      contents: read
+      pull-requests: read
       code-quality: write # callers must grant this for the coverage upload (GitHub Code Quality)
 
   test-validate-go-project-manual-fixes:
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
     name: "[Test] Validate Go Project - Manual Workflow Fixes Opted In"
-    uses: ./.github/workflows/validate-go-project.yaml
+    uses: ./.github/workflows/validate-go-project-readonly.yaml
     with:
       working-directory: .github/tests/go-valid-fixture
       apply-signed-fixes: false
       manual-workflow-fixes: true
     permissions:
-      contents: write
-      pull-requests: write
-      issues: write
+      contents: read
+      pull-requests: read
       code-quality: write
 
-  # ── Flag-ON counterpart for signed auto-fixes ──
-  # The opted-out job above proves the read-only path. This call opts in against the same
-  # known-clean fixture, so GitHub instantiates the privileged path without producing an
-  # artifact or mutating the pull request branch. The success arm was executed once for real
-  # on a throwaway branch (devantler-tech/actions#1129): the tidy lane committed
-  # `chore: tidy go modules` through the App and read it back verified.
+  # The read-only entrypoint suppresses signed-fix opt-in; all fixers still run.
   test-validate-go-project-apply-signed-fixes:
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
-    name: "[Test] Validate Go Project - Signed Fixes Opted In"
-    uses: ./.github/workflows/validate-go-project.yaml
+    name: "[Test] Validate Go Project - Signed Fixes Suppressed"
+    uses: ./.github/workflows/validate-go-project-readonly.yaml
     with:
       working-directory: .github/tests/go-valid-fixture
       apply-signed-fixes: true
     permissions:
-      contents: write
-      pull-requests: write
-      issues: write
+      contents: read
+      pull-requests: read
       code-quality: write # callers must grant this for the coverage upload (GitHub Code Quality)
 
   # ── Flag-ON counterpart of test-validate-go-project (the both-states rule) ──
@@ -3442,16 +3451,15 @@ jobs:
   test-validate-go-project-scan-default-branch:
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
     name: "[Test] Validate Go Project - Default-Branch Scan Opted In"
-    uses: ./.github/workflows/validate-go-project.yaml
+    uses: ./.github/workflows/validate-go-project-readonly.yaml
     with:
       working-directory: .github/tests/go-valid-fixture
       scan-default-branch: true
       # Opted out explicitly: this self-test proves a different input and must not write to its branch.
       apply-signed-fixes: false
     permissions:
-      contents: write
-      pull-requests: write
-      issues: write
+      contents: read
+      pull-requests: read
       code-quality: write # callers must grant this for the coverage upload (GitHub Code Quality)
 
   # ── Flag-OFF counterpart for `test-default-branch` (the both-states rule) ──
@@ -3476,16 +3484,15 @@ jobs:
   test-validate-go-project-test-default-branch:
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
     name: "[Test] Validate Go Project - Default-Branch Test Opted Out"
-    uses: ./.github/workflows/validate-go-project.yaml
+    uses: ./.github/workflows/validate-go-project-readonly.yaml
     with:
       working-directory: .github/tests/go-valid-fixture
       test-default-branch: false
       # Opted out explicitly: this self-test proves a different input and must not write to its branch.
       apply-signed-fixes: false
     permissions:
-      contents: write
-      pull-requests: write
-      issues: write
+      contents: read
+      pull-requests: read
       code-quality: write # callers must grant this for the coverage upload (GitHub Code Quality)
 
   # The ordinary fixture call above omits maintenance-default-branch (OFF).
@@ -3494,15 +3501,14 @@ jobs:
   test-validate-go-project-maintenance-default-branch:
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
     name: "[Test] Validate Go Project - Default-Branch Maintenance Opted In"
-    uses: ./.github/workflows/validate-go-project.yaml
+    uses: ./.github/workflows/validate-go-project-readonly.yaml
     with:
       working-directory: .github/tests/go-valid-fixture
       maintenance-default-branch: true
       apply-signed-fixes: false
     permissions:
-      contents: write
-      pull-requests: write
-      issues: write
+      contents: read
+      pull-requests: read
       code-quality: write
 
   test-run-dotnet-tests-workflow:
@@ -4952,6 +4958,12 @@ jobs:
           working-directory: .github/tests/golangci-lint-fixture
           verify: false
 
+      - name: 📋 Verify Go validation credential boundary
+        run: bash .github/tests/test-go-validation-credentials.sh
+
+      - name: 🧪 Reject credential boundary regressions
+        run: bash .github/tests/test-go-validation-credentials-controls.sh
+
       - name: ✅ Assert the lint gate blocked on the violation
         shell: bash
         env:
@@ -5666,6 +5678,7 @@ jobs:
       - test-delete-workflow-runs-specific
       - test-delete-workflow-runs-minimal
       - test-validate-go-project
+      - test-validate-go-project-interface
       - test-validate-go-project-manual-fixes
       - test-validate-go-project-apply-signed-fixes
       - test-validate-go-project-scan-default-branch
@@ -5792,6 +5805,7 @@ jobs:
             ${{ needs.test-delete-workflow-runs-specific.result }}
             ${{ needs.test-delete-workflow-runs-minimal.result }}
             ${{ needs.test-validate-go-project.result }}
+            ${{ needs.test-validate-go-project-interface.result }}
             ${{ needs.test-validate-go-project-manual-fixes.result }}
             ${{ needs.test-validate-go-project-apply-signed-fixes.result }}
             ${{ needs.test-validate-go-project-scan-default-branch.result }}

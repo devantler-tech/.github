@@ -953,6 +953,34 @@ jobs:
 | `test-default-branch` | Input (boolean) | `true`  | No       | Run the Go test suite on every default-branch run, not just when the diff touched a Go file. On by default: a test can take a non-Go file as its subject, so a diff-only gate leaves the default branch reporting green over a suite it never ran. Set to `false` to accept a default branch that can report green without the suite having run          |
 | `maintenance-default-branch` | Input (boolean) | `false` | No | Also run tidy and dead-code analysis on default-branch pushes that change Go files. Findings fail validation without committing fixes to the default branch. Uses the repository's configured default branch name. |
 
+### ✅ Validate Go Project (Read-Only)
+
+[.github/workflows/validate-go-project-readonly.yaml](.github/workflows/validate-go-project-readonly.yaml)
+runs the same lint, fix-export, build, test and coverage steps as Go validation,
+without credentials that can mutate repository content, issues or pull requests.
+Fixes fail with their diff; no signer is reachable. PR and status reporters are
+disabled. Coverage uploads retain their dedicated `code-quality: write` scope.
+
+Callers grant only `contents: read`, `pull-requests: read` and
+`code-quality: write`, and forward no secrets. Catalogue CI uses this entrypoint
+for all six Go fixtures. The ordinary Go workflow retains reporting and signed fixes.
+
+This workflow is generated from the production workflow by
+`bash .github/scripts/generate-go-readonly.sh`. Change the production source or
+generator and regenerate it; CI checks the complete projection and credential boundary.
+
+#### Inputs
+
+| Key | Type | Default | Required | Description |
+|-----|------|---------|----------|-------------|
+| `pr-owner` | Input (string) | - | No | Pull request author login |
+| `working-directory` | Input (string) | `""` | No | Go module directory; empty selects the repository root |
+| `apply-signed-fixes` | Input (boolean) | `false` | No | Ignored: signed fixes are always disabled |
+| `manual-workflow-fixes` | Input (boolean) | `false` | No | Prepare workflow-file fixes even after lint errors; patch upload is disabled and lint errors still fail |
+| `scan-default-branch` | Input (boolean) | `false` | No | Also scan vulnerabilities on default-branch invocations |
+| `test-default-branch` | Input (boolean) | `true` | No | Run the suite on default-branch invocations |
+| `maintenance-default-branch` | Input (boolean) | `false` | No | Run tidy and dead-code analysis for Go changes on the default branch |
+
 To enable default-branch maintenance validation, pass `maintenance-default-branch: true`
 in a caller that runs on pushes to its default branch. Pull-request checks remain
 enabled without this input. Tidy also preserves checks on other branches; its
