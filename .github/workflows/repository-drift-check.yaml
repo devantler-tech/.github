@@ -106,7 +106,7 @@ jobs:
     steps:
       - name: 📣 Open or update the tracking issue
         if: needs.repository-drift-check.result != 'success'
-        uses: devantler-tech/.github/actions/upsert-issue@37da04790ccaeef0ff890de572b0903a079d3f6f # v2.5.1
+        uses: devantler-tech/.github/actions/upsert-issue@9a045f58078010440eca19ee198218141f98fe0c # v2.5.7
         with:
           title: "Scheduled repository drift check is failing on main"
           body: |
@@ -118,7 +118,7 @@ jobs:
             Read the failing step first. A failure at `🔑 Get GitHub App Token` means the App credential needs attention. A `DRIFT` line from the compare step means a declared repository setting never reached the live repository: fix the resource in `deploy/`, never the live repository. This issue is updated by every failing run and closed by the next passing one.
       - name: ✅ Close the tracking issue
         if: needs.repository-drift-check.result == 'success'
-        uses: devantler-tech/.github/actions/upsert-issue@37da04790ccaeef0ff890de572b0903a079d3f6f # v2.5.1
+        uses: devantler-tech/.github/actions/upsert-issue@9a045f58078010440eca19ee198218141f98fe0c # v2.5.7
         with:
           title: "Scheduled repository drift check is failing on main"
           open: "false"
