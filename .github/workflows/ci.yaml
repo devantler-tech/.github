@@ -3641,8 +3641,7 @@ jobs:
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
     name: "[Test] Create Release - Dry Run"
     uses: ./.github/workflows/create-release.yaml
-    permissions:
-      contents: read
+    permissions: {}
     with:
       dry-run: true
       offline-test: true
@@ -3651,8 +3650,7 @@ jobs:
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
     name: "[Test] Create Release - No Issue Side Effects"
     uses: ./.github/workflows/create-release.yaml
-    permissions:
-      contents: read
+    permissions: {}
     with:
       disable-issue-side-effects: true
       warn-missing-breaking-bang: true
