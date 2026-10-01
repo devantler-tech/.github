@@ -706,6 +706,8 @@ jobs:
 
           OWNER="${REPOSITORY%%/*}"
           NAME="${REPOSITORY#*/}"
+          reviews_file="$RUNNER_TEMP/auto-merge-reviews-${GITHUB_RUN_ID}.json"
+          comments_file="$RUNNER_TEMP/auto-merge-comments-${GITHUB_RUN_ID}.json"
           # REST exposes only submitted_at, so an edited review can look older
           # than an approval it actually superseded. GraphQL's lastEditedAt is
           # durable across later event shapes and keeps fail-closed ordering.
@@ -733,10 +735,10 @@ jobs:
                 commit_id: (.commit.oid // ""),
                 submitted_at: .submittedAt,
                 last_edited_at: .lastEditedAt
-              }]' > /tmp/reviews.json
-          gh api "repos/$REPOSITORY/issues/$PR_NUMBER/comments" --paginate | jq -s 'add // []' > /tmp/comments.json
+              }]' > "$reviews_file"
+          gh api "repos/$REPOSITORY/issues/$PR_NUMBER/comments" --paginate | jq -s 'add // []' > "$comments_file"
 
-          if bash .devantler-tech-actions/.scripts/check-merge-gates.sh "$HEAD_SHA" "$HEAD_SEEN_AT" /tmp/reviews.json /tmp/comments.json; then
+          if bash .devantler-tech-actions/.scripts/check-merge-gates.sh "$HEAD_SHA" "$HEAD_SEEN_AT" "$reviews_file" "$comments_file"; then
             echo "armable=true" >> "$GITHUB_OUTPUT"
           else
             echo "armable=false" >> "$GITHUB_OUTPUT"

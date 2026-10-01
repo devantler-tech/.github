@@ -29,5 +29,10 @@ approval error swallowed	.jobs["auto-merge"].steps |= map(if .id == "approve" th
 failed approval armed	.jobs["auto-merge"].steps |= map(if .name == "🔀 Enable Auto-Merge" then .run |= (split("if [[ \"$APPROVE_OUTCOME\" != \"success\" ]]; then") | join("if false; then")) else . end)	failed approval armed
 enforced handoff removed	.jobs["auto-merge"].steps |= map(if .name == "🔀 Enable Auto-Merge" then .run |= (split("if [[ \"$ENFORCED\" == \"true\" ]]; then") | join("if false; then")) else . end)	enforced cleanup or approval was bypassed
 duplicate approval	.jobs["auto-merge"].steps += [.jobs["auto-merge"].steps[] | select(.id == "approve")]	expected exactly one approve
+wrong approval forwarding	.jobs["auto-merge"].steps |= map(if .id == "approve" then .env.HEAD_SHA="wrong-head" else . end)	workflow output bindings
+enforcement forwarding lost	.jobs["auto-merge"].steps |= map(if .name == "🔀 Enable Auto-Merge" then .env.ENFORCED="false" else . end)	workflow output bindings
+gate head forwarding lost	.jobs["auto-merge"].steps |= map(if .id == "gates" then .env.HEAD_SHA="wrong-head" else . end)	workflow output bindings
+approval outcome forwarding lost	.jobs["auto-merge"].steps |= map(if .name == "🔀 Enable Auto-Merge" then .env.APPROVE_OUTCOME="success" else . end)	workflow output bindings
+wrong cleanup target	.jobs["auto-merge"].steps |= map(if .id == "approve" then .run |= (split("\"$REPOSITORY\" \"$PR_NUMBER\"") | join("\"fixture/wrong\" \"$PR_NUMBER\"")) else . end)	unexpected offline GitHub command
 CASES
 echo "PASS: executed auto-merge fixture rejects $count independent decision regressions"
