@@ -615,7 +615,7 @@ jobs:
   # The reusable workflow retains contents:read; only this trusted-PR test job writes.
   test-dependency-review-comments:
     name: "[Test] Dependency Review - Summary Comment"
-    if: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.user.login == 'devantler' }}
+    if: ${{ github.event_name != 'merge_group' && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.user.login == 'devantler' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
