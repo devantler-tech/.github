@@ -611,6 +611,61 @@ jobs:
           fi
           echo "Dependency review ran; dependency-changes=${CHANGES}"
 
+  # Exercise posting with a disposable job token, never a production App secret.
+  # The reusable workflow retains contents:read; only this trusted-PR test job writes.
+  test-dependency-review-comments:
+    name: "[Test] Dependency Review - Summary Comment"
+    if: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.user.login == 'devantler' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - name: 🔒 Harden Runner
+        uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
+        with:
+          egress-policy: audit
+
+      - name: 📑 Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: 🕒 Record review start
+        id: review-start
+        shell: bash
+        run: echo "time=$(date -u '+%Y-%m-%dT%H:%M:%SZ')" >> "$GITHUB_OUTPUT"
+
+      - name: 🧪 Post the dependency review summary
+        id: review
+        uses: ./actions/dependency-review
+        with:
+          comment-summary-in-pr: always
+          repo-token: ${{ github.token }}
+
+      - name: ✅ Read back the posted summary
+        id: readback
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          COMMENT_CONTENT: ${{ steps.review.outputs.comment-content }}
+          REVIEW_STARTED: ${{ steps.review-start.outputs.time }}
+          REVIEW_REPOSITORY: ${{ github.repository }}
+          REVIEW_PR: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          [[ -n "$COMMENT_CONTENT" ]] || { echo "::error::Dependency review produced no comment content." >&2; exit 1; }
+          comments="$(mktemp)"
+          trap 'rm -f "$comments"' EXIT
+          gh api "repos/$REVIEW_REPOSITORY/issues/$REVIEW_PR/comments" --paginate --slurp > "$comments"
+          jq -e 'any(.[][]; .user.login == "github-actions[bot]" and
+            .updated_at >= env.REVIEW_STARTED and (.body | contains(env.COMMENT_CONTENT)))' "$comments" > /dev/null || {
+            echo "::error::No dependency-review summary was posted or updated by this test." >&2
+            exit 1
+          }
+          echo "PASS: dependency-review summary posted and read back from GitHub."
+
   # ── diagnose-flux ───────────────────────────────────────────
   test-diagnose-flux:
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
@@ -5564,6 +5619,7 @@ jobs:
       - test-create-issues-from-todos
       - test-todo-scanner
       - test-dependency-review
+      - test-dependency-review-comments
       - test-diagnose-flux
       - test-enable-auto-merge-on-pr
       - test-enable-auto-merge-on-pr-credential-boundary
@@ -5689,6 +5745,7 @@ jobs:
             ${{ needs.test-create-issues-from-todos.result }}
             ${{ needs.test-todo-scanner.result }}
             ${{ needs.test-dependency-review.result }}
+            ${{ needs.test-dependency-review-comments.result }}
             ${{ needs.test-diagnose-flux.result }}
             ${{ needs.test-enable-auto-merge-on-pr.result }}
             ${{ needs.test-enable-auto-merge-on-pr-credential-boundary.result }}

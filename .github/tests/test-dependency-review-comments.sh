@@ -98,8 +98,53 @@ yq -o=json '.' actions/dependency-review/action.yaml | jq -e '
 
 yq -o=json '.' .github/workflows/ci.yaml | jq -e '
   .jobs["test-dependency-review-workflow"].permissions == {"contents":"read"} and
-  .jobs["test-dependency-review-workflow"].secrets == null' >/dev/null ||
-  fail 'the default hosted workflow test must remain credential-free and read-only'
+  .jobs["test-dependency-review-workflow"].secrets == null and
+  .jobs["test-dependency-review-comments"].permissions == {"contents":"read", "pull-requests":"write"} and
+  (.jobs["test-dependency-review-comments"].steps |
+    any(.id == "review" and .with["comment-summary-in-pr"] == "always") and
+    any(.id == "readback")) and
+  (.jobs["ci-required-checks"].needs | index("test-dependency-review-comments") != null)' >/dev/null ||
+  fail 'hosted CI must keep the default read-only and exercise real comment creation/readback'
+
+# Exercise the hosted verifier itself: stale or unrelated comments, failed APIs,
+# and empty outputs cannot pass merely because another comment already exists.
+readback="$(yq -r '.jobs.test-dependency-review-comments.steps[] | select(.id == "readback") | .run' .github/workflows/ci.yaml)"
+[[ -n "$readback" && "$readback" != null ]] || fail 'missing hosted readback script'
+mkdir "$tmp/bin"
+cat >"$tmp/bin/gh" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+[[ "$*" == 'api repos/devantler-tech/.github/issues/353/comments --paginate --slurp' ]] || exit 99
+cat "$COMMENTS_FIXTURE"
+exit "${API_STATUS:-0}"
+STUB
+chmod +x "$tmp/bin/gh"
+for scenario in current later-page stale other-author other-body empty-output api-failed malformed; do
+  content='dependency-review fixture report'
+  api_status=0
+  expected=1
+  case "$scenario" in
+  current | later-page) expected=0 ;;
+  empty-output) content='' ;;
+  api-failed) api_status=44 ;;
+  esac
+  jq -n --arg scenario "$scenario" '
+    {user:{login:(if $scenario == "other-author" then "devantler" else "github-actions[bot]" end)},
+     updated_at:(if $scenario == "stale" then "2026-10-01T09:00:00Z" else "2026-10-01T10:00:01Z" end),
+     body:(if $scenario == "other-body" then "unrelated report" else "dependency-review fixture report" end)} |
+    if $scenario == "later-page" then [[],[.]] else [[.]] end' >"$tmp/comments.json"
+  [[ "$scenario" != malformed ]] || echo 'invalid JSON' >"$tmp/comments.json"
+  status=0
+  env -i PATH="$tmp/bin:$PATH" COMMENTS_FIXTURE="$tmp/comments.json" API_STATUS="$api_status" \
+    GH_TOKEN=fixture-readback-token COMMENT_CONTENT="$content" REVIEW_STARTED=2026-10-01T10:00:00Z \
+    REVIEW_REPOSITORY=devantler-tech/.github REVIEW_PR=353 \
+    bash -euo pipefail -c "$readback" >"$tmp/readback.log" 2>&1 || status=$?
+  if [[ "$expected" == 0 ]]; then
+    [[ "$status" == 0 ]] || fail "readback rejected $scenario"
+  else
+    [[ "$status" != 0 ]] || fail "readback accepted $scenario"
+  fi
+done
 
 # Regression controls exercise the same validator against deliberate mistakes.
 # shellcheck disable=SC2016 # GitHub expressions in jq mutation fixtures.
@@ -131,4 +176,4 @@ for mutation in "${mutations[@]}"; do
     fail "accepted regression: $mutation"
   fi
 done
-echo "PASS: dependency-review defaults, comment credential guard, forwarding, and ${#mutations[@]} regression controls"
+echo "PASS: dependency-review defaults, credential guard, forwarding, 8 hosted readback cases, and ${#mutations[@]} regression controls"
