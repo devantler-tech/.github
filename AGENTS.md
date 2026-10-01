@@ -138,6 +138,10 @@ passing when either file changes. Because the repairing pull request cannot edit
 `main` whose `deploy/` no longer renders needs an organization owner to set the ruleset's
 enforcement to `evaluate` while the `github-config` reconciliation is suspended, then restore both.
 
+Pull request title and body edits re-run the required deploy guards. They do not restart catalogue
+CI or cancel its current run; code changes still run the full suite. Keep
+`.github/tests/test-ci-metadata-events.sh` passing when changing either workflow's triggers.
+
 `kubectl` (with built-in kustomize) is preinstalled on CI runners. A clean build proves the manifests
 are well-formed; the Crossplane CRDs themselves are applied/validated **on-cluster** (the
 `github-config` tenant), not in CI — so a green build is necessary but not sufficient, and any new CR

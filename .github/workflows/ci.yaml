@@ -2,7 +2,8 @@ name: 🧪 CI
 
 on:
   pull_request:
-    types: [opened, synchronize, reopened, edited, ready_for_review]
+    # Metadata edits are judged by the independently required deploy-guards workflow.
+    types: [opened, synchronize, reopened, ready_for_review]
   push:
     branches: [main]
   merge_group:
@@ -5572,6 +5573,9 @@ jobs:
 
       - name: 🧪 Test trusted deploy/ guards ruleset
         run: bash tests/deploy-guards-ruleset.sh
+
+      - name: 🧪 Test pull request metadata event routing
+        run: bash .github/tests/test-ci-metadata-events.sh
 
       - name: 🧪 Test retained signing-rule safety
         run: bash tests/signing-rule-retirement.sh
