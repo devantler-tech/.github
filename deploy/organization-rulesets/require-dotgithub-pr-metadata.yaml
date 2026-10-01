@@ -1,0 +1,32 @@
+# Required-workflow rules support code events but ignore pull_request.edited.
+# A separate ordinary workflow reports this status on title/body edits.
+# Keep catalogue CI's edited trigger until this rule is live and verified.
+# This is additive to the reviewed-main required deploy workflow.
+apiVersion: enterprise.github.m.upbound.io/v1alpha1
+kind: OrganizationRuleset
+metadata:
+  name: require-dotgithub-pr-metadata
+spec:
+  managementPolicies:
+    - Observe
+    - Create
+    - Update
+    - LateInitialize
+  forProvider:
+    name: Require status - .github pull request metadata
+    target: branch
+    enforcement: active
+    conditions:
+      - refName:
+          - include: ["~DEFAULT_BRANCH"]
+            exclude: []
+        repositoryId: [933213756]
+    rules:
+      - requiredStatusChecks:
+          - requiredCheck:
+              - context: PR Metadata Guards
+                integrationId: 15368 # GitHub Actions, verified on the existing CI check.
+            strictRequiredStatusChecksPolicy: false
+  providerConfigRef:
+    kind: ProviderConfig
+    name: default

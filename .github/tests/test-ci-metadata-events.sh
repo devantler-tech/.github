@@ -1,51 +1,77 @@
 #!/usr/bin/env bash
-# Metadata edits re-run the trusted guards without cancelling catalogue CI (#250).
+# Required workflow rules ignore edited; a status check must cover metadata (#250).
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-ci="$repo_root/.github/workflows/ci.yaml"
-guards="$repo_root/.github/workflows/deploy-guards.yaml"
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
 
-check_events() {
-  local ci_file="$1" guard_file="$2" ci_events guard_events event
-  ci_events="$(yq -o=json '.on.pull_request.types' "$ci_file")" || return 1
-  guard_events="$(yq -o=json '.on.pull_request.types' "$guard_file")" || return 1
-  if ! jq -e 'type == "array" and length > 0 and all(.[]; type == "string") and (index("edited") == null)' <<<"$ci_events" >/dev/null; then
-    echo 'metadata-events: catalogue CI must not restart on edited' >&2
-    return 1
-  fi
-  for event in opened synchronize reopened ready_for_review; do
-    jq -e --arg event "$event" 'index($event) != null' <<<"$ci_events" >/dev/null || {
-      echo "metadata-events: catalogue CI lost the $event event" >&2
-      return 1
-    }
-  done
-  jq -e 'type == "array" and index("edited") != null' <<<"$guard_events" >/dev/null || {
-    echo 'metadata-events: trusted guards must judge edited pull requests' >&2
-    return 1
-  }
-  yq -o=json '.on' "$ci_file" | jq -e 'has("push") and has("merge_group")' >/dev/null || return 1
+fail() {
+  echo "metadata-events: $*" >&2
+  return 1
 }
 
-check_events "$ci" "$guards"
-echo 'ok: edits reach trusted guards; code changes, main pushes and merge groups retain CI'
+check_metadata() {
+  local workflow="$1" render="$2" metadata rule
+  [[ -f "$workflow" ]] || {
+    fail 'metadata workflow is missing'
+    return 1
+  }
+  metadata="$(yq -o=json '.' "$workflow")" || return 1
+  jq -e '
+    .on.pull_request.types as $events |
+    (["opened","synchronize","reopened","edited","ready_for_review"] - $events | length == 0) and
+    (.on | has("merge_group") | not) and
+    .permissions == {} and
+    .jobs["metadata-guards"].name == "PR Metadata Guards" and
+    .jobs["metadata-guards"].permissions == {"contents":"read"} and
+    (.jobs["metadata-guards"] | has("if") | not) and
+    ([.jobs[].steps[] | select(.uses // "" | startswith("actions/checkout@")) |
+      select(.with["persist-credentials"] != false)] | length == 0) and
+    ([.jobs[].steps[] | select(.uses // "" | startswith("actions/checkout@")) |
+      select(.with.repository == "devantler-tech/.github" and
+        .with.ref == "${{ github.event.pull_request.base.sha }}" and .with.path == "trusted")] | length == 1) and
+    ([.jobs[].steps[] | select(.run // "" | test("(^|[^/[:alnum:]_])(candidate/)?scripts/"))] | length == 0) and
+    ([.jobs[].steps[] | select(.run // "" | contains("bash trusted/scripts/validate-release-contract.sh"))] | length == 1) and
+    ([.jobs[].steps[] | select(.run // "" | contains("bash trusted/scripts/validate-deploy-deletions.sh"))] | length == 1)
+  ' <<<"$metadata" >/dev/null || {
+    fail 'metadata must always run both trusted, read-only guards on edits'
+    return 1
+  }
+  rule="$(yq -o=json -I=0 'select(.kind == "OrganizationRuleset" and .metadata.name == "require-dotgithub-pr-metadata")' "$render")" || return 1
+  jq -e '
+    .spec.managementPolicies == ["Observe","Create","Update","LateInitialize"] and
+    .spec.forProvider.target == "branch" and .spec.forProvider.enforcement == "active" and
+    .spec.forProvider.conditions == [{"refName":[{"include":["~DEFAULT_BRANCH"],"exclude":[]}],"repositoryId":[933213756]}] and
+    (.spec.forProvider.bypassActors // [] | length == 0) and
+    .spec.forProvider.rules == [{"requiredStatusChecks":[{"requiredCheck":[{"context":"PR Metadata Guards","integrationId":15368}],"strictRequiredStatusChecksPolicy":false}]}]
+  ' <<<"$rule" >/dev/null || {
+    fail 'metadata must be a required GitHub Actions status for this repository only'
+    return 1
+  }
+}
 
-# The declared required workflow and trusted-source boundary must remain intact.
+workflow="$repo_root/.github/workflows/pr-metadata-guards.yaml"
+kubectl kustomize "$repo_root/deploy" >"$work/render.yaml"
+check_metadata "$workflow" "$work/render.yaml"
 bash "$repo_root/tests/deploy-guards-ruleset.sh"
+echo 'ok: metadata edits run independently required trusted validators'
 
-yq '.on.pull_request.types += ["edited"]' "$ci" >"$work/ci-edited.yaml"
-if check_events "$work/ci-edited.yaml" "$guards" >"$work/mutation.log" 2>&1; then
-  echo 'FAIL: restored edited trigger was accepted' >&2
+for mutation in no-edited skip-guards candidate-validator; do
+  case "$mutation" in
+  no-edited) expression='.on.pull_request.types -= ["edited"]' ;;
+  skip-guards) expression='.jobs.metadata-guards.if = "false"' ;;
+  candidate-validator) expression='(.jobs.metadata-guards.steps[] | select(.run // "" | contains("validate-release-contract.sh"))).run |= sub("trusted/scripts/"; "candidate/scripts/")' ;;
+  esac
+  yq "$expression" "$workflow" >"$work/mutated.yaml"
+  if check_metadata "$work/mutated.yaml" "$work/render.yaml" >"$work/mutation.log" 2>&1; then
+    fail "accepted unsafe workflow mutation: $mutation"
+    exit 1
+  fi
+done
+yq 'select(.metadata.name != "require-dotgithub-pr-metadata")' "$work/render.yaml" >"$work/no-rule.yaml"
+if check_metadata "$workflow" "$work/no-rule.yaml" >"$work/mutation.log" 2>&1; then
+  fail 'accepted missing required metadata status'
   exit 1
 fi
-grep -qF 'catalogue CI must not restart on edited' "$work/mutation.log"
-
-yq '.on.pull_request.types -= ["edited"]' "$guards" >"$work/guards-no-edited.yaml"
-if check_events "$ci" "$work/guards-no-edited.yaml" >"$work/mutation.log" 2>&1; then
-  echo 'FAIL: guards without edited were accepted' >&2
-  exit 1
-fi
-grep -qF 'trusted guards must judge edited' "$work/mutation.log"
-echo 'ok: mutations restoring catalogue restarts or dropping metadata enforcement are rejected'
+echo 'ok: absent edit coverage, skipped guards, candidate validators and missing enforcement fail'

@@ -1,0 +1,63 @@
+name: 🛡️ Pull request metadata
+
+# Required-workflow rules ignore edited events. Require this ordinary workflow's
+# job status instead, so title/body changes run the existing validators again.
+# Validators come from the immutable base revision; the candidate is only data.
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, edited, ready_for_review]
+
+permissions: {}
+
+concurrency:
+  group: "pr-metadata-${{ github.event.pull_request.number }}"
+  cancel-in-progress: true
+
+jobs:
+  metadata-guards:
+    name: PR Metadata Guards
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - name: 🔒 Harden Runner
+        uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
+        with:
+          egress-policy: audit
+      - name: 📥 Check out the reviewed validators
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: devantler-tech/.github
+          ref: ${{ github.event.pull_request.base.sha }}
+          path: trusted
+          persist-credentials: false
+      - name: 📥 Check out the candidate as data
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: candidate
+          fetch-depth: 0
+          persist-credentials: false
+      - name: 🚦 Validate release contract
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          COMMIT_COUNT: ${{ github.event.pull_request.commits }}
+        run: |
+          first_subject="$(git -C candidate log --format=%s "$BASE_SHA..$HEAD_SHA" | tail -1)"
+          git -C candidate diff --name-only -z "$BASE_SHA" "$HEAD_SHA" |
+            bash trusted/scripts/validate-release-contract.sh "$PR_TITLE" "$COMMIT_COUNT" "$first_subject"
+      - name: 🗑️ Validate deploy/ deletions are acknowledged
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          git -C candidate worktree add --detach "$RUNNER_TEMP/base" "$BASE_SHA"
+          kubectl kustomize "$RUNNER_TEMP/base/deploy" > "$RUNNER_TEMP/base-render.yaml" ||
+            { echo "deploy-deletions: UNKNOWN — the base deploy/ tree does not render; repair main first" >&2; exit 2; }
+          kubectl kustomize candidate/deploy > "$RUNNER_TEMP/head-render.yaml" ||
+            { echo "deploy-deletions: UNKNOWN — this pull request's deploy/ tree does not render" >&2; exit 2; }
+          printf '%s' "$PR_BODY" > "$RUNNER_TEMP/pr-body.txt"
+          bash trusted/scripts/validate-deploy-deletions.sh \
+            "$RUNNER_TEMP/base-render.yaml" "$RUNNER_TEMP/head-render.yaml" "$RUNNER_TEMP/pr-body.txt"

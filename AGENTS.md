@@ -138,9 +138,11 @@ passing when either file changes. Because the repairing pull request cannot edit
 `main` whose `deploy/` no longer renders needs an organization owner to set the ruleset's
 enforcement to `evaluate` while the `github-config` reconciliation is suspended, then restore both.
 
-Pull request title and body edits re-run the required deploy guards. They do not restart catalogue
-CI or cancel its current run; code changes still run the full suite. Keep
-`.github/tests/test-ci-metadata-events.sh` passing when changing either workflow's triggers.
+Organization-required workflows ignore pull request title/body edits even when their trigger lists
+`edited`. The ordinary `pr-metadata-guards.yaml` workflow reruns the base revision's validators and
+reports `PR Metadata Guards`; its separate status ruleset requires that check only here. Keep
+`.github/tests/test-ci-metadata-events.sh` passing. Retain catalogue CI's `edited` trigger until
+the new status requirement is verified live, then remove it in a follow-up.
 
 `kubectl` (with built-in kustomize) is preinstalled on CI runners. A clean build proves the manifests
 are well-formed; the Crossplane CRDs themselves are applied/validated **on-cluster** (the
