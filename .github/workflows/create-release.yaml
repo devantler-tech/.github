@@ -137,8 +137,8 @@ jobs:
     name: Offline release decisions
     if: inputs.offline-test
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
+    # Every nested job is validated even when skipped. Keep existing permissions:{} callers valid.
+    permissions: {}
     defaults:
       run:
         shell: bash
@@ -149,13 +149,30 @@ jobs:
         with:
           egress-policy: audit
 
-      - name: 📑 Checkout catalogue fixtures
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          repository: ${{ job.workflow_repository }}
-          ref: ${{ job.workflow_sha }}
-          path: .devantler-tech-actions
-          persist-credentials: false
+      - name: 📑 Download catalogue fixtures
+        shell: bash
+        working-directory: .
+        env:
+          CATALOGUE_REPOSITORY: ${{ job.workflow_repository }}
+          CATALOGUE_SHA: ${{ job.workflow_sha }}
+        run: |
+          [[ "$CATALOGUE_REPOSITORY" == devantler-tech/.github && "$CATALOGUE_SHA" =~ ^[0-9a-f]{40}$ ]] || {
+            echo '::error::invalid catalogue source' >&2
+            exit 1
+          }
+          env -i PATH="$PATH" curl --disable --fail --silent --show-error --location \
+            --proto '=https' --proto-redir '=https' --connect-timeout 10 --max-time 120 --retry 3 \
+            --output "$RUNNER_TEMP/catalogue.tar.gz" \
+            "https://codeload.github.com/$CATALOGUE_REPOSITORY/tar.gz/$CATALOGUE_SHA"
+          mkdir .devantler-tech-actions
+          tar --extract --gzip --file="$RUNNER_TEMP/catalogue.tar.gz" \
+            --strip-components=1 --directory=.devantler-tech-actions
+          for source_file in .releaserc .github/workflows/create-release.yaml .github/tests/create-release-fixture.sh; do
+            [[ -f ".devantler-tech-actions/$source_file" && ! -L ".devantler-tech-actions/$source_file" ]] || {
+              echo '::error::incomplete catalogue source' >&2
+              exit 1
+            }
+          done
 
       - name: 📦 Setup Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0

@@ -26,15 +26,22 @@ guard() {
     elif $j.if != "inputs.offline-test" or $j.needs != null or
       ($j["continue-on-error"] // false) != false
     then error("offline-test must execute independently")
-    elif $j.permissions != {contents:"read"} or
+    elif $w.permissions != {} or $j.permissions != {} or
+      any($w.jobs[]; .permissions != null and .permissions != {}) or
       ([$j,$w.env // {}] | tostring | test("\\bsecrets\\b|create-github-app-token|github[.]token|GH_TOKEN|GITHUB_TOKEN|PRIVATE_KEY";"i"))
-    then error("offline-test must have read permission and no credentials")
-    elif [$j.steps[] | select(.uses != null)] | length != 3
-    then error("offline-test must use only hardening, checkout and Node setup")
-    elif [$j.steps[] | select(.with.repository == "${{ job.workflow_repository }}" and
-      .with.ref == "${{ job.workflow_sha }}" and .with.path == ".devantler-tech-actions" and
-      .with["persist-credentials"] == false and .if == null)] | length != 1
-    then error("offline-test must check out its immutable workflow commit")
+    then error("offline-test must request no permissions and no credentials")
+    elif [$j.steps[] | select(.uses != null)] | length != 2
+    then error("offline-test must use only hardening and Node setup")
+    elif [$j.steps[] | select(.name == "📑 Download catalogue fixtures") |
+      select(.if == null and (.["continue-on-error"] // false) == false and
+        .["working-directory"] == "." and .shell == "bash" and
+        .env.CATALOGUE_REPOSITORY == "${{ job.workflow_repository }}" and
+        .env.CATALOGUE_SHA == "${{ job.workflow_sha }}" and
+        (.run | contains("https://codeload.github.com/$CATALOGUE_REPOSITORY/tar.gz/$CATALOGUE_SHA")) and
+        (.run | contains("env -i PATH=\"$PATH\" curl --disable --fail --silent --show-error --location")) and
+        (.run | contains("--proto \u0027=https\u0027 --proto-redir \u0027=https\u0027")) and
+        (.run | contains("--strip-components=1 --directory=.devantler-tech-actions")))] | length != 1
+    then error("offline-test must download its immutable public workflow commit anonymously")
     elif ([$j.steps[] | select(.name == "🔎 Validate offline mode") |
       select(runnable and .env.DRY_RUN == "${{ inputs.dry-run }}" and
         (.run | contains("[[ \"$DRY_RUN\" == true ]]")) and (.run | contains("exit 1")))] | length) != 1
@@ -46,7 +53,7 @@ guard() {
     elif (["test-create-release","test-create-release-no-issue-side-effects"] | all(. as $name |
       $c.jobs[$name].uses == "./.github/workflows/create-release.yaml" and
       $c.jobs[$name].with["offline-test"] == true and $c.jobs[$name].with["dry-run"] == true and
-      $c.jobs[$name].secrets == null and $c.jobs[$name].permissions == {contents:"read"} and
+      $c.jobs[$name].secrets == null and $c.jobs[$name].permissions == {} and
       $c.jobs[$name].if == $condition and $c.jobs[$name].needs == null and
       ($c.jobs[$name]["continue-on-error"] // false) == false and
       ($c.jobs["ci-required-checks"].needs | index($name)) != null and
@@ -81,22 +88,29 @@ production execution	.workflow.jobs.release.if=null	exclude the production
 skipped fixture	.workflow.jobs["offline-test"].if="false"	execute independently
 fixture prerequisite	.workflow.jobs["offline-test"].needs="release"	execute independently
 ignored failure	.workflow.jobs["offline-test"]["continue-on-error"]=true	execute independently
-write permission	.workflow.jobs["offline-test"].permissions.contents="write"	read permission
-inherited permission	.workflow.jobs["offline-test"].permissions=null	read permission
+write permission	.workflow.jobs["offline-test"].permissions.contents="write"	no permissions
+read permission breaks callers	.workflow.jobs["offline-test"].permissions.contents="read"	no permissions
+workflow permission breaks callers	.workflow.permissions.contents="read"	no permissions
+release job permission breaks callers	.workflow.jobs.release.permissions={contents:"read"}	no permissions
+extra job permission breaks callers	.workflow.jobs.extra={permissions:{contents:"read"}}	no permissions
+inherited permission	.workflow.jobs["offline-test"].permissions=null	no permissions
 App key	.workflow.jobs["offline-test"].env.KEY="${{ secrets.APP_PRIVATE_KEY }}"	no credentials
 bracket secret	.workflow.jobs["offline-test"].env.KEY="${{ secrets['APP_PRIVATE_KEY'] }}"	no credentials
 uppercase secret	.workflow.jobs["offline-test"].env.KEY="${{ SECRETS.APP_PRIVATE_KEY }}"	no credentials
 serialized secrets	.workflow.jobs["offline-test"].env.KEY="${{ toJSON(secrets) }}"	no credentials
 App mint	.workflow.jobs["offline-test"].steps += [{uses:"actions/create-github-app-token@sha"}]	no credentials
 token forwarding	.workflow.jobs["offline-test"].env.GH_TOKEN="${{ github.token }}"	no credentials
-mutable checkout	.workflow.jobs["offline-test"].steps |= map(if .with.path then .with.ref="main" else . end)	immutable workflow commit
-persisted token	.workflow.jobs["offline-test"].steps |= map(if .with.path then .with["persist-credentials"]=true else . end)	immutable workflow commit
+mutable source	.workflow.jobs["offline-test"].steps |= map(if .env.CATALOGUE_SHA then .env.CATALOGUE_SHA="main" else . end)	immutable public workflow commit
+caller repository	.workflow.jobs["offline-test"].steps |= map(if .env.CATALOGUE_REPOSITORY then .env.CATALOGUE_REPOSITORY="${{ github.repository }}" else . end)	immutable public workflow commit
+missing bootstrap directory	.workflow.jobs["offline-test"].steps |= map(if .env.CATALOGUE_SHA then .["working-directory"]=null else . end)	immutable public workflow commit
+ambient curl config	.workflow.jobs["offline-test"].steps |= map(if .env.CATALOGUE_SHA then .run |= sub("curl --disable";"curl") else . end)	immutable public workflow commit
 fixture bypass	.workflow.jobs["offline-test"].steps |= map(if .run == "bash .github/tests/create-release-fixture.sh" then .run="echo PASS" else . end)	decisions must execute
 hook setting lost	.workflow.jobs["offline-test"].steps |= map(if .run then .env.DISABLE_ISSUE_SIDE_EFFECTS="true" else . end)	caller hook setting
 default App key	.ci.jobs["test-create-release"].secrets.APP_PRIVATE_KEY="key"	secret-free release calls
 inherited secrets	.ci.jobs["test-create-release-no-issue-side-effects"].secrets="inherit"	secret-free release calls
 live mode	.ci.jobs["test-create-release"].with["offline-test"]=false	secret-free release calls
 write caller	.ci.jobs["test-create-release"].permissions.contents="write"	secret-free release calls
+read caller masks compatibility	.ci.jobs["test-create-release"].permissions.contents="read"	secret-free release calls
 lost aggregation	.ci.jobs["ci-required-checks"].needs |= map(select(. != "test-create-release"))	gate required CI
 lost result	.ci.jobs["ci-required-checks"].steps |= map(if .env.JOB_RESULTS then .env.JOB_RESULTS |= gsub("needs.test-create-release.result";"needs.other.result") else . end)	gate required CI
 boundary skipped	.ci.jobs["test-create-release-config"].steps |= map(if .run == "bash .github/tests/test-create-release-offline.sh" then .if="false" else . end)	regressions must execute
@@ -104,3 +118,86 @@ invalid offline mode	.workflow.jobs["offline-test"].steps |= map(select(.name !=
 behavior controls skipped	.ci.jobs["test-create-release-config"].steps |= map(select(.run != "bash .github/tests/test-create-release-fixture-controls.sh"))	regressions must execute
 CASES
 echo "PASS: release offline boundary rejects $count independent regressions"
+
+# Execute the shipped retrieval block; only the external HTTP transport is replaced.
+yq -r '.jobs.offline-test.steps[] | select(.name == "📑 Download catalogue fixtures") | .run' "$workflow" >"$work/download.sh"
+mkdir "$work/download"
+mkdir "$work/bin" "$work/source"
+mkdir -p "$work/source/catalogue/.github/workflows" "$work/source/catalogue/.github/tests"
+cp "$root/.github/workflows/create-release.yaml" "$work/source/catalogue/.github/workflows/"
+cp "$root/.github/tests/create-release-fixture.sh" "$work/source/catalogue/.github/tests/"
+cp "$root/.releaserc" "$work/source/catalogue/"
+tar -czf "$work/valid.tar.gz" -C "$work/source" catalogue
+cat >"$work/bin/curl" <<'CURL'
+#!/usr/bin/env bash
+set -euo pipefail
+fixture="$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd -P)"
+[[ -z "${CURL_HOME-}${HTTPS_PROXY-}${GITHUB_TOKEN-}${GH_TOKEN-}" ]]
+expected=(--disable --fail --silent --show-error --location
+  --proto '=https' --proto-redir '=https' --connect-timeout 10 --max-time 120 --retry 3
+  --output "$fixture/catalogue.tar.gz"
+  'https://codeload.github.com/devantler-tech/.github/tar.gz/0000000000000000000000000000000000000000')
+[[ $# -eq ${#expected[@]} ]]
+index=0
+for argument in "$@"; do
+  [[ "$argument" == "${expected[$index]}" ]]
+  index=$((index + 1))
+done
+printf '%s\n' "$@" >"$fixture/request"
+[[ "$(cat "$fixture/mode")" != failure ]] || exit 22
+cp "$fixture/payload" "$fixture/catalogue.tar.gz"
+CURL
+chmod +x "$work/bin/curl"
+printf '%s\n' failure >"$work/mode"
+# Invalid metadata must fail before even the isolated recorder receives a request.
+for invalid in repository short-sha mutable-ref path-sha uppercase-sha; do
+  repository=devantler-tech/.github
+  sha=0000000000000000000000000000000000000000
+  case "$invalid" in
+  repository) repository=example/other ;;
+  short-sha) sha=abc123 ;;
+  mutable-ref) sha=main ;;
+  path-sha) sha=../../main ;;
+  uppercase-sha) sha=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA ;;
+  esac
+  if (cd "$work/download" && env -i PATH="$work/bin:$PATH" RUNNER_TEMP="$work" \
+    CATALOGUE_REPOSITORY="$repository" CATALOGUE_SHA="$sha" bash -eo pipefail "$work/download.sh") >"$work/result" 2>&1; then
+    echo "FAIL: invalid $invalid metadata was accepted" >&2
+    exit 1
+  fi
+  grep -qF 'invalid catalogue source' "$work/result"
+  [[ ! -e "$work/request" && ! -e "$work/catalogue.tar.gz" && ! -e "$work/download/.devantler-tech-actions" ]]
+done
+echo 'PASS: five invalid source inputs fail before download or extraction'
+
+for transport in failure truncated missing-fixture valid; do
+  rm -rf "$work/download/.devantler-tech-actions"
+  rm -f "$work/catalogue.tar.gz" "$work/request"
+  printf '%s\n' "$transport" >"$work/mode"
+  case "$transport" in
+  failure) ;;
+  truncated) printf '%s\n' 'not a gzip archive' >"$work/payload" ;;
+  missing-fixture)
+    tar -czf "$work/payload" -C "$work/source" catalogue/.releaserc catalogue/.github/workflows
+    ;;
+  valid) cp "$work/valid.tar.gz" "$work/payload" ;;
+  esac
+  result=0
+  (cd "$work/download" && env -i PATH="$work/bin:$PATH" RUNNER_TEMP="$work" \
+    CATALOGUE_REPOSITORY=devantler-tech/.github CATALOGUE_SHA=0000000000000000000000000000000000000000 \
+    CURL_HOME=fixture-curl-config HTTPS_PROXY=fixture-proxy GITHUB_TOKEN=fixture-token GH_TOKEN=fixture-token \
+    bash -eo pipefail "$work/download.sh") >"$work/result" 2>&1 || result=$?
+  grep -qxF 'https://codeload.github.com/devantler-tech/.github/tar.gz/0000000000000000000000000000000000000000' "$work/request"
+  if [[ "$transport" == valid ]]; then
+    [[ "$result" == 0 ]]
+    cmp "$root/.releaserc" "$work/download/.devantler-tech-actions/.releaserc"
+    cmp "$root/.github/tests/create-release-fixture.sh" "$work/download/.devantler-tech-actions/.github/tests/create-release-fixture.sh"
+  else
+    [[ "$result" != 0 ]] || {
+      echo "FAIL: $transport source retrieval was accepted" >&2
+      exit 1
+    }
+    [[ "$transport" != failure || ! -e "$work/download/.devantler-tech-actions" ]]
+  fi
+done
+echo 'PASS: actual retrieval rejects failed, truncated and incomplete sources; valid files extract unchanged'

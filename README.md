@@ -180,7 +180,7 @@ This is a narrow configuration check, not proof that a commit will produce a maj
 
 Consumer rollout and the decision on removing this temporary flag are tracked in [devantler-tech/actions#1347](https://github.com/devantler-tech/actions/issues/1347).
 
-For catalogue self-tests, set `offline-test: true` together with `dry-run: true` and omit the App secret. This independent job holds only contents-read permission and evaluates the pinned release command and catalogue configuration against disposable local repositories. It verifies patch, minor, major, and no-release decisions without changing refs. Both issue-hook settings are exercised; this does not test live notification delivery. Normal releases and consumer dry-run previews continue to use the consumer's own configuration and App credentials.
+For catalogue self-tests, set `offline-test: true` together with `dry-run: true` and omit the App secret. This independent job requests no repository permissions and retrieves its immutable public catalogue source anonymously. It evaluates the pinned release command and catalogue configuration against disposable local repositories, verifying patch, minor, major, and no-release decisions without changing refs. Both issue-hook settings are exercised; this does not test live notification delivery. Normal releases and consumer dry-run previews continue to use the consumer's own configuration and App credentials, including callers that declare `permissions: {}`.
 
 #### Usage
 
