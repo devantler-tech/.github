@@ -192,7 +192,14 @@ rm "$repo/.github/workflows/scan.yaml"
 cp -R "$source_root/.github/workflows/." "$repo/.github/workflows/"
 cp "$source_root/README.md" "$repo/README.md"
 expect 'repository corpus is documented' 0 'Workflow README parity OK'
-sed '/^| `test-default-branch` /d' "$repo/README.md" > "$tmp/removed.md"
+# Remove this workflow's row only: other workflow tables must keep proving that
+# a matching input documented elsewhere cannot satisfy this workflow's table.
+awk '
+  /^### / { target = ($0 == "### ✅ Validate Go Project") }
+  target && /^\| `test-default-branch` / { removed++; next }
+  { print }
+  END { if (removed != 1) exit 1 }
+' "$repo/README.md" > "$tmp/removed.md"
 mv "$tmp/removed.md" "$repo/README.md"
 expect 'repository missing-row ablation' 1 "validate-go-project.yaml: input 'test-default-branch'"
 [[ "$(wc -l < "$tmp/log" | tr -d ' ')" == 1 ]] || {
