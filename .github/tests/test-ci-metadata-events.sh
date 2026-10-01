@@ -33,7 +33,9 @@ check_metadata() {
         .with.ref == "${{ github.event.pull_request.base.sha }}" and .with.path == "trusted")] | length == 1) and
     ([.jobs[].steps[] | select(.run // "" | test("(^|[^/[:alnum:]_])(candidate/)?scripts/"))] | length == 0) and
     ([.jobs[].steps[] | select(.run // "" | contains("bash trusted/scripts/validate-release-contract.sh"))] | length == 1) and
-    ([.jobs[].steps[] | select(.run // "" | contains("bash trusted/scripts/validate-deploy-deletions.sh"))] | length == 1)
+    ([.jobs[].steps[] | select(.run // "" | contains("bash trusted/scripts/validate-deploy-deletions.sh"))] | length == 1) and
+    ([.jobs[].steps[] | select(.run // "" | contains("bash trusted/scripts/validate-")) |
+      select(.shell != "bash")] | length == 0)
   ' <<<"$metadata" >/dev/null || {
     fail 'metadata must always run both trusted, read-only guards on edits'
     return 1
@@ -52,16 +54,59 @@ check_metadata() {
 }
 
 workflow="$repo_root/.github/workflows/pr-metadata-guards.yaml"
+mkdir -p "$work/producer/bin" "$work/producer/candidate" "$work/producer/trusted/scripts"
+yq -r '.jobs.metadata-guards.steps[] | select(.name == "🚦 Validate release contract") | .run' "$workflow" >"$work/producer/validate.sh"
+cat >"$work/producer/bin/git" <<'GIT'
+#!/usr/bin/env bash
+set -euo pipefail
+command="$3"
+if [[ "$command" == "$GIT_FAILURE_INJECT" ]]; then
+  echo "injected Git $command failure" >&2
+  exit 23
+fi
+case "$command" in
+log) printf 'fix: fixture change\n' ;;
+diff) printf 'deploy/fixture.yaml\0' ;;
+*) exit 24 ;;
+esac
+GIT
+cat >"$work/producer/trusted/scripts/validate-release-contract.sh" <<'VALIDATOR'
+#!/usr/bin/env bash
+set -euo pipefail
+cat >/dev/null
+VALIDATOR
+chmod +x "$work/producer/bin/git"
+for producer in log diff; do
+  if (
+    cd "$work/producer"
+    export PATH="$work/producer/bin:$PATH" GIT_FAILURE_INJECT="$producer"
+    export BASE_SHA=base HEAD_SHA=head PR_TITLE='fix: fixture change' COMMIT_COUNT=2
+    if [[ "$(yq -r '.jobs.metadata-guards.steps[] | select(.name == "🚦 Validate release contract") | .shell // ""' "$workflow")" == bash ]]; then
+      bash --noprofile --norc -eo pipefail validate.sh
+    else
+      bash --noprofile --norc -e validate.sh
+    fi
+  ) >"$work/producer.log" 2>&1; then
+    fail "accepted failed Git $producer producer as an empty diff"
+    exit 1
+  fi
+  [[ "$(cat "$work/producer.log")" == *"injected Git $producer failure"* ]] || {
+    fail "Git $producer failure fixture did not reach the producer"
+    exit 1
+  }
+done
+echo 'ok: actual release step rejects failed Git log and diff producers'
 kubectl kustomize "$repo_root/deploy" >"$work/render.yaml"
 check_metadata "$workflow" "$work/render.yaml"
 bash "$repo_root/tests/deploy-guards-ruleset.sh"
 echo 'ok: metadata edits run independently required trusted validators'
 
-for mutation in no-edited skip-guards candidate-validator; do
+for mutation in no-edited skip-guards candidate-validator no-pipefail; do
   case "$mutation" in
   no-edited) expression='.on.pull_request.types -= ["edited"]' ;;
   skip-guards) expression='.jobs.metadata-guards.if = "false"' ;;
   candidate-validator) expression='(.jobs.metadata-guards.steps[] | select(.run // "" | contains("validate-release-contract.sh"))).run |= sub("trusted/scripts/"; "candidate/scripts/")' ;;
+  no-pipefail) expression='del(.jobs.metadata-guards.steps[].shell)' ;;
   esac
   yq "$expression" "$workflow" >"$work/mutated.yaml"
   if check_metadata "$work/mutated.yaml" "$work/render.yaml" >"$work/mutation.log" 2>&1; then
@@ -74,4 +119,4 @@ if check_metadata "$workflow" "$work/no-rule.yaml" >"$work/mutation.log" 2>&1; t
   fail 'accepted missing required metadata status'
   exit 1
 fi
-echo 'ok: absent edit coverage, skipped guards, candidate validators and missing enforcement fail'
+echo 'ok: absent edit coverage, skipped guards, candidate validators, unsafe shell and missing enforcement fail'

@@ -39,6 +39,7 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
       - name: 🚦 Validate release contract
+        shell: bash
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
@@ -49,6 +50,7 @@ jobs:
           git -C candidate diff --name-only -z "$BASE_SHA" "$HEAD_SHA" |
             bash trusted/scripts/validate-release-contract.sh "$PR_TITLE" "$COMMIT_COUNT" "$first_subject"
       - name: 🗑️ Validate deploy/ deletions are acknowledged
+        shell: bash
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           PR_BODY: ${{ github.event.pull_request.body }}
