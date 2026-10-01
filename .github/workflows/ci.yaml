@@ -3641,21 +3641,23 @@ jobs:
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
     name: "[Test] Create Release - Dry Run"
     uses: ./.github/workflows/create-release.yaml
+    permissions:
+      contents: read
     with:
       dry-run: true
-    secrets:
-      APP_PRIVATE_KEY: ${{ secrets.APP_PRIVATE_KEY }}
+      offline-test: true
 
   test-create-release-no-issue-side-effects:
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
     name: "[Test] Create Release - No Issue Side Effects"
     uses: ./.github/workflows/create-release.yaml
+    permissions:
+      contents: read
     with:
       disable-issue-side-effects: true
       warn-missing-breaking-bang: true
       dry-run: true
-    secrets:
-      APP_PRIVATE_KEY: ${{ secrets.APP_PRIVATE_KEY }}
+      offline-test: true
 
   test-create-release-config:
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
@@ -3682,6 +3684,20 @@ jobs:
 
       - name: 🧪 Verify breaking-change warning and silent cases
         run: bash .github/tests/test-create-release-breaking-bang.sh
+
+      - name: 🧪 Verify offline release credential boundary
+        run: bash .github/tests/test-create-release-offline.sh
+
+      - name: 📦 Setup Node.js for release-decision controls
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+
+      - name: 📦 Acquire pinned release dependency for controls
+        run: npx --yes semantic-release@25.0.3 --version
+
+      - name: 🧪 Verify release-decision regressions fail
+        run: bash .github/tests/test-create-release-fixture-controls.sh
 
   test-release-please-semantics:
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"

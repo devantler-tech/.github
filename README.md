@@ -180,6 +180,8 @@ This is a narrow configuration check, not proof that a commit will produce a maj
 
 Consumer rollout and the decision on removing this temporary flag are tracked in [devantler-tech/actions#1347](https://github.com/devantler-tech/actions/issues/1347).
 
+For catalogue self-tests, set `offline-test: true` together with `dry-run: true` and omit the App secret. This independent job holds only contents-read permission and evaluates the pinned release command and catalogue configuration against disposable local repositories. It verifies patch, minor, major, and no-release decisions without changing refs. Both issue-hook settings are exercised; this does not test live notification delivery. Normal releases and consumer dry-run previews continue to use the consumer's own configuration and App credentials.
+
 #### Usage
 
 ```yaml
@@ -197,10 +199,11 @@ jobs:
 | Key                          | Type            | Default | Required | Description                                                               |
 |------------------------------|-----------------|---------|----------|---------------------------------------------------------------------------|
 | `APP_CLIENT_ID`              | Variable        | -       | Yes      | GitHub App client ID used to mint the release token                       |
-| `APP_PRIVATE_KEY`            | Secret          | -       | Yes      | GitHub App private key (paired with the `APP_CLIENT_ID` variable)         |
+| `APP_PRIVATE_KEY`            | Secret          | -       | No       | GitHub App private key; required for consumer releases and previews, omitted for offline tests |
 | `disable-issue-side-effects` | Input (boolean) | `false` | No       | Disable success/fail hooks and omit issue/pull-request token permissions  |
 | `warn-missing-breaking-bang` | Input (boolean) | `false` | No       | Warn about missing explicit breaking-header handling in supported JSON configurations |
 | `dry-run`                    | Input (boolean) | `false` | No       | Run semantic-release in dry-run mode (no tags or publishes)               |
+| `offline-test`               | Input (boolean) | `false` | No       | Run secret-free catalogue release-decision fixtures; requires dry-run     |
 
 </details>
 
