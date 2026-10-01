@@ -4001,6 +4001,8 @@ jobs:
 
       - name: 🧪 Assert a vanished allowlisted policy fails the sync before the target changes
         run: bash .github/tests/test-sync-cluster-policies-allowlist.sh
+      - name: Verify policyignore matching and failed reads before filtering
+        run: bash .github/tests/test-sync-cluster-policies-filter.sh
 
   test-update-agent-skills:
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
