@@ -661,10 +661,17 @@ jobs:
 
 | Key               | Type            | Default | Required | Description                                                |
 |-------------------|-----------------|---------|----------|------------------------------------------------------------|
-| `APP_CLIENT_ID`   | Variable        | -       | Yes      | GitHub App client ID used to mint the issue-creation token |
-| `APP_PRIVATE_KEY` | Secret          | -       | Yes      | GitHub App private key (paired with the `APP_CLIENT_ID` variable) |
-| `dry-run`         | Input (boolean) | `false` | No       | Skip issue creation (validate workflow interface only)     |
+| `APP_CLIENT_ID`   | Variable        | -       | No       | Required for production project integration; unused in dry-run |
+| `APP_PRIVATE_KEY` | Secret          | -       | No       | Required for production project integration; unused in dry-run |
+| `dry-run`         | Input (boolean) | `false` | No       | Exercise the action wrapper offline without creating issues |
 | `ignore`          | Input (string)  | `""`    | No       | Regular expression matching repository-relative paths to ignore |
+
+With `dry-run: true`, omit the App secret: an executed job uses only a contents-read token and a
+fail-closed Docker fixture to verify exactly one wrapper invocation and input forwarding. This
+does not scan source comments; catalogue CI separately exercises the real scanner image.
+The calling job still needs the static `issues: write` ceiling because GitHub validates the
+production job even when it is skipped. Production uses the workflow token for issues and the
+App token for the organization project.
 
 </details>
 

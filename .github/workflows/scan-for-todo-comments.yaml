@@ -4,7 +4,7 @@ on:
   workflow_call:
     inputs:
       dry-run:
-        description: "Skip issue creation (validate workflow interface only)"
+        description: "Exercise the action wrapper offline without issue creation"
         required: false
         default: false
         type: boolean
@@ -15,11 +15,67 @@ on:
         type: string
     secrets:
       APP_PRIVATE_KEY:
-        required: true
+        description: "Required for production project integration; unused in dry-run"
+        required: false
 
 permissions: {}
 
 jobs:
+  dry-run:
+    if: ${{ inputs.dry-run }}
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    steps:
+      - name: 🛡️ Harden runner
+        uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
+        with:
+          egress-policy: audit
+
+      - name: 📑 Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: 📥 Checkout devantler-tech/.github (this workflow's commit)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ${{ job.workflow_repository }}
+          ref: ${{ job.workflow_sha }}
+          path: .devantler-tech-actions
+          persist-credentials: false
+
+      # The fail-closed Docker stand-in validates the actual wrapper and forwarded
+      # caller inputs. Real scanner discovery/payload coverage runs separately in CI.
+      - name: 🧪 Prepare offline Docker fixture
+        env:
+          TODO_EXPECTED_TOKEN: ${{ github.token }}
+          TODO_EXPECTED_BEFORE: ${{ github.event.before || github.base_ref }}
+          TODO_EXPECTED_COMMITS: ${{ toJSON(github.event.commits) }}
+          TODO_EXPECTED_DIFF: ${{ github.event.pull_request.diff_url }}
+          TODO_EXPECTED_IGNORE: ${{ inputs.ignore }}
+        run: bash .devantler-tech-actions/.github/tests/todo-action-smoke.sh prepare
+
+      - name: 🧪 Run actual wrapper offline
+        uses: ./.devantler-tech-actions/actions/create-issues-from-todos
+        with:
+          ignore: ${{ inputs.ignore }}
+          optional-project-auth: "true"
+
+      # The composite checkout cleans this directory. Restore the exact workflow
+      # commit for the verifier and for the runner to reload composite post steps.
+      - name: 📥 Restore devantler-tech/.github for post-cleanup
+        if: ${{ always() }}
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ${{ job.workflow_repository }}
+          ref: ${{ job.workflow_sha }}
+          path: .devantler-tech-actions
+          persist-credentials: false
+
+      - name: 🧪 Verify one actual offline invocation
+        run: bash .devantler-tech-actions/.github/tests/todo-action-smoke.sh verify-once
+
   todos:
     if: ${{ !inputs.dry-run }}
     permissions:
