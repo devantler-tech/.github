@@ -319,6 +319,15 @@ jobs:
 requests opened by an allowlist of trusted single-author bots, so routine bot PRs do not need a human
 click.
 
+Use `dry-run: true` to exercise the workflow without changing a pull request.
+This path runs offline decision fixtures with `contents: read`, forwards no App
+secret, and has a separate concurrency lane so it cannot cancel live evaluations.
+The catalogue tests use it for default, actor-trust and pending-queue calls.
+Caller permissions still declare the production workflow's static write ceiling,
+which GitHub validates even when those jobs are skipped; executed dry-run jobs
+receive only read access. `dry-run` defaults to `false`, and live mutations require
+`APP_PRIVATE_KEY`.
+
 Cursor Automation PRs are eligible by the exact `cursor[bot]` author identity (`app/cursor` in the
 GitHub UI). This author check reads the pull request author; a `cursor[bot]` Bugbot comment or review
 does not count as trusted review evidence.
@@ -438,7 +447,8 @@ jobs:
 
 | Key                    | Type   | Default | Required | Description                                                               |
 |------------------------|--------|---------|----------|---------------------------------------------------------------------------|
-| `APP_PRIVATE_KEY`      | Secret | -       | Yes      | GitHub App private key                                                    |
+| `APP_PRIVATE_KEY`      | Secret | -       | No       | GitHub App private key; required for live mutations, omitted for dry-run   |
+| `dry-run`              | Input  | `false` | No       | Run read-only offline decision fixtures without changing a pull request  |
 | `enforce-actor-trust`  | Input  | `false` | No       | Opt-in trusted-trigger enforcement with fail-closed revocation            |
 | `enforce-review-gates` | Input  | `false` | No       | Opt-in fail-closed gate before approval; agent arms after live pentad     |
 | `queue-pending-evaluations` | Input | `false` | No | Temporary opt-in to retain pending evaluations during event bursts |

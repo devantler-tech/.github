@@ -121,7 +121,7 @@ fi
 auto_merge_needs="$(yq -r '.jobs."auto-merge".needs // ""' "$workflow")"
 auto_merge_condition="$(yq -r '.jobs."auto-merge".if // ""' "$workflow")"
 normalized_auto_merge_condition="$(tr -d '[:space:]' <<<"$auto_merge_condition")"
-expected_auto_merge_condition="needs.eligibility.outputs.eligible=='true'&&(github.event_name=='pull_request'||inputs.enforce-review-gates||vars.ENFORCE_MERGE_GATES=='true')"
+expected_auto_merge_condition="!inputs.dry-run&&needs.eligibility.outputs.eligible=='true'&&(github.event_name=='pull_request'||inputs.enforce-review-gates||vars.ENFORCE_MERGE_GATES=='true')"
 if [[ "$auto_merge_needs" != "eligibility" ||
   "$normalized_auto_merge_condition" != "$expected_auto_merge_condition" ]]; then
   echo "::error file=$workflow::privileged auto-merge job must require exact eligibility and keep default-off review/comment no-ops outside the mutation lane"
@@ -203,7 +203,7 @@ if [[ "$normalized_disarm_condition" != "$expected_disarm_condition" ]]; then
 fi
 
 disarm_job_condition="$(yq -r '.jobs."disarm-untrusted-update".if // ""' "$workflow")"
-if [[ "$disarm_job_condition" != "needs.eligibility.outputs.disarm == 'true'" ]]; then
+if [[ "$disarm_job_condition" != "!inputs.dry-run && needs.eligibility.outputs.disarm == 'true'" ]]; then
   echo "::error file=$workflow::the disarm job must run only for exactly-true rejected lifecycle or evidence-removal events"
   status=1
 fi
@@ -233,12 +233,14 @@ expected_workflow_cancel="\${{ (inputs.enforce-actor-trust || vars.ENFORCE_ACTOR
 # variable can never override an explicit or defaulted `false` input.
 cancel_condition="${expected_workflow_cancel#\$\{\{ }"
 cancel_condition="${cancel_condition% \}\}}"
+expected_workflow_cancel="\${{ !inputs.dry-run && $cancel_condition }}"
 queue_enabled="(inputs.queue-pending-evaluations || (toJSON(inputs) == '{}' && startsWith(github.workflow_ref, 'devantler-tech/.github/.github/workflows/enable-auto-merge.yaml@') && vars.QUEUE_PENDING_EVALUATIONS == 'true'))"
 expected_workflow_queue="\${{ $queue_enabled && !($cancel_condition) && 'max' || 'single' }}"
 expected_job_queue="\${{ $queue_enabled && 'max' || 'single' }}"
 # shellcheck disable=SC2016 # GitHub expressions are compared literally.
 expected_workflow_group='enable-auto-merge-${{github.repository}}-${{inputs.concurrency-key||(startsWith(github.workflow_ref,'"'"'devantler-tech/.github/.github/workflows/enable-auto-merge.yaml@'"'"')&&'"'"'direct'"'"')||((inputs.enforce-actor-trust||vars.ENFORCE_ACTOR_TRUST=='"'"'true'"'"')&&'"'"'actor-trust-legacy'"'"')||github.workflow_ref}}-${{github.event.pull_request.number||github.event.issue.number||github.run_id}}-${{((inputs.concurrency-key!='"'"''"'"'||startsWith(github.workflow_ref,'"'"'devantler-tech/.github/.github/workflows/enable-auto-merge.yaml@'"'"')||inputs.enforce-actor-trust||vars.ENFORCE_ACTOR_TRUST=='"'"'true'"'"')&&((github.event_name=='"'"'pull_request'"'"'&&!github.event.pull_request.draft&&contains(fromJSON('"'"'["dependabot[bot]","renovate[bot]","github-actions[bot]","ksail-bot[bot]","coderabbitai[bot]","cursor[bot]"]'"'"'),github.event.pull_request.user.login))||((inputs.enforce-review-gates||vars.ENFORCE_MERGE_GATES=='"'"'true'"'"')&&((github.event_name=='"'"'pull_request_review'"'"'&&github.event.action=='"'"'dismissed'"'"'&&!github.event.pull_request.draft&&contains(fromJSON('"'"'["coderabbitai[bot]","chatgpt-codex-connector[bot]"]'"'"'),github.event.review.user.login)&&contains(fromJSON('"'"'["dependabot[bot]","renovate[bot]","github-actions[bot]","ksail-bot[bot]","coderabbitai[bot]","cursor[bot]"]'"'"'),github.event.pull_request.user.login))||(github.event_name=='"'"'issue_comment'"'"'&&github.event.action=='"'"'deleted'"'"'&&github.event.issue.pull_request&&github.event.issue.state=='"'"'open'"'"'&&contains(fromJSON('"'"'["coderabbitai[bot]","chatgpt-codex-connector[bot]"]'"'"'),github.event.comment.user.login)&&contains(fromJSON('"'"'["dependabot[bot]","renovate[bot]","github-actions[bot]","ksail-bot[bot]","coderabbitai[bot]","cursor[bot]"]'"'"'),github.event.issue.user.login))))))&&'"'"'state'"'"'||github.run_id}}'
 normalized_workflow_group="$(tr -d '[:space:]' <<<"$workflow_concurrency_group")"
+expected_workflow_group+="\${{inputs.dry-run&&format('-dry-run-{0}-{1}',github.run_id,github.run_attempt)||''}}"
 review_job_group="$(yq -r '.jobs."auto-merge".concurrency.group // ""' "$workflow")"
 review_job_cancel="$(yq -r '.jobs."auto-merge".concurrency."cancel-in-progress" | tostring' "$workflow")"
 review_job_queue="$(yq -r '.jobs."auto-merge".concurrency.queue // "single"' "$workflow")"
