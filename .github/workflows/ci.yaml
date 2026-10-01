@@ -3085,6 +3085,10 @@ jobs:
         shell: bash
         run: bash .github/tests/test-dependency-review-release-exemption.sh
 
+      - name: 🔐 Check dependency review comment credentials and read-only defaults
+        shell: bash
+        run: bash .github/tests/test-dependency-review-comments.sh
+
       - name: 🔒 Check publish workflows require a SHA-pinned caller
         shell: bash
         run: bash .github/tests/test-publish-caller-pin.sh

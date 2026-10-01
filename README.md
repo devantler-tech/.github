@@ -270,8 +270,43 @@ jobs:
 | `fail-on-scopes` | Comma-separated scopes to block on (`runtime`, `development`, `unknown`). | `runtime` |
 | `allow-licenses` | Comma-separated SPDX allow-list (empty = not enforced). Mutually exclusive with `deny-licenses`. | `""` |
 | `deny-licenses` | Comma-separated SPDX deny-list (empty = not enforced). Mutually exclusive with `allow-licenses`. | `""` |
-| `comment-summary-in-pr` | Post the summary as a PR comment (`always`, `on-failure`, `never`); anything but `never` needs `pull-requests: write`. | `never` |
+| `comment-summary-in-pr` | Post the summary as a PR comment (`always`, `on-failure`, `never`); anything but `never` requires the `repo-token` secret below. | `never` |
 | `warn-only` | Report findings as warnings and always succeed (non-blocking); set `false` to enforce. | `true` |
+
+#### Secrets
+
+| Name | Description | Required |
+|------|-------------|----------|
+| `repo-token` | Repository-scoped token with **Contents: read** and **Pull requests: write**. Required for `always` and `on-failure`; ignored for `never`. | Only when posting comments |
+
+#### Posting a summary comment
+
+The reusable workflow always keeps its job's `GITHUB_TOKEN` at `contents: read`.
+Granting the calling job `pull-requests: write` alone cannot enable comments:
+[reusable workflows can only retain or reduce the caller's token permissions](https://docs.github.com/en/actions/reference/workflows-and-actions/reusing-workflow-configurations#supported-keywords-for-jobs-that-call-a-reusable-workflow).
+Pass an independent token through the named secret instead. Prefer a short-lived
+[GitHub App installation token](https://docs.github.com/en/apps/creating-github-apps/authenticating-with-a-github-app/authenticating-as-a-github-app-installation)
+limited to the target repository and the two permissions above; a fine-grained token
+with those permissions also works. Do not pass the calling job's `GITHUB_TOKEN` as a
+substitute for this independent credential.
+
+```yaml
+jobs:
+  dependency-review:
+    uses: devantler-tech/.github/.github/workflows/dependency-review.yaml@{ref} # ref
+    permissions:
+      contents: read
+    with:
+      comment-summary-in-pr: always # or on-failure
+    secrets:
+      repo-token: ${{ secrets.DEPENDENCY_REVIEW_COMMENT_TOKEN }}
+```
+
+A missing token fails with a specific setup message before dependency review starts;
+the API enforces the supplied token's actual permissions. Secretless callers and
+organization-required runs retain the comments-off default. Secrets are unavailable
+to fork pull requests, so use the default there and enable comments only in trusted
+caller contexts where the independent credential is available.
 
 </details>
 
