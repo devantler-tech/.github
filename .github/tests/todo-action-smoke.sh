@@ -68,8 +68,12 @@ MOCK
     chmod +x "$fixture/bin/docker"
     printf '%s\n' "$fixture/bin" >>"${GITHUB_PATH:?}"
     ;;
-  verify)
-    jq -e --slurpfile expected "$fixture/expected.json" --argjson count "${TODO_EXPECTED_ATTEMPTS:-1}" \
+  verify|verify-once)
+    # Reusable workflow smokes require one actual invocation even when an environment
+    # override requests zero attempts; the action retry suite retains its count input.
+    count="${TODO_EXPECTED_ATTEMPTS:-1}"
+    [[ "$1" != verify-once ]] || count=1
+    jq -e --slurpfile expected "$fixture/expected.json" --argjson count "$count" \
       -s 'length == $count and all(. == $expected[0])' "$fixture/calls.jsonl" >/dev/null || {
       echo 'FAIL: Docker attempts, arguments or forwarded inputs differ' >&2
       exit 1
@@ -77,5 +81,5 @@ MOCK
     rm -f "$fixture/credentials.json"
     echo 'PASS: actual to-do action wrapper stays in the offline Docker fixture'
     ;;
-  *) echo 'usage: todo-action-smoke.sh <prepare|verify>' >&2; exit 2 ;;
+  *) echo 'usage: todo-action-smoke.sh <prepare|verify|verify-once>' >&2; exit 2 ;;
 esac

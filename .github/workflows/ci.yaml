@@ -547,6 +547,12 @@ jobs:
       - name: 🧪 Verify offline CI boundaries
         run: bash .github/tests/test-todo-action-ci.sh
 
+      - name: 🧪 Verify secret-free reusable workflow execution
+        run: bash .github/tests/test-todo-workflow-dry-run.sh
+
+      - name: 🧪 Reject skipped or retried workflow fixtures
+        run: bash .github/tests/test-todo-workflow-fixture.sh
+
       - name: 🧪 Prepare offline Docker fixture
         env:
           TODO_EXPECTED_TOKEN: ${{ github.token }}
@@ -3894,11 +3900,11 @@ jobs:
     uses: ./.github/workflows/scan-for-todo-comments.yaml
     permissions:
       contents: read
+      # Static ceiling for the skipped production job; the executed dry-run job
+      # explicitly restricts its token to contents: read and receives no App key.
       issues: write
     with:
       dry-run: true
-    secrets:
-      APP_PRIVATE_KEY: ${{ secrets.APP_PRIVATE_KEY }}
 
   test-scan-for-todo-comments-ignore:
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
@@ -3910,8 +3916,6 @@ jobs:
     with:
       dry-run: true
       ignore: '^\.github/tests/'
-    secrets:
-      APP_PRIVATE_KEY: ${{ secrets.APP_PRIVATE_KEY }}
 
   test-sync-cluster-policies:
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
