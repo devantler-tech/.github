@@ -3483,70 +3483,43 @@ jobs:
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
     name: "[Test] Enable Auto-Merge"
     uses: ./.github/workflows/enable-auto-merge.yaml
-    # Reasoned coverage gap (AGENTS.md both-states convention): this live
-    # invocation exercises the DEFAULT-OFF state only. A second invocation
-    # with enforce-review-gates: true would double-approve/arm the same PR
-    # alongside this one — conflicting side effects on one surface — so the
-    # enabled-state gate decisions are covered by the script-level fixture
-    # tests (test-enable-auto-merge-pentad-gate) and the wiring flips live
-    # per repo via ENFORCE_MERGE_GATES after validation.
+    # Static caller ceiling for the production callee. Dry-run excludes both
+    # write jobs, so executed jobs receive at most contents:read.
     with:
       concurrency-key: default-self-test
+      dry-run: true
     permissions:
       pull-requests: write
       contents: write
       checks: read
       actions: read
-    secrets:
-      APP_PRIVATE_KEY: ${{ secrets.APP_PRIVATE_KEY }}
 
   test-enable-auto-merge-actor-trust:
-    if: >-
-      ${{
-        github.event_name != 'merge_group' &&
-        !startsWith(github.event.head_commit.message, 'chore(main): release ') &&
-        github.event_name == 'pull_request' &&
-        github.event.pull_request.head.repo.full_name == github.repository &&
-        github.event.pull_request.user.login == 'devantler'
-      }}
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
     name: "[Test] Enable Auto-Merge - Actor Trust Enabled"
     uses: ./.github/workflows/enable-auto-merge.yaml
-    # Exercise the public enabled call boundary on maintainer-owned same-repo
-    # changes without competing with bot auto-merge. The author-gate fixtures
-    # below cover trusted/untrusted actor decisions and pin the disarm wiring.
     with:
       concurrency-key: actor-trust-self-test
+      dry-run: true
       enforce-actor-trust: true
       queue-pending-evaluations: false
     permissions:
       actions: read
       pull-requests: write
       contents: write
-    secrets:
-      APP_PRIVATE_KEY: ${{ secrets.APP_PRIVATE_KEY }}
 
   test-enable-auto-merge-queued:
-    if: >-
-      ${{
-        github.event_name != 'merge_group' &&
-        !startsWith(github.event.head_commit.message, 'chore(main): release ') &&
-        github.event_name == 'pull_request' &&
-        github.event.pull_request.head.repo.full_name == github.repository &&
-        github.event.pull_request.user.login == 'devantler'
-      }}
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
     name: "[Test] Enable Auto-Merge - Pending Queue Enabled"
     uses: ./.github/workflows/enable-auto-merge.yaml
-    # A maintainer-authored PR is ineligible for privileged mutations. Exercise
-    # the enabled public input without competing with real bot auto-merge.
     with:
       concurrency-key: queued-self-test
+      dry-run: true
       queue-pending-evaluations: true
     permissions:
       actions: read
       pull-requests: write
       contents: write
-    secrets:
-      APP_PRIVATE_KEY: ${{ secrets.APP_PRIVATE_KEY }}
 
   test-enable-auto-merge-author-gate:
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
@@ -3564,6 +3537,15 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+
+      - name: 🧪 Verify non-mutating workflow boundary
+        run: bash .github/tests/test-auto-merge-dry-run.sh
+
+      - name: 🧪 Execute offline approval and arming decisions
+        run: bash .github/tests/test-auto-merge-fixture.sh
+
+      - name: 🧪 Reject broken approval and arming decisions
+        run: bash .github/tests/test-auto-merge-fixture-controls.sh
 
       - name: 🧪 Verify privileged author gate
         run: bash .github/tests/test-enable-auto-merge-author-gate.sh
