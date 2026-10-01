@@ -5,7 +5,7 @@ set -euo pipefail
 root="$(cd "$(dirname "$0")/../.." && pwd)"
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
-for workflow in lint validate-go-project ci; do
+for workflow in lint validate-go-project validate-go-project-readonly ci; do
   yq -o=json '.' "$root/.github/workflows/$workflow.yaml" >"$work/$workflow.json"
 done
 yq -o=json '.' "$root/.github/actions/prepare-fixes/action.yaml" >"$work/exporter.json"
@@ -159,7 +159,7 @@ for (const lane of ['tidy', 'golangci-lint', 'lint']) {
   }
   console.log(`PASS: ${lane}, exact-commit wiring and ${fixtures.length} eligibility/read-only cases`);
 }
-for (const name of ['lint', 'validate-go-project']) {
+for (const name of ['lint', 'validate-go-project', 'validate-go-project-readonly']) {
   const workflow = JSON.parse(fs.readFileSync(`${directory}/${name}.json`, 'utf8'));
   const job = workflow.jobs.lint;
   const prepare = job.steps.find(step => step.id === 'fixes');
@@ -176,7 +176,8 @@ for (const name of ['lint', 'validate-go-project']) {
   const linter = job.steps.find(step => (step.uses || '').startsWith('oxsecurity/megalinter/'));
   assert.equal(linter['continue-on-error'] ?? false, false, 'lint errors must remain fatal');
   assert.equal(job['continue-on-error'] ?? false, false, 'job failure must remain fatal');
-  const callers = Object.values(ci.jobs).filter(job => job.uses === `./.github/workflows/${name}.yaml`);
+  const callerName = name === 'validate-go-project' ? 'validate-go-project-readonly' : name;
+  const callers = Object.values(ci.jobs).filter(job => job.uses === `./.github/workflows/${callerName}.yaml`);
   assert.ok(callers.some(job => job.with?.[flag] === true), `${name}: missing opt-in caller`);
   assert.ok(callers.some(job => job.with?.[flag] === undefined || job.with[flag] === false), `${name}: missing default-off caller`);
   console.log(`PASS: ${name}, ${fixtures.length} recovery/status/authority cases`);
