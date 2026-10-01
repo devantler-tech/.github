@@ -8,9 +8,10 @@ yq -o=json '.' "${1:-$root/.github/workflows/scan-for-todo-comments.yaml}" >"$wo
 yq -o=json '.' "${2:-$root/.github/workflows/ci.yaml}" >"$work/ci.json"
 jq -n --slurpfile workflow "$work/workflow.json" --slurpfile ci "$work/ci.json" \
   '{workflow:$workflow[0],ci:$ci[0]}' >"$work/bundle.json"
+condition="\${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
 
 guard() {
-  jq -e '
+  jq -e --arg condition "$condition" '
     def command: .run // "" | gsub("^\\s+|\\s+$";"");
     def runnable:
       .if == null and ( .["continue-on-error"] // false ) == false and
@@ -69,6 +70,8 @@ guard() {
     elif (["test-scan-for-todo-comments","test-scan-for-todo-comments-ignore"] | all(. as $name |
       $ci.jobs[$name].uses == "./.github/workflows/scan-for-todo-comments.yaml" and
       $ci.jobs[$name].with["dry-run"] == true and $ci.jobs[$name].secrets == null and
+      $ci.jobs[$name].if == $condition and
+      $ci.jobs[$name].needs == null and ($ci.jobs[$name]["continue-on-error"] // false) == false and
       ($ci.jobs["ci-required-checks"].needs | index($name)) != null and
       any($ci.jobs["ci-required-checks"].steps[];
         (.env.JOB_RESULTS // "" | contains("needs."+$name+".result")) and
@@ -129,6 +132,12 @@ verify before action	.workflow.jobs["dry-run"].steps |= ([.[]|select(.run // ""|
 default caller secret	.ci.jobs["test-scan-for-todo-comments"].secrets.APP_PRIVATE_KEY="${{ secrets.APP_PRIVATE_KEY }}"	secret-free workflow calls
 ignore caller inherit	.ci.jobs["test-scan-for-todo-comments-ignore"].secrets="inherit"	secret-free workflow calls
 caller live mode	.ci.jobs["test-scan-for-todo-comments"].with["dry-run"]=false	secret-free workflow calls
+default caller skipped	.ci.jobs["test-scan-for-todo-comments"].if="false"	secret-free workflow calls
+ignore caller skipped	.ci.jobs["test-scan-for-todo-comments-ignore"].if="false"	secret-free workflow calls
+default caller ignored failure	.ci.jobs["test-scan-for-todo-comments"]["continue-on-error"]=true	secret-free workflow calls
+ignore caller ignored failure	.ci.jobs["test-scan-for-todo-comments-ignore"]["continue-on-error"]=true	secret-free workflow calls
+default caller gated dependency	.ci.jobs["test-scan-for-todo-comments"].needs="missing-job"	secret-free workflow calls
+ignore caller gated dependency	.ci.jobs["test-scan-for-todo-comments-ignore"].needs="missing-job"	secret-free workflow calls
 missing required dependency	.ci.jobs["ci-required-checks"].needs |= map(select(. != "test-scan-for-todo-comments-ignore"))	secret-free workflow calls
 missing required verdict	.ci.jobs["ci-required-checks"].steps |= map(if .env.JOB_RESULTS then .env.JOB_RESULTS |= gsub("needs.test-scan-for-todo-comments.result";"needs.other.result") else . end)	secret-free workflow calls
 skipped regression	.ci.jobs["test-create-issues-from-todos"].steps |= map(if .run == "bash .github/tests/test-todo-workflow-dry-run.sh" then .if="false" else . end)	regressions must execute
