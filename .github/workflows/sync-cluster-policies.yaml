@@ -50,79 +50,90 @@ jobs:
       - name: Download latest Cluster Policies
         run: |
           git clone --filter=blob:none --sparse https://github.com/kyverno/policies "$KYVERNO_POLICIES_TEMP_DIR"
-          cd "$KYVERNO_POLICIES_TEMP_DIR"
+          cd "$KYVERNO_POLICIES_TEMP_DIR" || exit 1
           git sparse-checkout set --no-cone '*/' ':!.*'
       - name: Verify allowlisted policies still exist upstream
         id: verify-allowlist
         run: |
-          # A literal `!path` re-include names one upstream policy the caller vendors.
-          # If upstream moved or dropped it, the filter below would keep nothing for it
-          # and the copy step would delete the caller's vendored copy in a sync PR
-          # (platform#4256). Fail here instead, before the target changes, and name
-          # the path. Glob re-includes (`!other/*`) may legitimately match nothing.
+          # Validate and snapshot configuration before removing any upstream file.
+          # An explicitly empty readable file includes everything; missing or
+          # unreadable configuration must never silently broaden a sync (#262).
           policyignore="$PWD/.policyignore"
-          [ -f "$policyignore" ] || exit 0
-          # Accept a literal re-include only when it names what the filter below can
-          # actually keep: a file that step enumerates, or a directory above one. The
-          # same enumeration is reused here, so no spelling of a path (`..`, absolute,
-          # `.git`, a symlink, `a//b`) can pass a check the filter would not honour.
-          kept="$(cd "$KYVERNO_POLICIES_TEMP_DIR" && find . -type f -not -path './.git/*' | sed 's|^\./||')" ||
+          [[ -f "$policyignore" && -r "$policyignore" ]] ||
+            { echo "::error::.policyignore must be a readable regular file"; exit 1; }
+          cat -- "$policyignore" >"$RUNNER_TEMP/policyignore.snapshot" ||
+            { echo "::error::could not read .policyignore"; exit 1; }
+          cd "$KYVERNO_POLICIES_TEMP_DIR" || exit 1
+          find . -type f -not -path './.git/*' -print0 >"$RUNNER_TEMP/policy-files" ||
             { echo "::error::could not enumerate the upstream clone"; exit 1; }
+          exclusions="$RUNNER_TEMP/policy-excluded"
+          mkdir -p "$exclusions"
           missing=()
           while IFS= read -r line || [[ -n "$line" ]]; do
             line="${line%$'\r'}"
-            [[ "$line" == '!'* ]] || continue
-            path="${line#!}"
-            path="${path%/}"
-            [[ -z "$path" || "$path" == *[\*\?\[]* ]] && continue
-            RE_INCLUDE="$path" awk 'BEGIN { p = ENVIRON["RE_INCLUDE"]; n = length(p) }
-              $0 == p || substr($0, 1, n + 1) == p "/" { found = 1; exit }
-              END { exit !found }' <<<"$kept" || missing+=("$path")
-          done < "$policyignore"
+            pattern="$line"
+            include=0
+            if [[ "$line" == '!'* ]]; then
+              include=1
+              pattern="${line#!}"
+              [[ -n "$pattern" ]] || continue
+              # Negating an escaped comment/negation still names that literal file.
+              [[ "$pattern" != '#'* && "$pattern" != '!'* ]] || pattern="\\$pattern"
+            fi
+            # Git supplies path anchoring, basename, **, directory and escape
+            # semantics. Apply one positive pattern at a time: workflow-owned
+            # ordering preserves reinclusion below an excluded parent.
+            printf '%s\n' "$pattern" >"$RUNNER_TEMP/policy-pattern"
+            git ls-files --cached --ignored -z --exclude-from="$RUNNER_TEMP/policy-pattern" >"$RUNNER_TEMP/policy-matches" ||
+              { echo "::error::could not match .policyignore against upstream policies"; exit 1; }
+            matched=0
+            while IFS= read -r -d '' file; do
+              [[ -f "$file" && ! -L "$file" && "$file" != .git/* ]] || continue
+              matched=1
+              marker="$exclusions/$file"
+              if [[ "$include" == 1 ]]; then
+                rm -f -- "$marker"
+              else
+                mkdir -p "${marker%/*}"
+                : >"$marker"
+              fi
+            done <"$RUNNER_TEMP/policy-matches"
+            # A literal reinclusion that vanished upstream must fail before the
+            # caller's vendored copy could be deleted (#320). Escaped wildcard
+            # characters are literals; unmatched glob reinclusions are allowed.
+            glob=0
+            for ((i = 0; i < ${#pattern}; i++)); do
+              case "${pattern:i:1}" in
+                \\) i=$((i + 1)) ;;
+                '*'|'?'|'[') glob=1 ;;
+              esac
+            done
+            if [[ "$include" == 1 && "$glob" == 0 && "$matched" == 0 ]]; then
+              missing+=("${line#!}")
+            fi
+          done <"$RUNNER_TEMP/policyignore.snapshot"
           if [ "${#missing[@]}" -gt 0 ]; then
             for path in "${missing[@]}"; do
               echo "::error::.policyignore re-includes '$path', but upstream kyverno/policies no longer has it. Repoint or remove that line, or vendor the policy yourself."
             done
             exit 1
           fi
+          : >"$RUNNER_TEMP/policy-exclusions"
+          while IFS= read -r -d '' file; do
+            file="${file#./}"
+            [[ ! -f "$exclusions/$file" ]] || printf '%s\0' "$file" >>"$RUNNER_TEMP/policy-exclusions"
+          done <"$RUNNER_TEMP/policy-files"
       - name: Remove blacklisted policies
+        id: filter-policies
         run: |
-          # .policyignore is gitignore-style: ordered patterns where a leading `!`
-          # re-includes. The previous `find -path "$pattern" -exec rm` loop had no
-          # notion of negation, so a `!keep/this` line was a silent no-op and a broad
-          # `keep*` line above it would still delete the path meant to be kept.
-          # Instead evaluate every file against all patterns with last-match-wins,
-          # honoring `!` negation (a re-include wins even when a broad pattern
-          # excluded the parent — which the find loop could never express).
-          matches() {
-            # True if path $1 equals glob $2, or sits beneath a directory it matches.
-            # Strip one trailing "/" so a gitignore-style directory pattern (foo/)
-            # also matches files under it (foo/bar), not just the literal "foo/".
-            glob="${2%/}"
-            # shellcheck disable=SC2254  # $glob is a gitignore-style glob; glob-matching it is intentional.
-            case "$1" in $glob | $glob/*) return 0 ;; esac
-            return 1
-          }
-          policyignore="$PWD/.policyignore"
-          patterns=()
-          while IFS= read -r line; do
-            # Strip a trailing CR so CRLF .policyignore files don't break matching.
-            patterns+=("${line%$'\r'}")
-          done < <(grep -vE '^[[:space:]]*(#|$)' "$policyignore")
-          cd "$KYVERNO_POLICIES_TEMP_DIR"
-          while IFS= read -r rel; do
-            keep=1
-            for pattern in "${patterns[@]}"; do
-              if [[ "$pattern" == '!'* ]]; then
-                if matches "$rel" "${pattern#!}"; then keep=1; fi
-              else
-                if matches "$rel" "$pattern"; then keep=0; fi
-              fi
-            done
-            if [ "$keep" -eq 0 ]; then
-              rm -f -- "$rel"
-            fi
-          done < <(find . -type f -not -path './.git/*' | sed 's|^\./||')
+          cd "$KYVERNO_POLICIES_TEMP_DIR" || exit 1
+          # Consume the complete, successfully validated plan; never reread live
+          # configuration or hide a failed read in process substitution.
+          [[ -f "$RUNNER_TEMP/policy-exclusions" && -r "$RUNNER_TEMP/policy-exclusions" ]] ||
+            { echo "::error::validated policy exclusion plan is missing"; exit 1; }
+          while IFS= read -r -d '' rel; do
+            rm -f -- "$rel"
+          done <"$RUNNER_TEMP/policy-exclusions"
           # Prune directories left empty by the removals.
           find . -type d -not -path './.git' -not -path './.git/*' -empty -delete 2>/dev/null || true
       - name: Copy Cluster Policies to the target directory
