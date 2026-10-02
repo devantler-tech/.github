@@ -8,12 +8,14 @@ fail() {
 }
 
 usage() {
-  echo "usage: $0 --base-sha <sha> --branch-prefix <prefix>" >&2
+  echo "usage: $0 --base-sha <sha> --branch-prefix <prefix> [--pre-sync-sha <sha> --pre-sync-path <path>]" >&2
   exit 2
 }
 
 base_sha=""
 branch_prefix=""
+pre_sync_sha=""
+pre_sync_path=""
 while (($#)); do
   case "$1" in
     --base-sha)
@@ -26,6 +28,16 @@ while (($#)); do
       branch_prefix="$2"
       shift 2
       ;;
+    --pre-sync-sha)
+      [[ $# -ge 2 ]] || usage
+      pre_sync_sha="$2"
+      shift 2
+      ;;
+    --pre-sync-path)
+      [[ $# -ge 2 ]] || usage
+      pre_sync_path="$2"
+      shift 2
+      ;;
     *)
       usage
       ;;
@@ -34,12 +46,16 @@ done
 
 [[ "$base_sha" =~ ^[0-9a-f]{40}$ ]] || fail "base sha is not a full commit oid"
 [[ "$branch_prefix" =~ ^[A-Za-z0-9][A-Za-z0-9._/-]*$ ]] || fail "branch prefix is unsafe"
+if [[ -n "$pre_sync_sha" || -n "$pre_sync_path" ]]; then
+  [[ "$pre_sync_sha" =~ ^[0-9a-f]{40}$ ]] || fail "pre-sync sha is not a full commit oid"
+  [[ -n "$pre_sync_path" ]] || fail "--pre-sync-sha needs --pre-sync-path"
+fi
 [[ "${GITHUB_REPOSITORY:-}" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] || fail "GITHUB_REPOSITORY is unsafe"
 command -v gh >/dev/null || fail "gh is unavailable"
 command -v jq >/dev/null || fail "jq is unavailable"
 
 current_sha="$(git rev-parse HEAD)" || fail "could not read the caller checkout head"
-if [[ "$current_sha" == "$base_sha" ]]; then
+if [[ "$current_sha" == "$base_sha" || (-n "$pre_sync_sha" && "$current_sha" == "$pre_sync_sha") ]]; then
   echo "No template-sync commit was created; signature replacement is unnecessary."
   exit 0
 fi
@@ -48,10 +64,33 @@ branch="$(git branch --show-current)" || fail "could not read the generated bran
 [[ "$branch" == "${branch_prefix}_"* ]] ||
   fail "refusing to replace unexpected branch '$branch' (expected '${branch_prefix}_*')"
 
-parent_line="$(git show -s --format=%P HEAD)" || fail "could not read the sync commit parent"
-read -r -a parents <<<"$parent_line"
-[[ ${#parents[@]} -eq 1 ]] || fail "sync commit must have exactly one parent"
-[[ "${parents[0]}" == "$base_sha" ]] || fail "sync commit parent does not match the workflow base sha"
+# single_parent <commit>: the commit's only parent, or fail.
+single_parent() {
+  local line
+  local -a list
+  line="$(git show -s --format=%P "$1")" || fail "could not read the parent of $1"
+  read -r -a list <<<"$line"
+  [[ ${#list[@]} -eq 1 ]] || fail "$2 must have exactly one parent"
+  printf '%s\n' "${list[0]}"
+}
+
+# With --pre-sync-sha, the workflow committed the merged ignore file locally before the action ran
+# (merge-template-sync-ignore.sh), so the action's sync commit sits on top of it. That local
+# commit is folded into the one signed commit, whose parent stays the workflow base sha. It is
+# accepted only when it is a direct child of the base that changes exactly the ignore file.
+sync_parent="$(single_parent HEAD "sync commit")"
+if [[ -n "$pre_sync_sha" ]]; then
+  [[ "$sync_parent" == "$pre_sync_sha" ]] || fail "sync commit parent does not match the pre-sync commit"
+  [[ "$(single_parent "$pre_sync_sha" "pre-sync commit")" == "$base_sha" ]] ||
+    fail "pre-sync commit parent does not match the workflow base sha"
+  pre_sync_changes="$(git diff --name-only --no-renames "$base_sha" "$pre_sync_sha")" ||
+    fail "could not list the pre-sync commit's changes"
+  [[ "$pre_sync_changes" == "$pre_sync_path" ]] ||
+    fail "pre-sync commit changed more than $pre_sync_path; refusing to sign"
+else
+  [[ "$sync_parent" == "$base_sha" ]] || fail "sync commit parent does not match the workflow base sha"
+fi
+parents=("$base_sha")
 
 tree_sha="$(git show -s --format=%T HEAD)" || fail "could not read the sync commit tree"
 message="$(git show -s --format=%B HEAD)" || fail "could not read the sync commit message"

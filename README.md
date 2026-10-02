@@ -892,6 +892,14 @@ jobs:
       APP_PRIVATE_KEY: ${{ secrets.APP_PRIVATE_KEY }}
 ```
 
+When the caller has its own `.templatesyncignore`, the sync applies that committed
+copy and never the template's, so an entry the template adds after the caller was
+created does not apply to it by default. Set `merge-template-ignore-entries: true` to fix that: before the
+sync, the workflow appends every template entry the caller's list lacks, under a
+marked comment, and the sync PR carries the merged list. The caller's own entries
+are kept. To keep a single template entry out, add a `!<entry>` line to the caller's
+list. With `use-app-token: true`, the merge and the sync are signed as one commit.
+
 #### Secrets and Inputs
 
 | Key                              | Type            | Default                                          | Required | Description                                                                 |
@@ -904,6 +912,7 @@ jobs:
 | `pr-labels`                      | Input (string)  | `dependencies,automation`                        | No       | Comma-separated labels for the sync PR                                      |
 | `pr-branch-name-prefix`          | Input (string)  | `chore/template-sync`                            | No       | Prefix for the branch the sync PR is opened from                            |
 | `template-sync-ignore-file-path` | Input (string)  | `.templatesyncignore`                            | No       | Path to the file listing consumer-owned (non-synced) files                  |
+| `merge-template-ignore-entries`  | Input (boolean) | `false`                                          | No       | Add the template's ignore entries this repository's list lacks before syncing |
 | `use-app-token`                  | Input (boolean) | `false`                                          | No       | Opt in to a signed App-authored sync PR that triggers the caller's CI      |
 | `dry-run`                        | Input (boolean) | `false`                                          | No       | Skip the sync and PR creation (validate workflow interface only)            |
 

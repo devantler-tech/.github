@@ -47,6 +47,18 @@ on:
         required: false
         type: string
         default: .templatesyncignore
+      merge-template-ignore-entries:
+        description: >-
+          When `true`, add every entry of the template's ignore file that the
+          caller's ignore file lacks before syncing, so an exclusion the
+          template adds after the caller was created applies there too. The
+          caller's own entries are kept, and a caller line `!<entry>` keeps that
+          one template entry out. The merged list is part of the sync PR.
+          Release flag, default `false`
+          (devantler-tech/platform-tenant-template#171).
+        required: false
+        default: false
+        type: boolean
       dry-run:
         description: "Skip the sync and PR creation (validate the workflow interface only)"
         required: false
@@ -134,6 +146,43 @@ jobs:
           persist-credentials: false
           token: ${{ steps.app-token.outputs.token || github.token }}
 
+      # actions-template-sync restores the caller's ignore file to its committed copy after
+      # pulling the template, so the template's list never decides what the caller receives. With
+      # the flag on, commit the merged list locally first: the action then restores and applies
+      # it, and the signing step folds this commit into the one signed sync commit.
+      - name: 📑 Checkout shared ignore-merge helper
+        if: ${{ inputs.merge-template-ignore-entries }}
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ${{ job.workflow_repository }}
+          ref: ${{ job.workflow_sha }}
+          path: .devantler-tech-actions
+          persist-credentials: false
+
+      - name: 🧩 Merge the template's ignore entries
+        id: merge-ignore
+        if: ${{ inputs.merge-template-ignore-entries }}
+        shell: bash
+        env:
+          BASE_SHA: ${{ github.sha }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token || github.token }}
+          IGNORE_FILE: ${{ inputs.template-sync-ignore-file-path }}
+          SOURCE_REPO_PATH: ${{ inputs.source-repo-path }}
+          UPSTREAM_BRANCH: ${{ inputs.upstream-branch }}
+        run: |
+          commit="$(bash .devantler-tech-actions/.github/scripts/merge-template-sync-ignore.sh \
+            --base-sha "$BASE_SHA" \
+            --source-repo "$SOURCE_REPO_PATH" \
+            --ref "$UPSTREAM_BRANCH" \
+            --ignore-file "$IGNORE_FILE")"
+          echo "commit=$commit" >> "$GITHUB_OUTPUT"
+
+      # The action stages the whole workspace, so the helper checkout must be gone before it runs.
+      - name: 🧹 Remove shared ignore-merge helper
+        if: ${{ always() && inputs.merge-template-ignore-entries }}
+        shell: bash
+        run: rm -rf -- .devantler-tech-actions
+
       - name: 🔄 Sync from template
         uses: AndreasAugustin/actions-template-sync@6e1d0089686f8940604fc15baae62367bf6ee860 # v2.6.0
         with:
@@ -169,10 +218,17 @@ jobs:
           BASE_SHA: ${{ github.sha }}
           BRANCH_PREFIX: ${{ inputs.pr-branch-name-prefix }}
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          IGNORE_FILE: ${{ inputs.template-sync-ignore-file-path }}
+          PRE_SYNC_SHA: ${{ steps.merge-ignore.outputs.commit }}
         run: |
+          pre_sync=()
+          if [[ -n "$PRE_SYNC_SHA" ]]; then
+            pre_sync=(--pre-sync-sha "$PRE_SYNC_SHA" --pre-sync-path "$IGNORE_FILE")
+          fi
           result="$(bash .devantler-tech-actions/.github/scripts/replace-template-sync-commit.sh \
             --base-sha "$BASE_SHA" \
-            --branch-prefix "$BRANCH_PREFIX")"
+            --branch-prefix "$BRANCH_PREFIX" \
+            "${pre_sync[@]}")"
           echo "Template-sync signing result: $result"
 
       - name: 🧹 Remove shared signing helper
