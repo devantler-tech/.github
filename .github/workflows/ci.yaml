@@ -3132,6 +3132,12 @@ jobs:
         shell: bash
         run: bash .github/tests/test-template-sync-pin-monotonicity.sh
 
+      # A template's new ignore entries must reach callers created before them
+      # (devantler-tech/platform-tenant-template#171).
+      - name: 🧩 Check Template Sync merges the template's ignore entries
+        shell: bash
+        run: bash .github/tests/test-template-sync-ignore-merge.sh
+
       - name: ✍️ Check every automated commit producer is signed
         shell: bash
         run: bash .github/tests/test-automated-commits-signed.sh
@@ -4126,6 +4132,21 @@ jobs:
     with:
       source-repo-path: devantler-tech/platform-tenant-template
       use-app-token: false
+      dry-run: true
+
+  # The ignore-entry merge is a release flag: instantiate its on state as well. Its behaviour is
+  # exercised offline by test-template-sync-ignore-merge.sh in lint-ci-coverage-parity.
+  test-template-sync-merge-ignore:
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    name: "[Test] Template Sync - Dry Run (Merge Ignore Entries)"
+    uses: ./.github/workflows/template-sync.yaml
+    permissions:
+      contents: write
+      pull-requests: write
+    with:
+      source-repo-path: devantler-tech/platform-tenant-template
+      use-app-token: false
+      merge-template-ignore-entries: true
       dry-run: true
 
   # ── Govulncheck allowlist self-test (regression guard for #282/#283) ──────────
@@ -5747,6 +5768,7 @@ jobs:
       - test-update-agent-skills
       - test-update-agent-skills-per-skill
       - test-template-sync
+      - test-template-sync-merge-ignore
       - test-govulncheck-allowlist-honored
       - test-govulncheck-strict-blocks
       - test-govulncheck-action-lockstep
@@ -5874,6 +5896,7 @@ jobs:
             ${{ needs.test-update-agent-skills.result }}
             ${{ needs.test-update-agent-skills-per-skill.result }}
             ${{ needs.test-template-sync.result }}
+            ${{ needs.test-template-sync-merge-ignore.result }}
             ${{ needs.test-govulncheck-allowlist-honored.result }}
             ${{ needs.test-govulncheck-strict-blocks.result }}
             ${{ needs.test-govulncheck-action-lockstep.result }}
