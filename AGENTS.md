@@ -431,7 +431,10 @@ The test proves each scope rejects a deliberate regression without executing the
 scanned scripts. Intentionally invalid product fixtures stay in `.github/fixtures`
 and are exercised separately. Repair findings by checking producer completion
 before searching captured output; do not blanket-exempt the repository's scripts.
-The shared action remains default-off for other consumers; devantler-tech/actions#1357 owns that rollout.
+The shared action validates by default, including when callers omit `enabled`.
+An explicit `enabled: "false"` skips setup and discovery. Linux/macOS fixtures cover
+omitted-input clean, unsafe and malformed scans; .github#268 owns consumer adoption
+and the later removal of the temporary opt-out input.
 
 **Retired repository links:** `validate-retired-repo-links` is a default-off,
 read-only Go validator with no module dependencies. Keep both flag states, real
