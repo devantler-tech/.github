@@ -3698,7 +3698,8 @@ jobs:
             echo "::notice::Queue evidence read failed with HTTP $status; retrying the complete read."
             sleep "$((attempt * 2))"
           done
-          if ! jq -e --argjson run "$RUN_ID" --argjson attempt "$RUN_ATTEMPT" '
+          if ! jq -se --argjson run "$RUN_ID" --argjson attempt "$RUN_ATTEMPT" '
+            length == 1 and (.[0] |
             def integer: type == "number" and . >= 0 and floor == .;
             type == "array" and length > 0
             and all(.[];
@@ -3721,7 +3722,7 @@ jobs:
                   "[Test] Enable Auto-Merge - Queue Slot 2",
                   "[Test] Enable Auto-Merge - Queue Slot 3"
                 ]) and all(.[]; .status == "completed" and .conclusion == "success")
-            )
+            ))
           ' jobs.json; then
             echo "::error::Complete evidence must show all three queue slots succeeded in this run attempt. Use Re-run all jobs to repeat the burst; rerunning only this observer cannot recreate it."
             exit 1

@@ -24,7 +24,7 @@ mutation() {
   count=$((count + 1))
 }
 mutation 'for attempt in 1 2 3' 'for attempt in 1' 'transient API failure then complete success'
-mutation '> jobs.json' '>> jobs.json' 'partial output survived the retry'
+mutation '> jobs.json' '>> jobs.json' 'transient API failure then complete success'
 mutation "if [[ \"\$attempt\" == 3 || ! \"\$status\" =~ ^5[0-9][0-9]$ ]]; then" \
   "if [[ \"\$attempt\" == 3 ]]; then" 'HTTP 401) accepted invalid evidence'
 mutation "and .run_id == \$run and .run_attempt == \$attempt" \

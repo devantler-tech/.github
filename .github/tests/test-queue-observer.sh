@@ -119,6 +119,10 @@ rejects 'failed first response cannot fill a missing slot in the retry' 2
 fixture
 printf '[{"total_count":4,"jobs":' >"$work/case/response-1"
 rejects 'truncated JSON' 1
+fixture
+printf '[]\n' >"$work/case/response-1"
+cat "$work/good.json" >>"$work/case/response-1"
+rejects 'multiple response documents' 1
 invalid_response 'empty response' '[]'
 invalid_response 'null page' '.[1] = null'
 invalid_response 'missing jobs array' 'del(.[1].jobs)'
