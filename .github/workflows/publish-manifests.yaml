@@ -48,15 +48,45 @@ jobs:
         with:
           egress-policy: audit
 
-      - name: 🔒 Require a v* tag
+      - name: 🔒 Require a semantic-version tag
+        id: version
         env:
           REF_TYPE: ${{ github.ref_type }}
           REF_NAME: ${{ github.ref_name }}
         run: |
-          if [ "$REF_TYPE" != "tag" ] || ! printf '%s' "$REF_NAME" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+'; then
-            echo "::error::publish-manifests must be invoked from a semver tag vX.Y.Z (got $REF_TYPE/$REF_NAME); Flux OCIRepository semver selection depends on it."
+          # The WHOLE tag must be a SemVer 2.0.0 version behind a `v`, not merely start with one:
+          # `v1.2.3garbage` would otherwise publish as `1.2.3garbage`, which neither Flux's semver
+          # selection nor docker/metadata-action treats as a version. Refused here, before anything
+          # reaches the registry. Keep this step identical in publish-app and publish-manifests.
+          set -euo pipefail
+          export LC_ALL=C
+          num='(0|[1-9][0-9]*)'
+          pre='(0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*)'
+          build='[0-9A-Za-z-]+'
+          semver="^v${num}\.${num}\.${num}(-${pre}(\.${pre})*)?(\+${build}(\.${build})*)?$"
+          if [ "$REF_TYPE" != "tag" ] || ! [[ "$REF_NAME" =~ $semver ]]; then
+            echo "::error::publish-manifests must be invoked from a semantic-version tag vMAJOR.MINOR.PATCH[-PRERELEASE][+BUILD] (got $REF_TYPE/$REF_NAME); releases are tagged and selected by semantic version."
             exit 1
           fi
+          # An OCI tag cannot carry `+`, and SemVer ignores build metadata when ordering versions, so
+          # publish without it — the same version docker/metadata-action derives for an image tag.
+          version="${REF_NAME#v}"
+          version="${version%%+*}"
+          # Refuse what the parsers downstream cannot read or order either: docker/metadata-action's
+          # takes at most 256 characters and numbers below 2^53, Flux's numbers below 2^64, and both
+          # compare a longer numeric pre-release identifier as text. 15 digits always fit.
+          numbers=".${version%%-*}."
+          case "$version" in *-*) numbers="${numbers}${version#*-}." ;; esac
+          too_long='\.[0-9]{16,}\.'
+          if [ "${#REF_NAME}" -gt 256 ] || [[ "$numbers" =~ $too_long ]]; then
+            echo "::error::publish-manifests refuses tag $REF_NAME: it must be at most 256 characters with numbers of at most 15 digits, so every tool downstream can read and order the version."
+            exit 1
+          fi
+          if [ "${#version}" -gt 128 ]; then
+            echo "::error::publish-manifests refuses tag $REF_NAME: version '$version' is longer than the 128 characters an OCI tag allows."
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
 
       - name: 🔎 Resolve the calling ref from the OIDC claim
         id: caller
@@ -116,6 +146,7 @@ jobs:
           REGISTRY: ${{ env.REGISTRY }}
           OCI_NAME: ${{ inputs.oci-name }}
           DEPLOY_PATH: ${{ inputs.deploy-path }}
+          VERSION: ${{ steps.version.outputs.version }}
           REF_NAME: ${{ github.ref_name }}
           SHA: ${{ github.sha }}
           SERVER_URL: ${{ github.server_url }}
@@ -124,21 +155,24 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
+          : "${VERSION:?the semantic-version tag step did not resolve a version}"
           # Default the OCI name to the caller repo; override (oci-name) for repos
-          # whose name is an invalid OCI path component, e.g. `.github`.
-          NAME="${OCI_NAME:-$REPOSITORY}"
-          VERSION="${REF_NAME#v}"
+          # whose name is an invalid OCI path component, e.g. `.github`. A registry
+          # reference must be lowercase.
+          NAME="$(printf '%s' "${OCI_NAME:-$REPOSITORY}" | tr '[:upper:]' '[:lower:]')"
           ARTIFACT="${REGISTRY}/${NAME}/manifests"
-          flux push artifact "oci://${ARTIFACT}:${VERSION}" \
+          # Sign the digest this push produced (keyless via OIDC), never the tag re-resolved
+          # later: two releases of one version (a re-run, or tags differing only in build
+          # metadata) would otherwise let this run sign bytes it did not publish.
+          PUSHED="$(flux push artifact "oci://${ARTIFACT}:${VERSION}" \
             --path="${DEPLOY_PATH}" \
             --source="${SERVER_URL}/${REPOSITORY}" \
             --revision="${REF_NAME}@sha1:${SHA}" \
-            --creds "${ACTOR}:${GH_TOKEN}"
+            --creds "${ACTOR}:${GH_TOKEN}" \
+            --output json)"
+          DIGEST="$(printf '%s' "$PUSHED" | jq -r '.digest // ""')"
+          if ! printf '%s' "$DIGEST" | grep -Eq '^sha256:[0-9a-f]{64}$'; then
+            echo "::error::flux push did not report the pushed artifact digest"; exit 1
+          fi
           flux tag artifact "oci://${ARTIFACT}:${VERSION}" --tag latest --creds "${ACTOR}:${GH_TOKEN}"
-          # Resolve tag → digest and sign by digest (keyless via OIDC): cosign
-          # signs exactly the resolved bytes — no tag→digest TOCTOU if the tag
-          # moves — and stays forward-compatible with cosign dropping tag-based
-          # signing. docker buildx imagetools is preinstalled on ubuntu-latest;
-          # cosign's own `cosign manifest digest` was removed in cosign v3.0.
-          DIGEST=$(docker buildx imagetools inspect "${ARTIFACT}:${VERSION}" --format '{{ .Manifest.Digest }}')
           cosign sign --yes "${ARTIFACT}@${DIGEST}"

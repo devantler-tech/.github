@@ -604,7 +604,7 @@ jobs:
       deploy-path: ./deploy # optional
 ```
 
-> **Note:** Must be invoked from a semver tag (`vX.Y.Z`) — Docker semver tagging and Flux `OCIRepository` semver selection depend on it. The calling job must grant `packages: write` and `id-token: write` (and `contents: read` for checkout); no secrets are required (auth uses the GHCR-scoped `GITHUB_TOKEN`).
+> **Note:** Must be invoked from a complete semantic-version tag (`vMAJOR.MINOR.PATCH`, optionally with `-PRERELEASE` and `+BUILD`) — Docker semver tagging and Flux `OCIRepository` semver selection depend on it. Anything else, such as `v1.2.3garbage` or a version whose numbers exceed 15 digits, is refused before publishing; build metadata is dropped from the published version because an OCI tag cannot carry `+`. The `app-name` container check on `deploy-path/deployment.yaml` also runs before anything is pushed, so a bad manifest leaves the registry untouched. The calling job must grant `packages: write` and `id-token: write` (and `contents: read` for checkout); no secrets are required (auth uses the GHCR-scoped `GITHUB_TOKEN`).
 
 #### Secrets and Inputs
 
@@ -646,7 +646,7 @@ jobs:
       deploy-path: ./deploy # optional
 ```
 
-> **Note:** Must be invoked from a semver tag (`vX.Y.Z`) — Flux `OCIRepository` semver selection depends on it. The calling job must grant `packages: write` and `id-token: write` (and `contents: read` for checkout); no secrets are required (auth uses the GHCR-scoped `GITHUB_TOKEN`). Override `oci-name` when the repo name is an invalid OCI path component (e.g. `.github` → `devantler-tech/github-config`).
+> **Note:** Must be invoked from a complete semantic-version tag (`vMAJOR.MINOR.PATCH`, optionally with `-PRERELEASE` and `+BUILD`) — Flux `OCIRepository` semver selection depends on it. Anything else, such as `v1.2.3garbage` or a version whose numbers exceed 15 digits, is refused before publishing; build metadata is dropped from the published version because an OCI tag cannot carry `+`. The calling job must grant `packages: write` and `id-token: write` (and `contents: read` for checkout); no secrets are required (auth uses the GHCR-scoped `GITHUB_TOKEN`). Override `oci-name` when the repo name is an invalid OCI path component (e.g. `.github` → `devantler-tech/github-config`).
 
 #### Secrets and Inputs
 
