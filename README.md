@@ -245,6 +245,30 @@ jobs:
 
 </details>
 
+### 🗑️ Delete Workflow Runs (Read-Only)
+
+[.github/workflows/delete-workflow-runs-readonly.yaml](.github/workflows/delete-workflow-runs-readonly.yaml)
+executes the same pinned cleanup action with `actions: read` and `contents: read` only.
+Use it for previews and catalogue tests that must have no authority to delete workflow history.
+Deletion requires the production entrypoint above and an explicit `dry-run: false`.
+
+The read-only entrypoint is generated from the complete production wrapper by
+`bash .github/scripts/generate-cleanup-readonly.sh`. Required CI checks preserve its
+input behavior and source parity. Hosted dry-runs prove execution and the credential
+boundary; deterministic native retention and deletion fixtures are tracked in #350.
+
+#### Inputs
+
+| Key | Type | Default | Required | Description |
+| --- | --- | --- | --- | --- |
+| `repository` | Input (string) | Calling repo | No | Repository whose workflow runs are previewed |
+| `days` | Input (number) | `30` | No | Days-worth of runs to retain |
+| `minimum-runs` | Input (number) | `6` | No | Minimum runs to retain per workflow |
+| `delete-workflow-pattern` | Input (string) | - | No | Workflow name or filename to match |
+| `delete-workflow-by-state-pattern` | Input (string) | `ALL` | No | Comma-separated workflow state filters |
+| `delete-run-by-conclusion-pattern` | Input (string) | `ALL` | No | Comma-separated run conclusion filters |
+| `dry-run` | Input (boolean) | `true` | No | Log proposed deletions; a false value still cannot grant deletion authority |
+
 ### 🛡️ Dependency Review
 
 <details>
