@@ -3,9 +3,9 @@ description: Validate configurable Kubernetes manifest and machine patch naming 
 author: devantler-tech
 inputs:
   enabled:
-    description: Opt in to the shared naming gate. Temporary rollout input tracked in actions issue 1200.
+    description: Run the shared naming gate; set false to opt out. Input retirement is tracked in .github issue 274.
     required: false
-    default: "false"
+    default: "true"
   config-file:
     description: Configuration file, relative to working-directory or absolute.
     required: false
@@ -21,14 +21,14 @@ outputs:
 runs:
   using: composite
   steps:
-    - name: Check opt-in input
+    - name: Check enablement input
       shell: bash
       env:
         ENABLED: ${{ inputs.enabled }}
       run: |
         case "$ENABLED" in
           true) ;;
-          false) echo "Manifest naming validation is disabled; set enabled to true to opt in." ;;
+          false) echo "Manifest naming validation is explicitly disabled." ;;
           *) echo "::error::enabled must be exactly true or false"; exit 1 ;;
         esac
 

@@ -73,7 +73,7 @@ flowchart TD
 | [update-agent-skills](actions/update-agent-skills/README.md) | Run `gh skill update --all` against installed skills and report changes |
 | [upload-coverage](actions/upload-coverage/README.md) | Upload a Cobertura coverage report to GitHub Code Quality |
 | [upsert-issue](actions/upsert-issue/README.md) | Create, update, reopen, or close a GitHub issue by title |
-| [validate-naming](actions/validate-naming/README.md) | Opt-in, configurable Kubernetes manifest and machine patch naming validation |
+| [validate-naming](actions/validate-naming/README.md) | Configurable Kubernetes manifest and machine patch naming validation |
 | [validate-retired-repo-links](actions/validate-retired-repo-links/README.md) | Catch links to retired GitHub repositories with documented historical exceptions |
 | [validate-shell-pipelines](actions/validate-shell-pipelines/README.md) | Opt-in detection of early-exit grep assertions that can invert results under pipefail |
 
