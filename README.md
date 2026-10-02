@@ -438,6 +438,12 @@ differ from event delivery order; evaluations still read current PR state. Actor
 and evidence-removal events keep their intentional workflow-level cancellation of stale runs, using
 the compatible `single` queue. Additional arrivals beyond GitHub's 100-pending limit are cancelled.
 
+The catalogue's queue test checks that all three queued jobs complete successfully
+in the same run attempt. Its observer retries transient HTTP server failures with
+bounded backoff and discards failed responses. Missing pages, duplicate jobs,
+stale attempts and unsuccessful slots fail the check; use **Re-run all jobs** to
+repeat the burst after a failure.
+
 **With review enforcement turned on** — the `enforce-review-gates` input, or the
 `ENFORCE_MERGE_GATES` repository/organization variable — it additionally requires, on the PR's
 _current_ commit, both a passing review (CodeRabbit approved, or a clean Codex pass when CodeRabbit
