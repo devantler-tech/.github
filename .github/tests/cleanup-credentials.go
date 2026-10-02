@@ -13,7 +13,10 @@ import (
 
 type object = map[string]any
 
+// asObject returns a decoded JSON object, or nil for an absent or invalid shape.
 func asObject(value any) object { result, _ := value.(map[string]any); return result }
+
+// read decodes a workflow JSON file and fails the check on unreadable or invalid input.
 func read(path string) object {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -25,14 +28,20 @@ func read(path string) object {
 	}
 	return result
 }
+
+// require fails the check with a boundary-specific diagnostic when an assertion is false.
 func require(condition bool, message string) {
 	if !condition {
 		panic(message)
 	}
 }
+
+// equal compares decoded values without coercion and includes both values on failure.
 func equal(actual, expected any, message string) {
 	require(reflect.DeepEqual(actual, expected), fmt.Sprintf("%s: got %#v, want %#v", message, actual, expected))
 }
+
+// keys sorts object keys so interface and caller-set assertions are deterministic.
 func keys(value object) []string {
 	result := make([]string, 0, len(value))
 	for key := range value {
@@ -44,6 +53,7 @@ func keys(value object) []string {
 
 var secrets = regexp.MustCompile(`(?i)\bsecrets\b`)
 
+// rejectSecrets recursively permits only the exact read-only job's built-in token expression.
 func rejectSecrets(value any, label string) {
 	switch typed := value.(type) {
 	case string:
@@ -59,6 +69,7 @@ func rejectSecrets(value any, label string) {
 	}
 }
 
+// main checks caller authority, required-check wiring, projection parity and input semantics.
 func main() {
 	dir := os.Args[1]
 	w := read(dir + "/workflow.json")
