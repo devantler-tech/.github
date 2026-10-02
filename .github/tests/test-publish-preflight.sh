@@ -12,12 +12,14 @@
 # in its shipped step order. Every `run:` step executes as extracted from the workflow, with its own
 # `env:` resolved from the job's real expressions; every `uses:` step must be a known action — the
 # image push (docker/build-push-action with push) is recorded as a registry write, the rest are
-# setup no-ops. Stub `flux`, `cosign` and `docker` binaries record every registry call, and a failing
-# step stops the job as it does on a runner. Anything the simulation does not model — an unknown
-# action, expression, step condition, shell or output form, or a step or job key such as
-# `continue-on-error` that would let a runner carry on past a failure — fails this test rather than
+# setup no-ops. Stub `flux`, `cosign` and `docker` binaries record every registry call; run steps
+# see only those stubs and a fixed set of tools that cannot publish; and a failing step stops the
+# job as it does on a runner. Anything the simulation does not model — an unknown action, tool,
+# expression, step condition, shell, env or output form, or a workflow, job or step key such as
+# `continue-on-error` that would make a runner behave differently — fails this test rather than
 # being ignored.
 
+# shellcheck disable=SC2016 # `$in`, `$J`, `$S` and `${{ }}` are jq and GitHub syntax, not shell.
 set -euo pipefail
 
 fail() {
@@ -28,7 +30,6 @@ fail() {
 scratch="$(mktemp -d)"
 trap 'rm -rf "$scratch"' EXIT
 
-bash_bin="$(command -v bash)"
 sha40="0123456789abcdef0123456789abcdef01234567"
 image_digest="sha256:$(printf 'b%.0s' $(seq 1 64))"
 artifact_digest="sha256:$(printf 'a%.0s' $(seq 1 64))"
@@ -54,19 +55,37 @@ chmod +x "$scratch/bin/flux" "$scratch/bin/cosign" "$scratch/bin/docker"
 
 # ---- the simulated job ------------------------------------------------------------------------
 
+# Run steps see ONLY the stubs and this explicit set of tools, none of which can write to a registry.
+# A step that reaches for anything else — oras, crane, curl, gh — fails loudly instead of writing
+# where the no-push assertions below cannot see it. Add a tool here only if it cannot publish.
+mkdir -p "$scratch/tools"
+for tool in bash cat cut grep head jq sed sort tail tr wc yq; do
+  tool_path="$(command -v "$tool")" || fail "this test needs $tool on PATH"
+  ln -s "$tool_path" "$scratch/tools/$tool"
+done
+step_path="$scratch/bin:$scratch/tools"
+
 # Per-run state, reset by run_job.
 sim_workflow=""
+sim_json="$scratch/workflow.json" # the workflow under simulation, converted to JSON once per run
 sim_job=""
 sim_step=""
 sim_ref_type=""
 sim_ref_name=""
+sim_repository=""
 sim_inputs="$scratch/inputs"   # name=value, the caller's `with:`
 sim_outputs="$scratch/outputs" # <step-id>.<name>=value, from GITHUB_OUTPUT
 calls="$scratch/calls"         # every registry call, in order
 log="$scratch/log"             # the output of every step that ran
 
-step() { # <yq expression> — evaluated on the current step of the simulated job
-  JOB="$sim_job" I="$sim_step" yq -r ".jobs[strenv(JOB)].steps[env(I)] | $1" "$sim_workflow"
+wf() { # <jq expression> [jq args...] — evaluated on the whole workflow
+  local expr="$1"
+  shift
+  jq -r "$@" "$expr" "$sim_json"
+}
+
+step() { # <jq expression> — evaluated on the current step of the simulated job
+  jq -r --arg job "$sim_job" --argjson i "$sim_step" ".jobs[\$job].steps[\$i] | $1" "$sim_json"
 }
 
 lookup_line() { # <file> <key> — prints the value of the first `key=value` line; 1 when absent
@@ -88,19 +107,16 @@ lookup_expr() { # <expression> — the value GitHub would substitute for ${{ <ex
     github.ref_name) printf '%s' "$sim_ref_name" ;;
     github.sha) printf '%s' "$sha40" ;;
     github.server_url) printf '%s' "https://github.com" ;;
-    github.repository) printf '%s' "devantler-tech/app" ;;
+    github.repository) printf '%s' "$sim_repository" ;;
     github.actor) printf '%s' "bot" ;;
     secrets.GITHUB_TOKEN) printf '%s' "stub-not-a-secret" ;;
     env.*) lookup_line "$scratch/job-env" "${1#env.}" ;;
     inputs.*)
       input="${1#inputs.}"
-      [[ "$(INPUT="$input" yq -r '.on.workflow_call.inputs | has(strenv(INPUT))' "$sim_workflow")" == true ]] ||
-        return 1
+      [[ "$(wf '.on.workflow_call.inputs | has($in)' --arg in "$input")" == true ]] || return 1
       # Passed by the caller (even as an empty string) wins; otherwise the declared default applies.
-      # (Not `.default // ""`: yq's alternative operator would turn a `false` default into "".)
       lookup_line "$sim_inputs" "$input" ||
-        INPUT="$input" yq -r '.on.workflow_call.inputs[strenv(INPUT)] | select(has("default")) | .default' \
-          "$sim_workflow"
+        wf '.on.workflow_call.inputs[$in] | select(has("default")) | .default' --arg in "$input"
       ;;
     steps.*.outputs.*)
       id="${1#steps.}"
@@ -132,52 +148,73 @@ resolve() { # <string> — substitutes every ${{ ... }} expression, failing on a
   printf '%s' "$out$s"
 }
 
+env_entries() { # <jq path to an env mapping> — one key=value line per entry, values as strings
+  local entries
+  # GitHub turns a non-string value (`DRY_RUN: false`) into its string; a multi-line value cannot
+  # be carried as one line, so refuse it rather than misread it.
+  [[ "$(step_or_job "$1 // {} | [.[] | tostring | select(contains(\"\\n\"))] | length")" == 0 ]] ||
+    fail "$sim_workflow carries a multi-line env value at $1, which this test does not model"
+  entries="$(step_or_job "$1 // {} | to_entries[] | .key + \"=\" + (.value | tostring)")" ||
+    fail "could not read the env at $1 in $sim_workflow"
+  printf '%s' "$entries"
+}
+
+step_or_job() { # <jq expression rooted at the job> — evaluated on the simulated job
+  jq -r --arg job "$sim_job" --argjson i "${sim_step:-0}" ".jobs[\$job] as \$J | \$J.steps[\$i] as \$S | $1" "$sim_json"
+}
+
 # run_job <workflow> <job> <workdir> <ref-type> <ref-name> [input=value ...]
-# Runs the job's steps in order in <workdir>. Returns 0 when every step passed, 1 when a step
-# failed (the job stops there). Exits the test on anything the simulation does not model.
+# Runs the job's steps in order in <workdir>, as repository $SIM_REPOSITORY (default
+# devantler-tech/app). Returns 0 when every step passed, 1 when a step failed (the job stops
+# there). Exits the test on anything the simulation does not model.
 run_job() {
   sim_workflow="$1"
-  local job="$2" workdir="$3" count i name if_expr if_value uses action run_file push id
+  sim_job="$2"
+  local workdir="$3" count i name if_expr if_value uses action run_file push id status
   sim_ref_type="$4"
   sim_ref_name="$5"
+  sim_repository="${SIM_REPOSITORY:-devantler-tech/app}"
+  sim_step=""
   shift 5
   : >"$sim_inputs"
   : >"$sim_outputs"
   : >"$calls"
   : >"$log"
-  local pair line unmodelled
+  local pair line unmodelled entries
   for pair in "$@"; do printf '%s\n' "$pair" >>"$sim_inputs"; done
+  yq -o=json '.' "$sim_workflow" >"$sim_json" || fail "could not read $sim_workflow"
 
-  # Anything that changes how a failing step or the job behaves on a runner — continue-on-error, a
-  # default shell or working directory, a matrix, a job condition other than the dry-run gate the
-  # simulation honours — is refused rather than ignored, so the simulation cannot pass on a job that
-  # a runner would carry past a failure.
-  unmodelled="$(yq -r '.defaults // {} | keys | join(" ")' "$sim_workflow")"
-  [[ -z "$unmodelled" ]] || fail "$sim_workflow sets workflow defaults ($unmodelled); model them"
-  unmodelled="$(JOB="$job" yq -r '.jobs[strenv(JOB)] | keys
-    | map(select(. != "name" and . != "if" and . != "runs-on" and . != "permissions"
-      and . != "env" and . != "steps")) | join(" ")' "$sim_workflow")"
-  [[ -z "$unmodelled" ]] || fail "$sim_workflow job $job sets $unmodelled, which this test does not model"
+  # Anything that changes how a step or the job behaves on a runner — workflow-level env or
+  # defaults, continue-on-error, a matrix, a job condition other than the dry-run gate the
+  # simulation honours — is refused rather than ignored, so the simulation cannot pass on a job
+  # that a runner would run differently.
+  unmodelled="$(wf 'keys | map(select(. != "name" and . != "run-name" and . != "on"
+    and . != "permissions" and . != "concurrency" and . != "jobs")) | join(" ")')"
+  [[ -z "$unmodelled" ]] || fail "$sim_workflow sets $unmodelled at workflow level; model it"
+  unmodelled="$(step_or_job '$J | keys | map(select(. != "name" and . != "if" and . != "runs-on"
+    and . != "permissions" and . != "env" and . != "steps")) | join(" ")')"
+  [[ -z "$unmodelled" ]] ||
+    fail "$sim_workflow job $sim_job sets $unmodelled, which this test does not model"
   # shellcheck disable=SC2016 # GitHub expression compared literally.
-  [[ "$(JOB="$job" yq -r '.jobs[strenv(JOB)].if // ""' "$sim_workflow")" == '${{ !inputs.dry-run }}' ]] ||
-    fail "$sim_workflow job $job is no longer gated exactly on the dry-run input; model its condition"
+  [[ "$(step_or_job '$J.if // ""')" == '${{ !inputs.dry-run }}' ]] ||
+    fail "$sim_workflow job $sim_job is no longer gated exactly on the dry-run input; model its condition"
   [[ "$(lookup_expr inputs.dry-run)" == false ]] || fail "the simulated job must run with dry-run off"
 
   # Job-level env, resolved once, reaches every run step.
   : >"$scratch/job-env"
   local job_env=() key value shell_flags
+  entries="$(env_entries '$J.env')"
   while IFS= read -r line; do
+    [[ -n "$line" ]] || continue
     key="${line%%=*}"
-    value="$(resolve "${line#*=}")" || fail "could not resolve $job job env $key"
+    value="$(resolve "${line#*=}")" || fail "could not resolve $sim_job job env $key"
     printf '%s=%s\n' "$key" "$value" >>"$scratch/job-env"
     job_env+=("$key=$value")
-  done < <(JOB="$job" yq -r '.jobs[strenv(JOB)].env // {} | to_entries[] | .key + "=" + .value' \
-    "$sim_workflow")
+  done <<<"$entries"
 
-  count="$(JOB="$job" yq -r '.jobs[strenv(JOB)].steps | length' "$sim_workflow")"
-  [[ "$count" -gt 0 ]] || fail "$sim_workflow job $job has no steps"
+  count="$(step_or_job '$J.steps | length')"
+  [[ "$count" -gt 0 ]] || fail "$sim_workflow job $sim_job has no steps"
 
-  sim_job="$job"
   for ((i = 0; i < count; i++)); do
     sim_step="$i"
     name="$(step '.name // ""')"
@@ -204,10 +241,14 @@ run_job() {
       case "$action" in
         step-security/harden-runner | actions/checkout | docker/login-action | \
           docker/metadata-action | fluxcd/flux2/action | sigstore/cosign-installer)
+          # A setup step can fail on its own (a download, a login), and failing after the first
+          # registry write leaves a release half-published, so every one must come before it.
+          [[ ! -s "$calls" ]] ||
+            fail "$sim_workflow step '$name' sets up $action after the first registry write"
           printf 'setup %s\n' "$action" >>"$log"
           ;;
         docker/build-push-action)
-          push="$(step '.with.push // false')"
+          push="$(step '.with.push // false | tostring')"
           [[ "$push" == "true" ]] || fail "$sim_workflow '$name' builds without pushing; model it"
           printf 'image push %s\n' "$name" >>"$calls"
           [[ -z "$id" ]] || printf '%s.digest=%s\n' "$id" "$image_digest" >>"$sim_outputs"
@@ -230,18 +271,29 @@ run_job() {
     esac
 
     local step_env=()
+    entries="$(env_entries '$S.env')"
     while IFS= read -r line; do
+      [[ -n "$line" ]] || continue
       key="${line%%=*}"
       value="$(resolve "${line#*=}")" || fail "could not resolve env $key on '$name'"
       step_env+=("$key=$value")
-    done < <(step '.env // {} | to_entries[] | .key + "=" + .value')
+    done <<<"$entries"
 
     : >"$scratch/github-output"
     printf '== %s\n' "$name" >>"$log"
-    if ! (cd "$workdir" && env -i PATH="$scratch/bin:$PATH" HOME="$HOME" TMPDIR="$scratch" \
+    status=0
+    (cd "$workdir" && env -i PATH="$step_path" HOME="$HOME" TMPDIR="$scratch" \
       CALLS="$calls" STUB_ARTIFACT_DIGEST="$artifact_digest" GITHUB_OUTPUT="$scratch/github-output" \
       ${job_env[@]+"${job_env[@]}"} ${step_env[@]+"${step_env[@]}"} \
-      "$bash_bin" --noprofile --norc "${shell_flags[@]}" "$run_file") >>"$log" 2>&1; then
+      "$scratch/tools/bash" --noprofile --norc "${shell_flags[@]}" "$run_file") \
+      >"$scratch/step.log" 2>&1 || status=$?
+    cat "$scratch/step.log" >>"$log"
+    # A command outside the stubs and the tool set could have published on a real runner, even
+    # behind `|| true`, so it fails this test however the step ended.
+    if grep -qF 'command not found' "$scratch/step.log"; then
+      fail "$sim_workflow step '$name' runs a command this test does not model: $(cat "$scratch/step.log")"
+    fi
+    if [[ "$status" -ne 0 ]]; then
       printf 'FAILED at %s\n' "$name" >>"$log"
       return 1
     fi
@@ -308,6 +360,25 @@ first_write="$(head -n 1 "$calls")"
   fail "publish-app's first registry write is not the image push: $first_write"
 echo "ok   publish-app publishes a good release and injects the digest after the build"
 
+# A repository name with uppercase letters: docker/metadata-action lowercases the image it pushes,
+# so the pinned reference and the manifests path must be lowercase too, or the push after the
+# image fails on an invalid reference.
+wd="$scratch/app-uppercase"
+new_app "$wd"
+SIM_REPOSITORY=devantler-tech/MyApp run_job "$app" publish "$wd" tag v1.2.3 app-name=app ||
+  fail "publish-app failed a good release from an uppercase repository name: $(cat "$log")"
+grep -qF "flux push artifact oci://ghcr.io/devantler-tech/myapp/manifests:1.2.3 " "$calls" ||
+  fail "publish-app did not push the manifests under a lowercase path; calls: $(cat "$calls")"
+pinned="$(yq '.spec.template.spec.containers[] | select(.name == "app") | .image' \
+  "$wd/deploy/deployment.yaml")"
+[[ "$pinned" == "ghcr.io/devantler-tech/myapp@$image_digest" ]] ||
+  fail "publish-app pinned a reference that is not lowercase: $pinned"
+SIM_REPOSITORY=devantler-tech/MyApp run_job "$manifests" publish-manifests "$wd" tag v1.2.3 ||
+  fail "publish-manifests failed a good release from an uppercase repository name: $(cat "$log")"
+grep -qF "flux push artifact oci://ghcr.io/devantler-tech/myapp/manifests:1.2.3 " "$calls" ||
+  fail "publish-manifests did not push under a lowercase path; calls: $(cat "$calls")"
+echo "ok   both workflows publish an uppercase repository name under lowercase references"
+
 # ---- 2. publish-app: a bad manifest pushes nothing ---------------------------------------------
 
 wd="$scratch/app-missing"
@@ -367,8 +438,10 @@ accepted=(
   "v1.2.3+build.5|1.2.3"
   "v1.2.3-rc.1+build.5|1.2.3-rc.1"
   "v1.0.0+0.build.1-rc.10000aaa-kk-0.1|1.0.0"
+  "v999999999999999.0.0|999999999999999.0.0"
 )
 long_pre="$(printf 'a%.0s' $(seq 1 130))"
+long_build="$(printf 'b%.0s' $(seq 1 251))"
 rejected=(
   "v1.2.3garbage"
   "v1.2.3.4"
@@ -390,6 +463,11 @@ rejected=(
   " v1.2.3"
   "v1.2.3-ünicode"
   "v1.2.3-${long_pre}"
+  # Valid SemVer that docker/metadata-action (numbers below 2^53, 256 characters) or Flux (numbers
+  # below 2^64) cannot read, so the image or the manifests would miss their version.
+  "v9007199254740992.0.0"
+  "v1.0.18446744073709551616"
+  "v1.2.3+${long_build}"
 )
 
 tag_step="🔒 Require a semantic-version tag"
@@ -437,13 +515,17 @@ done
 # ---- 4. the two tag checks stay in lockstep -----------------------------------------------------
 
 # The tag table above only samples the grammar, so also require both workflows to run the same
-# check: their tag steps may differ only in comments and in the wording of the error they print.
-tag_logic() { # <workflow> — the tag step's commands, without comments or error wording
+# check: every command line of their tag steps must match once each names itself the same way;
+# only comment lines may differ.
+tag_logic() { # <workflow> — the tag step's command lines, with the workflow's own name normalized
   local script line blank_or_comment='^[[:space:]]*(#.*)?$'
   script="$(STEP="$tag_step" yq -r '.jobs[].steps[] | select(.name == strenv(STEP)) | .run' "$1")"
   [[ -n "$script" ]] || fail "$1 has no '$tag_step' step"
   while IFS= read -r line; do
-    [[ "$line" =~ $blank_or_comment || "$line" == *"::error::"* ]] || printf '%s\n' "$line"
+    if ! [[ "$line" =~ $blank_or_comment ]]; then
+      line="${line//publish-manifests/<workflow>}"
+      printf '%s\n' "${line//publish-app/<workflow>}"
+    fi
   done <<<"$script"
 }
 app_logic="$(tag_logic "$app")"
