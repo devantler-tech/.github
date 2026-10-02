@@ -10,6 +10,9 @@ jq -n --slurpfile workflow "$work/workflow.json" --slurpfile ci "$work/ci.json" 
   '{workflow:$workflow[0],ci:$ci[0]}' >"$work/bundle.json"
 condition="\${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
 
+# Validate a JSON bundle containing the reusable workflow and its catalogue CI.
+# Preserve production authentication while requiring independent, secret-free
+# smoke execution, exact input forwarding and a failure path to required CI.
 guard() {
   jq -e --arg condition "$condition" '
     def command: .run // "" | gsub("^\\s+|\\s+$";"");
