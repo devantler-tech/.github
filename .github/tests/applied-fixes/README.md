@@ -21,16 +21,32 @@ only the intended consumer changes.
   bind the mutation to the repository, branch, message, and expected head.
 - Unsupported file modes, failed Git discovery, conflicting patches, stale heads,
   failed API calls, and malformed responses fail instead of reporting completion.
-- Signature verification must succeed after every successful commit mutation.
-  An unsigned, absent, or failed verification cannot report a successful job.
+- A commit is created on a bounded temporary branch while the consumer stays at
+  its original head. Its exact identity, single parent and verified signature
+  must match before publication.
+- One atomic, non-forced ref transaction advances the consumer using its expected
+  original head and deletes the staging ref using its expected signed tip.
+  Concurrent changes reject the whole transaction.
+- Failed verification leaves the consumer unchanged. Cleanup compares the known
+  staging tip; a collision, unknown acknowledgment or concurrent staging update
+  never authorizes deleting another ref or tip.
+- A failed cleanup-plan write retains the staging ref, emits a warning, removes
+  the local workdir, and preserves the original verification-failure status.
 
 [`createCommitOnBranch`](https://docs.github.com/en/graphql/reference/commits#createcommitonbranch)
-updates the remote branch as part of the commit mutation.
-The subsequent verification is therefore a post-publication check: a failed read
-does not prove the remote branch stayed unchanged. The fake API records the write
-before returning its commit identity, and negative verification tests assert that
-the job fails without retrying or performing another mutation. The stronger
-verification-before-publication requirement remains on Actions #1007.
+updates the staging branch as part of the commit mutation. The subsequent
+verification precedes the consumer update through
+[`updateRefs`](https://docs.github.com/en/graphql/reference/git#updaterefs).
+The fake API models both refs independently and checks every precondition before
+applying any member of the transaction. Tests assert their final state and the
+verification/publication order, including lost responses after a completed write.
+
+Temporary branches use the runner's unique check-run ID and can trigger ordinary
+consumer branch/create workflows. They are not private storage. Cancellation or
+an unknown API response can retain one; the handler reports uncertain cleanup
+instead of blindly deleting it. A lost promotion acknowledgment can report
+failure after the signed consumer update completed; it never authorizes a retry
+that overwrites a concurrent head.
 
 The fixtures prove caller behavior at an API boundary, not GitHub's real signature
 issuance or a consumer rollout. Existing hosted signer jobs supply separate live
