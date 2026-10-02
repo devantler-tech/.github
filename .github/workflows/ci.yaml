@@ -3208,6 +3208,14 @@ jobs:
         shell: bash
         run: bash .github/tests/test-cleanup-credentials-controls.sh
 
+      - name: 🔐 Check TODO self-tests have no issue-write ceiling
+        shell: bash
+        run: bash .github/tests/test-todo-workflow-readonly.sh
+
+      - name: 🧪 Check TODO projection and credential regressions are rejected
+        shell: bash
+        run: bash .github/tests/test-todo-workflow-readonly-controls.sh
+
       - name: 📋 Check ci.yaml test wiring is complete
         shell: bash
         run: |
@@ -3247,6 +3255,15 @@ jobs:
               # accepting it as coverage of the production wrapper.
               if [[ "$wname" == delete-workflow-runs.yaml ]]; then
                 if ! bash .github/tests/test-cleanup-credentials.sh; then
+                  status=1
+                fi
+                continue
+              fi
+              # TODO smoke calls use the complete read-only projection. Accept
+              # production coverage only after permission, execution and parity
+              # checks pass; a copied or truncated workflow is insufficient.
+              if [[ "$wname" == scan-for-todo-comments.yaml ]]; then
+                if ! bash .github/tests/test-todo-workflow-readonly.sh; then
                   status=1
                 fi
                 continue
@@ -4010,22 +4027,18 @@ jobs:
   test-scan-for-todo-comments:
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
     name: "[Test] Scan for TODO Comments - Dry Run"
-    uses: ./.github/workflows/scan-for-todo-comments.yaml
+    uses: ./.github/workflows/scan-for-todo-comments-readonly.yaml
     permissions:
       contents: read
-      # Static ceiling for the skipped production job; the executed dry-run job
-      # explicitly restricts its token to contents: read and receives no App key.
-      issues: write
     with:
       dry-run: true
 
   test-scan-for-todo-comments-ignore:
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
     name: "[Test] Scan for TODO Comments - Dry Run (ignore configured)"
-    uses: ./.github/workflows/scan-for-todo-comments.yaml
+    uses: ./.github/workflows/scan-for-todo-comments-readonly.yaml
     permissions:
       contents: read
-      issues: write
     with:
       dry-run: true
       ignore: '^\.github/tests/'
