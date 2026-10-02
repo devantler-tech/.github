@@ -13,8 +13,10 @@
 # `env:` resolved from the job's real expressions; every `uses:` step must be a known action — the
 # image push (docker/build-push-action with push) is recorded as a registry write, the rest are
 # setup no-ops. Stub `flux`, `cosign` and `docker` binaries record every registry call, and a failing
-# step stops the job as it does on a runner. An unknown action, step condition or expression fails
-# this test rather than being skipped, so a new step cannot slip past it.
+# step stops the job as it does on a runner. Anything the simulation does not model — an unknown
+# action, expression, step condition, shell or output form, or a step or job key such as
+# `continue-on-error` that would let a runner carry on past a failure — fails this test rather than
+# being ignored.
 
 set -euo pipefail
 
@@ -67,19 +69,20 @@ step() { # <yq expression> — evaluated on the current step of the simulated jo
   JOB="$sim_job" I="$sim_step" yq -r ".jobs[strenv(JOB)].steps[env(I)] | $1" "$sim_workflow"
 }
 
-lookup_line() { # <file> <key> — prints the value of the first `key=value` line, or nothing
+lookup_line() { # <file> <key> — prints the value of the first `key=value` line; 1 when absent
   local line
-  [[ -f "$1" ]] || return 0
+  [[ -f "$1" ]] || return 1
   while IFS= read -r line; do
     if [[ "${line%%=*}" == "$2" ]]; then
       printf '%s' "${line#*=}"
       return 0
     fi
   done <"$1"
+  return 1
 }
 
 lookup_expr() { # <expression> — the value GitHub would substitute for ${{ <expression> }}
-  local value
+  local input id
   case "$1" in
     github.ref_type) printf '%s' "$sim_ref_type" ;;
     github.ref_name) printf '%s' "$sim_ref_name" ;;
@@ -88,21 +91,22 @@ lookup_expr() { # <expression> — the value GitHub would substitute for ${{ <ex
     github.repository) printf '%s' "devantler-tech/app" ;;
     github.actor) printf '%s' "bot" ;;
     secrets.GITHUB_TOKEN) printf '%s' "stub-not-a-secret" ;;
-    env.REGISTRY | env.IMAGE_NAME) lookup_line "$scratch/job-env" "${1#env.}" ;;
+    env.*) lookup_line "$scratch/job-env" "${1#env.}" ;;
     inputs.*)
-      value="$(lookup_line "$sim_inputs" "${1#inputs.}")"
-      if [[ -z "$value" ]]; then
-        # Not passed by the caller: the workflow's own declared default applies.
-        value="$(INPUT="${1#inputs.}" yq -r \
-          '.on.workflow_call.inputs[strenv(INPUT)] | select(. != null) | .default // ""' \
-          "$sim_workflow")"
-      fi
-      printf '%s' "$value"
+      input="${1#inputs.}"
+      [[ "$(INPUT="$input" yq -r '.on.workflow_call.inputs | has(strenv(INPUT))' "$sim_workflow")" == true ]] ||
+        return 1
+      # Passed by the caller (even as an empty string) wins; otherwise the declared default applies.
+      # (Not `.default // ""`: yq's alternative operator would turn a `false` default into "".)
+      lookup_line "$sim_inputs" "$input" ||
+        INPUT="$input" yq -r '.on.workflow_call.inputs[strenv(INPUT)] | select(has("default")) | .default' \
+          "$sim_workflow"
       ;;
     steps.*.outputs.*)
-      local id="${1#steps.}"
+      id="${1#steps.}"
       id="${id%%.outputs.*}"
-      lookup_line "$sim_outputs" "${id}.${1##*.outputs.}"
+      # An output the step never set is the empty string on a runner.
+      lookup_line "$sim_outputs" "${id}.${1##*.outputs.}" || true
       ;;
     *) return 1 ;;
   esac
@@ -141,12 +145,27 @@ run_job() {
   : >"$sim_outputs"
   : >"$calls"
   : >"$log"
-  local pair
+  local pair line unmodelled
   for pair in "$@"; do printf '%s\n' "$pair" >>"$sim_inputs"; done
+
+  # Anything that changes how a failing step or the job behaves on a runner — continue-on-error, a
+  # default shell or working directory, a matrix, a job condition other than the dry-run gate the
+  # simulation honours — is refused rather than ignored, so the simulation cannot pass on a job that
+  # a runner would carry past a failure.
+  unmodelled="$(yq -r '.defaults // {} | keys | join(" ")' "$sim_workflow")"
+  [[ -z "$unmodelled" ]] || fail "$sim_workflow sets workflow defaults ($unmodelled); model them"
+  unmodelled="$(JOB="$job" yq -r '.jobs[strenv(JOB)] | keys
+    | map(select(. != "name" and . != "if" and . != "runs-on" and . != "permissions"
+      and . != "env" and . != "steps")) | join(" ")' "$sim_workflow")"
+  [[ -z "$unmodelled" ]] || fail "$sim_workflow job $job sets $unmodelled, which this test does not model"
+  # shellcheck disable=SC2016 # GitHub expression compared literally.
+  [[ "$(JOB="$job" yq -r '.jobs[strenv(JOB)].if // ""' "$sim_workflow")" == '${{ !inputs.dry-run }}' ]] ||
+    fail "$sim_workflow job $job is no longer gated exactly on the dry-run input; model its condition"
+  [[ "$(lookup_expr inputs.dry-run)" == false ]] || fail "the simulated job must run with dry-run off"
 
   # Job-level env, resolved once, reaches every run step.
   : >"$scratch/job-env"
-  local job_env=() key value
+  local job_env=() key value shell_flags
   while IFS= read -r line; do
     key="${line%%=*}"
     value="$(resolve "${line#*=}")" || fail "could not resolve $job job env $key"
@@ -163,6 +182,11 @@ run_job() {
     sim_step="$i"
     name="$(step '.name // ""')"
     id="$(step '.id // ""')"
+
+    unmodelled="$(step 'keys | map(select(. != "name" and . != "id" and . != "if" and . != "uses"
+      and . != "with" and . != "env" and . != "run" and . != "shell")) | join(" ")')"
+    [[ -z "$unmodelled" ]] ||
+      fail "$sim_workflow step '$name' sets $unmodelled, which this test does not model"
 
     if_expr="$(step '.if // ""')"
     if [[ -n "$if_expr" ]]; then
@@ -197,6 +221,14 @@ run_job() {
     step '.run // ""' >"$run_file"
     [[ -s "$run_file" ]] || fail "$sim_workflow step '$name' has neither uses nor run"
 
+    # The runner's own invocations: an unspecified shell is `bash -e {0}`, an explicit `bash` adds
+    # pipefail. Any other shell is not modelled.
+    case "$(step '.shell // ""')" in
+      "") shell_flags=(-e) ;;
+      bash) shell_flags=(-e -o pipefail) ;;
+      *) fail "$sim_workflow step '$name' uses a shell this test does not model" ;;
+    esac
+
     local step_env=()
     while IFS= read -r line; do
       key="${line%%=*}"
@@ -209,15 +241,18 @@ run_job() {
     if ! (cd "$workdir" && env -i PATH="$scratch/bin:$PATH" HOME="$HOME" TMPDIR="$scratch" \
       CALLS="$calls" STUB_ARTIFACT_DIGEST="$artifact_digest" GITHUB_OUTPUT="$scratch/github-output" \
       ${job_env[@]+"${job_env[@]}"} ${step_env[@]+"${step_env[@]}"} \
-      "$bash_bin" --noprofile --norc -e "$run_file") >>"$log" 2>&1; then
+      "$bash_bin" --noprofile --norc "${shell_flags[@]}" "$run_file") >>"$log" 2>&1; then
       printf 'FAILED at %s\n' "$name" >>"$log"
       return 1
     fi
-    if [[ -n "$id" ]]; then
-      while IFS= read -r line; do
-        [[ -n "$line" ]] && printf '%s.%s\n' "$id" "$line" >>"$sim_outputs"
-      done <"$scratch/github-output"
-    fi
+    while IFS= read -r line; do
+      [[ -n "$line" ]] || continue
+      [[ "$line" == *=* && "${line%%=*}" != *"<<"* ]] ||
+        fail "$sim_workflow step '$name' writes an output this test does not model: $line"
+      if [[ -n "$id" ]]; then
+        printf '%s.%s\n' "$id" "$line" >>"$sim_outputs"
+      fi
+    done <"$scratch/github-output"
   done
   return 0
 }
@@ -357,14 +392,20 @@ rejected=(
   "v1.2.3-${long_pre}"
 )
 
+tag_step="🔒 Require a semantic-version tag"
 for workflow in "$app" "$manifests"; do
+  job="$(yq -r '.jobs | keys | .[0]' "$workflow")"
+  # Only publish-app declares app-name; pass each workflow just the inputs it declares.
+  with=()
+  [[ "$workflow" != "$app" ]] || with=(app-name=app)
+
   for entry in "${accepted[@]}"; do
     tag="${entry%%|*}"
     want="${entry#*|}"
     wd="$scratch/tag-ok"
     rm -rf "$wd"
     new_app "$wd"
-    run_job "$workflow" "$(yq -r '.jobs | keys | .[0]' "$workflow")" "$wd" tag "$tag" app-name=app ||
+    run_job "$workflow" "$job" "$wd" tag "$tag" ${with[@]+"${with[@]}"} ||
       fail "$workflow refused the valid tag $tag: $(cat "$log")"
     grep -qF "flux push artifact oci://ghcr.io/devantler-tech/app/manifests:${want} " "$calls" ||
       fail "$workflow did not publish $tag as $want; calls: $(cat "$calls")"
@@ -374,20 +415,43 @@ for workflow in "$app" "$manifests"; do
     wd="$scratch/tag-bad"
     rm -rf "$wd"
     new_app "$wd"
-    if run_job "$workflow" "$(yq -r '.jobs | keys | .[0]' "$workflow")" "$wd" tag "$tag" app-name=app; then
+    if run_job "$workflow" "$job" "$wd" tag "$tag" ${with[@]+"${with[@]}"}; then
       fail "$workflow published the malformed tag '$tag'; calls: $(cat "$calls")"
     fi
     nothing_pushed "$workflow with the malformed tag '$tag'"
-    refused_with "$workflow with the malformed tag '$tag'" "FAILED at 🔒 Require a semantic-version tag"
+    refused_with "$workflow with the malformed tag '$tag'" "FAILED at $tag_step"
   done
 
   # A branch named like a release is not a release.
   wd="$scratch/tag-branch"
   rm -rf "$wd"
   new_app "$wd"
-  if run_job "$workflow" "$(yq -r '.jobs | keys | .[0]' "$workflow")" "$wd" branch v1.2.3 app-name=app; then
+  if run_job "$workflow" "$job" "$wd" branch v1.2.3 ${with[@]+"${with[@]}"}; then
     fail "$workflow published from a branch"
   fi
   nothing_pushed "$workflow from a branch"
+  refused_with "$workflow from a branch" "FAILED at $tag_step"
   echo "ok   $workflow publishes only a complete semantic-version tag, without build metadata"
 done
+
+# ---- 4. the two tag checks stay in lockstep -----------------------------------------------------
+
+# The tag table above only samples the grammar, so also require both workflows to run the same
+# check: their tag steps may differ only in comments and in the wording of the error they print.
+tag_logic() { # <workflow> — the tag step's commands, without comments or error wording
+  local script line blank_or_comment='^[[:space:]]*(#.*)?$'
+  script="$(STEP="$tag_step" yq -r '.jobs[].steps[] | select(.name == strenv(STEP)) | .run' "$1")"
+  [[ -n "$script" ]] || fail "$1 has no '$tag_step' step"
+  while IFS= read -r line; do
+    [[ "$line" =~ $blank_or_comment || "$line" == *"::error::"* ]] || printf '%s\n' "$line"
+  done <<<"$script"
+}
+app_logic="$(tag_logic "$app")"
+manifests_logic="$(tag_logic "$manifests")"
+[[ -n "$app_logic" && "$app_logic" == "$manifests_logic" ]] ||
+  fail "the tag checks in $app and $manifests have drifted apart:
+--- $app
+$app_logic
+--- $manifests
+$manifests_logic"
+echo "ok   both publish workflows run the same tag check"
