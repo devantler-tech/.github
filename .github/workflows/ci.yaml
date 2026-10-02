@@ -492,6 +492,9 @@ jobs:
       - name: 🧪 Exercise the real pinned scanner offline
         run: bash .github/tests/test-todo-scanner.sh
 
+      - name: 🧪 Detect native scanner discovery and payload regressions
+        run: bash .github/tests/test-todo-scanner-controls.sh
+
   test-create-issues-from-todos:
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
     name: "[Test] Create Issues From TODOs - Offline Wrapper"

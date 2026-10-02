@@ -338,7 +338,11 @@ App secret. Regenerate with `bash .github/scripts/generate-todo-readonly.sh`; ne
 the generated workflow. `.github/tests/test-todo-workflow-readonly.sh` verifies independent
 production parity, the full job permission ceiling and both executed smoke callers before
 the coverage guard accepts the production/projection pair. Existing wrapper/scanner fixtures
-remain required. Remaining project/authentication coverage is tracked in #334 and #340.
+remain required. The contents-read-only isolated-image job runs the immutable scanner with
+network access disabled and no App/project credentials. Its native negative controls retain
+literal API expectations while removing TODO markers or corrupting an expected issue payload;
+each must fail for its own reason, paired with healthy executions. Remaining project/authentication
+coverage is tracked in #340; consumer failure handling remains in #367.
 
 Every `.github/tests/test-*.sh` is a test entrypoint and must have an explicit invocation in a
 `ci.yaml` step's `run:` block. Put `bash .github/tests/test-name.sh` (or the executable path) in a
