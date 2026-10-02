@@ -48,15 +48,34 @@ jobs:
         with:
           egress-policy: audit
 
-      - name: 🔒 Require a v* tag
+      - name: 🔒 Require a semantic-version tag
+        id: version
         env:
           REF_TYPE: ${{ github.ref_type }}
           REF_NAME: ${{ github.ref_name }}
         run: |
-          if [ "$REF_TYPE" != "tag" ] || ! printf '%s' "$REF_NAME" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+'; then
-            echo "::error::publish-manifests must be invoked from a semver tag vX.Y.Z (got $REF_TYPE/$REF_NAME); Flux OCIRepository semver selection depends on it."
+          # The WHOLE tag must be a SemVer 2.0.0 version behind a `v`, not merely start with one:
+          # `v1.2.3garbage` would otherwise publish as `1.2.3garbage`, which Flux's semver selection
+          # does not treat as a version. Refused here, before anything reaches the registry.
+          set -euo pipefail
+          export LC_ALL=C
+          num='(0|[1-9][0-9]*)'
+          pre='(0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*)'
+          build='[0-9A-Za-z-]+'
+          semver="^v${num}\.${num}\.${num}(-${pre}(\.${pre})*)?(\+${build}(\.${build})*)?$"
+          if [ "$REF_TYPE" != "tag" ] || ! [[ "$REF_NAME" =~ $semver ]]; then
+            echo "::error::publish-manifests must be invoked from a semantic-version tag vMAJOR.MINOR.PATCH[-PRERELEASE][+BUILD] (got $REF_TYPE/$REF_NAME); Flux OCIRepository semver selection depends on it."
             exit 1
           fi
+          # An OCI tag cannot carry `+`, and SemVer ignores build metadata when ordering versions, so
+          # publish without it.
+          version="${REF_NAME#v}"
+          version="${version%%+*}"
+          if [ "${#version}" -gt 128 ]; then
+            echo "::error::version '$version' is longer than the 128 characters an OCI tag allows."
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
 
       - name: 🔎 Resolve the calling ref from the OIDC claim
         id: caller
@@ -116,6 +135,7 @@ jobs:
           REGISTRY: ${{ env.REGISTRY }}
           OCI_NAME: ${{ inputs.oci-name }}
           DEPLOY_PATH: ${{ inputs.deploy-path }}
+          VERSION: ${{ steps.version.outputs.version }}
           REF_NAME: ${{ github.ref_name }}
           SHA: ${{ github.sha }}
           SERVER_URL: ${{ github.server_url }}
@@ -124,10 +144,10 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
+          : "${VERSION:?the semantic-version tag step did not resolve a version}"
           # Default the OCI name to the caller repo; override (oci-name) for repos
           # whose name is an invalid OCI path component, e.g. `.github`.
           NAME="${OCI_NAME:-$REPOSITORY}"
-          VERSION="${REF_NAME#v}"
           ARTIFACT="${REGISTRY}/${NAME}/manifests"
           flux push artifact "oci://${ARTIFACT}:${VERSION}" \
             --path="${DEPLOY_PATH}" \

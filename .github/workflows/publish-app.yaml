@@ -42,15 +42,35 @@ jobs:
         with:
           egress-policy: audit
 
-      - name: 🔒 Require a v* tag
+      - name: 🔒 Require a semantic-version tag
+        id: version
         env:
           REF_TYPE: ${{ github.ref_type }}
           REF_NAME: ${{ github.ref_name }}
         run: |
-          if [ "$REF_TYPE" != "tag" ] || ! printf '%s' "$REF_NAME" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+'; then
-            echo "::error::publish-app must be invoked from a semver tag vX.Y.Z (got $REF_TYPE/$REF_NAME); docker semver tagging and Flux OCIRepository semver selection depend on it."
+          # The WHOLE tag must be a SemVer 2.0.0 version behind a `v`, not merely start with one:
+          # `v1.2.3garbage` would otherwise publish as `1.2.3garbage`, which neither Flux's semver
+          # selection nor docker/metadata-action treats as a version. Refused here, before anything
+          # reaches the registry.
+          set -euo pipefail
+          export LC_ALL=C
+          num='(0|[1-9][0-9]*)'
+          pre='(0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*)'
+          build='[0-9A-Za-z-]+'
+          semver="^v${num}\.${num}\.${num}(-${pre}(\.${pre})*)?(\+${build}(\.${build})*)?$"
+          if [ "$REF_TYPE" != "tag" ] || ! [[ "$REF_NAME" =~ $semver ]]; then
+            echo "::error::publish-app must be invoked from a semantic-version tag vMAJOR.MINOR.PATCH[-PRERELEASE][+BUILD] (got $REF_TYPE/$REF_NAME); docker semver tagging and Flux OCIRepository semver selection depend on it."
             exit 1
           fi
+          # An OCI tag cannot carry `+`, and SemVer ignores build metadata when ordering versions, so
+          # publish without it — the same version docker/metadata-action derives for the image tag.
+          version="${REF_NAME#v}"
+          version="${version%%+*}"
+          if [ "${#version}" -gt 128 ]; then
+            echo "::error::version '$version' is longer than the 128 characters an OCI tag allows."
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
 
       - name: 🔎 Resolve the calling ref from the OIDC claim
         id: caller
@@ -89,6 +109,25 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+
+      - name: 🔍 Validate the deployment manifest
+        env:
+          APP_NAME: ${{ inputs.app-name }}
+          DEPLOY_PATH: ${{ inputs.deploy-path }}
+        run: |
+          # Every manifest check runs here, before anything reaches the registry. A release that fails
+          # after the image push leaves GHCR changed — `latest` included — with no deployable manifest
+          # to go with the image. Only the digest injection waits for the build, because the digest
+          # does not exist before it.
+          set -euo pipefail
+          file="${DEPLOY_PATH}/deployment.yaml"
+          if [ ! -f "$file" ]; then
+            echo "::error::manifest $file not found (check the deploy-path input)"; exit 1
+          fi
+          matches=$(yq '[.spec.template.spec.containers[] | select(.name == strenv(APP_NAME))] | length' "$file")
+          if [ "$matches" != "1" ]; then
+            echo "::error::expected exactly one container named '$APP_NAME' in $file, found $matches"; exit 1
+          fi
 
       - name: 🔐 Log in to registry
         uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
@@ -131,17 +170,12 @@ jobs:
           APP_NAME: ${{ inputs.app-name }}
           DEPLOY_PATH: ${{ inputs.deploy-path }}
         run: |
+          # The manifest was validated before the build; this step only injects the digest the build
+          # produced, and checks that the injection took.
           set -euo pipefail
           file="${DEPLOY_PATH}/deployment.yaml"
           if [ -z "$DIGEST" ]; then
             echo "::error::build did not produce an image digest"; exit 1
-          fi
-          if [ ! -f "$file" ]; then
-            echo "::error::manifest $file not found (check the deploy-path input)"; exit 1
-          fi
-          matches=$(yq '[.spec.template.spec.containers[] | select(.name == strenv(APP_NAME))] | length' "$file")
-          if [ "$matches" != "1" ]; then
-            echo "::error::expected exactly one container named '$APP_NAME' in $file, found $matches"; exit 1
           fi
           yq -i '(.spec.template.spec.containers[] | select(.name == strenv(APP_NAME)).image) = strenv(IMAGE) + "@" + strenv(DIGEST)' "$file"
           grep -qF "${IMAGE}@${DIGEST}" "$file" || { echo "::error::image pin did not apply to $file"; exit 1; }
@@ -151,6 +185,7 @@ jobs:
           IMAGE: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           DIGEST: ${{ steps.build.outputs.digest }}
           DEPLOY_PATH: ${{ inputs.deploy-path }}
+          VERSION: ${{ steps.version.outputs.version }}
           REF_NAME: ${{ github.ref_name }}
           SHA: ${{ github.sha }}
           SERVER_URL: ${{ github.server_url }}
@@ -159,7 +194,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          VERSION="${REF_NAME#v}"
+          : "${VERSION:?the semantic-version tag step did not resolve a version}"
           ARTIFACT="${REGISTRY}/${IMAGE_NAME}/manifests"
           # Sign the digest this push produced, never the tag re-resolved later: a tag
           # moved by an overlapping release or another writer would otherwise get a
