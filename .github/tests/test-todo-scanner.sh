@@ -6,8 +6,12 @@ work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
 fixture="$root/.github/tests/todo-scanner"
 cases="$fixture/cases.json"
+check_only=false
 if (( $# > 0 )); then
-  [[ "$1" == --check-fixtures && $# == 2 ]] || { echo 'usage: test-todo-scanner.sh [--check-fixtures file]' >&2; exit 2; }
+  [[ $# == 2 && ( "$1" == --check-fixtures || "$1" == --cases ) ]] || {
+    echo 'usage: test-todo-scanner.sh [--check-fixtures file | --cases file]' >&2; exit 2;
+  }
+  [[ "$1" != --check-fixtures ]] || check_only=true
   cases="$2"
 fi
 jq -e '
@@ -30,7 +34,7 @@ jq -e '
     (if has("ForbiddenOutput") then .ForbiddenOutput|type == "array" and all(type == "string" and length > 0) else true end) and
     (if has("InitialReads") then .InitialReads|type == "array" and length > 0 and all(valid_exchange and .Method == "GET") else true end))
   ' "$cases" >/dev/null || { echo 'Invalid scanner scenarios' >&2; exit 1; }
-(( $# == 0 )) || exit 0
+[[ "$check_only" == false ]] || exit 0
 export TODO_REAL_DOCKER
 TODO_REAL_DOCKER="$(command -v docker)"
 [[ "$TODO_REAL_DOCKER" == /* ]] || { echo 'FAIL: real Docker is required' >&2; exit 1; }
