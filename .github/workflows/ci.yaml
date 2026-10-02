@@ -2460,6 +2460,11 @@ jobs:
         shell: bash
         run: bash .github/tests/test-update-agent-skills-mark-internal.sh
 
+      # A skill update that changes only an auxiliary file must still report changed=true (#266).
+      - name: 🧪 Test change detection covers each skill's whole directory
+        shell: bash
+        run: bash .github/tests/test-update-agent-skills-change-detection.sh
+
       # Opt-in per-skill PRs (#1309): the splitter isolates each skill's update and fails closed on
       # a change outside every skill; the workflow keeps its single PR with the flag off.
       - name: 🧩 Test the per-skill update splitter
