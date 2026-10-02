@@ -817,6 +817,8 @@ The file must exist and be readable. A missing or unreadable file stops the sync
 
 A literal `!` re-include (one without glob characters) must still exist upstream. If upstream moves or drops that policy, the run fails and names the path before the target directory changes. Without that check it would open a pull request that deletes your vendored copy.
 
+The selected policies are copied and checked beside the target directory before it changes. If the copy or the swap fails, the run fails and the target keeps its previous policies. A run that selects nothing empties the target only when `.policyignore` excludes every upstream policy; otherwise it fails. Entries in the target whose names start with a dot are left in place.
+
 #### Usage
 
 ```yaml

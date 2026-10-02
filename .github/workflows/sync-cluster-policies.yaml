@@ -137,10 +137,62 @@ jobs:
           # Prune directories left empty by the removals.
           find . -type d -not -path './.git' -not -path './.git/*' -empty -delete 2>/dev/null || true
       - name: Copy Cluster Policies to the target directory
+        id: copy-policies
         run: |
-          mkdir -p "$KYVERNO_POLICIES_DIR"
-          rm -rf -- "${KYVERNO_POLICIES_DIR:?}/"*
-          cp -r "$KYVERNO_POLICIES_TEMP_DIR"/* "$KYVERNO_POLICIES_DIR" || echo "No policies found to copy."
+          # Stage and verify the whole selection beside the target before touching
+          # it, then swap it in. Any failure leaves the previous policies in place,
+          # so a sync pull request never carries removals a failed copy caused (#356).
+          src="$KYVERNO_POLICIES_TEMP_DIR"
+          target="${KYVERNO_POLICIES_DIR%/}"
+          [[ -n "$target" ]] || { echo "::error::kyverno-policies-dir must not be empty"; exit 1; }
+          for plan in policy-files policy-exclusions; do
+            [[ -f "$RUNNER_TEMP/$plan" && -r "$RUNNER_TEMP/$plan" ]] ||
+              { echo "::error::validated policy plan $plan is missing"; exit 1; }
+          done
+          mkdir -p -- "$target" || { echo "::error::could not create $target"; exit 1; }
+          shopt -s nullglob
+          selected=("$src"/*)
+          if [[ ${#selected[@]} -eq 0 ]]; then
+            # Empty only on purpose: .policyignore excluded every upstream file.
+            upstream="$(tr -cd '\0' <"$RUNNER_TEMP/policy-files" | wc -c)"
+            excluded="$(tr -cd '\0' <"$RUNNER_TEMP/policy-exclusions" | wc -c)"
+            if [[ "$upstream" -gt 0 && "$upstream" -eq "$excluded" ]]; then
+              echo "::notice::.policyignore excludes all $((upstream)) upstream policy files, so $target is emptied deliberately"
+            else
+              echo "::error::no policies were selected, but .policyignore excludes only $((excluded)) of $((upstream)) upstream files; $target is unchanged"
+              exit 1
+            fi
+          fi
+          stage="$(mktemp -d "$target.sync.XXXXXX")" || { echo "::error::could not create a staging directory"; exit 1; }
+          backup="$(mktemp -d "$target.previous.XXXXXX")" || { rm -rf -- "$stage"; echo "::error::could not create a backup directory"; exit 1; }
+          trap 'rm -rf -- "$stage" "$backup"' EXIT
+          if [[ ${#selected[@]} -gt 0 ]]; then
+            cp -R -- "${selected[@]}" "$stage/" ||
+              { echo "::error::copying the selected policies failed; $target is unchanged"; exit 1; }
+            for entry in "${selected[@]}"; do
+              diff -r -- "$entry" "$stage/${entry##*/}" >/dev/null ||
+                { echo "::error::the staged copy of ${entry##*/} differs from the selection; $target is unchanged"; exit 1; }
+            done
+          fi
+          unpark() {
+            local parked=("$backup"/*)
+            [[ ${#parked[@]} -eq 0 ]] || mv -- "${parked[@]}" "$target/"
+          }
+          previous=("$target"/*)
+          if [[ ${#previous[@]} -gt 0 ]] && ! mv -- "${previous[@]}" "$backup/"; then
+            unpark || echo "::error::could not restore the previous policies in $target"
+            echo "::error::could not set the previous policies aside; nothing was synced"
+            exit 1
+          fi
+          staged=("$stage"/*)
+          if [[ ${#staged[@]} -gt 0 ]] && ! mv -- "${staged[@]}" "$target/"; then
+            # Every previous entry is parked, so each staged name in the target came from the stage.
+            for entry in "${staged[@]}"; do rm -rf -- "${target:?}/${entry##*/}"; done
+            unpark || echo "::error::could not restore the previous policies in $target"
+            echo "::error::could not move the verified policies into $target; nothing was synced"
+            exit 1
+          fi
+          echo "Synced ${#selected[@]} top-level policy entries into $target"
       - name: Create PR with changes
         uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8.1.1
         with:
