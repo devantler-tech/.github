@@ -14,7 +14,7 @@ The shared CI/CD building blocks used across all DevantlerTech projects — both
 ## Using them
 
 An **action** is a step inside one of your jobs. A **reusable workflow** replaces a whole job. Both
-are called by path from this repository, pinned to a ref:
+are called by path from this repository, pinned to a full commit SHA:
 
 ```yaml
 jobs:
@@ -22,16 +22,16 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       # an action — a step in your own job
-      - uses: devantler-tech/.github/actions/setup-go-toolchain@<ref>
+      - uses: devantler-tech/.github/actions/setup-go-toolchain@<full-commit-sha> # vX.Y.Z
 
   release:
     # a reusable workflow — the whole job comes from here
-    uses: devantler-tech/.github/.github/workflows/create-release.yaml@<ref>
+    uses: devantler-tech/.github/.github/workflows/create-release.yaml@<full-commit-sha> # vX.Y.Z
     secrets:
       APP_PRIVATE_KEY: ${{ secrets.APP_PRIVATE_KEY }}
 ```
 
-Pin `<ref>` to a commit SHA. Each entry in the tables below links to its own inputs and outputs.
+Replace `<full-commit-sha>` with the selected release's full 40-character commit SHA and `vX.Y.Z` with its version. The placeholders must be replaced before running these examples. Each entry in the tables below links to its own inputs and outputs.
 
 The diagram below shows how GitHub Workflows, Jobs, Steps, Reusable Workflows, and Actions relate.
 
@@ -187,7 +187,7 @@ For catalogue self-tests, set `offline-test: true` together with `dry-run: true`
 ```yaml
 jobs:
   release:
-    uses: devantler-tech/.github/.github/workflows/create-release.yaml@{ref} # ref
+    uses: devantler-tech/.github/.github/workflows/create-release.yaml@<full-commit-sha> # vX.Y.Z
     with:
       disable-issue-side-effects: true
     secrets:
@@ -219,7 +219,7 @@ jobs:
 ```yaml
 jobs:
   delete-runs:
-    uses: devantler-tech/.github/.github/workflows/delete-workflow-runs.yaml@{ref} # ref
+    uses: devantler-tech/.github/.github/workflows/delete-workflow-runs.yaml@<full-commit-sha> # vX.Y.Z
     permissions:
       actions: write
       contents: read
@@ -283,7 +283,9 @@ It is **non-blocking by default** (`warn-only: true`, `fail-on-severity: critica
 ```yaml
 jobs:
   dependency-review:
-    uses: devantler-tech/.github/.github/workflows/dependency-review.yaml@{ref} # ref
+    uses: devantler-tech/.github/.github/workflows/dependency-review.yaml@<full-commit-sha> # vX.Y.Z
+    permissions:
+      contents: read
 ```
 
 #### Inputs
@@ -317,7 +319,7 @@ substitute for this independent credential.
 ```yaml
 jobs:
   dependency-review:
-    uses: devantler-tech/.github/.github/workflows/dependency-review.yaml@{ref} # ref
+    uses: devantler-tech/.github/.github/workflows/dependency-review.yaml@<full-commit-sha> # vX.Y.Z
     permissions:
       contents: read
     with:
@@ -346,7 +348,11 @@ caller contexts where the independent credential is available.
 ```yaml
 jobs:
   pages:
-    uses: devantler-tech/.github/.github/workflows/deploy-github-pages.yaml@{ref} # ref
+    uses: devantler-tech/.github/.github/workflows/deploy-github-pages.yaml@<full-commit-sha> # vX.Y.Z
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
     with:
       ruby-version: "3.3" # optional
       jekyll-env: production # optional
@@ -479,7 +485,7 @@ on:
 
 jobs:
   auto-merge:
-    uses: devantler-tech/.github/.github/workflows/enable-auto-merge.yaml@{ref} # ref
+    uses: devantler-tech/.github/.github/workflows/enable-auto-merge.yaml@<full-commit-sha> # vX.Y.Z
     permissions:
       actions: read
       pull-requests: write
@@ -547,7 +553,7 @@ MegaLinter always runs read-only, without a GitHub token or persisted checkout c
 ```yaml
 jobs:
   lint:
-    uses: devantler-tech/.github/.github/workflows/lint.yaml@{ref} # ref
+    uses: devantler-tech/.github/.github/workflows/lint.yaml@<full-commit-sha> # vX.Y.Z
     permissions:
       contents: read
     with:
@@ -588,7 +594,7 @@ on:
 
 jobs:
   publish-app:
-    uses: devantler-tech/.github/.github/workflows/publish-app.yaml@{ref} # ref
+    uses: devantler-tech/.github/.github/workflows/publish-app.yaml@<full-commit-sha> # vX.Y.Z
     permissions:
       contents: read # checkout
       packages: write # push image + manifests OCI artifact
@@ -630,7 +636,7 @@ on:
 
 jobs:
   publish-manifests:
-    uses: devantler-tech/.github/.github/workflows/publish-manifests.yaml@{ref} # ref
+    uses: devantler-tech/.github/.github/workflows/publish-manifests.yaml@<full-commit-sha> # vX.Y.Z
     permissions:
       contents: read # checkout
       packages: write # push manifests OCI artifact
@@ -665,7 +671,10 @@ jobs:
 ```yaml
 jobs:
   publish-library:
-    uses: devantler-tech/.github/.github/workflows/publish-dotnet-library.yaml@{ref} # ref
+    uses: devantler-tech/.github/.github/workflows/publish-dotnet-library.yaml@<full-commit-sha> # vX.Y.Z
+    permissions:
+      contents: read
+      packages: write
     secrets:
       NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
 ```
@@ -691,7 +700,7 @@ jobs:
 ```yaml
 jobs:
   dotnet-test:
-    uses: devantler-tech/.github/.github/workflows/run-dotnet-tests.yaml@{ref} # ref
+    uses: devantler-tech/.github/.github/workflows/run-dotnet-tests.yaml@<full-commit-sha> # vX.Y.Z
     permissions:
       contents: read
       packages: read
@@ -728,7 +737,10 @@ The same explicit token boundary keeps the Code Quality uploader out of credenti
 ```yaml
 jobs:
   todos:
-    uses: devantler-tech/.github/.github/workflows/scan-for-todo-comments.yaml@{ref} # ref
+    uses: devantler-tech/.github/.github/workflows/scan-for-todo-comments.yaml@<full-commit-sha> # vX.Y.Z
+    permissions:
+      contents: read
+      issues: write
     with:
       ignore: "^third_party/"
     secrets:
@@ -789,7 +801,11 @@ and optional project-authentication rollout remain tracked separately in #334 an
 ```yaml
 jobs:
   zizmor:
-    uses: devantler-tech/.github/.github/workflows/scan-for-workflow-vulnerabilities.yaml@{ref} # ref
+    uses: devantler-tech/.github/.github/workflows/scan-for-workflow-vulnerabilities.yaml@<full-commit-sha> # vX.Y.Z
+    permissions:
+      contents: read
+      actions: read
+      security-events: write
 ```
 
 </details>
@@ -826,7 +842,7 @@ Set `dry-run: true` and omit `APP_PRIVATE_KEY` to validate the interface without
 ```yaml
 jobs:
   sync-cluster-policies:
-    uses: devantler-tech/.github/.github/workflows/sync-cluster-policies.yaml@{ref} # ref
+    uses: devantler-tech/.github/.github/workflows/sync-cluster-policies.yaml@<full-commit-sha> # vX.Y.Z
     secrets:
       APP_PRIVATE_KEY: ${{ secrets.APP_PRIVATE_KEY }}
     with:
@@ -864,7 +880,10 @@ on:
 
 jobs:
   template-sync:
-    uses: devantler-tech/.github/.github/workflows/template-sync.yaml@{ref} # ref
+    uses: devantler-tech/.github/.github/workflows/template-sync.yaml@<full-commit-sha> # vX.Y.Z
+    permissions:
+      contents: write
+      pull-requests: write
     with:
       source-repo-path: devantler-tech/platform-tenant-template
 ```
@@ -888,7 +907,10 @@ An opt-in caller must wire both the input and the corresponding secret:
 ```yaml
 jobs:
   template-sync:
-    uses: devantler-tech/.github/.github/workflows/template-sync.yaml@{ref} # ref
+    uses: devantler-tech/.github/.github/workflows/template-sync.yaml@<full-commit-sha> # vX.Y.Z
+    permissions:
+      contents: write
+      pull-requests: write
     with:
       source-repo-path: devantler-tech/platform-tenant-template
       use-app-token: true
@@ -932,7 +954,7 @@ on:
 
 jobs:
   update-agent-skills:
-    uses: devantler-tech/.github/.github/workflows/update-agent-skills.yaml@{ref} # ref
+    uses: devantler-tech/.github/.github/workflows/update-agent-skills.yaml@<full-commit-sha> # vX.Y.Z
     permissions:
       contents: write
       pull-requests: write
@@ -985,15 +1007,14 @@ The workflow assumes skills were previously installed with [`devantler-tech/.git
 ```yaml
 jobs:
   go-test:
-    uses: devantler-tech/.github/.github/workflows/validate-go-project.yaml@{ref} # ref
+    uses: devantler-tech/.github/.github/workflows/validate-go-project-readonly.yaml@<full-commit-sha> # vX.Y.Z
     permissions:
-      contents: write
+      contents: read
+      pull-requests: read
       code-quality: write # required for GitHub Code Quality coverage upload
-    secrets:
-      APP_PRIVATE_KEY: ${{ secrets.APP_PRIVATE_KEY }}
     with:
       pr-owner: ${{ github.event.pull_request.user.login }} # optional
-      apply-signed-fixes: false # optional; on by default — pass false to keep this caller read-only (do so when the org-required run already signs for this repository, or two signers race for one branch tip)
+      apply-signed-fixes: false
 ```
 
 > **Note:** The calling workflow must grant `code-quality: write` so coverage can be uploaded to GitHub Code Quality. Coverage requires the repo's **Code Quality** to be enabled (_Settings → Code quality_).

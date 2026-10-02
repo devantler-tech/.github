@@ -18,7 +18,7 @@ Test .NET solutions or projects across multiple platforms with code coverage rep
 ```yaml
 steps:
   - name: Test .NET project
-    uses: devantler-tech/.github/actions/run-dotnet-tests@main
+    uses: devantler-tech/.github/actions/run-dotnet-tests@<full-commit-sha> # vX.Y.Z
 ```
 
 ### Custom working directory
@@ -26,7 +26,7 @@ steps:
 ```yaml
 steps:
   - name: Test .NET project
-    uses: devantler-tech/.github/actions/run-dotnet-tests@main
+    uses: devantler-tech/.github/actions/run-dotnet-tests@<full-commit-sha> # vX.Y.Z
     with:
       working-directory: src/MyProject
 ```
@@ -57,7 +57,7 @@ human-authored pull requests that need private GitHub Packages can opt in explic
 ```yaml
 jobs:
   test:
-    uses: devantler-tech/.github/.github/workflows/run-dotnet-tests.yaml@main
+    uses: devantler-tech/.github/.github/workflows/run-dotnet-tests.yaml@<full-commit-sha> # vX.Y.Z
     with:
       enable-github-packages: true
     permissions:

@@ -18,12 +18,15 @@ Dry-run mode needs no GitHub App credentials and performs no mutation.
 
 ## Usage
 
+The combined approval and auto-merge example needs `contents: write` and
+`pull-requests: write` on its containing job.
+
 ### Approve a PR from a trusted bot
 
 ```yaml
 steps:
   - name: Approve PR
-    uses: devantler-tech/.github/actions/approve-pr@main
+    uses: devantler-tech/.github/actions/approve-pr@<full-commit-sha> # vX.Y.Z
     with:
       client-id: ${{ vars.APP_CLIENT_ID }}
       app-private-key: ${{ secrets.APP_PRIVATE_KEY }}
@@ -35,14 +38,14 @@ steps:
 ```yaml
 steps:
   - name: Approve PR
-    uses: devantler-tech/.github/actions/approve-pr@main
+    uses: devantler-tech/.github/actions/approve-pr@<full-commit-sha> # vX.Y.Z
     with:
       client-id: ${{ vars.APP_CLIENT_ID }}
       app-private-key: ${{ secrets.APP_PRIVATE_KEY }}
       pr-number: ${{ github.event.pull_request.number }}
 
   - name: Enable auto-merge
-    uses: devantler-tech/.github/actions/enable-auto-merge-on-pr@main
+    uses: devantler-tech/.github/actions/enable-auto-merge-on-pr@<full-commit-sha> # vX.Y.Z
     with:
       pr-number: ${{ github.event.pull_request.number }}
 ```

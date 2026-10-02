@@ -40,8 +40,8 @@ until real burst recovery is evaluated for the consumer, as tracked in
 
 ```yaml
 steps:
-  - uses: actions/checkout@v5
-  - uses: devantler-tech/.github/actions/setup-agent-skills@v5
+  - uses: actions/checkout@<full-commit-sha> # vX.Y.Z
+  - uses: devantler-tech/.github/actions/setup-agent-skills@<full-commit-sha> # vX.Y.Z
     with:
       # Install every skill for both Copilot and Claude Code in one step.
       agents: |
@@ -56,21 +56,10 @@ steps:
 
 Omit `agents` to install for GitHub Copilot only (the default), or set it to any single agent (e.g. `claude-code`).
 
-## Migrating from `setup-copilot-skills` (v4 and earlier)
+## Agent selection
 
-`setup-copilot-skills` was renamed to `setup-agent-skills` and its `agent` (singular) input became `agents` (a list). The implementation is otherwise unchanged, and a single value still works exactly as before:
-
-```diff
-- uses: devantler-tech/.github/actions/setup-copilot-skills@v4
-+ uses: devantler-tech/.github/actions/setup-agent-skills@v5
-    with:
--     agent: github-copilot
-+     agents: github-copilot   # or: "github-copilot claude-code" to install for both
-      skills: |
-        github/awesome-copilot git-commit
-```
-
-`gh skill` is agent-neutral — the same `SKILL.md` files work across Copilot, Claude Code, Cursor, Codex, Gemini CLI, and the other agents it supports — so the action is no longer Copilot-specific.
+The `agents` input accepts one or more supported agents. The same installed
+`SKILL.md` content works across the agents supported by `gh skill`.
 
 ## Requirements
 

@@ -18,7 +18,7 @@ Clean up old GitHub Container Registry (GHCR) packages. Removes container images
 ```yaml
 steps:
   - name: Cleanup old GHCR packages
-    uses: devantler-tech/.github/actions/cleanup-ghcr-packages@main
+    uses: devantler-tech/.github/actions/cleanup-ghcr-packages@<full-commit-sha> # vX.Y.Z
 ```
 
 ### Custom retention policy
@@ -26,7 +26,7 @@ steps:
 ```yaml
 steps:
   - name: Cleanup old GHCR packages
-    uses: devantler-tech/.github/actions/cleanup-ghcr-packages@main
+    uses: devantler-tech/.github/actions/cleanup-ghcr-packages@<full-commit-sha> # vX.Y.Z
     with:
       older-than: "3 months"
       keep-n-tagged: "15"
@@ -39,7 +39,7 @@ Preview what would be deleted without removing anything. Recommended before a fi
 ```yaml
 steps:
   - name: Preview GHCR cleanup
-    uses: devantler-tech/.github/actions/cleanup-ghcr-packages@main
+    uses: devantler-tech/.github/actions/cleanup-ghcr-packages@<full-commit-sha> # vX.Y.Z
     with:
       package: "my-app"
       dry-run: "true"
