@@ -363,7 +363,7 @@ jobs:
           repository_json="$(gh api "repos/${REPO}")"
           repository_id="$(jq -er --arg repo "$REPO" '
             select(type == "object" and .full_name == $repo and (.private | type == "boolean")) |
-            .node_id | select(type == "string" and test("^[A-Za-z0-9_=]+$"))
+            .node_id | select(type == "string" and test("^[A-Za-z0-9_=+-]+$"))
           ' <<<"$repository_json")"
           staging_branch="automation/applied-fixes/${STAGING_ID}"
           staging_ref="refs/heads/${staging_branch}"

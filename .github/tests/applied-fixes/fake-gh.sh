@@ -10,14 +10,15 @@ case "$endpoint" in
   "repos/$REPO")
     [[ $# == 0 ]] || exit 91
     [[ "$READ_FAILURE" != repository ]] || exit 1
-    jq -n --arg repo "$REPO" '{node_id:"R_fixture",full_name:$repo,private:false}'
+    # GitHub's current opaque repository IDs use the URL-safe alphabet, including '-'.
+    jq -n --arg repo "$REPO" '{node_id:"R_fixture-safe",full_name:$repo,private:false}'
     ;;
   graphql)
     [[ "${1:-}" == --input && $# == 2 ]] || exit 91
     input="$2"
     if jq -e '.query | contains("updateRefs(input:")' "$input" >/dev/null; then
       cp "$input" "$CASE_ROOT/ref-request.json"
-      jq -e '.variables.input.repositoryId == "R_fixture" and
+      jq -e '.variables.input.repositoryId == "R_fixture-safe" and
         (.variables.input.refUpdates | type == "array" and length > 0) and
         all(.variables.input.refUpdates[]; .force == false)' "$input" >/dev/null || exit 96
       operation="$(jq -r '.variables.input.clientMutationId | split("-") | last' "$input")"
