@@ -141,7 +141,6 @@ jobs:
         # Local syntax remains required by actionlint; migration is tracked in #1234.
         uses: ./actions/validate-shell-pipelines # zizmor: ignore[self-repository]
         with:
-          enabled: "true"
           paths: .github/fixtures/validate-shell-pipelines/good.sh
       - name: Prepare tracked negative fixtures without executing them
         shell: bash
@@ -158,7 +157,6 @@ jobs:
         # Local syntax remains required by actionlint; migration is tracked in #1234.
         uses: ./actions/validate-shell-pipelines # zizmor: ignore[self-repository]
         with:
-          enabled: "true"
           working-directory: ${{ runner.temp }}/shell-pipelines-fixture
           paths: unsafe.sh
       - name: Reject a malformed script
@@ -167,7 +165,6 @@ jobs:
         # Local syntax remains required by actionlint; migration is tracked in #1234.
         uses: ./actions/validate-shell-pipelines # zizmor: ignore[self-repository]
         with:
-          enabled: "true"
           working-directory: ${{ runner.temp }}/shell-pipelines-fixture
           paths: malformed.sh
       - name: Assert action outcomes and output boundaries
@@ -209,12 +206,12 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - name: Omitted opt-in skips a missing repository
+      - name: Omitted enablement validates a tracked scope
         id: omitted
         # Local syntax remains required by actionlint; migration is tracked in #1234.
         uses: ./actions/validate-shell-pipelines # zizmor: ignore[self-repository]
         with:
-          working-directory: missing-directory
+          paths: .github/fixtures/validate-shell-pipelines/good.sh
       - name: Explicit false skips invalid scope
         id: disabled
         # Local syntax remains required by actionlint; migration is tracked in #1234.
@@ -222,14 +219,14 @@ jobs:
         with:
           enabled: "false"
           paths: ../invalid
-      - name: Reject invalid opt-in spelling
+      - name: Reject invalid enablement spelling
         id: invalid
         continue-on-error: true
         # Local syntax remains required by actionlint; migration is tracked in #1234.
         uses: ./actions/validate-shell-pipelines # zizmor: ignore[self-repository]
         with:
           enabled: "yes"
-      - name: Assert disabled and invalid calls never validate
+      - name: Assert default validation and opt-out boundaries
         shell: bash
         env:
           OMITTED: ${{ steps.omitted.outputs.validated }}
@@ -237,7 +234,7 @@ jobs:
           INVALID_VALIDATED: ${{ steps.invalid.outputs.validated }}
           INVALID: ${{ steps.invalid.outcome }}
         run: |
-          test -z "$OMITTED"
+          test "$OMITTED" = true
           test -z "$DISABLED"
           test -z "$INVALID_VALIDATED"
           test "$INVALID" = failure
