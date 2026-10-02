@@ -103,7 +103,7 @@ done
 printf '%s %s\n' "$method" "$endpoint" >>"$FAKE_GH_LOG"
 
 case "$method $endpoint" in
-  "GET repos/example/template/contents/.templatesyncignore?ref=main")
+  "GET repos/example/template/contents/.templatesyncignore?ref=main" | "GET repos/example/template/contents/lists/.templatesyncignore?ref=main")
     [[ "$accept" == "Accept: application/vnd.github.raw" ]] || exit 94
     case "$FAKE_TEMPLATE_MODE" in
       file) cat "$FAKE_TEMPLATE_IGNORE" ;;
@@ -374,6 +374,84 @@ out="$(run_merger "$fixture" 2>/dev/null)"
   fail "merge helper created a list for a target that syncs the template's own"
 [[ ! -e "$fixture/gh.log" ]] || fail "merge helper read the template's list when the target has none"
 
+# --- Only a committed regular file can receive template entries ---
+
+fixture="$(make_fixture symlink-ignore)"
+rm "$fixture/target/.templatesyncignore"
+ln -s .git/config "$fixture/target/.templatesyncignore"
+git -C "$fixture/target" add .templatesyncignore
+git -C "$fixture/target" commit -q -m "symlink list"
+base_sha="$(git -C "$fixture/target" rev-parse HEAD)"
+cp "$fixture/target/.git/config" "$fixture/config-before"
+printf '[CoRe]\nfsmonitor = /not-a-real-hook\n' >"$fixture/template-ignore"
+if run_merger "$fixture" >/dev/null 2>"$fixture/error"; then
+  fail "merge helper followed an ignore-file symlink"
+fi
+cmp -s "$fixture/config-before" "$fixture/target/.git/config" ||
+  fail "merge helper changed Git configuration through an ignore-file symlink"
+[[ ! -e "$fixture/gh.log" ]] || fail "unsafe ignore-file symlink reached the template API"
+[[ "$(git -C "$fixture/target" rev-parse HEAD)" == "$base_sha" ]] || fail "unsafe ignore-file symlink moved HEAD"
+
+fixture="$(make_fixture hardlinked-ignore)"
+ln "$fixture/target/.templatesyncignore" "$fixture/other-file"
+cp "$fixture/other-file" "$fixture/other-before"
+run_merger "$fixture" >/dev/null
+cmp -s "$fixture/other-before" "$fixture/other-file" || fail "merge helper changed another file through a hard link"
+grep -qxF scripts/template-only.test.sh "$fixture/target/.templatesyncignore" ||
+  fail "merge helper omitted a template entry from a hardlinked regular file"
+
+fixture="$(make_fixture empty-ignore)"
+: >"$fixture/target/.templatesyncignore"
+git -C "$fixture/target" commit -q -am "empty list"
+merge_sha="$(run_merger "$fixture")"
+[[ -n "$merge_sha" ]] || fail "merge helper treated a tracked empty list as absent"
+grep -qxF scripts/template-only.test.sh "$fixture/target/.templatesyncignore" ||
+  fail "merge helper omitted a template entry from an empty target list"
+
+fixture="$(make_fixture executable-ignore)"
+chmod +x "$fixture/target/.templatesyncignore"
+git -C "$fixture/target" commit -q -am "executable list"
+run_merger "$fixture" >/dev/null
+[[ "$(git -C "$fixture/target" ls-tree HEAD -- .templatesyncignore)" == 100755* ]] ||
+  fail "merge helper changed an executable ignore file's mode"
+
+fixture="$(make_fixture nested-ignore)"
+mkdir "$fixture/target/lists"
+git -C "$fixture/target" mv .templatesyncignore lists/.templatesyncignore
+git -C "$fixture/target" commit -q -m "nested list"
+run_merger "$fixture" --ignore-file lists/.templatesyncignore >/dev/null
+grep -qxF scripts/template-only.test.sh "$fixture/target/lists/.templatesyncignore" ||
+  fail "merge helper omitted a template entry from a nested regular file"
+
+fixture="$(make_fixture untracked-ignore)"
+git -C "$fixture/target" rm -q .templatesyncignore
+git -C "$fixture/target" commit -q -m "no committed list"
+printf 'target-only\n' >"$fixture/target/.templatesyncignore"
+if run_merger "$fixture" >/dev/null 2>"$fixture/error"; then
+  fail "merge helper changed an untracked ignore file"
+fi
+[[ ! -e "$fixture/gh.log" ]] || fail "untracked ignore file reached the template API"
+
+fixture="$(make_fixture symlink-parent)"
+ln -s .git "$fixture/target/ignore-dir"
+git -C "$fixture/target" add ignore-dir
+git -C "$fixture/target" commit -q -m "symlink parent"
+cp "$fixture/target/.git/config" "$fixture/config-before"
+if run_merger "$fixture" --ignore-file ignore-dir/config >/dev/null 2>"$fixture/error"; then
+  fail "merge helper followed an ignore-file parent symlink"
+fi
+cmp -s "$fixture/config-before" "$fixture/target/.git/config" ||
+  fail "merge helper changed Git configuration through a parent symlink"
+[[ ! -e "$fixture/gh.log" ]] || fail "unsafe parent symlink reached the template API"
+
+fixture="$(make_fixture git-internal)"
+cp "$fixture/target/.git/config" "$fixture/config-before"
+if run_merger "$fixture" --ignore-file .git/config >/dev/null 2>"$fixture/error"; then
+  fail "merge helper accepted a Git-internal destination"
+fi
+cmp -s "$fixture/config-before" "$fixture/target/.git/config" || fail "merge helper changed a Git-internal destination"
+[[ ! -e "$fixture/gh.log" ]] || fail "Git-internal destination reached the template API"
+
 # --- Fail closed ---
 
 fixture="$(make_fixture template-error)"
@@ -402,8 +480,10 @@ if run_merger "$fixture" >/dev/null 2>"$fixture/error"; then
   fail "merge helper committed over uncommitted changes"
 fi
 
-for bad in "../escape" "/abs" "a b"; do
-  fixture="$(make_fixture "bad-path-${bad//[^a-z]/}")"
+bad_index=0
+for bad in "../escape" "/abs" "a b" "./.templatesyncignore" "a/./b" "a//b" "a/" ".GIT/config" "a/.gIt/config"; do
+  bad_index=$((bad_index + 1))
+  fixture="$(make_fixture "bad-path-$bad_index")"
   if (
     cd "$fixture/target"
     PATH="$fixture/bin:$PATH" FAKE_GH_LOG="$fixture/gh.log" FAKE_TEMPLATE_IGNORE="$fixture/template-ignore" \
@@ -412,6 +492,7 @@ for bad in "../escape" "/abs" "a b"; do
   ) >/dev/null 2>&1; then
     fail "merge helper accepted the unsafe ignore-file path '$bad'"
   fi
+  [[ ! -e "$fixture/gh.log" ]] || fail "unsafe ignore-file path reached the template API"
 done
 
 # --- Signer: the merge commit is folded in only when it is exactly what the merge produced ---

@@ -53,21 +53,38 @@ done
 [[ "$ref" =~ ^[A-Za-z0-9][A-Za-z0-9._/-]*$ && "$ref" != *..* ]] || fail "template ref is unsafe"
 [[ "$ignore_file" =~ ^[A-Za-z0-9._][A-Za-z0-9._/-]*$ && "$ignore_file" != *..* ]] ||
   fail "ignore file path is unsafe"
+[[ "$ignore_file" != *//* && "$ignore_file" != */ ]] || fail "ignore file path is unsafe"
+# Check every component before Git or the template API reads anything. An ignore file can be
+# committed as a symlink, and appending through it could change Git configuration or hooks.
+IFS=/ read -r -a components <<<"$ignore_file"
+component_path=""
+for component in "${components[@]}"; do
+  case "$component" in
+    . | .[gG][iI][tT]) fail "ignore file path is unsafe" ;;
+  esac
+  component_path="${component_path:+$component_path/}$component"
+  [[ ! -L "$component_path" ]] || fail "ignore file path contains a symlink"
+done
 command -v gh >/dev/null || fail "gh is unavailable"
 
 head_sha="$(git rev-parse HEAD)" || fail "could not read the target checkout head"
 [[ "$head_sha" == "$base_sha" ]] || fail "target checkout is at $head_sha, not the workflow base $base_sha"
 git diff --quiet HEAD -- || fail "target checkout has uncommitted changes"
 
-if [[ ! -s "$ignore_file" ]]; then
+tree_entry="$(git ls-tree "$base_sha" -- "$ignore_file")" || fail "could not read the committed ignore file"
+if [[ -z "$tree_entry" && ! -e "$ignore_file" ]]; then
   # Without a list of its own, the target already applies the template's list: the action only
   # restores an ignore file the target has.
   echo "The target has no $ignore_file; the template's list applies as it is." >&2
   exit 0
 fi
+read -r file_mode file_type file_oid file_path <<<"$tree_entry" || fail "ignore file must be a committed regular file"
+[[ "$file_mode" =~ ^100(644|755)$ && "$file_type" == blob && "$file_oid" =~ ^[0-9a-f]{40}$ && "$file_path" == "$ignore_file" && -f "$ignore_file" ]] ||
+  fail "ignore file must be a committed regular file"
 
 work="$(mktemp -d)" || fail "could not create a work directory"
-trap 'rm -rf "$work"' EXIT
+merged_file=""
+trap 'rm -rf "$work"; [[ -z "$merged_file" ]] || rm -f -- "$merged_file"' EXIT
 
 if ! gh api -H "Accept: application/vnd.github.raw" "repos/${source_repo}/contents/${ignore_file}?ref=${ref}" \
   >"$work/template" 2>"$work/error"; then
@@ -109,7 +126,13 @@ header='# --- Merged from the template by template sync. A "!<entry>" line keeps
 [[ -z "$(tail -c1 "$ignore_file")" ]] || printf '\n' >>"$work/append"
 grep -qxF -- "$header" "$ignore_file" || printf '\n%s\n' "$header" >>"$work/append"
 cat "$work/missing" >>"$work/append"
-cat "$work/append" >>"$ignore_file" || fail "could not update $ignore_file"
+# Replace the checked file instead of appending to its inode, so a local hard link cannot
+# redirect the write into another file. Keep the committed file's executable mode.
+merged_file="$(mktemp "${ignore_file}.XXXXXX")" || fail "could not create the replacement ignore file"
+cat "$ignore_file" "$work/append" >"$merged_file" || fail "could not assemble $ignore_file"
+chmod "${file_mode#100}" "$merged_file" || fail "could not preserve the ignore file mode"
+mv -- "$merged_file" "$ignore_file" || fail "could not update $ignore_file"
+merged_file=""
 
 while IFS= read -r entry; do
   echo "Merged the template's ignore entry: $entry" >&2
