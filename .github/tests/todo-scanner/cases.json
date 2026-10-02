@@ -144,5 +144,200 @@
       }
     ],
     "Output": ["Issue could not be created"]
+  },
+  {
+    "Name": "initial issue read rejection prevents matching a removed TODO",
+    "Files": {
+      "removed.sh": {
+        "Before": "# TODO: Completed task\n",
+        "After": ""
+      }
+    },
+    "InitialReads": [
+      {
+        "Method": "GET",
+        "Path": "/repos/offline/fixture/issues?per_page=100&page=1&state=open",
+        "Status": 422,
+        "Response": "{\"message\":\"Offline issue read rejection\"}"
+      },
+      {
+        "Method": "GET",
+        "Path": "/repos/offline/fixture/milestones?per_page=100&page=1&state=open",
+        "Status": 200,
+        "Response": "[]"
+      }
+    ],
+    "Operations": [],
+    "Output": [
+      "Issue could not be closed"
+    ],
+    "ForbiddenOutput": [
+      "Issue closed",
+      "Issue created:"
+    ]
+  },
+  {
+    "Name": "milestone read rejection leaves independent closure available",
+    "Files": {
+      "removed.sh": {
+        "Before": "# TODO: Completed task\n",
+        "After": ""
+      }
+    },
+    "Existing": [
+      {
+        "number": 11,
+        "title": "Completed task",
+        "state": "open",
+        "html_url": "https://example.invalid/offline/fixture/issues/11"
+      }
+    ],
+    "Operations": [
+      {
+        "Method": "PATCH",
+        "Path": "/repos/offline/fixture/issues/11",
+        "Body": "{\"state\":\"closed\"}",
+        "Status": 200,
+        "Response": "{\"number\":11,\"state\":\"closed\"}"
+      },
+      {
+        "Method": "POST",
+        "Path": "/repos/offline/fixture/issues/11/comments",
+        "Body": "{\"body\":\"Closed in 1111111111111111111111111111111111111111.\"}",
+        "Status": 201,
+        "Response": "{\"id\":1}"
+      }
+    ],
+    "Output": [
+      "Issue closed"
+    ],
+    "InitialReads": [
+      {
+        "Method": "GET",
+        "Path": "/repos/offline/fixture/issues?per_page=100&page=1&state=open",
+        "Status": 200,
+        "Response": "[{\"number\":11,\"title\":\"Completed task\",\"state\":\"open\",\"html_url\":\"https://example.invalid/offline/fixture/issues/11\"}]"
+      },
+      {
+        "Method": "GET",
+        "Path": "/repos/offline/fixture/milestones?per_page=100&page=1&state=open",
+        "Status": 422,
+        "Response": "{\"message\":\"Offline milestone read rejection\"}"
+      }
+    ],
+    "ForbiddenOutput": [
+      "Issue could not be closed"
+    ]
+  },
+  {
+    "Name": "rejected search still attempts creation which is rejected",
+    "Files": {
+      "search.sh": {
+        "Before": "",
+        "After": "# TODO: Search task\n"
+      }
+    },
+    "WantFailure": false,
+    "Operations": [
+      {
+        "Method": "GET",
+        "Path": "/search/issues?q=repo%3Aoffline%2Ffixture+is%3Aissue+in%3Atitle+Search+task&per_page=30",
+        "Status": 422,
+        "Response": "{\"message\":\"Offline issue search failure\"}"
+      },
+      {
+        "Method": "POST",
+        "Path": "/repos/offline/fixture/issues",
+        "Body": "{\"title\":\"Search task\",\"body\":\"https://example.invalid/offline/fixture/blob/1111111111111111111111111111111111111111/search.sh#L1\\n\\n```sh\\n\\n# TODO: Search task\\n\\n```\",\"labels\":[],\"assignees\":[\"offline-actor\"]}",
+        "Status": 422,
+        "Response": "{\"message\":\"Offline creation rejection\"}"
+      }
+    ],
+    "Output": [
+      "Issue could not be created"
+    ],
+    "ForbiddenOutput": [
+      "Issue created:"
+    ]
+  },
+  {
+    "Name": "rejected close still attempts a comment which is rejected",
+    "Files": {
+      "removed.sh": {
+        "Before": "# TODO: Completed task\n",
+        "After": ""
+      }
+    },
+    "Existing": [
+      {
+        "number": 11,
+        "title": "Completed task",
+        "state": "open",
+        "html_url": "https://example.invalid/offline/fixture/issues/11"
+      }
+    ],
+    "Operations": [
+      {
+        "Method": "PATCH",
+        "Path": "/repos/offline/fixture/issues/11",
+        "Body": "{\"state\":\"closed\"}",
+        "Status": 422,
+        "Response": "{\"message\":\"Offline closure failure\"}"
+      },
+      {
+        "Method": "POST",
+        "Path": "/repos/offline/fixture/issues/11/comments",
+        "Body": "{\"body\":\"Closed in 1111111111111111111111111111111111111111.\"}",
+        "Status": 422,
+        "Response": "{\"message\":\"Offline closure comment rejection\"}"
+      }
+    ],
+    "Output": [
+      "Issue could not be closed"
+    ],
+    "WantFailure": false,
+    "ForbiddenOutput": [
+      "Issue closed"
+    ]
+  },
+  {
+    "Name": "closure comment rejection is reported after a successful close",
+    "Files": {
+      "removed.sh": {
+        "Before": "# TODO: Completed task\n",
+        "After": ""
+      }
+    },
+    "Existing": [
+      {
+        "number": 11,
+        "title": "Completed task",
+        "state": "open",
+        "html_url": "https://example.invalid/offline/fixture/issues/11"
+      }
+    ],
+    "Operations": [
+      {
+        "Method": "PATCH",
+        "Path": "/repos/offline/fixture/issues/11",
+        "Body": "{\"state\":\"closed\"}",
+        "Status": 200,
+        "Response": "{\"number\":11,\"state\":\"closed\"}"
+      },
+      {
+        "Method": "POST",
+        "Path": "/repos/offline/fixture/issues/11/comments",
+        "Body": "{\"body\":\"Closed in 1111111111111111111111111111111111111111.\"}",
+        "Status": 422,
+        "Response": "{\"message\":\"Offline closure comment failure\"}"
+      }
+    ],
+    "Output": [
+      "Issue could not be closed"
+    ],
+    "WantFailure": false,
+    "ForbiddenOutput": [
+      "Issue closed"
+    ]
   }
 ]
