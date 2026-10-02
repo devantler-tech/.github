@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 
 # Pins how the two publish workflows sign what they push (#260): every cosign signature
-# targets a digest reference, and publish-app.yaml signs the digest its own `flux push`
-# reported. A signature made by tag covers whatever the tag points at when cosign resolves
+# targets a digest reference, and both workflows sign the digest their own `flux push`
+# reported (#263 extended this to publish-manifests). A signature made by tag covers whatever the tag points at when cosign resolves
 # it, so a tag moved by an overlapping release or another writer would be signed with bytes
 # this run did not publish, and consumers verify that signature.
 #
@@ -10,7 +10,7 @@
 # `flux`, `cosign` and `docker` binaries, so the assertions cannot drift from what ships:
 #   1. publish-app signs ARTIFACT@<the digest flux push reported>, and the image by digest.
 #   2. publish-app fails before signing anything when the push reports no digest.
-#   3. publish-manifests signs the manifests artifact by digest.
+#   3. publish-manifests signs ARTIFACT@<the digest flux push reported>, and nothing without one.
 #   4. In every run, EVERY cosign target is a digest reference — not merely "not VERSION".
 # The structural half requires every `cosign sign` line in both workflows to end in a
 # digest reference, so a literal tag or another variable cannot slip in.
@@ -106,12 +106,20 @@ if grep -q '^cosign sign' "$scratch/calls"; then
 fi
 echo "ok   publish-app fails before signing when the push reports no digest"
 
-# 3. publish-manifests signs by digest.
+# 3. publish-manifests signs exactly what its push reported, and nothing without a digest.
 extract_step .github/workflows/publish-manifests.yaml "$scratch/publish-manifests.sh"
 run_step "$scratch/publish-manifests.sh" "$push_json" ||
   fail "publish-manifests step failed on a normal push: $(cat "$scratch/out")"
+signed "cosign sign --yes ghcr.io/devantler-tech/app/manifests@$pushed_digest" \
+  "publish-manifests did not sign the manifests artifact by the pushed digest"
 only_digest_targets publish-manifests
-echo "ok   publish-manifests signs only digest references"
+if run_step "$scratch/publish-manifests.sh" '{"repository":"ghcr.io/devantler-tech/app/manifests","tag":"1.2.3"}'; then
+  fail "publish-manifests succeeded although flux push reported no digest"
+fi
+if grep -q '^cosign sign' "$scratch/calls"; then
+  fail "publish-manifests signed something although flux push reported no digest; calls: $(cat "$scratch/calls")"
+fi
+echo "ok   publish-manifests signs the digest flux push reported, and nothing without one"
 
 # 4. Structural: every cosign sign line in both workflows ends in a digest reference.
 for signing in "${signing_workflows[@]}"; do

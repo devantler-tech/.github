@@ -62,17 +62,20 @@ jobs:
             echo "::error::publish-app must be invoked from a semantic-version tag vMAJOR.MINOR.PATCH[-PRERELEASE][+BUILD] (got $REF_TYPE/$REF_NAME); releases are tagged and selected by semantic version."
             exit 1
           fi
-          # Refuse what the parsers downstream cannot read either: docker/metadata-action's takes at
-          # most 256 characters and numbers below 2^53 (15 digits always fit), Flux's numbers below 2^64.
-          major="${BASH_REMATCH[1]}" minor="${BASH_REMATCH[2]}" patch="${BASH_REMATCH[3]}"
-          if [ "${#REF_NAME}" -gt 256 ] || [ "${#major}" -gt 15 ] || [ "${#minor}" -gt 15 ] || [ "${#patch}" -gt 15 ]; then
-            echo "::error::publish-app refuses tag $REF_NAME: it must be at most 256 characters with version numbers of at most 15 digits, so every tool downstream can read the version."
-            exit 1
-          fi
           # An OCI tag cannot carry `+`, and SemVer ignores build metadata when ordering versions, so
           # publish without it — the same version docker/metadata-action derives for an image tag.
           version="${REF_NAME#v}"
           version="${version%%+*}"
+          # Refuse what the parsers downstream cannot read or order either: docker/metadata-action's
+          # takes at most 256 characters and numbers below 2^53, Flux's numbers below 2^64, and both
+          # compare a longer numeric pre-release identifier as text. 15 digits always fit.
+          numbers=".${version%%-*}."
+          case "$version" in *-*) numbers="${numbers}${version#*-}." ;; esac
+          too_long='\.[0-9]{16,}\.'
+          if [ "${#REF_NAME}" -gt 256 ] || [[ "$numbers" =~ $too_long ]]; then
+            echo "::error::publish-app refuses tag $REF_NAME: it must be at most 256 characters with numbers of at most 15 digits, so every tool downstream can read and order the version."
+            exit 1
+          fi
           if [ "${#version}" -gt 128 ]; then
             echo "::error::publish-app refuses tag $REF_NAME: version '$version' is longer than the 128 characters an OCI tag allows."
             exit 1

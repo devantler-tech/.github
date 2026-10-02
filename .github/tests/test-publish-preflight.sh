@@ -67,7 +67,7 @@ step_path="$scratch/bin:$scratch/tools"
 
 # Per-run state, reset by run_job.
 sim_workflow=""
-sim_json="$scratch/workflow.json" # the workflow under simulation, converted to JSON once per run
+sim_json=""                       # the workflow under simulation as JSON, converted once per file
 sim_job=""
 sim_step=""
 sim_ref_type=""
@@ -84,8 +84,13 @@ wf() { # <jq expression> [jq args...] — evaluated on the whole workflow
   jq -r "$@" "$expr" "$sim_json"
 }
 
+in_job() { # <jq expression> — evaluated with $J bound to the simulated job and $S to its current step
+  jq -r --arg job "$sim_job" --argjson i "${sim_step:-0}" \
+    ".jobs[\$job] as \$J | \$J.steps[\$i] as \$S | $1" "$sim_json"
+}
+
 step() { # <jq expression> — evaluated on the current step of the simulated job
-  jq -r --arg job "$sim_job" --argjson i "$sim_step" ".jobs[\$job].steps[\$i] | $1" "$sim_json"
+  in_job "\$S | $1"
 }
 
 lookup_line() { # <file> <key> — prints the value of the first `key=value` line; 1 when absent
@@ -115,8 +120,13 @@ lookup_expr() { # <expression> — the value GitHub would substitute for ${{ <ex
       input="${1#inputs.}"
       [[ "$(wf '.on.workflow_call.inputs | has($in)' --arg in "$input")" == true ]] || return 1
       # Passed by the caller (even as an empty string) wins; otherwise the declared default applies.
-      lookup_line "$sim_inputs" "$input" ||
-        wf '.on.workflow_call.inputs[$in] | select(has("default")) | .default' --arg in "$input"
+      # A required input that was not passed never reaches a step: a runner refuses the call.
+      lookup_line "$sim_inputs" "$input" && return 0
+      if [[ "$(wf '.on.workflow_call.inputs[$in].required // false' --arg in "$input")" == true ]]; then
+        echo "required input '$input' was not passed to $sim_workflow" >&2
+        return 1
+      fi
+      wf '.on.workflow_call.inputs[$in] | select(has("default")) | .default' --arg in "$input"
       ;;
     steps.*.outputs.*)
       id="${1#steps.}"
@@ -152,15 +162,11 @@ env_entries() { # <jq path to an env mapping> — one key=value line per entry, 
   local entries
   # GitHub turns a non-string value (`DRY_RUN: false`) into its string; a multi-line value cannot
   # be carried as one line, so refuse it rather than misread it.
-  [[ "$(step_or_job "$1 // {} | [.[] | tostring | select(contains(\"\\n\"))] | length")" == 0 ]] ||
+  [[ "$(in_job "$1 // {} | [.[] | tostring | select(contains(\"\\n\"))] | length")" == 0 ]] ||
     fail "$sim_workflow carries a multi-line env value at $1, which this test does not model"
-  entries="$(step_or_job "$1 // {} | to_entries[] | .key + \"=\" + (.value | tostring)")" ||
+  entries="$(in_job "$1 // {} | to_entries[] | .key + \"=\" + (.value | tostring)")" ||
     fail "could not read the env at $1 in $sim_workflow"
   printf '%s' "$entries"
-}
-
-step_or_job() { # <jq expression rooted at the job> — evaluated on the simulated job
-  jq -r --arg job "$sim_job" --argjson i "${sim_step:-0}" ".jobs[\$job] as \$J | \$J.steps[\$i] as \$S | $1" "$sim_json"
 }
 
 # run_job <workflow> <job> <workdir> <ref-type> <ref-name> [input=value ...]
@@ -182,21 +188,24 @@ run_job() {
   : >"$log"
   local pair line unmodelled entries
   for pair in "$@"; do printf '%s\n' "$pair" >>"$sim_inputs"; done
-  yq -o=json '.' "$sim_workflow" >"$sim_json" || fail "could not read $sim_workflow"
+  sim_json="$scratch/$(basename "$sim_workflow").json"
+  [[ -s "$sim_json" ]] || yq -o=json '.' "$sim_workflow" >"$sim_json" || fail "could not read $sim_workflow"
 
   # Anything that changes how a step or the job behaves on a runner — workflow-level env or
-  # defaults, continue-on-error, a matrix, a job condition other than the dry-run gate the
-  # simulation honours — is refused rather than ignored, so the simulation cannot pass on a job
-  # that a runner would run differently.
+  # defaults, a second job running alongside, continue-on-error, a matrix, a job condition other
+  # than the dry-run gate the simulation honours — is refused rather than ignored, so the
+  # simulation cannot pass on a workflow that a runner would run differently.
   unmodelled="$(wf 'keys | map(select(. != "name" and . != "run-name" and . != "on"
     and . != "permissions" and . != "concurrency" and . != "jobs")) | join(" ")')"
   [[ -z "$unmodelled" ]] || fail "$sim_workflow sets $unmodelled at workflow level; model it"
-  unmodelled="$(step_or_job '$J | keys | map(select(. != "name" and . != "if" and . != "runs-on"
+  [[ "$(wf '.jobs | keys | join(" ")')" == "$sim_job" ]] ||
+    fail "$sim_workflow runs jobs besides $sim_job, which could publish while it refuses; model them"
+  unmodelled="$(in_job '$J | keys | map(select(. != "name" and . != "if" and . != "runs-on"
     and . != "permissions" and . != "env" and . != "steps")) | join(" ")')"
   [[ -z "$unmodelled" ]] ||
     fail "$sim_workflow job $sim_job sets $unmodelled, which this test does not model"
   # shellcheck disable=SC2016 # GitHub expression compared literally.
-  [[ "$(step_or_job '$J.if // ""')" == '${{ !inputs.dry-run }}' ]] ||
+  [[ "$(in_job '$J.if // ""')" == '${{ !inputs.dry-run }}' ]] ||
     fail "$sim_workflow job $sim_job is no longer gated exactly on the dry-run input; model its condition"
   [[ "$(lookup_expr inputs.dry-run)" == false ]] || fail "the simulated job must run with dry-run off"
 
@@ -212,7 +221,7 @@ run_job() {
     job_env+=("$key=$value")
   done <<<"$entries"
 
-  count="$(step_or_job '$J.steps | length')"
+  count="$(in_job '$J.steps | length')"
   [[ "$count" -gt 0 ]] || fail "$sim_workflow job $sim_job has no steps"
 
   for ((i = 0; i < count; i++)); do
@@ -259,8 +268,15 @@ run_job() {
     fi
 
     run_file="$scratch/step-$i.sh"
-    step '.run // ""' >"$run_file"
-    [[ -s "$run_file" ]] || fail "$sim_workflow step '$name' has neither uses nor run"
+    step '.run // ""' >"$run_file.body"
+    [[ -s "$run_file.body" ]] || fail "$sim_workflow step '$name' has neither uses nor run"
+    # Bash 4+ calls this hook for every command it cannot find, so even `oras push 2>/dev/null ||
+    # true` is recorded; on bash 3.2 the `command not found` message below is the fallback.
+    {
+      # shellcheck disable=SC2016 # written into the step script, expanded when the step runs.
+      printf '%s\n' 'command_not_found_handle() { printf "%s\n" "$*" >>"$UNMODELLED"; return 127; }'
+      cat "$run_file.body"
+    } >"$run_file"
 
     # The runner's own invocations: an unspecified shell is `bash -e {0}`, an explicit `bash` adds
     # pipefail. Any other shell is not modelled.
@@ -280,18 +296,21 @@ run_job() {
     done <<<"$entries"
 
     : >"$scratch/github-output"
+    : >"$scratch/unmodelled"
     printf '== %s\n' "$name" >>"$log"
     status=0
     (cd "$workdir" && env -i PATH="$step_path" HOME="$HOME" TMPDIR="$scratch" \
-      CALLS="$calls" STUB_ARTIFACT_DIGEST="$artifact_digest" GITHUB_OUTPUT="$scratch/github-output" \
+      CALLS="$calls" UNMODELLED="$scratch/unmodelled" STUB_ARTIFACT_DIGEST="$artifact_digest" \
+      GITHUB_OUTPUT="$scratch/github-output" \
       ${job_env[@]+"${job_env[@]}"} ${step_env[@]+"${step_env[@]}"} \
       "$scratch/tools/bash" --noprofile --norc "${shell_flags[@]}" "$run_file") \
       >"$scratch/step.log" 2>&1 || status=$?
     cat "$scratch/step.log" >>"$log"
     # A command outside the stubs and the tool set could have published on a real runner, even
-    # behind `|| true`, so it fails this test however the step ended.
-    if grep -qF 'command not found' "$scratch/step.log"; then
-      fail "$sim_workflow step '$name' runs a command this test does not model: $(cat "$scratch/step.log")"
+    # behind `|| true`, so it fails this test however the step ended. (A command run by absolute
+    # path bypasses PATH and is outside what this simulation can see; no step does that.)
+    if [[ -s "$scratch/unmodelled" ]] || grep -qF 'command not found' "$scratch/step.log"; then
+      fail "$sim_workflow step '$name' runs a command this test does not model: $(cat "$scratch/unmodelled" "$scratch/step.log")"
     fi
     if [[ "$status" -ne 0 ]]; then
       printf 'FAILED at %s\n' "$name" >>"$log"
@@ -340,6 +359,35 @@ EOF
 app=.github/workflows/publish-app.yaml
 manifests=.github/workflows/publish-manifests.yaml
 [[ -f "$app" && -f "$manifests" ]] || fail "run from the repository root"
+
+# ---- 0. the simulation catches a command outside its tool set, even silenced ------------------
+
+# The hook that records it needs bash 4+, which CI runs; macOS's bash 3.2 has only the visible
+# `command not found` message, so there the silenced case is skipped rather than claimed.
+if [[ "$("$scratch/tools/bash" -c 'echo "${BASH_VERSINFO[0]}"')" -ge 4 ]]; then
+  probe="$scratch/probe.yaml"
+  cat >"$probe" <<'EOF'
+on:
+  workflow_call:
+    inputs:
+      dry-run: {type: boolean, default: false}
+jobs:
+  publish:
+    if: ${{ !inputs.dry-run }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: sneaky
+        run: oras push ghcr.io/x:1 2>/dev/null || true
+EOF
+  if out="$(run_job "$probe" publish "$scratch" tag v1.2.3 2>&1)"; then
+    fail "the simulation ran a silenced command outside its tool set without noticing"
+  fi
+  [[ "$out" == *"runs a command this test does not model"* ]] ||
+    fail "the simulation refused the probe for the wrong reason: $out"
+  echo "ok   the simulation catches a silenced command outside its tool set"
+else
+  echo "skip the silenced-command probe needs bash 4+ (CI runs it)"
+fi
 
 # ---- 1. publish-app: a good release pushes, and pins the digest after the build -----------------
 
@@ -439,6 +487,8 @@ accepted=(
   "v1.2.3-rc.1+build.5|1.2.3-rc.1"
   "v1.0.0+0.build.1-rc.10000aaa-kk-0.1|1.0.0"
   "v999999999999999.0.0|999999999999999.0.0"
+  "v1.2.3-rc.999999999999999|1.2.3-rc.999999999999999"
+  "v1.2.3-1234567890123456a|1.2.3-1234567890123456a"
 )
 long_pre="$(printf 'a%.0s' $(seq 1 130))"
 long_build="$(printf 'b%.0s' $(seq 1 251))"
@@ -467,6 +517,7 @@ rejected=(
   # below 2^64) cannot read, so the image or the manifests would miss their version.
   "v9007199254740992.0.0"
   "v1.0.18446744073709551616"
+  "v1.2.3-rc.1000000000000000"
   "v1.2.3+${long_build}"
 )
 
