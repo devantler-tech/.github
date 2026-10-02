@@ -111,6 +111,8 @@ lookup_expr() { # <expression> — the value GitHub would substitute for ${{ <ex
     github.ref_type) printf '%s' "$sim_ref_type" ;;
     github.ref_name) printf '%s' "$sim_ref_name" ;;
     github.sha) printf '%s' "$sha40" ;;
+    github.run_id) printf '%s' 123 ;;
+    github.run_attempt) printf '%s' 2 ;;
     github.server_url) printf '%s' "https://github.com" ;;
     github.repository) printf '%s' "$sim_repository" ;;
     github.actor) printf '%s' "bot" ;;
