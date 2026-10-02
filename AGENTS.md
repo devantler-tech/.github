@@ -316,6 +316,14 @@ Actions and reusable workflows are exercised as jobs inside [`ci.yaml`](.github/
 
 `ci-required-checks` is the sole exception to the harden-runner-first rule: adding any action would weaken its workspace-independent trust boundary. Every other step-bearing job must start with SHA-pinned `step-security/harden-runner` in audit mode, and `lint-ci-coverage-parity` enforces both sides of that contract.
 
+**Cleanup coverage:** the production `delete-workflow-runs.yaml` wrapper is exercised
+through its complete generated `delete-workflow-runs-readonly.yaml` projection. The
+coverage guard accepts this pair only after `.github/tests/test-cleanup-credentials.sh`
+verifies source parity, all three executed callers and their read-only permissions.
+Regenerate with `bash .github/scripts/generate-cleanup-readonly.sh`; never edit the
+projection by hand. Input behavior and credential restoration have independent
+negative controls. Native retention/deletion fixtures remain tracked in #350.
+
 Every `.github/tests/test-*.sh` is a test entrypoint and must have an explicit invocation in a
 `ci.yaml` step's `run:` block. Put `bash .github/tests/test-name.sh` (or the executable path) in a
 dedicated step without a step-level `if`; quoting, arguments, and surrounding comments or blank lines

@@ -3200,6 +3200,14 @@ jobs:
         shell: bash
         run: bash .github/tests/test-test-script-wiring.sh
 
+      - name: 🔐 Check cleanup self-tests cannot delete workflow history
+        shell: bash
+        run: bash .github/tests/test-cleanup-credentials.sh
+
+      - name: 🧪 Check cleanup credential and input regressions are rejected
+        shell: bash
+        run: bash .github/tests/test-cleanup-credentials-controls.sh
+
       - name: 📋 Check ci.yaml test wiring is complete
         shell: bash
         run: |
@@ -3234,6 +3242,15 @@ jobs:
             grep -qE "^[[:space:]]+workflow_call:" "$wf" || continue
             wname="$(basename "$wf")"
             if ! grep -qE "uses:[[:space:]]*\./\.github/workflows/$wname([[:space:]]|\$)" "$ci"; then
+              # Cleanup is exercised through its complete source-derived projection.
+              # Verify its executed callers, credentials and source parity before
+              # accepting it as coverage of the production wrapper.
+              if [[ "$wname" == delete-workflow-runs.yaml ]]; then
+                if ! bash .github/tests/test-cleanup-credentials.sh; then
+                  status=1
+                fi
+                continue
+              fi
               echo "::error file=$wf::reusable workflow '$wname' has no test job in $ci (expected a job step with 'uses: ./.github/workflows/$wname')"
               status=1
             fi
@@ -3342,7 +3359,7 @@ jobs:
   test-delete-workflow-runs-all:
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
     name: "[Test] Delete Workflow Runs - All Workflows"
-    uses: ./.github/workflows/delete-workflow-runs.yaml
+    uses: ./.github/workflows/delete-workflow-runs-readonly.yaml
     with:
       days: 30
       minimum-runs: 6
@@ -3350,31 +3367,29 @@ jobs:
       delete-run-by-conclusion-pattern: "ALL"
       dry-run: true
     permissions:
-      actions: write
+      actions: read
       contents: read
 
   test-delete-workflow-runs-specific:
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
     name: "[Test] Delete Workflow Runs - Specific Pattern"
-    uses: ./.github/workflows/delete-workflow-runs.yaml
+    uses: ./.github/workflows/delete-workflow-runs-readonly.yaml
     with:
       days: 7
       minimum-runs: 3
-      delete-workflow-pattern: "test-delete-workflow-runs.yaml"
+      delete-workflow-pattern: "ci.yaml"
       delete-run-by-conclusion-pattern: "cancelled,failure"
       dry-run: true
     permissions:
-      actions: write
+      actions: read
       contents: read
 
   test-delete-workflow-runs-minimal:
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
     name: "[Test] Delete Workflow Runs - Minimal Parameters"
-    uses: ./.github/workflows/delete-workflow-runs.yaml
-    with:
-      dry-run: true
+    uses: ./.github/workflows/delete-workflow-runs-readonly.yaml
     permissions:
-      actions: write
+      actions: read
       contents: read
 
   # Validate the production workflow interface without selecting a Go module.
