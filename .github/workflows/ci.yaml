@@ -3682,18 +3682,48 @@ jobs:
           RUN_ATTEMPT: ${{ github.run_attempt }}
         run: |
           set -euo pipefail
-          gh api "repos/$REPOSITORY/actions/runs/$RUN_ID/attempts/$RUN_ATTEMPT/jobs" \
-            --paginate --slurp > jobs.json
-          if ! jq -e '
-            [.[] | .jobs[] | select(.name | startswith("[Test] Enable Auto-Merge - Queue Slot "))]
-            | sort_by(.name)
-            | (map(.name) == [
-                "[Test] Enable Auto-Merge - Queue Slot 1",
-                "[Test] Enable Auto-Merge - Queue Slot 2",
-                "[Test] Enable Auto-Merge - Queue Slot 3"
-              ]) and all(.[]; .status == "completed" and .conclusion == "success")
+          # Retry only server failures, restarting the entire paginated read.
+          # A failed later page can already have emitted convincing partial data.
+          for attempt in 1 2 3; do
+            if gh api "repos/$REPOSITORY/actions/runs/$RUN_ID/attempts/$RUN_ATTEMPT/jobs?per_page=100" \
+              --paginate --slurp > jobs.json 2> jobs.error; then
+              break
+            fi
+            status="$(sed -nE 's/.*\(HTTP ([0-9]{3})\).*/\1/p' jobs.error | tail -1)"
+            if [[ "$attempt" == 3 || ! "$status" =~ ^5[0-9][0-9]$ ]]; then
+              cat jobs.error >&2
+              echo "::error::Could not read complete queue evidence."
+              exit 1
+            fi
+            echo "::notice::Queue evidence read failed with HTTP $status; retrying the complete read."
+            sleep "$((attempt * 2))"
+          done
+          if ! jq -e --argjson run "$RUN_ID" --argjson attempt "$RUN_ATTEMPT" '
+            def integer: type == "number" and . >= 0 and floor == .;
+            type == "array" and length > 0
+            and all(.[];
+              type == "object" and (.total_count | integer)
+              and (.jobs | type == "array")
+              and all(.jobs[];
+                type == "object" and (.id | integer and . > 0)
+                and .run_id == $run and .run_attempt == $attempt
+                and (.name | type == "string")
+              )
+            )
+            and (map(.total_count) | unique | length == 1)
+            and ((map(.jobs | length) | add) == .[0].total_count)
+            and ([.[] | .jobs[].id] | length == (unique | length))
+            and (
+              [.[] | .jobs[] | select(.name | startswith("[Test] Enable Auto-Merge - Queue Slot "))]
+              | sort_by(.name)
+              | (map(.name) == [
+                  "[Test] Enable Auto-Merge - Queue Slot 1",
+                  "[Test] Enable Auto-Merge - Queue Slot 2",
+                  "[Test] Enable Auto-Merge - Queue Slot 3"
+                ]) and all(.[]; .status == "completed" and .conclusion == "success")
+            )
           ' jobs.json; then
-            echo "::error::All three queue slots must finish successfully in this run attempt. Use Re-run all jobs to repeat the burst; rerunning only this observer cannot recreate it."
+            echo "::error::Complete evidence must show all three queue slots succeeded in this run attempt. Use Re-run all jobs to repeat the burst; rerunning only this observer cannot recreate it."
             exit 1
           fi
 
@@ -3716,6 +3746,12 @@ jobs:
 
       - name: 🧪 Verify fail-closed review/pre-merge gate
         run: bash .github/tests/test-enable-auto-merge-pentad-gate.sh
+
+      - name: Exercise queue observer recovery and incomplete evidence
+        run: bash .github/tests/test-queue-observer.sh
+
+      - name: Reject broken queue observer guards
+        run: bash .github/tests/test-queue-observer-controls.sh
 
   test-create-release:
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
