@@ -3,9 +3,9 @@ description: Find early-exit grep assertions in tracked shell scripts before pip
 author: devantler-tech
 inputs:
   enabled:
-    description: Opt in to the shell pipeline guard. Temporary rollout input tracked in actions issue 1357.
+    description: Run the shell pipeline guard; set false to opt out. Input retirement is tracked in .github issue 268.
     required: false
-    default: "false"
+    default: "true"
   working-directory:
     description: Git checkout directory, relative to GITHUB_WORKSPACE or absolute.
     required: false
@@ -21,14 +21,14 @@ outputs:
 runs:
   using: composite
   steps:
-    - name: Check opt-in input
+    - name: Check enablement input
       shell: bash
       env:
         ENABLED: ${{ inputs.enabled }}
       run: |
         case "$ENABLED" in
           true) ;;
-          false) echo "Shell pipeline validation is disabled; set enabled to true to opt in." ;;
+          false) echo "Shell pipeline validation is explicitly disabled." ;;
           *) echo "::error::enabled must be exactly true or false"; exit 1 ;;
         esac
 
