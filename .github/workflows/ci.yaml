@@ -4055,11 +4055,10 @@ jobs:
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
     name: "[Test] Sync Cluster Policies - Dry Run"
     uses: ./.github/workflows/sync-cluster-policies.yaml
+    permissions: {}
     with:
       kyverno-policies-dir: /tmp/test-policies
       dry-run: true
-    secrets:
-      APP_PRIVATE_KEY: ${{ secrets.APP_PRIVATE_KEY }}
 
   test-sync-cluster-policies-allowlist:
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
@@ -4084,6 +4083,10 @@ jobs:
         run: bash .github/tests/test-sync-cluster-policies-filter.sh
       - name: Verify the target keeps its policies when the copy fails
         run: bash .github/tests/test-sync-cluster-policies-copy.sh
+      - name: Verify secret-free dry-runs and required production authentication
+        run: bash .github/tests/test-sync-cluster-policies-credentials.sh
+      - name: Reject restored dry-run secrets and weakened production authentication
+        run: bash .github/tests/test-sync-cluster-policies-credentials-blocks.sh
 
   test-update-agent-skills:
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
