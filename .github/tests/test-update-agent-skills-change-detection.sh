@@ -46,6 +46,9 @@ case "$SCENARIO" in
   aux-exec-bit) chmod -x "$skill/scripts/helper.sh" ;;
   aux-symlink) ln -sfn renamed.md "$skill/references/latest.md" ;;
   same-bytes) cp "$skill/references/guide.md" "$skill/references/guide.tmp" && mv "$skill/references/guide.tmp" "$skill/references/guide.md" ;;
+  skill-removed) rm -rf "$skill" ;;
+  skill-added) mkdir -p "$root/added" && printf -- '---\nname: added\n---\nAdded skill.\n' >"$root/added/SKILL.md" ;;
+  git-metadata) printf 'ref: refs/heads/other\n' >"$skill/.git/HEAD" ;;
   *) echo "unknown scenario $SCENARIO" >&2; exit 64 ;;
 esac
 echo "Updated demo"
@@ -60,11 +63,14 @@ new_skills() { # <dir> — two installed skills; `demo` bundles auxiliary files
   chmod +x "$1/demo/scripts/helper.sh"
   printf 'A reference.\n' >"$1/demo/references/guide.md"
   ln -s guide.md "$1/demo/references/latest.md"
+  # Repository state inside a skill directory, e.g. a vendored checkout, is not skill content.
+  mkdir -p "$1/demo/.git"
+  printf 'ref: refs/heads/main\n' >"$1/demo/.git/HEAD"
   printf -- '---\nname: other\n---\nOther skill.\n' >"$1/other/SKILL.md"
 }
 
-run_update() { # <scenario> — prints the step's `changed` output
-  local skills="$work/skills" output="$work/github-output"
+expect() { # <scenario> <true|false> — runs the update step and checks its `changed` output
+  local skills="$work/skills" output="$work/github-output" got
   new_skills "$skills"
   : >"$output"
   # Composite steps with `shell: bash` run as `bash --noprofile --norc -eo pipefail {0}`.
@@ -74,12 +80,7 @@ run_update() { # <scenario> — prints the step's `changed` output
     bash --noprofile --norc -eo pipefail "$script" >"$work/step.log" 2>&1; then
     fail "the update step failed in scenario $1: $(cat "$work/step.log")"
   fi
-  sed -n 's/^changed=//p' "$output"
-}
-
-expect() { # <scenario> <true|false>
-  local got
-  got=$(run_update "$1")
+  got=$(sed -n 's/^changed=//p' "$output")
   [[ "$got" == "$2" ]] || fail "scenario $1: expected changed=$2, got changed=${got:-<unset>}"
   echo "ok   $1 -> changed=$2"
 }
@@ -91,8 +92,11 @@ expect aux-removed true
 expect aux-renamed true
 expect aux-exec-bit true
 expect aux-symlink true
-# A SKILL.md change is still a change.
+# A SKILL.md change is still a change, and so is a whole skill disappearing or appearing.
 expect skill-md true
-# Nothing changed, or a file rewritten with identical bytes: no change.
+expect skill-removed true
+expect skill-added true
+# Nothing changed, a file rewritten with identical bytes, or only repository state moved: no change.
 expect noop false
 expect same-bytes false
+expect git-metadata false

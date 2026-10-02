@@ -90,24 +90,29 @@ runs:
         # Writes one line per file under the skill directories read from stdin: the content hash of
         # every regular file, plus every executable bit and symlink target, which change a skill
         # without changing any file's bytes. Added and removed files change the listing itself.
+        # A `.git` inside a skill directory is repository state, not skill content.
         snapshot() { # <out>
-          local dirs dir file
+          local dirs dir file files
           dirs=$(sort -u)
-          : >"$1"
-          while IFS= read -r dir; do
-            if [ -n "$dir" ] && [ -d "$dir" ]; then find "$dir" -type f -print0; fi
-          done <<<"$dirs" | sort -zu | xargs -0 -r shasum -a 256 >>"$1"
+          files=$(mktemp)
           while IFS= read -r dir; do
             if [ -n "$dir" ] && [ -d "$dir" ]; then
-              find "$dir" \( -type l -o -type f -perm -u+x \) -print0
+              find "$dir" -name .git -prune -o \( -type f -o -type l \) -print0
             fi
-          done <<<"$dirs" | sort -zu | while IFS= read -r -d '' file; do
-            if [ -L "$file" ]; then
-              printf 'link %s -> %s\n' "$file" "$(readlink "$file")"
-            else
-              printf 'exec %s\n' "$file"
-            fi
-          done >>"$1"
+          done <<<"$dirs" | sort -zu >"$files"
+          {
+            while IFS= read -r -d '' file; do
+              if [ ! -L "$file" ]; then printf '%s\0' "$file"; fi
+            done <"$files" | xargs -0 -r shasum -a 256
+            while IFS= read -r -d '' file; do
+              if [ -L "$file" ]; then
+                printf 'link %s -> %s\n' "$file" "$(readlink "$file")"
+              elif [ -x "$file" ]; then
+                printf 'exec %s\n' "$file"
+              fi
+            done <"$files"
+          } >"$1"
+          rm -f "$files"
         }
         skill_dirs=$(list_skill_dirs)
         before=$(mktemp)
@@ -116,19 +121,16 @@ runs:
         # Discover all parent directories of skill subdirectories under INPUT_DIR.
         # gh skill update --dir X discovers X/*/SKILL.md and writes back to X/<skill>/SKILL.md.
         # Passing the immediate parent of each skill dir (e.g. .agents/skills or plugins/<p>/skills)
-        # ensures discovery and writes land in the same place.
+        # ensures discovery and writes land in the same place. Derived from the same skill list the
+        # snapshot covers, so the skills updated and the skills compared cannot drift apart.
         # Use a while-read loop instead of mapfile for bash 3.2 compatibility (macOS).
         roots=()
         while IFS= read -r root; do
           roots+=("$root")
         done < <(
-          find "$INPUT_DIR" -type f -name SKILL.md -print0 \
-            | while IFS= read -r -d '' md; do
-                skill_dir=$(dirname "$md")
-                parent_dir=$(dirname "$skill_dir")
-                echo "$parent_dir"
-              done \
-            | sort -u
+          while IFS= read -r skill_dir; do
+            if [ -n "$skill_dir" ]; then dirname "$skill_dir"; fi
+          done <<<"$skill_dirs" | sort -u
         )
 
         if [ ${#roots[@]} -eq 0 ]; then
@@ -179,10 +181,10 @@ runs:
             ;;
         esac
 
-        # The same directories as before, plus any skill that appeared, so a skill that vanished or
-        # appeared during the update also counts as a change.
+        # Re-list the skills: one that appeared adds its files to the snapshot, and one that vanished
+        # (or lost its SKILL.md) drops at least that file from it, so both count as a change.
         after=$(mktemp)
-        { printf '%s\n' "$skill_dirs"; list_skill_dirs; } | snapshot "$after"
+        list_skill_dirs | snapshot "$after"
 
         if cmp -s "$before" "$after"; then
           echo "changed=false" >> "$GITHUB_OUTPUT"
