@@ -418,6 +418,14 @@ Two App identities exist:
 
 ### Validation Commands
 
+**Production to-do input forwarding:** the reusable scanner exposes the composite's
+optional-project integration choices while retaining its existing defaults.
+The generated read-only workflow runs the exact production steps with an empty
+project and all paths excluded in required CI; both offline dry-run calls remain.
+Keep default/forwarding controls, projection parity and all three caller boundaries
+covered. This proves the no-project wrapper path; #340 still owns live project
+association, consumer rollout and flag retirement.
+
 **Shell pipeline assertions:** `lint-shell-pipelines` invokes the shared guard with
 `enabled: true` over the real script directories declared in that CI job's
 `SCAN_PATHS`. Keep new script-owning directories in this scope and extend

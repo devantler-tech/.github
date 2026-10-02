@@ -755,6 +755,8 @@ jobs:
 | `APP_PRIVATE_KEY` | Secret          | -       | No       | Required for production project integration; unused in dry-run |
 | `dry-run`         | Input (boolean) | `false` | No       | Exercise the action wrapper offline without creating issues |
 | `ignore`          | Input (string)  | `""`    | No       | Regular expression matching repository-relative paths to ignore |
+| `optional-project-auth` | Input (boolean) | `false` | No | Opt in to project integration being optional |
+| `project` | Input (string) | `organization/devantler-tech/5` | No | Project selection; explicitly empty omits integration when opted in |
 
 With `dry-run: true`, omit the App secret: an executed job uses only a contents-read token and a
 fail-closed Docker fixture to verify exactly one wrapper invocation and input forwarding. This
@@ -765,14 +767,21 @@ The calling job still needs the static `issues: write` ceiling because GitHub va
 production job even when it is skipped. Production uses the workflow token for issues and the
 App token for the organization project.
 
+Production callers can pass `optional-project-auth: true` and `project: ""` to omit
+project integration. Existing callers retain the current project selection and
+default-off rollout choice. Configured projects still require their existing
+authorization. Rollout and flag retirement remain tracked in #340.
+
 </details>
 
 ### 📝 Scan for TODO Comments (Read-Only)
 
 [.github/workflows/scan-for-todo-comments-readonly.yaml](.github/workflows/scan-for-todo-comments-readonly.yaml)
-is the internal catalogue smoke entrypoint. Both CI callers grant only `contents: read`, pass
-`dry-run: true` and omit secrets. The actual offline wrapper verifies one invocation for both
-default and configured ignore inputs; the production issue/project job remains skipped.
+is the internal catalogue smoke entrypoint. Two CI calls use `dry-run: true` to
+verify one offline wrapper invocation for default and configured ignore inputs.
+A third call exercises the actual production steps with optional integration,
+an empty project and every source path excluded. All three grant only
+`contents: read` and omit secrets; none can write issues or change a project.
 
 #### Secrets and Inputs
 
@@ -781,13 +790,15 @@ default and configured ignore inputs; the production issue/project job remains s
 | `APP_PRIVATE_KEY` | Secret          | -       | No       | Preserved production interface; catalogue smoke callers must omit it |
 | `dry-run`         | Input (boolean) | `false` | No       | Catalogue callers explicitly enable offline execution |
 | `ignore`          | Input (string)  | `""`    | No       | Repository-relative path expression forwarded to the wrapper |
+| `optional-project-auth` | Input (boolean) | `false` | No | Preserved production choice; the no-project evaluation enables it |
+| `project` | Input (string) | `organization/devantler-tech/5` | No | Preserved project selection; the no-project evaluation sets it empty |
 
 Generate it with `bash .github/scripts/generate-todo-readonly.sh`. The complete production
 workflow is preserved, with only its display name changed and its issue permission removed.
 Required CI checks compare it independently with production and reject restored caller/callee
 write permissions, secrets, input drift or weakened execution. Production consumers continue
 using `scan-for-todo-comments.yaml` with their existing authorization. Live project behavior
-and optional project-authentication rollout remain tracked separately in #334 and #340.
+and optional project-authentication rollout remain tracked separately in #340.
 
 ### 🔍 Scan for Workflow Vulnerabilities
 

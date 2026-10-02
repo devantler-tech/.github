@@ -4052,6 +4052,19 @@ jobs:
     with:
       dry-run: true
 
+  test-scan-for-todo-comments-no-project:
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    name: "[Test] Scan for TODO Comments - Production Steps Without a Project"
+    uses: ./.github/workflows/scan-for-todo-comments-readonly.yaml
+    permissions:
+      contents: read
+    with:
+      dry-run: false
+      optional-project-auth: true
+      project: ""
+      # Exercise the production wrapper without authorizing or requesting issue writes.
+      ignore: ".*"
+
   test-scan-for-todo-comments-ignore:
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
     name: "[Test] Scan for TODO Comments - Dry Run (ignore configured)"
@@ -5763,6 +5776,7 @@ jobs:
       - test-publish-caller-pin-live
       - test-scan-for-todo-comments
       - test-scan-for-todo-comments-ignore
+      - test-scan-for-todo-comments-no-project
       - test-sync-cluster-policies
       - test-sync-cluster-policies-allowlist
       - test-update-agent-skills
@@ -5891,6 +5905,7 @@ jobs:
             ${{ needs.test-publish-caller-pin-live.result }}
             ${{ needs.test-scan-for-todo-comments.result }}
             ${{ needs.test-scan-for-todo-comments-ignore.result }}
+            ${{ needs.test-scan-for-todo-comments-no-project.result }}
             ${{ needs.test-sync-cluster-policies.result }}
             ${{ needs.test-sync-cluster-policies-allowlist.result }}
             ${{ needs.test-update-agent-skills.result }}
