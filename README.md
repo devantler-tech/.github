@@ -819,6 +819,8 @@ A literal `!` re-include (one without glob characters) must still exist upstream
 
 The selected policies are copied and checked beside the target directory before it changes. If the copy or the swap fails, the run fails and the target keeps its previous policies. A run that selects nothing empties the target only when `.policyignore` excludes every upstream policy; otherwise it fails. Entries in the target whose names start with a dot are left in place.
 
+Set `dry-run: true` and omit `APP_PRIVATE_KEY` to validate the interface without syncing or opening a pull request. A real sync requires the App key and fails before token creation if it is missing.
+
 #### Usage
 
 ```yaml
@@ -835,7 +837,7 @@ jobs:
 
 | Key                    | Type            | Default | Required | Description                                              |
 |------------------------|-----------------|---------|----------|----------------------------------------------------------|
-| `APP_PRIVATE_KEY`      | Secret          | -       | Yes      | GitHub App private key                                   |
+| `APP_PRIVATE_KEY`      | Secret          | -       | For a real sync | GitHub App private key; omit for dry-runs             |
 | `kyverno-policies-dir` | Input (string)  | -       | Yes      | Directory to sync Kyverno policies to                    |
 | `dry-run`              | Input (boolean) | `false` | No       | Skip sync and PR creation (validate workflow interface only) |
 
