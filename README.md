@@ -753,6 +753,28 @@ App token for the organization project.
 
 </details>
 
+### 📝 Scan for TODO Comments (Read-Only)
+
+[.github/workflows/scan-for-todo-comments-readonly.yaml](.github/workflows/scan-for-todo-comments-readonly.yaml)
+is the internal catalogue smoke entrypoint. Both CI callers grant only `contents: read`, pass
+`dry-run: true` and omit secrets. The actual offline wrapper verifies one invocation for both
+default and configured ignore inputs; the production issue/project job remains skipped.
+
+#### Secrets and Inputs
+
+| Key               | Type            | Default | Required | Description |
+|-------------------|-----------------|---------|----------|-------------|
+| `APP_PRIVATE_KEY` | Secret          | -       | No       | Preserved production interface; catalogue smoke callers must omit it |
+| `dry-run`         | Input (boolean) | `false` | No       | Catalogue callers explicitly enable offline execution |
+| `ignore`          | Input (string)  | `""`    | No       | Repository-relative path expression forwarded to the wrapper |
+
+Generate it with `bash .github/scripts/generate-todo-readonly.sh`. The complete production
+workflow is preserved, with only its display name changed and its issue permission removed.
+Required CI checks compare it independently with production and reject restored caller/callee
+write permissions, secrets, input drift or weakened execution. Production consumers continue
+using `scan-for-todo-comments.yaml` with their existing authorization. Live project behavior
+and optional project-authentication rollout remain tracked separately in #334 and #340.
+
 ### 🔍 Scan for Workflow Vulnerabilities
 
 <details>

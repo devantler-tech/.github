@@ -68,7 +68,8 @@ guard() {
         $restore.key < $verify and $restore.value.if == "${{ always() }}") | not
     then error("restore the cleaned action checkout before verification and post-cleanup")
     elif (["test-scan-for-todo-comments","test-scan-for-todo-comments-ignore"] | all(. as $name |
-      $ci.jobs[$name].uses == "./.github/workflows/scan-for-todo-comments.yaml" and
+      $ci.jobs[$name].uses == "./.github/workflows/scan-for-todo-comments-readonly.yaml" and
+      $ci.jobs[$name].permissions == {contents:"read"} and
       $ci.jobs[$name].with["dry-run"] == true and $ci.jobs[$name].secrets == null and
       $ci.jobs[$name].if == $condition and
       $ci.jobs[$name].needs == null and ($ci.jobs[$name]["continue-on-error"] // false) == false and
@@ -130,6 +131,8 @@ broken independent expectation	.workflow.jobs["dry-run"].steps |= map(if (.run /
 missing cleanup restore	.workflow.jobs["dry-run"].steps |= map(if .with.path and .if then .if=null else . end)	post-cleanup
 verify before action	.workflow.jobs["dry-run"].steps |= ([.[]|select(.run // ""|endswith(" verify-once"))]+[.[]|select((.run // ""|endswith(" verify-once"))|not)])	post-cleanup
 default caller secret	.ci.jobs["test-scan-for-todo-comments"].secrets.APP_PRIVATE_KEY="${{ secrets.APP_PRIVATE_KEY }}"	secret-free workflow calls
+default caller write scope	.ci.jobs["test-scan-for-todo-comments"].permissions.issues="write"	secret-free workflow calls
+ignore caller write scope	.ci.jobs["test-scan-for-todo-comments-ignore"].permissions.contents="write"	secret-free workflow calls
 ignore caller inherit	.ci.jobs["test-scan-for-todo-comments-ignore"].secrets="inherit"	secret-free workflow calls
 caller live mode	.ci.jobs["test-scan-for-todo-comments"].with["dry-run"]=false	secret-free workflow calls
 default caller skipped	.ci.jobs["test-scan-for-todo-comments"].if="false"	secret-free workflow calls

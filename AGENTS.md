@@ -332,6 +332,14 @@ Regenerate with `bash .github/scripts/generate-cleanup-readonly.sh`; never edit 
 projection by hand. Input behavior and credential restoration have independent
 negative controls. Native retention/deletion fixtures remain tracked in #350.
 
+**TODO coverage:** both TODO smoke callers use the complete generated
+`scan-for-todo-comments-readonly.yaml` projection with contents-read permissions and no
+App secret. Regenerate with `bash .github/scripts/generate-todo-readonly.sh`; never edit
+the generated workflow. `.github/tests/test-todo-workflow-readonly.sh` verifies independent
+production parity, the full job permission ceiling and both executed smoke callers before
+the coverage guard accepts the production/projection pair. Existing wrapper/scanner fixtures
+remain required. Remaining project/authentication coverage is tracked in #334 and #340.
+
 Every `.github/tests/test-*.sh` is a test entrypoint and must have an explicit invocation in a
 `ci.yaml` step's `run:` block. Put `bash .github/tests/test-name.sh` (or the executable path) in a
 dedicated step without a step-level `if`; quoting, arguments, and surrounding comments or blank lines
