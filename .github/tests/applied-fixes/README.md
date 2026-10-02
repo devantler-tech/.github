@@ -30,6 +30,8 @@ only the intended consumer changes.
 - Failed verification leaves the consumer unchanged. Cleanup compares the known
   staging tip; a collision, unknown acknowledgment or concurrent staging update
   never authorizes deleting another ref or tip.
+- A failed cleanup-plan write retains the staging ref, emits a warning, removes
+  the local workdir, and preserves the original verification-failure status.
 
 [`createCommitOnBranch`](https://docs.github.com/en/graphql/reference/commits#createcommitonbranch)
 updates the staging branch as part of the commit mutation. The subsequent

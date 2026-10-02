@@ -5,9 +5,10 @@ repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 workflow="${1:-$repo_root/.github/workflows/apply-signed-fixes.yaml}"
 test_root="$(mktemp -d)"
 trap 'rm -rf "$test_root"' EXIT
-export REAL_GIT REAL_BASE64
+export REAL_GIT REAL_BASE64 REAL_JQ
 REAL_GIT="$(command -v git)"
 REAL_BASE64="$(command -v base64)"
+REAL_JQ="$(command -v jq)"
 count=0
 fail() { echo "FAIL: ${case_name:-setup}: $*" >&2; exit 1; }
 
@@ -67,14 +68,27 @@ set -euo pipefail
 if [[ "${1:-}" == -w0 ]]; then shift; fi
 exec "$REAL_BASE64" "$@"
 BASE64
-  chmod +x "$CASE_ROOT/bin/gh" "$CASE_ROOT/bin/git" "$CASE_ROOT/bin/base64"
+  cat > "$CASE_ROOT/bin/jq" <<'JQ'
+#!/usr/bin/env bash
+set -euo pipefail
+if [[ "$READ_FAILURE" == cleanup-plan ]]; then
+  previous=''
+  for argument in "$@"; do
+    [[ "$previous" != --arg || "$argument" != before ]] || exit 87
+    previous="$argument"
+  done
+fi
+exec "$REAL_JQ" "$@"
+JQ
+  chmod +x "$CASE_ROOT/bin/gh" "$CASE_ROOT/bin/git" "$CASE_ROOT/bin/base64" "$CASE_ROOT/bin/jq"
 }
 
 run_step() {
   local step="$1" expected="$2" diagnostic="${3:-}" status=0
   local commit_step=""
   [[ "$step" != commit ]] || commit_step=true
-  (cd "$CASE_ROOT/repo"; PATH="$CASE_ROOT/bin:$PATH" COMMIT_STEP="$commit_step" bash "$test_root/$step.sh") > "$CASE_ROOT/output" 2>&1 || status=$?
+  (cd "$CASE_ROOT/repo"; PATH="$CASE_ROOT/bin:$PATH" TMPDIR="$CASE_ROOT/runtime" COMMIT_STEP="$commit_step" bash "$test_root/$step.sh") > "$CASE_ROOT/output" 2>&1 || status=$?
+  last_status="$status"
   if [[ "$expected" == success ]]; then
     [[ $status == 0 ]] || { cat "$CASE_ROOT/output" >&2; fail "$step unexpectedly failed ($status)"; }
   else
@@ -180,6 +194,15 @@ for mode in empty malformed failed; do
   run_step commit failure
   unchanged
 done
+
+new_case cleanup-plan-failed; changed; verification false; READ_FAILURE=cleanup-plan
+run_step commit failure 'Temporary applied-fixes ref retained'
+[[ "$last_status" == 1 ]] || fail 'cleanup replaced the original verification failure status'
+unchanged
+[[ "$(cat "$CASE_ROOT/staged-head")" == "$CREATED_SHA" && "$(calls graphql)" == 2 ]] || fail 'failed cleanup plan authorized a ref mutation'
+remaining="$(find "$CASE_ROOT/runtime" -mindepth 1 -type d)"
+[[ -z "$remaining" ]] || fail 'cleanup plan failure prevented local workdir removal'
+
 for mode in stale rejected errors empty malformed missing-oid bad-oid lost; do
   new_case "mutation-$mode"; changed; API_MODE="$mode"
   run_step commit failure

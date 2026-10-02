@@ -222,13 +222,13 @@ jobs:
             if [ -n "$staged_oid" ]; then
               # Delete only the ref and tip whose creation we acknowledged. A lost
               # commit response or another writer may have changed it; never force-delete.
-              jq -n --arg ref "$staging_ref" --arg before "$staged_oid" \
-                '[{name:$ref,beforeOid:$before,afterOid:"0000000000000000000000000000000000000000",force:false}]' >"$workdir/updates.json"
-              if ! update_refs cleanup; then
+              if ! { jq -n --arg ref "$staging_ref" --arg before "$staged_oid" \
+                '[{name:$ref,beforeOid:$before,afterOid:"0000000000000000000000000000000000000000",force:false}]' >"$workdir/updates.json" &&
+                update_refs cleanup; }; then
                 echo "::warning::Temporary applied-fixes ref retained after an uncertain or concurrent update: ${staging_ref}."
               fi
             fi
-            rm -rf "$workdir"
+            rm -rf "$workdir" || echo '::warning::Could not remove the temporary applied-fixes workdir.'
             exit "$status"
           }
           trap 'cleanup "$?"' EXIT
