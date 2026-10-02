@@ -17,6 +17,13 @@ unsafe file path	.[0].Files={"../escaped.sh": {Before:"",After:""}}
 missing operations	.[0] |= del(.Operations)
 missing results	.[0] |= del(.Output)
 duplicate scenario	. + [.[0]]
+non-boolean exit expectation	.[0].WantFailure="false"
+non-array forbidden results	.[0].ForbiddenOutput="Issue created"
+empty forbidden result	.[0].ForbiddenOutput=[""]
+non-array initial reads	.[0].InitialReads={}
+empty initial reads	.[0].InitialReads=[]
+invalid initial read status	.[0].InitialReads=[{Method:"GET",Path:"/repos/offline/fixture/issues",Status:0,Response:"[]"}]
+non-string initial read response	.[0].InitialReads=[{Method:"GET",Path:"/repos/offline/fixture/issues",Status:503,Response:{message:"Failure"}}]
 CASES
 bash "$root/.github/tests/test-todo-scanner.sh" --check-fixtures "$root/.github/tests/todo-scanner/cases.json"
-echo 'PASS: 6 invalid scanner scenario fixtures are rejected'
+echo 'PASS: 13 invalid scanner scenario fixtures are rejected'

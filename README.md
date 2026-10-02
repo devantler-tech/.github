@@ -747,6 +747,8 @@ jobs:
 With `dry-run: true`, omit the App secret: an executed job uses only a contents-read token and a
 fail-closed Docker fixture to verify exactly one wrapper invocation and input forwarding. This
 does not scan source comments; catalogue CI separately exercises the real scanner image.
+The [scanner fixtures](.github/tests/todo-scanner/README.md) verify complete requests and results
+for healthy runs and API failures, while recording the pinned scanner's existing failure-handling limitations.
 The calling job still needs the static `issues: write` ceiling because GitHub validates the
 production job even when it is skipped. Production uses the workflow token for issues and the
 App token for the organization project.

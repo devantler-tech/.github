@@ -3,6 +3,7 @@ package main
 import (
 	"crypto/tls"
 	"crypto/x509"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -143,5 +144,67 @@ func TestProxyRejectsUnexpectedDestination(t *testing.T) {
 	fixture.ServeHTTP(w, r)
 	if w.Code < 400 || fixture.verify() == nil {
 		t.Fatal("proxy accepted live API destination")
+	}
+}
+
+func TestScannerResultRejectsMisleadingOrIncompleteDiagnostics(t *testing.T) {
+	test := scenario{WantFailure: true, Output: []string{"Offline API failure"}, ForbiddenOutput: []string{"Issue created:", "Issue closed"}}
+	for _, tc := range []struct {
+		name, output string
+		err          error
+		wantError    bool
+	}{
+		{"reported failure", "Offline API failure", errors.New("exit 1"), false},
+		{"missing diagnostic", "Traceback", errors.New("exit 1"), true},
+		{"false creation", "Offline API failure\nIssue created: #7", errors.New("exit 1"), true},
+		{"false closure", "Issue closed\nOffline API failure", errors.New("exit 1"), true},
+		{"unexpected success exit", "Offline API failure", nil, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			err := newReplay(nil).verifyScannerResult(test, tc.err, tc.output)
+			if (err != nil) != tc.wantError {
+				t.Fatalf("result = %v, want rejection = %v", err, tc.wantError)
+			}
+		})
+	}
+	if err := newReplay(nil).verifyScannerResult(scenario{Output: []string{"Issue created: #7"}}, nil, "Issue created: #7"); err != nil {
+		t.Fatalf("healthy success rejected: %v", err)
+	}
+	if err := newReplay(nil).verifyScannerResult(scenario{Output: []string{"Issue could not be created"}}, nil, "Issue could not be created"); err != nil {
+		t.Fatalf("observed zero-exit rejection rejected: %v", err)
+	}
+	if err := newReplay(nil).verifyScannerResult(scenario{}, errors.New("exit 1"), ""); err == nil {
+		t.Fatal("unexpected failed exit accepted")
+	}
+}
+
+func TestFailedReadResultRequiresTheWholePlanAndRejectsAWrite(t *testing.T) {
+	plan := []exchange{
+		{Method: "GET", Path: "/repos/offline/fixture/issues", Status: 200, Response: `[{"number":11,"title":"Tracked"}]`},
+		{Method: "GET", Path: "/repos/offline/fixture/milestones", Status: 503, Response: `{"message":"Offline API failure"}`},
+	}
+	test := scenario{WantFailure: true, Output: []string{"Offline API failure"}}
+	fixture := newReplay(plan)
+	observe := func(method, path string, wantStatus int) {
+		t.Helper()
+		r := httptest.NewRequest(method, "http://127.0.0.1"+path, nil)
+		r.Header.Set("Authorization", "token offline-token")
+		w := httptest.NewRecorder()
+		fixture.ServeHTTP(w, r)
+		if w.Code != wantStatus {
+			t.Fatalf("status = %d, want %d", w.Code, wantStatus)
+		}
+	}
+	observe("GET", plan[0].Path, 200)
+	if err := fixture.verifyScannerResult(test, errors.New("exit 1"), "Offline API failure"); err == nil {
+		t.Fatal("partial read plan was accepted on a diagnostic alone")
+	}
+	observe("GET", plan[1].Path, 503)
+	if err := fixture.verifyScannerResult(test, errors.New("exit 1"), "Offline API failure"); err != nil {
+		t.Fatalf("complete failed-read observation rejected: %v", err)
+	}
+	observe("POST", "/repos/offline/fixture/issues", 502)
+	if err := fixture.verifyScannerResult(test, errors.New("exit 1"), "Offline API failure"); err == nil {
+		t.Fatal("write after failed read was accepted")
 	}
 }
