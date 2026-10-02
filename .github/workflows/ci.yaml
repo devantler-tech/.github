@@ -5138,32 +5138,11 @@ jobs:
         with:
           persist-credentials: false
 
-      # The two jobs above hard-code the lint action SHA + version and the `go test`
-      # command. This guard asserts validate-go-project.yaml still pins the SAME ones, so
-      # the self-tests always exercise the real gate. If a gate is changed without
-      # updating the self-test, this check goes red and forces them to move in lockstep.
-      - name: 🔒 Assert the gate pins the self-tested lint action + test command
-        shell: bash
-        env:
-          GATE: .github/workflows/validate-go-project.yaml
-          # Match full lines, not bare refs — refs/commands also appear in comments, so a
-          # looser grep could false-pass if the real value changed while a comment did not.
-          EXPECTED_LINT_ACTION: "uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a"
-          EXPECTED_LINT_VERSION: "version: v2.11.4"
-          EXPECTED_TEST_CMD: "go test ./..."
-        run: |
-          set -euo pipefail
-          status=0
-          for expected in "$EXPECTED_LINT_ACTION" "$EXPECTED_LINT_VERSION" "$EXPECTED_TEST_CMD"; do
-            if ! grep -qF "$expected" "$GATE"; then
-              echo "::error::$GATE no longer contains '$expected'. If the lint action/version or test command changed intentionally, update test-validate-go-lint-blocks / test-validate-go-test-blocks and these EXPECTED values so the self-tests keep exercising the real gate."
-              status=1
-            fi
-          done
-          if [ "$status" -ne 0 ]; then
-            exit 1
-          fi
-          echo "validate-go-project.yaml pins the self-tested lint action + test command ✅"
+      # Bind the executed production and negative-fixture roles independently.
+      - name: 🔒 Assert the gate pins the self-tested lint action and command
+        run: bash .github/tests/test-catalogue-tool-pin-parity.sh golangci
+      - name: Reject stale literals, mismatched fixtures and substituted pin roles
+        run: bash .github/tests/test-catalogue-pin-guards-controls.sh
 
   test-validate-go-project-concurrency-key:
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
@@ -5495,40 +5474,9 @@ jobs:
         shell: bash
         run: bash .github/tests/test-actionlint-arguments-lockstep.sh
 
-      # `uses:` cannot be parametrized, so test-lint-blocks hard-codes the MegaLinter image
-      # SHA. This guard asserts test-lint-blocks, lint.yaml and validate-go-project.yaml (the
-      # org's other MegaLinter consumer) all pin that SAME image. If any of the three is bumped
-      # alone, this goes red and forces them to move together.
+      # Compare both executed gates with the independent failure fixture.
       - name: 🔒 Assert both gates pin the self-tested MegaLinter image
-        shell: bash
-        env:
-          # Match the full `uses:` line, not the bare SHA — the SHA also appears in
-          # comments, so a bare grep could false-pass if the real `uses:` changed while a
-          # comment still named the old one.
-          EXPECTED: "uses: oxsecurity/megalinter/flavors/go@9949bad031045f366be2467e00e8371a7328a2e2"
-        run: |
-          set -euo pipefail
-          status=0
-          for gate in .github/workflows/lint.yaml .github/workflows/validate-go-project.yaml; do
-            if ! grep -qF "$EXPECTED" "$gate"; then
-              echo "::error::$gate no longer pins '$EXPECTED'. If the MegaLinter image was bumped intentionally, update test-lint-blocks, both gates and this EXPECTED value together so the failure-mode self-test keeps exercising the real gate."
-              status=1
-            fi
-          done
-          # EXPECTED is itself written in ci.yaml, so a whole-file grep would always match.
-          # Read only the test-lint-blocks job: it ends at the next top-level job key.
-          blocks_job="$(awk '/^  test-lint-blocks:$/ { found = 1; next } found && /^  [A-Za-z0-9_-]+:$/ { exit } found' .github/workflows/ci.yaml)"
-          if [ -z "$blocks_job" ]; then
-            echo "::error::Could not find the test-lint-blocks job in .github/workflows/ci.yaml, so its MegaLinter image cannot be checked."
-            status=1
-          elif ! grep -qF "$EXPECTED" <<<"$blocks_job"; then
-            echo "::error::test-lint-blocks no longer pins '$EXPECTED'. If the MegaLinter image was bumped intentionally, update test-lint-blocks, both gates and this EXPECTED value together so the failure-mode self-test keeps exercising the real gate."
-            status=1
-          fi
-          if [ "$status" -ne 0 ]; then
-            exit 1
-          fi
-          echo "test-lint-blocks and both MegaLinter gates pin the same image ✅"
+        run: bash .github/tests/test-catalogue-tool-pin-parity.sh megalinter
 
   # ── apply-signed-fixes.yaml self-test ────────────────────────────────────────
   # A passes-on-good-input test is genuinely impractical here: this workflow's only good

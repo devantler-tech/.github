@@ -92,8 +92,11 @@ yq -o=json '.' "$workflow" >"$tmp/baseline.json"
 # shellcheck disable=SC2016
 yq -o=json '.' actions/dependency-review/action.yaml | jq -e '
   .inputs["repo-token"].default == "${{ github.token }}" and
-  ([.runs.steps[] | select(.uses == "actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294") |
-    .with["repo-token"] == "${{ inputs.repo-token }}"] == [true])' >/dev/null ||
+  ([.runs.steps[] | select(.id == "review")] as $review |
+    ($review | length) == 1 and
+    ($review[0].uses | test("^actions/dependency-review-action@[0-9a-f]{40}$")) and
+    $review[0].with["repo-token"] == "${{ inputs.repo-token }}") and
+  ([.runs.steps[] | select((.uses // "") | startswith("actions/dependency-review-action@"))] | length) == 1' >/dev/null ||
   fail 'the composite must forward repo-token to the pinned upstream action'
 
 yq -o=json '.' .github/workflows/ci.yaml | jq -e '
