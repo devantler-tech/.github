@@ -44,6 +44,9 @@ ci	.jobs["test-delete-workflow-runs-minimal"]["continue-on-error"]=true	cleanup 
 ci	.jobs["test-delete-workflow-runs-minimal"].with={"dry-run":true}	minimal scenario must exercise declared defaults
 ci	.jobs["test-delete-workflow-runs-specific"].with["dry-run"]=false	specific scenario must explicitly dry-run
 ci	.jobs["test-delete-workflow-runs-all"].with.repository="${{ secrets.APP_PRIVATE_KEY }}"	cleanup forwards a mutation credential
+ci	.jobs["ci-required-checks"].needs -= ["test-delete-workflow-runs-all"]	cleanup caller omitted from required needs
+ci	.jobs["ci-required-checks"].steps[0].env.JOB_RESULTS |= sub("\\$\\{\\{ needs.test-delete-workflow-runs-specific.result \\}\\}"; "")	cleanup caller omitted from required summary
+ci	.jobs["ci-required-checks"].needs -= ["test-delete-workflow-runs-minimal"] | .jobs["ci-required-checks"].steps[0].env.JOB_RESULTS |= sub("\\$\\{\\{ needs.test-delete-workflow-runs-minimal.result \\}\\}"; "")	cleanup caller omitted from required needs
 workflow	.jobs["delete-runs"].permissions.actions="write"	cleanup callee has deletion authority
 workflow	.jobs["delete-runs"].steps[1].uses="Mattraks/delete-workflow-runs@0000000000000000000000000000000000000000"	cleanup projection changed production steps
 workflow	.jobs["delete-runs"].if="false"	cleanup execution disabled
@@ -56,5 +59,6 @@ projection	.jobs["delete-runs"].steps[1].with.retain_days="${{ inputs.minimum-ru
 projection	.jobs["delete-runs"].steps[1].with.repository="${{ inputs.repository }}"	cleanup input behavior changed
 projection	.jobs["delete-runs"].steps[1].with.delete_workflow_by_state_pattern="${{ inputs.delete-run-by-conclusion-pattern }}"	cleanup input behavior changed
 projection	.jobs["delete-runs"].steps[1].with.token="${{ secrets.APP_TOKEN }}"	cleanup forwards a mutation credential
+projection	.jobs["delete-runs"].steps[1].if=false	production cleanup action disabled
 CASES
 echo "PASS: $count independent cleanup credential, execution and input regressions rejected"

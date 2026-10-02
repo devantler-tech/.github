@@ -68,6 +68,20 @@ func main() {
 	ids := []string{"test-delete-workflow-runs-all", "test-delete-workflow-runs-specific", "test-delete-workflow-runs-minimal"}
 	permissions := object{"actions": "read", "contents": "read"}
 	schedule := "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+	gate := asObject(jobs["ci-required-checks"])
+	needed := map[string]bool{}
+	for _, value := range gate["needs"].([]any) {
+		if id, ok := value.(string); ok {
+			needed[id] = true
+		}
+	}
+	results := ""
+	for _, value := range gate["steps"].([]any) {
+		step := asObject(value)
+		if step["name"] == "📊 Summarize workflow result" {
+			results, _ = asObject(step["env"])["JOB_RESULTS"].(string)
+		}
+	}
 	for _, id := range ids {
 		job := asObject(jobs[id])
 		require(job != nil, id+": cleanup scenario missing")
@@ -79,6 +93,8 @@ func main() {
 		equal(job["if"], schedule, id+": cleanup admission changed")
 		require(job["continue-on-error"] == nil || job["continue-on-error"] == false, id+": cleanup failure ignored")
 		rejectSecrets(job, id)
+		require(needed[id], id+": cleanup caller omitted from required needs")
+		require(strings.Contains(results, "${{ needs."+id+".result }}"), id+": cleanup caller omitted from required summary")
 	}
 	callers := []string{}
 	for id, value := range jobs {
@@ -118,6 +134,7 @@ func main() {
 	require(cleanup != nil, "production cleanup action missing")
 	bindings := asObject(cleanup["with"])
 	equal(bindings["token"], "${{ secrets.GITHUB_TOKEN }}", "cleanup forwards a mutation credential")
+	equal(cleanup["if"], nil, "production cleanup action disabled")
 	equal(cleanup["continue-on-error"], nil, "production cleanup ignores failure")
 	equal(job["steps"], productionJob["steps"], "cleanup projection changed production steps")
 	var cases []struct {
