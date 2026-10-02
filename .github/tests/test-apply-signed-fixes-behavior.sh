@@ -5,9 +5,10 @@ repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 workflow="${1:-$repo_root/.github/workflows/apply-signed-fixes.yaml}"
 test_root="$(mktemp -d)"
 trap 'rm -rf "$test_root"' EXIT
-export REAL_GIT REAL_BASE64
+export REAL_GIT REAL_BASE64 REAL_JQ
 REAL_GIT="$(command -v git)"
 REAL_BASE64="$(command -v base64)"
+REAL_JQ="$(command -v jq)"
 count=0
 fail() { echo "FAIL: ${case_name:-setup}: $*" >&2; exit 1; }
 
@@ -28,6 +29,7 @@ new_case() {
   export REPO=example/consumer BRANCH=codex/fixes COMMIT_MESSAGE='chore: apply fixes'
   export API_MODE=success READ_FAILURE=none GIT_FAILURE=none
   export CREATED_SHA=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+  export OTHER_SHA=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb STAGING_ID=12345
   export GH_TOKEN=offline-fixture-only RUNNER_TEMP="$CASE_ROOT/runtime" ARTIFACT_NAME=fixes
   "$REAL_GIT" -C "$CASE_ROOT/repo" init -q -b "$BRANCH"
   "$REAL_GIT" -C "$CASE_ROOT/repo" config user.name 'Fixture Author'
@@ -46,7 +48,8 @@ new_case() {
   printf '%s\n' "$BASE_SHA" > "$CASE_ROOT/remote-head"
   : > "$CASE_ROOT/api.log"
   jq -n --arg message "$COMMIT_MESSAGE" '{commit:{message:$message,verification:{verified:true}}}' > "$CASE_ROOT/head.json"
-  printf '{"commit":{"verification":{"verified":true}}}\n' > "$CASE_ROOT/verification.json"
+  jq -n --arg oid "$CREATED_SHA" --arg head "$BASE_SHA" \
+    '{sha:$oid,parents:[{sha:$head}],commit:{verification:{verified:true}}}' >"$CASE_ROOT/verification.json"
   cp "$repo_root/.github/tests/applied-fixes/fake-gh.sh" "$CASE_ROOT/bin/gh"
   cat > "$CASE_ROOT/bin/git" <<'GIT'
 #!/usr/bin/env bash
@@ -65,12 +68,27 @@ set -euo pipefail
 if [[ "${1:-}" == -w0 ]]; then shift; fi
 exec "$REAL_BASE64" "$@"
 BASE64
-  chmod +x "$CASE_ROOT/bin/gh" "$CASE_ROOT/bin/git" "$CASE_ROOT/bin/base64"
+  cat > "$CASE_ROOT/bin/jq" <<'JQ'
+#!/usr/bin/env bash
+set -euo pipefail
+if [[ "$READ_FAILURE" == cleanup-plan ]]; then
+  previous=''
+  for argument in "$@"; do
+    [[ "$previous" != --arg || "$argument" != before ]] || exit 87
+    previous="$argument"
+  done
+fi
+exec "$REAL_JQ" "$@"
+JQ
+  chmod +x "$CASE_ROOT/bin/gh" "$CASE_ROOT/bin/git" "$CASE_ROOT/bin/base64" "$CASE_ROOT/bin/jq"
 }
 
 run_step() {
   local step="$1" expected="$2" diagnostic="${3:-}" status=0
-  (cd "$CASE_ROOT/repo"; PATH="$CASE_ROOT/bin:$PATH" bash "$test_root/$step.sh") > "$CASE_ROOT/output" 2>&1 || status=$?
+  local commit_step=""
+  [[ "$step" != commit ]] || commit_step=true
+  (cd "$CASE_ROOT/repo"; PATH="$CASE_ROOT/bin:$PATH" TMPDIR="$CASE_ROOT/runtime" COMMIT_STEP="$commit_step" bash "$test_root/$step.sh") > "$CASE_ROOT/output" 2>&1 || status=$?
+  last_status="$status"
   if [[ "$expected" == success ]]; then
     [[ $status == 0 ]] || { cat "$CASE_ROOT/output" >&2; fail "$step unexpectedly failed ($status)"; }
   else
@@ -85,7 +103,8 @@ unchanged() { [[ "$(cat "$CASE_ROOT/remote-head")" == "$BASE_SHA" ]] || fail 'un
 no_api() { [[ ! -s "$CASE_ROOT/api.log" ]] || fail 'unexpected API call'; }
 changed() { printf 'after\n' > "$CASE_ROOT/repo/file.txt"; }
 verification() {
-  jq -n --argjson verified "$1" '{commit:{verification:{verified:$verified}}}' > "$CASE_ROOT/verification.json"
+  jq -n --arg oid "$CREATED_SHA" --arg head "$BASE_SHA" --argjson verified "$1" \
+    '{sha:$oid,parents:[{sha:$head}],commit:{verification:{verified:$verified}}}' > "$CASE_ROOT/verification.json"
   jq -n --arg message "$COMMIT_MESSAGE" --argjson verified "$1" '{commit:{message:$message,verification:{verified:$verified}}}' > "$CASE_ROOT/head.json"
 }
 
@@ -143,8 +162,14 @@ for name in ':odd.txt' 'with space.txt' '[x]*.txt' "$odd"; do printf '%s\n' "$na
 dd if=/dev/zero of="$CASE_ROOT/repo/large.bin" bs=1024 count=256 2>/dev/null
 "$REAL_GIT" -C "$CASE_ROOT/repo" add -- file.txt delete.txt existing.sh
 run_step commit success
-[[ "$(calls graphql)" == 1 && "$(calls "repos/$REPO/commits/$CREATED_SHA")" == 1 ]] || fail 'creation or verification identity/count changed'
+[[ "$(calls graphql)" == 3 && "$(calls "repos/$REPO/commits/$CREATED_SHA")" == 1 ]] || {
+  cat "$CASE_ROOT/api.log" >&2
+  cat "$CASE_ROOT/output" >&2
+  fail 'creation or verification identity/count changed'
+}
 [[ "$(cat "$CASE_ROOT/remote-head")" == "$CREATED_SHA" ]] || fail 'successful API response did not model the write'
+[[ "$(cat "$CASE_ROOT/operations.log")" == $'stage\ncreate\nverify\npromote' && "$(wc -l <"$CASE_ROOT/advances.log" | tr -d ' ')" == 1 ]] || fail 'publication ordering or advance count changed'
+[[ ! -f "$CASE_ROOT/staged-head" ]] || fail 'successful promotion left a staging ref'
 jq -e '.variables.input.fileChanges | (.additions | length) == 7 and .deletions == [{path:"delete.txt"}]' "$CASE_ROOT/request.json" >/dev/null || fail 'wrong payload file set'
 for name in file.txt existing.sh large.bin ':odd.txt' 'with space.txt' '[x]*.txt' "$odd"; do
   jq -r --arg name "$name" '.variables.input.fileChanges.additions[] | select(.path == $name) | .contents' "$CASE_ROOT/request.json" | "$REAL_BASE64" -d > "$CASE_ROOT/decoded"
@@ -156,7 +181,8 @@ jq -e '[.variables.input.fileChanges.additions[].path | select(startswith(".deva
 for value in false null; do
   new_case "created-$value"; changed; verification "$value"
   run_step commit failure 'not signed'
-  [[ "$(calls graphql)" == 1 && "$(cat "$CASE_ROOT/remote-head")" == "$CREATED_SHA" ]] || fail 'verification must follow one atomic write'
+  unchanged
+  [[ ! -f "$CASE_ROOT/staged-head" ]] || fail 'unsigned staged commit was not safely removed'
 done
 for mode in empty malformed failed; do
   new_case "created-verification-$mode"; changed
@@ -166,14 +192,52 @@ for mode in empty malformed failed; do
     failed) READ_FAILURE=verification ;;
   esac
   run_step commit failure
-  [[ "$(calls graphql)" == 1 ]] || fail 'uncertain verification retried the mutation'
+  unchanged
 done
-for mode in stale rejected errors empty malformed missing-oid; do
+
+new_case cleanup-plan-failed; changed; verification false; READ_FAILURE=cleanup-plan
+run_step commit failure 'Temporary applied-fixes ref retained'
+[[ "$last_status" == 1 ]] || fail 'cleanup replaced the original verification failure status'
+unchanged
+[[ "$(cat "$CASE_ROOT/staged-head")" == "$CREATED_SHA" && "$(calls graphql)" == 2 ]] || fail 'failed cleanup plan authorized a ref mutation'
+remaining="$(find "$CASE_ROOT/runtime" -mindepth 1 -type d)"
+[[ -z "$remaining" ]] || fail 'cleanup plan failure prevented local workdir removal'
+
+for mode in stale rejected errors empty malformed missing-oid bad-oid lost; do
   new_case "mutation-$mode"; changed; API_MODE="$mode"
   run_step commit failure
-  [[ "$(calls graphql)" == 1 && "$(wc -l < "$CASE_ROOT/api.log" | tr -d ' ')" == 1 ]] || fail 'failed mutation was retried or verified as successful'
-  case "$mode" in stale|rejected|errors) unchanged ;; esac
+  [[ "$(calls graphql)" == 3 && "$(calls "repos/$REPO/commits/$CREATED_SHA")" == 0 ]] || fail 'failed mutation was retried or verified as successful'
+  unchanged
+  case "$mode" in
+    stale|rejected|errors) [[ ! -f "$CASE_ROOT/staged-head" ]] || fail 'acknowledged stage was not removed' ;;
+    *) [[ "$(cat "$CASE_ROOT/staged-head")" == "$CREATED_SHA" ]] || fail 'uncertain commit response authorized blind cleanup' ;;
+  esac
 done
+for mode in collision stage-lost concurrent stage-concurrent promote-lost; do
+  new_case "ref-$mode"; changed; API_MODE="$mode"
+  run_step commit failure
+  case "$mode" in
+    collision) unchanged; [[ "$(cat "$CASE_ROOT/staged-head")" == "$OTHER_SHA" ]] || fail 'colliding ref was deleted' ;;
+    stage-lost) unchanged; [[ "$(cat "$CASE_ROOT/staged-head")" == "$BASE_SHA" ]] || fail 'unacknowledged stage was deleted' ;;
+    concurrent) [[ "$(cat "$CASE_ROOT/remote-head")" == "$OTHER_SHA" ]] || fail 'concurrent consumer head was overwritten' ;;
+    stage-concurrent) unchanged; [[ "$(cat "$CASE_ROOT/staged-head")" == "$OTHER_SHA" ]] || fail 'concurrent staging head was deleted' ;;
+    promote-lost) [[ "$(cat "$CASE_ROOT/remote-head")" == "$CREATED_SHA" && ! -f "$CASE_ROOT/staged-head" ]] || fail 'lost promotion acknowledgment changed its atomic result' ;;
+  esac
+done
+for field in sha parent parents; do
+  new_case "created-wrong-$field"; changed
+  case "$field" in
+    sha) jq --arg other "$OTHER_SHA" '.sha=$other' "$CASE_ROOT/verification.json" >"$CASE_ROOT/changed.json" ;;
+    parent) jq --arg other "$OTHER_SHA" '.parents[0].sha=$other' "$CASE_ROOT/verification.json" >"$CASE_ROOT/changed.json" ;;
+    parents) jq '.parents += .parents' "$CASE_ROOT/verification.json" >"$CASE_ROOT/changed.json" ;;
+  esac
+  mv "$CASE_ROOT/changed.json" "$CASE_ROOT/verification.json"
+  run_step commit failure 'identity or parent'; unchanged
+done
+new_case repository-read-failed; changed; READ_FAILURE=repository
+run_step commit failure
+[[ "$(calls graphql)" == 0 ]] || fail 'failed repository read authorized a staging ref'
+unchanged
 for operation in status log rev-parse; do
   new_case "git-$operation-failed"
   if [[ "$operation" == rev-parse ]]; then changed; fi

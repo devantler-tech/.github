@@ -211,11 +211,27 @@ jobs:
           BRANCH: ${{ github.head_ref }}
           REPO: ${{ github.repository }}
           COMMIT_MESSAGE: ${{ inputs.commit-message }}
+          STAGING_ID: ${{ job.check_run_id }}
         run: |
           set -euo pipefail
 
           workdir="$(mktemp -d)"
-          trap 'rm -rf "$workdir"' EXIT
+          staged_oid=""
+          cleanup() {
+            local status="$1"
+            if [ -n "$staged_oid" ]; then
+              # Delete only the ref and tip whose creation we acknowledged. A lost
+              # commit response or another writer may have changed it; never force-delete.
+              if ! { jq -n --arg ref "$staging_ref" --arg before "$staged_oid" \
+                '[{name:$ref,beforeOid:$before,afterOid:"0000000000000000000000000000000000000000",force:false}]' >"$workdir/updates.json" &&
+                update_refs cleanup; }; then
+                echo "::warning::Temporary applied-fixes ref retained after an uncertain or concurrent update: ${staging_ref}."
+              fi
+            fi
+            rm -rf "$workdir" || echo '::warning::Could not remove the temporary applied-fixes workdir.'
+            exit "$status"
+          }
+          trap 'cleanup "$?"' EXIT
           additions="$workdir/additions.ndjson"
           deletions="$workdir/deletions.ndjson"
           : >"$additions"
@@ -225,14 +241,38 @@ jobs:
           # rather than assume it. An unsigned commit here would re-create exactly the
           # condition this step exists to remove, and would do it silently.
           verify_signed() {
-            local sha="$1"
-            local verified
-            verified="$(gh api "repos/${REPO}/commits/${sha}" --jq '.commit.verification.verified')"
+            local sha="$1" parent="${2:-}" verification_json verified
+            verification_json="$(gh api "repos/${REPO}/commits/${sha}")"
+            verified="$(jq -r '.commit.verification.verified' <<<"$verification_json")"
             if [ "$verified" != "true" ]; then
               echo "::error::Applied-fixes commit ${sha} is not signed (verified=${verified})."
               exit 1
             fi
+            if [ -n "$parent" ]; then
+              jq -e --arg sha "$sha" --arg parent "$parent" '
+                type == "object" and .sha == $sha and .commit.verification.verified == true and
+                (.parents | type == "array" and length == 1 and .[0].sha == $parent)
+              ' <<<"$verification_json" >/dev/null || {
+                echo '::error::Created commit identity or parent did not match the applied fixes.'
+                exit 1
+              }
+            fi
             echo "Verified signature on ${sha}."
+          }
+
+          update_refs() {
+            local operation="$1" response request_id
+            request_id="applied-fixes-${STAGING_ID}-${operation}"
+            jq -n --arg repo "$repository_id" --arg id "$request_id" \
+              --slurpfile updates "$workdir/updates.json" '{
+                query:"mutation($input: UpdateRefsInput!) { updateRefs(input:$input) { clientMutationId } }",
+                variables:{input:{repositoryId:$repo,clientMutationId:$id,refUpdates:$updates[0]}}
+              }' >"$workdir/ref-mutation.json"
+            response="$(gh api graphql --input "$workdir/ref-mutation.json")" || return 1
+            jq -e --arg id "$request_id" '
+              type == "object" and (.errors == null or .errors == []) and
+              .data.updateRefs.clientMutationId == $id
+            ' <<<"$response" >/dev/null
           }
 
           # Written to a file rather than read through process substitution: a process
@@ -314,11 +354,33 @@ jobs:
             exit 0
           fi
 
+          [[ "$head_oid" =~ ^[0-9a-f]{40}$ && "$STAGING_ID" =~ ^[1-9][0-9]{0,19}$ ]] || {
+            echo '::error::Invalid original head or staging identity.'; exit 1;
+          }
+          [[ "$REPO" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] || exit 1
+          git check-ref-format "refs/heads/${BRANCH}"
+          [[ "$BRANCH" != automation/applied-fixes/* ]] || exit 1
+          repository_json="$(gh api "repos/${REPO}")"
+          repository_id="$(jq -er --arg repo "$REPO" '
+            select(type == "object" and .full_name == $repo and (.private | type == "boolean")) |
+            .node_id | select(type == "string" and test("^[A-Za-z0-9_=+-]+$"))
+          ' <<<"$repository_json")"
+          staging_branch="automation/applied-fixes/${STAGING_ID}"
+          staging_ref="refs/heads/${staging_branch}"
+          # Atomic creation also asserts the consumer still has the checked-out head.
+          # A collision is a failure, never permission to adopt or remove an existing ref.
+          jq -n --arg ref "$staging_ref" --arg branch "refs/heads/${BRANCH}" --arg head "$head_oid" '
+            [{name:$ref,beforeOid:"0000000000000000000000000000000000000000",afterOid:$head,force:false},
+             {name:$branch,beforeOid:$head,afterOid:$head,force:false}]
+          ' >"$workdir/updates.json"
+          update_refs stage || { echo '::error::Could not reserve the temporary applied-fixes ref.'; exit 1; }
+          staged_oid="$head_oid"
+
           # --slurpfile keeps the aggregate off argv too: the combined payload is bounded by
           # total changed content, which can exceed the same 128 KiB cap.
           jq -n \
             --arg repo "$REPO" \
-            --arg branch "$BRANCH" \
+            --arg branch "$staging_branch" \
             --arg message "$COMMIT_MESSAGE" \
             --arg oid "$head_oid" \
             --slurpfile additions "$additions" \
@@ -359,10 +421,20 @@ jobs:
           fi
 
           oid="$(jq -r '.data.createCommitOnBranch.commit.oid // empty' <<<"$response")"
-          if [ -z "$oid" ]; then
+          if [[ ! "$oid" =~ ^[0-9a-f]{40}$ ]]; then
             echo "::error::createCommitOnBranch returned no commit oid"
             printf '%s\n' "$response"
             exit 1
           fi
-          echo "Committed applied linter fixes as ${oid}."
-          verify_signed "$oid"
+          staged_oid="$oid"
+          verify_signed "$oid" "$head_oid"
+          # updateRefs is atomic: preserve both expected tips, advance the consumer
+          # without force, and delete our staging ref in the same transaction.
+          jq -n --arg ref "$staging_ref" --arg branch "refs/heads/${BRANCH}" \
+            --arg head "$head_oid" --arg oid "$oid" '
+              [{name:$branch,beforeOid:$head,afterOid:$oid,force:false},
+               {name:$ref,beforeOid:$oid,afterOid:"0000000000000000000000000000000000000000",force:false}]
+            ' >"$workdir/updates.json"
+          update_refs promote || { echo '::error::Applied-fixes promotion rejected or uncertain; never overwriting another head.'; exit 1; }
+          staged_oid=""
+          echo "Committed verified applied linter fixes as ${oid}."
