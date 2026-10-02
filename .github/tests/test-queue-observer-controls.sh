@@ -6,6 +6,7 @@ work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
 yq -o=json '.' "$root/.github/workflows/ci.yaml" >"$work/ci.json"
 count=0
+# Inject one observer regression and require its behavioral failure diagnostic.
 mutation() {
   local old="$1" replacement="$2" diagnostic="$3"
   jq --arg old "$old" --arg replacement "$replacement" '

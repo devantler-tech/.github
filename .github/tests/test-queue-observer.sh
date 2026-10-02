@@ -39,10 +39,12 @@ cat >"$work/good.json" <<'JSON'
   ]}
 ]
 JSON
+# Stop the suite with a diagnostic when an observer assertion fails.
 fail() {
   echo "FAIL: $*" >&2
   exit 1
 }
+# Reset all three API responses to a complete successful run attempt.
 fixture() {
   rm -rf "$work/case"
   mkdir "$work/case"
@@ -52,6 +54,7 @@ fixture() {
     printf '0\n' >"$work/case/status-$attempt"
   done
 }
+# Make one API read fail after emitting plausible partial output.
 api_failure() {
   local attempt="$1" error="$2"
   # A later-page failure may already have emitted plausible successful slots.
@@ -59,6 +62,7 @@ api_failure() {
   printf '%s\n' "$error" >"$work/case/error-$attempt"
   printf '1\n' >"$work/case/status-$attempt"
 }
+# Run the extracted CI observer with isolated fake API and backoff commands.
 observe() {
   (
     cd "$work/case"
@@ -67,18 +71,21 @@ observe() {
     bash -e "$work/observer.sh"
   ) >"$work/output" 2>&1
 }
+# Require successful evidence and the expected number of API reads.
 accepts() {
   local label="$1" attempts="$2"
   observe || fail "$label: $(cat "$work/output")"
   [[ "$(cat "$work/case/count")" == "$attempts" ]] || fail "$label used the wrong retry count"
   echo "ok: $label"
 }
+# Require rejected evidence and the expected number of API reads.
 rejects() {
   local label="$1" attempts="$2"
   if observe; then fail "$label accepted invalid evidence"; fi
   [[ "$(cat "$work/case/count")" == "$attempts" ]] || fail "$label used the wrong retry count"
   echo "ok: $label fails closed"
 }
+# Mutate a successful API payload and prove it fails without retries.
 invalid_response() {
   local label="$1" mutation="$2"
   fixture
