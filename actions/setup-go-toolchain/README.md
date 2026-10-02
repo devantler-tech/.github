@@ -22,7 +22,7 @@ Setup Go with private module discovery for devantler-tech repositories.
 ```yaml
 steps:
   - name: Setup Go
-    uses: devantler-tech/.github/actions/setup-go-toolchain@main
+    uses: devantler-tech/.github/actions/setup-go-toolchain@<full-commit-sha> # vX.Y.Z
 ```
 
 ### Specific version
@@ -30,7 +30,7 @@ steps:
 ```yaml
 steps:
   - name: Setup Go
-    uses: devantler-tech/.github/actions/setup-go-toolchain@main
+    uses: devantler-tech/.github/actions/setup-go-toolchain@<full-commit-sha> # vX.Y.Z
     with:
       go-version: "1.26"
 ```
@@ -46,5 +46,5 @@ read credentials stored in the runner's Git configuration.
 ```yaml
 steps:
   - name: Setup Go
-    uses: devantler-tech/.github/actions/setup-go-toolchain@main
+    uses: devantler-tech/.github/actions/setup-go-toolchain@<full-commit-sha> # vX.Y.Z
 ```

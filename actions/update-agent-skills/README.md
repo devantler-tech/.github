@@ -43,18 +43,21 @@ jobs:
       contents: write
       pull-requests: write
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@<full-commit-sha> # vX.Y.Z
         with:
-          persist-credentials: true
+          persist-credentials: false
 
       - id: update
-        uses: devantler-tech/.github/actions/update-agent-skills@v5
+        uses: devantler-tech/.github/actions/update-agent-skills@<full-commit-sha> # vX.Y.Z
         with:
           dir: .agents/skills
 
       - if: steps.update.outputs.changed == 'true'
-        uses: peter-evans/create-pull-request@v8
+        uses: peter-evans/create-pull-request@<full-commit-sha> # vX.Y.Z
         with:
+          sign-commits: true
+          token: ${{ github.token }}
+          branch-token: ${{ github.token }}
           commit-message: "chore(deps): update agent skills"
           title: "chore(deps): update agent skills"
           body: |
@@ -78,20 +81,9 @@ For repositories that organise skills into subdirectories (e.g. a plugin marketp
 #   ...
 
 - id: update
-  uses: devantler-tech/.github/actions/update-agent-skills@v5
+  uses: devantler-tech/.github/actions/update-agent-skills@<full-commit-sha> # vX.Y.Z
   with:
     dir: plugins   # discovers plugins/go/skills, plugins/github/skills, … and updates each
-```
-
-## Migrating from `update-copilot-skills` (v4 and earlier)
-
-`update-copilot-skills` was renamed to `update-agent-skills`; its inputs, outputs, and behaviour are unchanged. Update the `uses:` reference:
-
-```diff
-- uses: devantler-tech/.github/actions/update-copilot-skills@v4
-+ uses: devantler-tech/.github/actions/update-agent-skills@v5
-   with:
-     dir: .agents/skills
 ```
 
 ## Requirements

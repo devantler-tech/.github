@@ -23,6 +23,8 @@ only describes TODOs, hyphenate the word (`to-do`), or exclude the file with `ig
 
 ## Usage
 
+The containing job needs `contents: read` and `issues: write`.
+
 ### Standard TODO scanning
 
 ```yaml

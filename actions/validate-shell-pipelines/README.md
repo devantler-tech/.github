@@ -33,10 +33,10 @@ permissions:
   contents: read
 
 steps:
-  - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+  - uses: actions/checkout@<full-commit-sha> # vX.Y.Z
     with:
       persist-credentials: false
-  - uses: devantler-tech/.github/actions/validate-shell-pipelines@<full-commit-sha>
+  - uses: devantler-tech/.github/actions/validate-shell-pipelines@<full-commit-sha> # vX.Y.Z
     with:
       enabled: "true"
       paths: |

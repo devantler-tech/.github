@@ -46,7 +46,7 @@ Each action directory must contain:
 
 \`\`\`yaml
 steps:
-  - uses: devantler-tech/.github/actions/<action-name>@main
+  - uses: devantler-tech/.github/actions/<action-name>@<full-commit-sha> # vX.Y.Z
     with:
       ...
 \`\`\`
@@ -71,28 +71,42 @@ release lifecycle, and Marketplace listing.
 
 ## Testing
 
-Every action must have a corresponding test workflow at `.github/workflows/test-<action-name>.yaml` that:
+Every action has a `test-<action-name>` job in the consolidated
+[`.github/workflows/ci.yaml`](../.github/workflows/ci.yaml). The job calls the local
+action with `uses: ./actions/<action-name>`, starts with SHA-pinned
+`step-security/harden-runner` in audit mode, checks out with
+`persist-credentials: false`, and verifies its real behavior with safe fixtures.
+Reusable-workflow scenarios are jobs in that same file and call
+`uses: ./.github/workflows/<workflow>.yaml` with non-destructive parameters.
 
-1. Triggers on `pull_request` and `push` to `main`
-2. Uses `step-security/harden-runner` as the first step
-3. Checks out with `persist-credentials: false`
-4. Verifies the action works as expected
+Wire every new job into **both** `ci-required-checks.needs` and the trusted inline
+summary step's `JOB_RESULTS` value using `${{ needs.<job-id>.result }}`. A job omitted
+from either side is incomplete coverage. The summary runs with `always()` and
+`permissions: {}` and executes no checked-out action; it is the sole exception
+to harden-runner-first. Run the coverage and script-wiring checks from
+[`AGENTS.md`](../AGENTS.md#test-jobs) before opening a PR.
+
+Every `.github/tests/test-*.sh` entrypoint, regardless of executable bit, has an
+unconditional dedicated invocation in a blocking CI job, anchored at the
+repository root and included in both summary aggregations. Printed commands,
+comments and helpers do not count as execution.
 
 ## Security
 
 - Run [zizmor](https://github.com/zizmorcore/zizmor) to scan for GitHub Actions vulnerabilities
-- Pin third-party actions to commit SHAs (enforced by `zizmor.yml`)
-- Actions under `actions/*`, `github/*`, and `devantler-tech/*` may use tag-based refs
+- Pin every remote action and reusable workflow to a full 40-character commit SHA,
+  including `actions/*`, `github/*` and `devantler-tech/*`. Use
+  `@<full-commit-sha> # vX.Y.Z` in documentation and replace both placeholders before
+  running an example. Local `./` references resolve against the checked-out commit.
 - **External action pin comment convention.** Annotate each third-party SHA pin so a
   reader can tell at a glance whether it tracks a tag or a branch:
   - Pinned to a release tag → `# v<version>` (e.g. `# v6.0.2`). This is the default;
-    12/13 third-party pins use it.
+    use it whenever the upstream publishes releases.
   - Pinned to a branch commit because the upstream publishes **no tags or releases**
     (main-tracked only) → `# <branch> (no upstream releases)` (e.g.
     `# main (no upstream releases)`). This keeps the comment honest — it names the
-    branch and *why* there is no version — so a future re-pin to a newer branch
-    commit isn't mistaken for a floating `@main` ref. The lone such dep today is
-    `Homebrew/actions/setup-homebrew` in `setup-ksail-cli`.
+    branch and *why* there is no version, so a future re-pin to a newer branch
+    commit is not mistaken for a floating branch ref.
 
 ## Reliability
 

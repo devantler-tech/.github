@@ -43,7 +43,7 @@ steps:
       go run github.com/boumenot/gocover-cobertura@latest < coverage.txt > coverage.cobertura.xml
 
   - name: 📊 Upload coverage
-    uses: devantler-tech/.github/actions/upload-coverage@main
+    uses: devantler-tech/.github/actions/upload-coverage@<full-commit-sha> # vX.Y.Z
     with:
       file: coverage.cobertura.xml
       language: Go
@@ -58,7 +58,7 @@ permissions:
   code-quality: write
 steps:
   - name: 📊 Upload coverage
-    uses: devantler-tech/.github/actions/upload-coverage@main
+    uses: devantler-tech/.github/actions/upload-coverage@<full-commit-sha> # vX.Y.Z
     with:
       file: ./TestResults/coverage.cobertura.xml
       language: C#

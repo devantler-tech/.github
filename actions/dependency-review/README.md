@@ -70,12 +70,12 @@ jobs:
       contents: read
     steps:
       - name: 📑 Checkout
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@<full-commit-sha> # vX.Y.Z
         with:
           persist-credentials: false
 
       - name: 🛡️ Review dependencies
-        uses: devantler-tech/.github/actions/dependency-review@main
+        uses: devantler-tech/.github/actions/dependency-review@<full-commit-sha> # vX.Y.Z
 ```
 
 ### Enforce — fail on high-severity vulnerabilities and post a comment
@@ -90,12 +90,12 @@ jobs:
       pull-requests: write # required for comment-summary-in-pr
     steps:
       - name: 📑 Checkout
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@<full-commit-sha> # vX.Y.Z
         with:
           persist-credentials: false
 
       - name: 🛡️ Review dependencies
-        uses: devantler-tech/.github/actions/dependency-review@main
+        uses: devantler-tech/.github/actions/dependency-review@<full-commit-sha> # vX.Y.Z
         with:
           warn-only: "false"
           fail-on-severity: high
