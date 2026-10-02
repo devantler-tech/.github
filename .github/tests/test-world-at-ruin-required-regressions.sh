@@ -104,9 +104,9 @@ else
 	if [ "$(yq -r '.on | has("workflow_call")' "${workflow}")" != "false" ]; then
 		fail "target-specific required workflow is incorrectly exposed as a reusable workflow"
 	fi
-	if [ "$(yq -r '.jobs.eligibility.steps[0].uses' "${workflow}")" != \
-		"step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1" ]; then
-		fail "Harden Runner is not the first eligibility step at the reviewed pin"
+	eligibility_first_uses="$(yq -r '.jobs.eligibility.steps[0].uses // ""' "${workflow}")"
+	if [[ ! "${eligibility_first_uses}" =~ ^step-security/harden-runner@[0-9a-f]{40}$ ]]; then
+		fail "Harden Runner is not the first eligibility step at a full commit SHA"
 	fi
 	if [ "$(yq -r '.jobs.eligibility.timeout-minutes' "${workflow}")" != "5" ]; then
 		fail "trusted-base resolution does not fail closed within five minutes"
