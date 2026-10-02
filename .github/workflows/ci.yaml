@@ -3440,6 +3440,7 @@ jobs:
     uses: ./.github/workflows/validate-go-project-readonly.yaml
     # Fixture-targeted: validate the known-good Go fixture (this repo is not itself a Go module).
     with:
+      go-memory-limit: 4GiB
       working-directory: .github/tests/go-valid-fixture
       # The OFF state, passed explicitly now that the input defaults to true: the read-only path
       # must still run the fixers and reject an unexpected dirty tree without committing to the
@@ -4284,6 +4285,11 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+
+      - name: Exercise the configurable memory preflight with the Go runtime
+        run: bash .github/tests/test-go-memory-limit.sh
+      - name: Reject memory override wiring and parser regressions
+        run: bash .github/tests/test-go-memory-limit-controls.sh
 
       - name: 🧪 Assert govulncheck keeps a cold-cache-safe finite timeout + GOMEMLIMIT
         run: bash .github/tests/test-govulncheck-timeout.sh
