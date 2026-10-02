@@ -368,7 +368,7 @@ job_structure="$(
 [[ -n "$job_structure" ]] ||
   fail "apply-fixes yielded no job structure to pin; this assertion is not reading the job it thinks it is"
 structure_digest="$(printf '%s' "$job_structure" | sha256_of)"
-audited_structure_digest="c30fd2206162b276086b2c73eb18ff02b8dd1a7b8b507ed607ef3d33dfd9d405"
+audited_structure_digest="8fa68cfb7eddf437cfc943e5c2dd8629f13d89b759f6e5bc1c798bf3f2032fed"
 [[ "$structure_digest" == "$audited_structure_digest" ]] ||
   fail "apply-fixes' job structure changed (found ${structure_digest}, audited ${audited_structure_digest}). Something other than the run text moved -- a step's or the job's \`env\` (BASH_ENV executes a file before the script), \`shell\`, \`working-directory\`, \`defaults.run\`, or a key this guard has never seen. Confirm it cannot execute code from the checked-out tree, then set audited_structure_digest to the value above. Dependency bumps of the pinned actions do NOT reach here."
 
@@ -385,7 +385,7 @@ normalized_runs="$(
 [[ -n "$normalized_runs" ]] ||
   fail "apply-fixes has no run content to pin; this assertion is not reading the job it thinks it is"
 runs_digest="$(printf '%s' "$normalized_runs" | sha256_of)"
-audited_runs_digest="538f1444f76f2882cee0a432aee573b9d01b13d4fb88fb8a97cf61c811f44f6a"
+audited_runs_digest="4adc18ba78780352ba0dabf337ba2536be7700cf9a60addc8348cac3240d4483"
 [[ "$runs_digest" == "$audited_runs_digest" ]] ||
   fail "apply-fixes' run blocks changed (found ${runs_digest}, audited ${audited_runs_digest}). Re-read every run block and confirm none invokes anything from the repository AND none writes state (GITHUB_ENV, GITHUB_PATH) that a later step inherits -- then set audited_runs_digest to the value above. Comment-only and whitespace-only edits do not reach here."
 echo "PASS: applied linter fixes are delegated to the signing commit API, and the signature is proven at runtime"
