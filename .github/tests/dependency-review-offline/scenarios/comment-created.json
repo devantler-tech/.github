@@ -1,0 +1,64 @@
+{
+  "description": "A clean review with comments always on, on a pull request that has no summary yet: the action creates one.",
+  "inputs": {
+    "comment-summary-in-pr": "always",
+    "warn-only": "true"
+  },
+  "routes": [
+    {
+      "method": "GET",
+      "path": "/repos/offline/fixture/dependency-graph/compare/1111111111111111111111111111111111111111...2222222222222222222222222222222222222222",
+      "status": 200,
+      "body": []
+    },
+    {
+      "method": "GET",
+      "path": "/repos/offline/fixture/issues/7/comments",
+      "status": 200,
+      "body": [
+        {
+          "id": 100,
+          "body": "An unrelated comment from a reviewer.",
+          "user": {
+            "login": "reviewer",
+            "type": "User"
+          },
+          "created_at": "2026-10-01T09:00:00Z",
+          "updated_at": "2026-10-01T09:00:00Z"
+        }
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/repos/offline/fixture/issues/7/comments",
+      "status": 201,
+      "body": {
+        "id": 101,
+        "body": "created",
+        "user": {
+          "login": "github-actions[bot]",
+          "type": "Bot"
+        }
+      }
+    }
+  ],
+  "expect": {
+    "outcome": "success",
+    "comment": "created",
+    "blocked-hosts": [],
+    "requests": [
+      {
+        "method": "GET",
+        "path": "/repos/offline/fixture/dependency-graph/compare/1111111111111111111111111111111111111111...2222222222222222222222222222222222222222"
+      },
+      {
+        "method": "GET",
+        "path": "/repos/offline/fixture/issues/7/comments"
+      },
+      {
+        "method": "POST",
+        "path": "/repos/offline/fixture/issues/7/comments"
+      }
+    ]
+  }
+}

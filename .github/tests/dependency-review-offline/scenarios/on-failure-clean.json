@@ -1,0 +1,26 @@
+{
+  "description": "A clean review with comments on failure only: nothing failed, so the action never touches the pull request's comments.",
+  "inputs": {
+    "comment-summary-in-pr": "on-failure",
+    "warn-only": "false"
+  },
+  "routes": [
+    {
+      "method": "GET",
+      "path": "/repos/offline/fixture/dependency-graph/compare/1111111111111111111111111111111111111111...2222222222222222222222222222222222222222",
+      "status": 200,
+      "body": []
+    }
+  ],
+  "expect": {
+    "outcome": "success",
+    "comment": "none",
+    "blocked-hosts": [],
+    "requests": [
+      {
+        "method": "GET",
+        "path": "/repos/offline/fixture/dependency-graph/compare/1111111111111111111111111111111111111111...2222222222222222222222222222222222222222"
+      }
+    ]
+  }
+}

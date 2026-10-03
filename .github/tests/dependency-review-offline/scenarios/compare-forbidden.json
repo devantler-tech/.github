@@ -1,0 +1,29 @@
+{
+  "description": "The dependency changes cannot be read: the action fails and never touches the pull request's comments.",
+  "inputs": {
+    "comment-summary-in-pr": "always",
+    "warn-only": "true"
+  },
+  "routes": [
+    {
+      "method": "GET",
+      "path": "/repos/offline/fixture/dependency-graph/compare/1111111111111111111111111111111111111111...2222222222222222222222222222222222222222",
+      "status": 403,
+      "body": {
+        "message": "Resource not accessible by integration",
+        "documentation_url": "https://docs.github.com/rest/dependency-graph/dependency-review"
+      }
+    }
+  ],
+  "expect": {
+    "outcome": "failure",
+    "comment": "none",
+    "blocked-hosts": [],
+    "requests": [
+      {
+        "method": "GET",
+        "path": "/repos/offline/fixture/dependency-graph/compare/1111111111111111111111111111111111111111...2222222222222222222222222222222222222222"
+      }
+    ]
+  }
+}
