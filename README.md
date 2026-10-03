@@ -552,6 +552,16 @@ MegaLinter always runs read-only, without a GitHub token or persisted checkout c
 
 **Fork pull requests lint read-only, automatically.** GitHub withholds secrets from forks, so fixes could never be committed back; auto-fixing there would only produce a failure an outside contributor cannot resolve. Real lint errors still fail on forks — only the auto-fix half is skipped.
 
+**Signed fixer branch policy:** retain the existing dependency-only exclusion.
+Both the event author and `pr-owner` are checked against `dependabot[bot]`,
+`dependabot`, `renovate[bot]`, `renovatebot` and `renovate`. Other same-repository
+automation, including release automation, `github-actions[bot]`, `ksail-bot`
+and `botantler-1[bot]`, remains eligible when fixes are enabled. This preserves
+existing consumers' behavior and keeps one policy across the signer and Go exporters.
+The signing API uses the expected head to reject a concurrent branch change.
+An automation's later refresh can still replace a fixer commit; that tradeoff is
+accepted, and the branch's automation remains responsible for its next update.
+
 #### Usage
 
 ```yaml
@@ -1080,7 +1090,7 @@ jobs:
 | Key               | Type           | Default | Required | Description                                                         |
 |-------------------|----------------|---------|----------|---------------------------------------------------------------------|
 | `APP_PRIVATE_KEY`     | Secret          | -       | No       | GitHub App private key for authenticating the workflow                                                                                                                                                                          |
-| `pr-owner`            | Input (string)  | -       | No       | Pull request author login (used to disable auto-commit for bot PRs)                                                                                                                                                             |
+| `pr-owner`            | Input (string)  | -       | No       | Pull request author login. Signed fixes exclude exactly dependabot[bot], dependabot, renovate[bot], renovatebot and renovate                                                                                                                                                             |
 | `apply-signed-fixes`  | Input (boolean) | `true`  | No       | Commit each fixer lane's auto-fixes back to the pull request branch as a signed commit (on by default; the org-required direct run is opted in by its workflow ref). Pass false to keep a caller read-only. Forks, Dependabot/Renovate branches and non-PR events are always read-only and fail with their diff if changes remain; other same-repository automation branches (release, bot-authored) do receive fixer commits like any contributor branch                                                                                                               |
 | `working-directory`   | Input (string)  | `""`    | No       | Go module directory to validate. Empty means the repository root                                                                                                                                                                |
 | `go-memory-limit` | Input (string) | `8GiB` | No | Soft Go heap limit for deadcode and vulnerability analysis; lower it for smaller runners. Decimal Go units are accepted up to 8GiB; total runner memory is not capped. |
