@@ -18,7 +18,7 @@ func main() {
 	}
 	proxy := httputil.NewSingleHostReverseProxy(upstream)
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		fmt.Printf("%s %s\n", r.Method, r.URL.Path)
+		fmt.Printf("%q %q\n", r.Method, r.URL.Path)
 		if r.URL.Path == "/token" {
 			user, password, ok := r.BasicAuth()
 			q := r.URL.Query()
