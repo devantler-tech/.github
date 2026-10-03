@@ -146,6 +146,26 @@ jobs:
       - name: ✍️ Setup Cosign
         uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
 
+      - name: 🔒 Reserve publisher helper checkout
+        if: ${{ inputs.enable-signed-promotion == true || inputs.enable-signed-promotion == 'true' }}
+        run: |
+          { test ! -e .devantler-tech-publisher && test ! -L .devantler-tech-publisher; } || { echo '::error::reserved publisher helper path already exists'; exit 1; }
+
+      - name: 📑 Checkout immutable publisher helpers
+        if: ${{ inputs.enable-signed-promotion == true || inputs.enable-signed-promotion == 'true' }}
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ${{ job.workflow_repository }}
+          ref: ${{ job.workflow_sha }}
+          path: .devantler-tech-publisher
+          persist-credentials: false
+
+      - name: 🔒 Prepare immutable publication guard
+        if: ${{ inputs.enable-signed-promotion == true || inputs.enable-signed-promotion == 'true' }}
+        run: |
+          cp .devantler-tech-publisher/.github/scripts/require-unpublished-version.sh "$RUNNER_TEMP/require-unpublished-version.sh"
+          rm -rf -- .devantler-tech-publisher
+
       - name: 📦 Push & sign manifests artifact
         if: ${{ !(inputs.enable-signed-promotion == true || inputs.enable-signed-promotion == 'true') }}
         env:
@@ -218,6 +238,7 @@ jobs:
           fi
           NAME="$(printf '%s' "${OCI_NAME:-$REPOSITORY}" | tr '[:upper:]' '[:lower:]')"
           ARTIFACT="${REGISTRY}/${NAME}/manifests"
+          OCI_REPOSITORIES="$NAME/manifests" bash "$RUNNER_TEMP/require-unpublished-version.sh"
           PUSHED="$(flux push artifact "oci://${ARTIFACT}:staging-${RUN_ID}-${RUN_ATTEMPT}" \
             --path="${DEPLOY_PATH}" \
             --source="${SERVER_URL}/${REPOSITORY}" \
@@ -233,6 +254,7 @@ jobs:
             --certificate-oidc-issuer https://token.actions.githubusercontent.com \
             "${ARTIFACT}@${DIGEST}"
           # Promotions read the verified digest, never a mutable staging alias.
+          OCI_REPOSITORIES="$NAME/manifests" bash "$RUNNER_TEMP/require-unpublished-version.sh"
           flux tag artifact "oci://${ARTIFACT}@${DIGEST}" --tag "$VERSION" --creds "${ACTOR}:${GH_TOKEN}"
           case "$VERSION" in
             *-*) ;; # A prerelease is selectable by version but never becomes latest.

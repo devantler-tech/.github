@@ -19,6 +19,9 @@ validate_caller .github/workflows/cd.yaml || {
 scratch="$(mktemp -d)"
 trap 'rm -rf "$scratch"' EXIT
 mkdir -p "$scratch/bin"
+cp .github/scripts/require-unpublished-version.sh "$scratch/require-unpublished-version.sh"
+cp .github/tests/fixtures/registry-read-curl.sh "$scratch/bin/curl"
+chmod +x "$scratch/bin/curl"
 workflow=.github/workflows/publish-manifests.yaml
 step='📦 Sign & promote manifests artifact'
 STEP="$step" yq -r '.jobs[].steps[] | select(.name == strenv(STEP)) | .run' "$workflow" >"$scratch/publish.sh"
@@ -113,15 +116,17 @@ run_case() {
     REPOSITORY=devantler-tech/fixture SERVER_URL=https://github.com VERSION="$version" \
     REF_NAME="v$version" SHA=0123456789abcdef0123456789abcdef01234567 DEPLOY_PATH=deploy \
     ACTOR=fixture GH_TOKEN=offline-fixture \
+    RUNNER_TEMP="$scratch" \
     bash "$script" >"$scratch/out" 2>&1
 }
 caller="${identity#https://github.com/}"
-for failure in push digest sign verify version; do
+for failure in push digest sign verify version registry-existing; do
   if run_case "$failure" 1.2.3 true "$caller" 123; then fail "succeeded after $failure failure"; fi
   [[ "$(<"$state/version")" == old-version && "$(<"$state/latest")" == old-latest ]] ||
     fail "$failure failure moved a consumer-selectable tag"
 done
 echo 'ok push, signing, verification and version-promotion failures leave release tags unchanged'
+[[ ! -s "$state/calls" ]] || fail 'existing version was not refused before staging'
 run_case none 1.2.3 true "$caller" 123 || fail 'stable release failed'
 [[ "$(<"$state/version")" == "$digest" && "$(<"$state/latest")" == "$digest" ]] || fail 'stable tags were not promoted'
 [[ "$(<"$state/pushed")" == "oci://$artifact:staging-123-2" ]] || fail 'push exposed a version tag before signing'
