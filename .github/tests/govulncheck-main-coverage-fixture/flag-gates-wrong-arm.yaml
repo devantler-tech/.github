@@ -9,7 +9,7 @@ on:
       scan-default-branch:
         required: false
         type: boolean
-        default: false
+        default: true
 jobs:
   changes:
     runs-on: ubuntu-latest
@@ -32,7 +32,7 @@ jobs:
     if: |
       github.repository != 'x/y'
       && ((
-        (inputs.scan-default-branch == true || inputs.scan-default-branch == 'true')
+        (toJSON(inputs) == '{}' || inputs.scan-default-branch == true || inputs.scan-default-branch == 'true')
         && (needs.changes.outputs.go == 'true' || needs.changes.outputs.govulncheck == 'true')
         && github.event_name == 'pull_request'
       ) || (
