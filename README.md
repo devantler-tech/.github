@@ -1138,6 +1138,12 @@ beneath it. API failures,
 partial pagination, unknown permissions and inventory changes produce an unknown
 result rather than a policy pass. Logs contain aggregate counts only.
 
+Known built-in roles use GitHub's documented `permission` field when effective
+Boolean metadata is absent. Typed `permissions.admin` metadata supports custom
+roles when returned by the API. Unknown custom rights, malformed metadata and
+conflicting built-in rights remain UNKNOWN. Both forms use the same canonical
+permission join for policy evaluation and repeated-read stability checks.
+
 The workflow is default off and runs only from reviewed `main`. Enable its
 `run-audit` dispatch input for an evaluation. Its App token requests repository
 Metadata and Administration read permissions; missing grants fail token creation.

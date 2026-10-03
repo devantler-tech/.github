@@ -95,7 +95,7 @@ reset_case() {
 JSON
   printf '%s\n' '{"id":77,"app_id":88,"target_id":99,"target_type":"Organization","account":{"id":99,"login":"devantler-tech","type":"Organization"},"repository_selection":"all","suspended_at":null,"suspended_by":null}' >"$work/fixtures/installation.json"
   for repo in fixture_public fixture_private_sentinel actions; do
-    printf '%s\n' '[[{"id":11,"slug":"admins","privacy":"secret","permissions":{"admin":true}},{"id":12,"slug":"maintainers","privacy":"closed","role_name":"custom","permissions":{"admin":false}}],[]]' >"$work/fixtures/teams/$repo.json"
+    printf '%s\n' '[[{"id":11,"slug":"admins","privacy":"secret","permission":"admin","permissions":{"admin":true}},{"id":12,"slug":"maintainers","privacy":"closed","permission":"custom","role_name":"custom","permissions":{"admin":false}}],[]]' >"$work/fixtures/teams/$repo.json"
   done
 }
 mutate() {
@@ -124,13 +124,36 @@ grep -qFx 'repos/devantler-tech/actions/teams?per_page=100' "$work/requests"
 if grep -q 'fixture_archived/teams' "$work/requests"; then
   echo 'FAIL: archived repository was queried' >&2; exit 1
 fi
+documented_teams_case() {
+  reset_case
+  for repo in fixture_public fixture_private_sentinel actions; do
+    mutate "$work/fixtures/teams/$repo.json" 'map(map(del(.permissions) | .permission=(if .slug == "admins" then "admin" else "pull" end)))'
+  done
+}
+documented_teams_case; check 0 'documented singular permission response preserves complete audit'
+for permission in maintain push pull triage; do
+  documented_teams_case
+  mutate "$work/fixtures/teams/fixture_public.json" ".[0][1].permission=\"$permission\""
+  check 0 "documented $permission permission is non-admin"
+done
+documented_teams_case
+mutate "$work/fixtures/teams/fixture_private_sentinel.json" '.[1]=[{id:13,slug:"fixture_private_sentinel",privacy:"closed",permission:"admin"}]'
+check 1 'documented singular admin on a later page is a finding'
+documented_teams_case; mutate "$work/fixtures/teams/fixture_public.json" '.[0][1].permission="custom-admin"'; check 2 'custom role without effective metadata is unknown'
+documented_teams_case; mutate "$work/fixtures/teams/fixture_public.json" '.[0][0].permissions={admin:"true"}'; check 2 'malformed effective metadata cannot be hidden by singular permission'
+reset_case; mutate "$work/fixtures/teams/fixture_public.json" '.[0][0].permissions.admin=false'; check 2 'conflicting known admin permission is unknown'
+reset_case; mutate "$work/fixtures/teams/fixture_public.json" '.[0][1].permission="pull" | .[0][1].permissions.admin=true'; check 2 'conflicting known non-admin permission is unknown'
+documented_teams_case
+jq '.[0][1].permission="admin"' "$work/fixtures/teams/fixture_public.json" >"$work/fixtures/team-after.json"
+export AUDIT_TEAM_CHANGED=true
+check 2 'documented role change invalidates the repeated join'
 reset_case
 mutate "$work/fixtures/teams/fixture_private_sentinel.json" '.[1]=[{id:13,slug:"fixture_private_sentinel",privacy:"closed",permissions:{admin:true}}]'
 check 1 'extra effective admin on a later page'
 reset_case; mutate "$work/fixtures/teams/fixture_public.json" '.[0][0].slug="other-admin"'; check 1 'wrong sole admin team'
-reset_case; mutate "$work/fixtures/teams/fixture_public.json" '.[0][0].permissions.admin=false'; check 1 'no effective admin team'
+reset_case; mutate "$work/fixtures/teams/fixture_public.json" '.[0][0].permission="pull" | .[0][0].permissions.admin=false'; check 1 'no effective admin team'
 reset_case; printf '%s\n' '[[]]' >"$work/fixtures/teams/fixture_public.json"; check 1 'empty team membership'
-reset_case; mutate "$work/fixtures/teams/fixture_public.json" '.[0][0].role_name="custom"'; check 0 'custom role retains effective admin semantics'
+reset_case; mutate "$work/fixtures/teams/fixture_public.json" '.[0][0].role_name="custom" | .[0][0].permission="custom-admin"'; check 0 'custom role retains effective admin semantics'
 reset_case; mutate "$work/fixtures/installation.json" '.repository_selection="selected"'; check 2 'selected installation cannot prove a census'
 reset_case; mutate "$work/fixtures/repositories.json" '.[1].total_count=5'; check 2 'unstable repository total'
 reset_case; mutate "$work/fixtures/repositories.json" '.[1].repositories=[]'; check 2 'truncated repository enumeration'
@@ -184,7 +207,7 @@ jq '.[1]=[{id:13,slug:"other-admin",privacy:"closed",permissions:{admin:true}}]'
 export AUDIT_TEAM_CHANGED=true
 check 2 'new admin assignment during the join invalidates the result'
 reset_case
-jq '.[0][0].permissions.admin=false' "$work/fixtures/teams/fixture_public.json" >"$work/fixtures/team-after.json"
+jq '.[0][0].permission="pull" | .[0][0].permissions.admin=false' "$work/fixtures/teams/fixture_public.json" >"$work/fixtures/team-after.json"
 export AUDIT_TEAM_CHANGED=true
 check 2 'admin permission removal during the join invalidates the result'
 reset_case

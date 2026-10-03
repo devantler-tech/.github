@@ -9,6 +9,20 @@ mode=installation
 [[ $# == 0 ]] || mode=organization-admin
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
+# Effective Boolean metadata supports custom roles. The documented singular
+# field is sufficient for known built-in roles; malformed or conflicting rights
+# and custom roles without effective metadata remain unknown.
+cat >"$work/team-permissions.jq" <<'JQ'
+def standard_permission: .permission | IN("admin","maintain","push","pull","triage");
+def effective_admin:
+  if has("permissions") and (.permissions | type != "object") then null
+  elif (.permissions? // {} | has("admin")) then
+    if (.permissions.admin | type != "boolean") then null
+    elif standard_permission and ((.permission == "admin") != .permissions.admin) then null
+    else .permissions.admin end
+  elif standard_permission then .permission == "admin"
+  else null end;
+JQ
 abort() { echo 'repository-admin-teams: UNKNOWN; complete live evidence unavailable' >&2; exit 2; }
 command -v gh >/dev/null || abort
 command -v jq >/dev/null || abort
@@ -120,7 +134,7 @@ validate_repositories "$work/repositories.json"
 jq -r "$flatten | map(select(.archived == false)) | sort_by(.id) | .[].name" \
   "$work/repositories.json" >"$work/active" 2>"$work/parse-error" || abort
 validate_teams() {
-  jq -e -s '
+  jq -L "$work" -e -s 'include "team-permissions";
     length == 1 and (.[0] as $pages |
       ($pages | type == "array" and length > 0) and
       ($pages | all(type == "array" and length <= 100)) and
@@ -131,11 +145,12 @@ validate_teams() {
           (.id | type == "number" and . > 0 and . == floor) and
           (.slug | type == "string" and test("^[A-Za-z0-9_-]+$")) and
           (.privacy | IN("secret","closed")) and
-          (.permissions.admin | type == "boolean")))))
+          (effective_admin | type == "boolean")))))
   ' "$work/teams.json" >/dev/null 2>"$work/parse-error" || abort
 }
 canonical_teams() {
-  jq -S '[.[][] | {id,slug,privacy,admin:.permissions.admin}] | sort_by(.id)' \
+  jq -L "$work" -S 'include "team-permissions";
+    [.[][] | {id,slug,privacy,admin:effective_admin}] | sort_by(.id)' \
     "$work/teams.json" >"$1" 2>"$work/parse-error" || abort
 }
 mkdir "$work/team-snapshots"
@@ -145,8 +160,8 @@ while IFS= read -r repo; do
   capture "repos/devantler-tech/$repo/teams?per_page=100" "$work/teams.json"
   validate_teams
   canonical_teams "$work/team-snapshots/$repo"
-  if ! jq -e '[.[][] | select(.permissions.admin == true)] | length == 1 and .[0].slug == "admins" and .[0].privacy == "secret"' \
-    "$work/teams.json" >/dev/null 2>"$work/parse-error"; then
+  if ! jq -e '[.[] | select(.admin == true)] | length == 1 and .[0].slug == "admins" and .[0].privacy == "secret"' \
+    "$work/team-snapshots/$repo" >/dev/null 2>"$work/parse-error"; then
     findings=$((findings + 1))
   fi
   checked=$((checked + 1))
