@@ -1085,7 +1085,7 @@ jobs:
 | `working-directory`   | Input (string)  | `""`    | No       | Go module directory to validate. Empty means the repository root                                                                                                                                                                |
 | `go-memory-limit` | Input (string) | `8GiB` | No | Soft Go heap limit for deadcode and vulnerability analysis; lower it for smaller runners. Decimal Go units are accepted up to 8GiB; total runner memory is not capped. |
 | `manual-workflow-fixes` | Input (boolean) | `false` | No | Opt in to complete workflow-file patches for manual application, including after lint errors; existing upload eligibility still applies |
-| `scan-default-branch` | Input (boolean) | `false` | No       | Also run the vulnerability scan on every default-branch run, not just on pull requests. Off by default: a default branch that was green can legitimately go red once an advisory is published against code that already merged    |
+| `scan-default-branch` | Input (boolean) | `true` | No       | Scan every default-branch invocation and allowlist-only pull requests. Explicit false retains Go-diff pull-request coverage during input retirement (#285) |
 | `test-default-branch` | Input (boolean) | `true`  | No       | Run the Go test suite on every default-branch run, not just when the diff touched a Go file. On by default: a test can take a non-Go file as its subject, so a diff-only gate leaves the default branch reporting green over a suite it never ran. Set to `false` to accept a default branch that can report green without the suite having run          |
 | `maintenance-default-branch` | Input (boolean) | `false` | No | Also run tidy and dead-code analysis on default-branch pushes that change Go files. Findings fail validation without committing fixes to the default branch. Uses the repository's configured default branch name. |
 
@@ -1114,7 +1114,7 @@ generator and regenerate it; CI checks the complete projection and credential bo
 | `go-memory-limit` | Input (string) | `8GiB` | No | Soft Go heap limit for analysis; lower it for smaller runners, up to the 8GiB ceiling |
 | `apply-signed-fixes` | Input (boolean) | `false` | No | Ignored: signed fixes are always disabled |
 | `manual-workflow-fixes` | Input (boolean) | `false` | No | Prepare workflow-file fixes even after lint errors; patch upload is disabled and lint errors still fail |
-| `scan-default-branch` | Input (boolean) | `false` | No | Also scan vulnerabilities on default-branch invocations |
+| `scan-default-branch` | Input (boolean) | `true` | No | Scan default-branch invocations; explicit false remains supported during input retirement (#285) |
 | `test-default-branch` | Input (boolean) | `true` | No | Run the suite on default-branch invocations |
 | `maintenance-default-branch` | Input (boolean) | `false` | No | Run tidy and dead-code analysis for Go changes on the default branch |
 

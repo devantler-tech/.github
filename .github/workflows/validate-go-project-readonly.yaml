@@ -30,8 +30,8 @@ on:
       scan-default-branch:
         required: false
         type: boolean
-        default: false
-        description: "Opt in to the vulnerability scan's corrected coverage: it then runs on every default-branch invocation rather than only on pull requests, and a pull request that edits only a .govulncheck-allow.txt runs it too, so a risk acceptance is validated by the scanner it applies to. Off by default because both are behaviour changes for every consumer: a default branch that was reporting green can legitimately go red the moment an advisory is published against code that was already merged, and an allowlist-only pull request that used to skip the scan starts paying for it. Callers that omit this input keep the previous behaviour exactly. Roll out caller-by-caller, then flip this default to true and remove the input (devantler-tech/actions#788)."
+        default: true
+        description: "Scan vulnerabilities on every default-branch invocation and on allowlist-only pull requests. On by default after consumer rollout: newly published advisories can make already-merged code fail validation. Pass false to retain pull-request Go-diff coverage only during the compatible transition; input retirement is tracked in devantler-tech/.github#285."
       test-default-branch:
         required: false
         type: boolean
@@ -446,21 +446,19 @@ jobs:
     # alone means a push touching no Go path (a README edit) skips the scan, so the branch
     # keeps reporting green while a newly-published advisory already applies to it.
     #
-    # Fixing that changes behaviour in EVERY consumer repo at once, and the intended
-    # consequence is that a default branch which was green CAN now go red. Per AGENTS.md
-    # (*Shipping a new capability behind an opt-in flag*) it therefore ships behind
-    # `scan-default-branch`, default false, to be rolled out caller-by-caller before the
-    # default flips and the input is removed (#788).
+    # Default-branch coverage is enabled for omitted reusable inputs after consumer
+    # rollout. Explicit false preserves the earlier pull-request coverage during the
+    # compatible transition; the remaining input retirement is tracked in #285.
     #
     # The two arms, and why each is shaped this way:
     #
     #   * PULL-REQUEST ARM — unflagged, and identical to the behaviour shipped today
     #     except that an allowlist-only change now also triggers it. A consumer that
-    #     passes nothing gets exactly what it got before, which is what makes this
-    #     backward-compatible. `govulncheck` is its own filter output rather than an entry
-    #     in `go` so an allowlist edit triggers THIS job and not tidy/lint/deadcode/tests.
+    #     explicitly disables the input keeps its Go-diff coverage. `govulncheck` is
+    #     its own filter output rather than an entry in `go`, so an allowlist edit
+    #     triggers this job and not tidy/lint/deadcode/tests.
     #
-    #   * DEFAULT-BRANCH ARM — the new capability, reachable only when a caller opts in.
+    #   * DEFAULT-BRANCH ARM — enabled by default; explicit false disables this arm.
     #     It tests `go != ''` rather than being unconditional because an EMPTY output means
     #     the `changes` job did not run at all (it is itself gated); a concrete 'true' or
     #     'false' proves the filter ran, so the arm stays independent of how skipped-`needs`
@@ -469,18 +467,20 @@ jobs:
     #
     # The input is compared against both the boolean and the string because a workflow
     # reachable from more than one trigger receives it either way (AGENTS.md, *Gotchas*).
+    # Direct required runs have an empty input object and inherit the enabled default.
+    # Reusable calls supply their declared defaults, so explicit false remains off.
     if: |
       ((
         (
           needs.changes.outputs.go == 'true'
           || (
-            (inputs.scan-default-branch == true || inputs.scan-default-branch == 'true')
+            (toJSON(inputs) == '{}' || inputs.scan-default-branch == true || inputs.scan-default-branch == 'true')
             && needs.changes.outputs.govulncheck == 'true'
           )
         )
         && github.event_name == 'pull_request'
       ) || (
-        (inputs.scan-default-branch == true || inputs.scan-default-branch == 'true')
+        (toJSON(inputs) == '{}' || inputs.scan-default-branch == true || inputs.scan-default-branch == 'true')
         && needs.changes.outputs.go != ''
         && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
       ))

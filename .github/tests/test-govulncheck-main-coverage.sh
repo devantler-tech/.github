@@ -10,16 +10,15 @@
 # < v1.82.1) was published 2026-07-27T15:30Z against a pinned dependency main already
 # had, and main kept reporting green.
 #
-# Fixing that changes behaviour in every consumer repo at once, so the default-branch
-# scan ships behind the opt-in input `scan-default-branch` (AGENTS.md, *Shipping a new
-# capability behind an opt-in flag*). That makes the gate a two-armed expression, and
+# The proven consumer rollout defaults `scan-default-branch` to true, while explicit
+# false retains the previous coverage during the compatible transition in #285.
+# The gate remains a two-armed expression, and
 # this guard asserts the shape of BOTH arms:
 #
 #   * the flagged arm must actually be reachable — the default-branch clause OR-ed with
 #     the diff gate, not AND-ed alongside it, and no top-level predicate able to veto it;
-#   * the unflagged arm must not have grown — anything reachable WITHOUT the opt-in has
-#     to stay restricted to pull requests, which is what makes the change backward
-#     compatible for a caller that passes nothing.
+#   * the unflagged arm must not have grown — explicit false must preserve Go-diff
+#     pull-request coverage while disabling the default-branch and allowlist arms.
 #
 # Everything is asserted POSITIVELY — the intended property must hold — rather than by
 # rejecting one known-bad string. A test that only rejects `event_name == 'pull_request'`
@@ -204,9 +203,9 @@ else
   fi
 fi
 
-# ── 7. The opt-in input must exist and default to OFF ─────────────────────────────
-# A flag declared with `default: true` is not an opt-in; it is the unflagged rollout
-# wearing an input's clothes.
+# ── 7. The rollout input must exist and default to ON ────────────────────────────
+# Omission selects the proven default-branch coverage. Explicit false remains
+# supported during the compatible transition tracked by #285.
 # NB: no `// ""` fallback on these reads. yq's alternative operator treats a literal
 # `false` as absent, so `.default // ""` on the correctly-configured input returns the
 # empty string and this check would reject exactly the state it is meant to accept.
@@ -216,8 +215,8 @@ if [[ -z "$input_type" || "$input_type" == "null" ]]; then
   fail "workflow_call declares no '${flag_input}' input, so callers cannot opt in to the default-branch scan and the gate's reference to it is dead. See AGENTS.md, 'Shipping a new capability behind an opt-in flag'."
 elif [[ "$input_type" != "boolean" ]]; then
   fail "the '${flag_input}' input is type '${input_type}', not boolean. See AGENTS.md, 'Shipping a new capability behind an opt-in flag'."
-elif [[ "$input_default" != "false" ]]; then
-  fail "the '${flag_input}' input defaults to '${input_default}', not false — so it is not opt-in and the default-branch scan lands on every consumer the moment this merges. See AGENTS.md, 'Shipping a new capability behind an opt-in flag'."
+elif [[ "$input_default" != "true" ]]; then
+  fail "the '${flag_input}' input defaults to '${input_default}', not true — omitted callers would silently lose the proven default-branch coverage. Explicit false remains supported while #285 retires the input."
 fi
 
 # ── 8. Editing the allowlist must re-run the scan that consumes it ────────────────
@@ -315,7 +314,19 @@ elif ! grep -qF 'inputs.working-directory' <<<"$allow_file"; then
 fi
 
 if [[ "$status" -eq 0 ]]; then
-  echo "govulncheck's default-branch scan is opt-in and reachable, nothing new runs unopted, and allowlist edits trigger — behind the same opt-in — the scan that reads them ✅"
+  direct_default="(toJSON(inputs) == '{}' || inputs.scan-default-branch == true || inputs.scan-default-branch == 'true')"
+  direct_count="$(grep -oF "$direct_default" <<<"$flat" | wc -l | tr -d ' ' || true)"
+  if [[ "$direct_count" != 2 ]]; then
+    fail "direct required runs must inherit the enabled default in both scan arms"
+  fi
+  native_default="$(yq -r '.jobs["test-govulncheck-main-coverage"].steps[] | select(.env.DIRECT_SCAN_DEFAULT != null) | .env.DIRECT_SCAN_DEFAULT' .github/workflows/ci.yaml)"
+  # shellcheck disable=SC2016 # Fixed GitHub expression compared as data.
+  [[ "$native_default" == '${{ toJSON(inputs) == '\''{}'\'' || inputs.scan-default-branch == true || inputs.scan-default-branch == '\''true'\'' }}' ]] ||
+    fail "the native direct-input evaluation must match the production default"
+fi
+
+if [[ "$status" -eq 0 ]]; then
+  echo "govulncheck defaults to complete default-branch coverage, preserves explicit false, and scans allowlist edits with the matching allowlist ✅"
 fi
 
 exit "$status"
