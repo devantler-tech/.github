@@ -37,7 +37,8 @@ login can be renamed and reused.
 
 | File | What it does |
 |---|---|
-| `allow-observed-events.json` | Every workflow in every repository may start only on the eight events our default-branch workflows use today. This blocks `pull_request_target`, `workflow_run` and `repository_dispatch`, none of which any workflow needs. |
+| `allow-observed-events.json` | Disabled proposal limiting portfolio workflows to eight events. Before activation, the metadata feedback exception needs a scoped exclusion and the evidence required by #202. |
+| `metadata-feedback.json` | Disabled review record for the catalogue's read-only `pull_request_target` metadata feedback. It targets exactly one workflow, grants no credentials and changes no active enforcement. |
 | `restrict-deploy-starters-<repository>.json` | In each repository with manually startable deploy or publish workflows, only the portfolio's own identities may start those workflow files. One file per repository, because a file name like `ci.yaml` means a different workflow in each repository. |
 
 ## Deploy and publish starters

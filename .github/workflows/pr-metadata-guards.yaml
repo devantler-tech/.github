@@ -1,10 +1,10 @@
 name: 🛡️ Pull request metadata
 
-# Required-workflow rules ignore edited events. Require this ordinary workflow's
-# job status instead, so title/body changes run the existing validators again.
-# Validators come from the immutable base revision; the candidate is only data.
+# This read-only feedback workflow runs from reviewed main, including metadata
+# edits. The candidate supplies data only. Full CI retains edit protection until
+# a required result has independently proven trusted producer and head identity.
 on:
-  pull_request:
+  pull_request_target:
     types: [opened, synchronize, reopened, edited, ready_for_review]
 
 permissions: {}
@@ -29,12 +29,14 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: devantler-tech/.github
-          ref: ${{ github.event.pull_request.base.sha }}
+          ref: ${{ github.workflow_sha }}
           path: trusted
           persist-credentials: false
       - name: 📥 Check out the candidate as data
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          repository: devantler-tech/.github
+          ref: ${{ github.event.pull_request.head.sha }}
           path: candidate
           fetch-depth: 0
           persist-credentials: false

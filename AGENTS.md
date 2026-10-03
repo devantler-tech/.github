@@ -154,10 +154,12 @@ passing when either file changes. Because the repairing pull request cannot edit
 enforcement to `evaluate` while the `github-config` reconciliation is suspended, then restore both.
 
 Organization-required workflows ignore pull request title/body edits even when their trigger lists
-`edited`. The ordinary `pr-metadata-guards.yaml` workflow reruns the base revision's validators and
-reports `PR Metadata Guards`; its separate status ruleset requires that check only here. Keep
-`.github/tests/test-ci-metadata-events.sh` passing. Retain catalogue CI's `edited` trigger until
-the new status requirement is verified live, then remove it in a follow-up.
+`edited`. `pr-metadata-guards.yaml` provides read-only feedback from reviewed main through
+`pull_request_target`; its validators use the workflow's immutable source revision and the candidate
+is data only. It has no required-status binding. Fork checkout protection remains enabled; a refused
+fork checkout is a visible feedback failure, and the existing full CI protection still applies.
+Keep `.github/tests/test-ci-metadata-events.sh` passing. Retain catalogue CI's `edited` trigger
+until trusted producer, current-head attribution and live enforcement are proven under #250.
 
 `kubectl` (with built-in kustomize) is preinstalled on CI runners. A clean build proves the manifests
 are well-formed; the Crossplane CRDs themselves are applied/validated **on-cluster** (the
