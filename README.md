@@ -93,7 +93,7 @@ them by path as shown above. The reasoning, and when it would be worth revisitin
 [`world-at-ruin-required-regressions.yaml`](.github/workflows/world-at-ruin-required-regressions.yaml)
 is a target-specific GitHub ruleset workflow source, not a caller-facing reusable workflow. The
 World at Ruin organization ruleset is managed declaratively by `devantler-tech/.github` and selects
-this repository, path and `refs/heads/main`. provider-upjet-github v0.19.1 does not expose GitHub's
+this repository, path and `refs/heads/main`. provider-upjet-github v0.20.0 does not expose GitHub's
 immutable workflow SHA selector, so reviewed Actions `main` is the strongest source binding the
 deployed provider can express. `github.workflow_sha` still binds each individual run to the exact
 Actions revision GitHub selected. At runtime the workflow checks out candidate product bytes at
@@ -1118,6 +1118,31 @@ assuming `main` or `master`. Go path filtering and merge-queue exclusions still 
 Rollout and flag retirement are tracked in [devantler-tech/actions#1170](https://github.com/devantler-tech/actions/issues/1170).
 
 </details>
+
+## Live admin-team audit
+
+The manual `Repository admin-team audit` workflow checks every active repository
+visible to an all-repository App installation, including repositories outside
+`deploy/`. It reads effective team permissions and requires exactly one admin
+team with the `admins` slug. Archived repositories are excluded. The Admins team
+must be secret, matching its declaration and excluding inherited child-team access
+beneath it. API failures,
+partial pagination, unknown permissions and inventory changes produce an unknown
+result rather than a policy pass. Logs contain aggregate counts only.
+
+The workflow is default off and runs only from reviewed `main`. Enable its
+`run-audit` dispatch input for an evaluation. Its App token requests repository
+Metadata and Administration read permissions; missing grants fail token creation.
+A skipped run is not evidence of compliance. Live grant verification, activation
+and flag retirement remain tracked in #395, as part of maintenance retirement #84.
+
+An operator with organization-admin visibility can evaluate the shared checker
+with `bash scripts/check-repository-admin-teams.sh --organization-admin`.
+That explicit mode binds active admin membership to the organization identity
+and checks the complete census against independently returned public and private
+repository counts. It never substitutes for a failed App read or proves the App's
+selection or grants. Every mode repeats the complete team join and inventory read;
+changed repository or team identity, visibility or admin permission reports UNKNOWN.
 
 ## Contributing
 

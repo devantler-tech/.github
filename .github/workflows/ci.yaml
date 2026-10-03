@@ -5654,6 +5654,12 @@ jobs:
       - name: 🧪 Test active Admins policy
         run: bash tests/admin-team-policy.sh
 
+      - name: 🔎 Test live admin-team evidence offline
+        run: bash tests/repository-admin-teams.sh
+
+      - name: 🔒 Test live admin-audit credential boundary
+        run: bash tests/repository-admin-audit-boundary.sh
+
       - name: 🧪 Test declarative coverage
         run: bash tests/declarative-coverage.sh
 
