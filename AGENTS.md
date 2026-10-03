@@ -153,6 +153,14 @@ passing when either file changes. Because the repairing pull request cannot edit
 `main` whose `deploy/` no longer renders needs an organization owner to set the ruleset's
 enforcement to `evaluate` while the `github-config` reconciliation is suspended, then restore both.
 
+Organization-required workflows ignore pull request title/body edits even when their trigger lists
+`edited`. `pr-metadata-guards.yaml` provides manually dispatched read-only feedback from reviewed main.
+It reads the current open catalogue PR through GitHub's API, binds validators to the workflow's
+immutable source revision, and treats the candidate as data only. It refuses fork PRs and other
+bases. It has no required-status binding; the existing full CI protection still applies.
+Keep `.github/tests/test-ci-metadata-events.sh` passing. Retain catalogue CI's `edited` trigger
+until trusted producer, current-head attribution and live enforcement are proven under #250.
+
 `kubectl` (with built-in kustomize) is preinstalled on CI runners. A clean build proves the manifests
 are well-formed; the Crossplane CRDs themselves are applied/validated **on-cluster** (the
 `github-config` tenant), not in CI — so a green build is necessary but not sufficient, and any new CR
