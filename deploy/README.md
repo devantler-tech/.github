@@ -43,8 +43,8 @@ out-of-band changes made in the GitHub UI.
   rule is retained disabled with only Observe/Update and its full observed fields.
   Four net-new rulesets are managed: `v*` tag protection, World at Ruin's trusted-regression
   workflow, monorepo's independent CI aggregate check, and this repository's `deploy/` guards
-  run from its reviewed `main`. The 10 org rulesets the provider
-  can't yet express stay UI-managed — see
+  run from its reviewed `main`. Unadopted org rulesets remain outside managed updates;
+  schema-supported adoption work is distinct from remaining provider gaps — see
   [`organization-rulesets/README.md`](organization-rulesets/README.md) for the full
   importability matrix and the push/tag/Actions-policy analysis.
 - `repository-rulesets/` — one `RepositoryRuleset` per file (`<verb>-on-<repo>.yaml`),

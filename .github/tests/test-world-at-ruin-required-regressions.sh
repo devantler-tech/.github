@@ -170,7 +170,7 @@ else
 fi
 
 if ! grep -Fq 'refs/heads/main' "${readme}" ||
-	! grep -Fq 'provider-upjet-github v0.19.1' "${readme}" ||
+	! grep -Fq 'provider-upjet-github v0.20.0' "${readme}" ||
 	! grep -Fq 'Keep the source workflow active' "${readme}"; then
 	fail "README does not describe the live declarative source-ref contract"
 fi

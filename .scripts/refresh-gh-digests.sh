@@ -53,9 +53,13 @@ for pair in "linux amd64 tar.gz" "linux arm64 tar.gz" "macOS amd64 zip" "macOS a
   set -- $pair
   os=$1 arch=$2 ext=$3
   asset="gh_${version}_${os}_${arch}.${ext}"
-  digest=$(awk -v want="$asset" '$2 == want { print $1; exit }' "$tmp/sums")
-  if [ -z "$digest" ]; then
-    echo "::error::$asset is absent from the checksums file for v${version}; refusing to write a partial manifest." >&2
+  # Even identical duplicates are ambiguous release input. Check the entire file before
+  # trusting a match, and reject trailing fields instead of silently ignoring them.
+  if ! digest=$(awk -v want="$asset" '
+    $2 == want { count++; digest = $1; if (NF != 2) malformed = 1 }
+    END { if (count != 1 || malformed) exit 1; print digest }
+  ' "$tmp/sums"); then
+    echo "::error::$asset must have exactly one two-field checksum entry; refusing to change the manifest." >&2
     exit 1
   fi
   if ! [[ "$digest" =~ ^[0-9a-f]{64}$ ]]; then
