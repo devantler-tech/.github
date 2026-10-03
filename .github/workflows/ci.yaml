@@ -5678,6 +5678,18 @@ jobs:
       - name: 🔒 Test premature governance-audit failures
         run: bash tests/governance-audit-aborts.sh
 
+      - name: 🔎 Test routine governance admission
+        run: bash tests/governance-audit-admission.sh
+
+      - name: 🔒 Test routine governance source and reporting boundaries
+        run: bash tests/governance-audits-boundary.sh
+
+      - name: 🔎 Test combined governance outcomes and privacy
+        run: bash tests/governance-audit-runner.sh
+
+      - name: 📣 Test offline governance report lifecycle
+        run: bash tests/governance-audit-report.sh
+
       - name: 🔎 Test organization-settings observations
         run: bash tests/organization-settings.sh
 

@@ -4,7 +4,7 @@ set -euo pipefail
 root="$(cd "$(dirname "$0")/.." && pwd)"
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
-for auditor in check-repository-admin-teams check-repository-coverage; do
+for auditor in check-repository-admin-teams check-repository-coverage run-governance-audits; do
   for probe in nounset failure early-success; do
     case "$probe" in
     nounset) injection=": \"\$UNSET_AUDIT_PROBE\"" ;;

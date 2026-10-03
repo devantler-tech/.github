@@ -17,14 +17,20 @@
 #   REPOSITORY_COVERAGE_LIVE    file of "<name> <archived>" lines standing in for the
 #                               live listing; default reads the GitHub API with a
 #                               GitHub App installation token that must cover every
-#                               repository. Used by tests to stay hermetic.
+#                               repository. Authenticated App metadata proves the
+#                               selection, and repeated repository pages prove the
+#                               complete census. Used by tests to stay hermetic.
+#   GH_APP_CLIENT_ID, GH_APP_PRIVATE_KEY, GH_INSTALLATION_ID
+#                               reviewed main App proof for a live installation read
 #
 # Exit codes:
 #   0  every live, non-archived repository is declared (or deliberately exempt)
 #   1  at least one repository is undeclared, or an exemption is stale
 #   2  the check could not be completed (fail closed)
 
+set +x
 set -euo pipefail
+umask 077
 
 owner="${REPOSITORY_COVERAGE_OWNER:-devantler-tech}"
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -71,22 +77,25 @@ fi
 if [[ -z "$live" ]]; then
   command -v gh >/dev/null || abort "required tool 'gh' not found"
   live="$work/live.txt"
-  # An App installation limited to selected repositories lists only those, and
-  # the listing still succeeds. Declared repositories are usually among the
-  # selected ones, so the unseen check below would pass while an undeclared
-  # private repository outside the selection stays invisible. Only an
-  # installation on every repository can see one created later. Reading the
-  # installation's own selection needs no extra permission, where the org's
-  # private repository count needs organization administration.
-  selection="$(gh api 'installation/repositories?per_page=1' --jq '.repository_selection')" ||
-    abort "reading the App installation's repository selection failed; run this with a GitHub App installation token"
-  [[ "$selection" == "all" ]] ||
-    abort "the App installation covers '${selection:-unknown}' repositories, not all, so it cannot see an undeclared repository outside its selection"
-  # Captured, never streamed: a pagination that fails part-way exits non-zero
-  # after printing the pages it did read, and a truncated list would pass.
-  gh api --paginate "orgs/${owner}/repos?type=all&per_page=100" \
-    --jq '.[] | "\(.name) \(.archived)"' >"$live" ||
-    abort "listing the repositories of ${owner} failed"
+  # Selection is authenticated installation metadata, never a repository-page field.
+  [[ "$owner" == devantler-tech ]] || abort "unsupported installation owner"
+  command -v jq >/dev/null || abort "required tool 'jq' not found"
+  mode=installation
+  # shellcheck source=lib/repository-census.sh
+  source "$repo_root/lib/repository-census.sh"
+  prepare_installation_proof
+  capture 'installation/repositories?per_page=100' "$work/repositories.json"
+  validate_repositories "$work/repositories.json"
+  capture 'installation/repositories?per_page=100' "$work/repositories-after.json"
+  validate_repositories "$work/repositories-after.json"
+  for snapshot in repositories repositories-after; do
+    jq -S '[.[].repositories[]] | map({id,name,full_name,owner:{id:.owner.id,login:.owner.login},archived,private}) | sort_by(.id)' \
+      "$work/$snapshot.json" >"$work/$snapshot.canonical" 2>"$work/parse-error" || abort
+  done
+  cmp -s "$work/repositories.canonical" "$work/repositories-after.canonical" || abort
+  installation_proof
+  cmp -s "$work/installation-before.canonical" "$work/installation.canonical" || abort
+  jq -r '.[].repositories[] | "\(.name) \(.archived)"' "$work/repositories.json" >"$live" || abort
 fi
 [[ -s "$live" ]] || abort "the live repository listing is empty"
 
