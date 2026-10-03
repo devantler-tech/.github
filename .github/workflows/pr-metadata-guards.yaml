@@ -1,0 +1,119 @@
+name: 🛡️ Pull request metadata
+
+# Manual feedback reads current PR metadata from reviewed main.
+# Full CI retains automatic edit protection until an independent gate is proven.
+on:
+  workflow_dispatch:
+    inputs:
+      pull-request:
+        description: "Open catalogue pull request number to validate"
+        required: true
+        type: string
+
+permissions: {}
+
+concurrency:
+  group: "pr-metadata-${{ inputs.pull-request }}"
+  cancel-in-progress: true
+
+jobs:
+  metadata-guards:
+    name: PR Metadata Guards
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - name: 🔒 Harden Runner
+        uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
+        with:
+          egress-policy: audit
+      - name: 📥 Check out the reviewed validators
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: devantler-tech/.github
+          ref: ${{ github.workflow_sha }}
+          path: trusted
+          persist-credentials: false
+      - name: 🔎 Read current pull request metadata
+        id: pr
+        shell: bash
+        env:
+          PR_NUMBER: ${{ inputs.pull-request }}
+          WORKFLOW_REF: ${{ github.ref }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          [[ "$WORKFLOW_REF" == refs/heads/main && "$PR_NUMBER" =~ ^[1-9][0-9]*$ ]] || {
+            echo '::error::metadata feedback requires reviewed main and a positive PR number' >&2
+            exit 1
+          }
+          gh api --hostname github.com "repos/devantler-tech/.github/pulls/$PR_NUMBER" > "$RUNNER_TEMP/pr.json"
+          jq -e --argjson number "$PR_NUMBER" '
+            .number == $number and .state == "open" and
+            .base.repo.full_name == "devantler-tech/.github" and .base.ref == "main" and
+            .head.repo.full_name == "devantler-tech/.github" and
+            (.base.sha | type == "string" and test("^[0-9a-f]{40}$")) and
+            (.head.sha | type == "string" and test("^[0-9a-f]{40}$")) and
+            (.title | type == "string") and (.body == null or (.body | type == "string")) and
+            (.commits | type == "number" and . > 0 and floor == .)
+          ' "$RUNNER_TEMP/pr.json" >/dev/null || {
+            echo '::error::incomplete PR metadata or unsupported fork/base' >&2
+            exit 1
+          }
+          jq -r '"head=" + .head.sha, "base=" + .base.sha, "commits=" + (.commits | tostring), "title=" + (.title | tojson)' "$RUNNER_TEMP/pr.json" >> "$GITHUB_OUTPUT"
+          jq -r '.body // ""' "$RUNNER_TEMP/pr.json" > "$RUNNER_TEMP/pr-body.txt"
+      - name: 📥 Read candidate Git objects and manifests
+        shell: bash
+        env:
+          BASE_SHA: ${{ steps.pr.outputs.base }}
+          HEAD_SHA: ${{ steps.pr.outputs.head }}
+        run: |
+          set -euo pipefail
+          # Fetch public objects into the reviewed repository, without checking
+          # out candidate code, actions, hooks, credentials or Git configuration.
+          git -C trusted fetch --no-tags https://github.com/devantler-tech/.github.git "$BASE_SHA" "$HEAD_SHA"
+          mkdir candidate
+          git -C trusted archive "$HEAD_SHA" deploy | tar --extract --directory=candidate
+      - name: 🚦 Validate release contract
+        shell: bash
+        env:
+          BASE_SHA: ${{ steps.pr.outputs.base }}
+          HEAD_SHA: ${{ steps.pr.outputs.head }}
+          PR_TITLE_JSON: ${{ steps.pr.outputs.title }}
+          COMMIT_COUNT: ${{ steps.pr.outputs.commits }}
+        run: |
+          PR_TITLE="$(jq -r . <<<"$PR_TITLE_JSON")"
+          first_subject="$(git -C trusted log --format=%s "$BASE_SHA..$HEAD_SHA" | tail -1)"
+          git -C trusted diff --name-only -z "$BASE_SHA...$HEAD_SHA" |
+            bash trusted/scripts/validate-release-contract.sh "$PR_TITLE" "$COMMIT_COUNT" "$first_subject"
+      - name: 🗑️ Validate deploy/ deletions are acknowledged
+        shell: bash
+        env:
+          BASE_SHA: ${{ steps.pr.outputs.base }}
+          HEAD_SHA: ${{ steps.pr.outputs.head }}
+        run: |
+          MERGE_BASE="$(git -C trusted merge-base "$BASE_SHA" "$HEAD_SHA")"
+          git -C trusted worktree add --detach "$RUNNER_TEMP/base" "$MERGE_BASE"
+          kubectl kustomize "$RUNNER_TEMP/base/deploy" > "$RUNNER_TEMP/base-render.yaml" ||
+            { echo "deploy-deletions: UNKNOWN — the base deploy/ tree does not render; repair main first" >&2; exit 2; }
+          kubectl kustomize candidate/deploy > "$RUNNER_TEMP/head-render.yaml" ||
+            { echo "deploy-deletions: UNKNOWN — this pull request's deploy/ tree does not render" >&2; exit 2; }
+          bash trusted/scripts/validate-deploy-deletions.sh \
+            "$RUNNER_TEMP/base-render.yaml" "$RUNNER_TEMP/head-render.yaml" "$RUNNER_TEMP/pr-body.txt"
+      - name: 🔎 Refuse changed metadata
+        shell: bash
+        env:
+          PR_NUMBER: ${{ inputs.pull-request }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh api --hostname github.com "repos/devantler-tech/.github/pulls/$PR_NUMBER" > "$RUNNER_TEMP/pr-after.json"
+          jq -se '
+            def snapshot: {number,state,title,body,commits,updated_at,head:.head.sha,base:.base.sha};
+            length == 2 and (.[0] | snapshot) == (.[1] | snapshot)
+          ' "$RUNNER_TEMP/pr.json" "$RUNNER_TEMP/pr-after.json" >/dev/null || {
+            echo '::error::UNKNOWN: PR changed during metadata validation; run again' >&2
+            exit 1
+          }
