@@ -53,14 +53,25 @@ printf '%s\n' "$STUB_ARTIFACT_DIGEST"
 EOF
 cat >"$scratch/bin/curl" <<'EOF'
 #!/usr/bin/env bash
-case "$*" in
-  *https://oidc.invalid/token\&audience=sigstore*) ;;
-  *) echo 'unexpected token endpoint' >&2; exit 1 ;;
-esac
+[[ "$#" == 6 && "$1" == -fsS && "$2" == --max-time && "$3" =~ ^[1-9][0-9]*$ && \
+  "$4" == -H && "$5" == "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" && \
+  "$6" == "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=sigstore" ]] || {
+  echo 'unmodelled token request' >&2
+  exit 1
+}
 printf 'oidc request\n' >>"$OIDC_CALLS"
 cat "$OIDC_FIXTURE"
 EOF
 chmod +x "$scratch/bin/flux" "$scratch/bin/cosign" "$scratch/bin/docker" "$scratch/bin/curl"
+
+# A token-shaped URL must not make an arbitrary curl upload invisible to the no-write model.
+printf '{"value":"probe"}\n' >"$scratch/probe-token.json"
+if OIDC_FIXTURE="$scratch/probe-token.json" OIDC_CALLS="$scratch/probe-oidc-calls" \
+  ACTIONS_ID_TOKEN_REQUEST_TOKEN=stub-not-a-secret ACTIONS_ID_TOKEN_REQUEST_URL=https://oidc.invalid/token \
+  "$scratch/bin/curl" -fsS --max-time 10 -H 'Authorization: bearer stub-not-a-secret' \
+    'https://oidc.invalid/token&audience=sigstore' --data '{}' >/dev/null 2>&1; then
+  fail 'the token stub accepted an unmodelled network upload'
+fi
 
 # ---- the simulated job ------------------------------------------------------------------------
 
