@@ -339,5 +339,454 @@
     "ForbiddenOutput": [
       "Issue closed"
     ]
+  },
+  {
+    "Name": "omitted vendor flag preserves conventional directories",
+    "Files": {
+      "src/task.sh": {
+        "Before": "",
+        "After": "# TODO: Owned work\n"
+      },
+      "src/vendor/task.sh": {
+        "Before": "",
+        "After": "# TODO: Nested work\n"
+      },
+      "third_party/task.sh": {
+        "Before": "",
+        "After": "# TODO: Third work\n"
+      },
+      "third_party_backup/task.sh": {
+        "Before": "",
+        "After": "# TODO: Nearby third work\n"
+      },
+      "vendor-near/task.sh": {
+        "Before": "",
+        "After": "# TODO: Nearby vendor work\n"
+      },
+      "vendor/task.sh": {
+        "Before": "",
+        "After": "# TODO: Vendor work\n"
+      }
+    },
+    "Operations": [
+      {
+        "Method": "GET",
+        "Path": "/search/issues?q=repo%3Aoffline%2Ffixture+is%3Aissue+in%3Atitle+Owned+work&per_page=30",
+        "Status": 200,
+        "Response": "{\"total_count\":0,\"incomplete_results\":false,\"items\":[]}"
+      },
+      {
+        "Method": "POST",
+        "Path": "/repos/offline/fixture/issues",
+        "Body": "{\"title\":\"Owned work\",\"body\":\"https://example.invalid/offline/fixture/blob/1111111111111111111111111111111111111111/src/task.sh#L1\\n\\n```sh\\n\\n# TODO: Owned work\\n\\n```\",\"labels\":[],\"assignees\":[\"offline-actor\"]}",
+        "Status": 201,
+        "Response": "{\"number\":20}"
+      },
+      {
+        "Method": "GET",
+        "Path": "/search/issues?q=repo%3Aoffline%2Ffixture+is%3Aissue+in%3Atitle+Nested+work&per_page=30",
+        "Status": 200,
+        "Response": "{\"total_count\":0,\"incomplete_results\":false,\"items\":[]}"
+      },
+      {
+        "Method": "POST",
+        "Path": "/repos/offline/fixture/issues",
+        "Body": "{\"title\":\"Nested work\",\"body\":\"https://example.invalid/offline/fixture/blob/1111111111111111111111111111111111111111/src/vendor/task.sh#L1\\n\\n```sh\\n\\n# TODO: Nested work\\n\\n```\",\"labels\":[],\"assignees\":[\"offline-actor\"]}",
+        "Status": 201,
+        "Response": "{\"number\":21}"
+      },
+      {
+        "Method": "GET",
+        "Path": "/search/issues?q=repo%3Aoffline%2Ffixture+is%3Aissue+in%3Atitle+Third+work&per_page=30",
+        "Status": 200,
+        "Response": "{\"total_count\":0,\"incomplete_results\":false,\"items\":[]}"
+      },
+      {
+        "Method": "POST",
+        "Path": "/repos/offline/fixture/issues",
+        "Body": "{\"title\":\"Third work\",\"body\":\"https://example.invalid/offline/fixture/blob/1111111111111111111111111111111111111111/third_party/task.sh#L1\\n\\n```sh\\n\\n# TODO: Third work\\n\\n```\",\"labels\":[],\"assignees\":[\"offline-actor\"]}",
+        "Status": 201,
+        "Response": "{\"number\":22}"
+      },
+      {
+        "Method": "GET",
+        "Path": "/search/issues?q=repo%3Aoffline%2Ffixture+is%3Aissue+in%3Atitle+Nearby+third+work&per_page=30",
+        "Status": 200,
+        "Response": "{\"total_count\":0,\"incomplete_results\":false,\"items\":[]}"
+      },
+      {
+        "Method": "POST",
+        "Path": "/repos/offline/fixture/issues",
+        "Body": "{\"title\":\"Nearby third work\",\"body\":\"https://example.invalid/offline/fixture/blob/1111111111111111111111111111111111111111/third_party_backup/task.sh#L1\\n\\n```sh\\n\\n# TODO: Nearby third work\\n\\n```\",\"labels\":[],\"assignees\":[\"offline-actor\"]}",
+        "Status": 201,
+        "Response": "{\"number\":23}"
+      },
+      {
+        "Method": "GET",
+        "Path": "/search/issues?q=repo%3Aoffline%2Ffixture+is%3Aissue+in%3Atitle+Nearby+vendor+work&per_page=30",
+        "Status": 200,
+        "Response": "{\"total_count\":0,\"incomplete_results\":false,\"items\":[]}"
+      },
+      {
+        "Method": "POST",
+        "Path": "/repos/offline/fixture/issues",
+        "Body": "{\"title\":\"Nearby vendor work\",\"body\":\"https://example.invalid/offline/fixture/blob/1111111111111111111111111111111111111111/vendor-near/task.sh#L1\\n\\n```sh\\n\\n# TODO: Nearby vendor work\\n\\n```\",\"labels\":[],\"assignees\":[\"offline-actor\"]}",
+        "Status": 201,
+        "Response": "{\"number\":24}"
+      },
+      {
+        "Method": "GET",
+        "Path": "/search/issues?q=repo%3Aoffline%2Ffixture+is%3Aissue+in%3Atitle+Vendor+work&per_page=30",
+        "Status": 200,
+        "Response": "{\"total_count\":0,\"incomplete_results\":false,\"items\":[]}"
+      },
+      {
+        "Method": "POST",
+        "Path": "/repos/offline/fixture/issues",
+        "Body": "{\"title\":\"Vendor work\",\"body\":\"https://example.invalid/offline/fixture/blob/1111111111111111111111111111111111111111/vendor/task.sh#L1\\n\\n```sh\\n\\n# TODO: Vendor work\\n\\n```\",\"labels\":[],\"assignees\":[\"offline-actor\"]}",
+        "Status": 201,
+        "Response": "{\"number\":25}"
+      }
+    ],
+    "Output": [
+      "Issue created: #20",
+      "Issue created: #21",
+      "Issue created: #22",
+      "Issue created: #23",
+      "Issue created: #24",
+      "Issue created: #25"
+    ]
+  },
+  {
+    "Name": "opted-in vendor filter excludes root directories only",
+    "Files": {
+      "src/task.sh": {
+        "Before": "",
+        "After": "# TODO: Owned work\n"
+      },
+      "src/vendor/task.sh": {
+        "Before": "",
+        "After": "# TODO: Nested work\n"
+      },
+      "third_party/task.sh": {
+        "Before": "",
+        "After": "# TODO: Third work\n"
+      },
+      "third_party_backup/task.sh": {
+        "Before": "",
+        "After": "# TODO: Nearby third work\n"
+      },
+      "vendor-near/task.sh": {
+        "Before": "",
+        "After": "# TODO: Nearby vendor work\n"
+      },
+      "vendor/task.sh": {
+        "Before": "",
+        "After": "# TODO: Vendor work\n"
+      }
+    },
+    "ExcludeVendored": "true",
+    "Operations": [
+      {
+        "Method": "GET",
+        "Path": "/search/issues?q=repo%3Aoffline%2Ffixture+is%3Aissue+in%3Atitle+Owned+work&per_page=30",
+        "Status": 200,
+        "Response": "{\"total_count\":0,\"incomplete_results\":false,\"items\":[]}"
+      },
+      {
+        "Method": "POST",
+        "Path": "/repos/offline/fixture/issues",
+        "Body": "{\"title\":\"Owned work\",\"body\":\"https://example.invalid/offline/fixture/blob/1111111111111111111111111111111111111111/src/task.sh#L1\\n\\n```sh\\n\\n# TODO: Owned work\\n\\n```\",\"labels\":[],\"assignees\":[\"offline-actor\"]}",
+        "Status": 201,
+        "Response": "{\"number\":20}"
+      },
+      {
+        "Method": "GET",
+        "Path": "/search/issues?q=repo%3Aoffline%2Ffixture+is%3Aissue+in%3Atitle+Nested+work&per_page=30",
+        "Status": 200,
+        "Response": "{\"total_count\":0,\"incomplete_results\":false,\"items\":[]}"
+      },
+      {
+        "Method": "POST",
+        "Path": "/repos/offline/fixture/issues",
+        "Body": "{\"title\":\"Nested work\",\"body\":\"https://example.invalid/offline/fixture/blob/1111111111111111111111111111111111111111/src/vendor/task.sh#L1\\n\\n```sh\\n\\n# TODO: Nested work\\n\\n```\",\"labels\":[],\"assignees\":[\"offline-actor\"]}",
+        "Status": 201,
+        "Response": "{\"number\":21}"
+      },
+      {
+        "Method": "GET",
+        "Path": "/search/issues?q=repo%3Aoffline%2Ffixture+is%3Aissue+in%3Atitle+Nearby+third+work&per_page=30",
+        "Status": 200,
+        "Response": "{\"total_count\":0,\"incomplete_results\":false,\"items\":[]}"
+      },
+      {
+        "Method": "POST",
+        "Path": "/repos/offline/fixture/issues",
+        "Body": "{\"title\":\"Nearby third work\",\"body\":\"https://example.invalid/offline/fixture/blob/1111111111111111111111111111111111111111/third_party_backup/task.sh#L1\\n\\n```sh\\n\\n# TODO: Nearby third work\\n\\n```\",\"labels\":[],\"assignees\":[\"offline-actor\"]}",
+        "Status": 201,
+        "Response": "{\"number\":22}"
+      },
+      {
+        "Method": "GET",
+        "Path": "/search/issues?q=repo%3Aoffline%2Ffixture+is%3Aissue+in%3Atitle+Nearby+vendor+work&per_page=30",
+        "Status": 200,
+        "Response": "{\"total_count\":0,\"incomplete_results\":false,\"items\":[]}"
+      },
+      {
+        "Method": "POST",
+        "Path": "/repos/offline/fixture/issues",
+        "Body": "{\"title\":\"Nearby vendor work\",\"body\":\"https://example.invalid/offline/fixture/blob/1111111111111111111111111111111111111111/vendor-near/task.sh#L1\\n\\n```sh\\n\\n# TODO: Nearby vendor work\\n\\n```\",\"labels\":[],\"assignees\":[\"offline-actor\"]}",
+        "Status": 201,
+        "Response": "{\"number\":23}"
+      }
+    ],
+    "Output": [
+      "Issue created: #20",
+      "Issue created: #21",
+      "Issue created: #22",
+      "Issue created: #23"
+    ]
+  },
+  {
+    "Name": "explicit opt-out preserves conventional directories",
+    "Files": {
+      "src/task.sh": {
+        "Before": "",
+        "After": "# TODO: Owned work\n"
+      },
+      "src/vendor/task.sh": {
+        "Before": "",
+        "After": "# TODO: Nested work\n"
+      },
+      "third_party/task.sh": {
+        "Before": "",
+        "After": "# TODO: Third work\n"
+      },
+      "third_party_backup/task.sh": {
+        "Before": "",
+        "After": "# TODO: Nearby third work\n"
+      },
+      "vendor-near/task.sh": {
+        "Before": "",
+        "After": "# TODO: Nearby vendor work\n"
+      },
+      "vendor/task.sh": {
+        "Before": "",
+        "After": "# TODO: Vendor work\n"
+      }
+    },
+    "ExcludeVendored": "false",
+    "Ignore": "",
+    "Operations": [
+      {
+        "Method": "GET",
+        "Path": "/search/issues?q=repo%3Aoffline%2Ffixture+is%3Aissue+in%3Atitle+Owned+work&per_page=30",
+        "Status": 200,
+        "Response": "{\"total_count\":0,\"incomplete_results\":false,\"items\":[]}"
+      },
+      {
+        "Method": "POST",
+        "Path": "/repos/offline/fixture/issues",
+        "Body": "{\"title\":\"Owned work\",\"body\":\"https://example.invalid/offline/fixture/blob/1111111111111111111111111111111111111111/src/task.sh#L1\\n\\n```sh\\n\\n# TODO: Owned work\\n\\n```\",\"labels\":[],\"assignees\":[\"offline-actor\"]}",
+        "Status": 201,
+        "Response": "{\"number\":20}"
+      },
+      {
+        "Method": "GET",
+        "Path": "/search/issues?q=repo%3Aoffline%2Ffixture+is%3Aissue+in%3Atitle+Nested+work&per_page=30",
+        "Status": 200,
+        "Response": "{\"total_count\":0,\"incomplete_results\":false,\"items\":[]}"
+      },
+      {
+        "Method": "POST",
+        "Path": "/repos/offline/fixture/issues",
+        "Body": "{\"title\":\"Nested work\",\"body\":\"https://example.invalid/offline/fixture/blob/1111111111111111111111111111111111111111/src/vendor/task.sh#L1\\n\\n```sh\\n\\n# TODO: Nested work\\n\\n```\",\"labels\":[],\"assignees\":[\"offline-actor\"]}",
+        "Status": 201,
+        "Response": "{\"number\":21}"
+      },
+      {
+        "Method": "GET",
+        "Path": "/search/issues?q=repo%3Aoffline%2Ffixture+is%3Aissue+in%3Atitle+Third+work&per_page=30",
+        "Status": 200,
+        "Response": "{\"total_count\":0,\"incomplete_results\":false,\"items\":[]}"
+      },
+      {
+        "Method": "POST",
+        "Path": "/repos/offline/fixture/issues",
+        "Body": "{\"title\":\"Third work\",\"body\":\"https://example.invalid/offline/fixture/blob/1111111111111111111111111111111111111111/third_party/task.sh#L1\\n\\n```sh\\n\\n# TODO: Third work\\n\\n```\",\"labels\":[],\"assignees\":[\"offline-actor\"]}",
+        "Status": 201,
+        "Response": "{\"number\":22}"
+      },
+      {
+        "Method": "GET",
+        "Path": "/search/issues?q=repo%3Aoffline%2Ffixture+is%3Aissue+in%3Atitle+Nearby+third+work&per_page=30",
+        "Status": 200,
+        "Response": "{\"total_count\":0,\"incomplete_results\":false,\"items\":[]}"
+      },
+      {
+        "Method": "POST",
+        "Path": "/repos/offline/fixture/issues",
+        "Body": "{\"title\":\"Nearby third work\",\"body\":\"https://example.invalid/offline/fixture/blob/1111111111111111111111111111111111111111/third_party_backup/task.sh#L1\\n\\n```sh\\n\\n# TODO: Nearby third work\\n\\n```\",\"labels\":[],\"assignees\":[\"offline-actor\"]}",
+        "Status": 201,
+        "Response": "{\"number\":23}"
+      },
+      {
+        "Method": "GET",
+        "Path": "/search/issues?q=repo%3Aoffline%2Ffixture+is%3Aissue+in%3Atitle+Nearby+vendor+work&per_page=30",
+        "Status": 200,
+        "Response": "{\"total_count\":0,\"incomplete_results\":false,\"items\":[]}"
+      },
+      {
+        "Method": "POST",
+        "Path": "/repos/offline/fixture/issues",
+        "Body": "{\"title\":\"Nearby vendor work\",\"body\":\"https://example.invalid/offline/fixture/blob/1111111111111111111111111111111111111111/vendor-near/task.sh#L1\\n\\n```sh\\n\\n# TODO: Nearby vendor work\\n\\n```\",\"labels\":[],\"assignees\":[\"offline-actor\"]}",
+        "Status": 201,
+        "Response": "{\"number\":24}"
+      },
+      {
+        "Method": "GET",
+        "Path": "/search/issues?q=repo%3Aoffline%2Ffixture+is%3Aissue+in%3Atitle+Vendor+work&per_page=30",
+        "Status": 200,
+        "Response": "{\"total_count\":0,\"incomplete_results\":false,\"items\":[]}"
+      },
+      {
+        "Method": "POST",
+        "Path": "/repos/offline/fixture/issues",
+        "Body": "{\"title\":\"Vendor work\",\"body\":\"https://example.invalid/offline/fixture/blob/1111111111111111111111111111111111111111/vendor/task.sh#L1\\n\\n```sh\\n\\n# TODO: Vendor work\\n\\n```\",\"labels\":[],\"assignees\":[\"offline-actor\"]}",
+        "Status": 201,
+        "Response": "{\"number\":25}"
+      }
+    ],
+    "Output": [
+      "Issue created: #20",
+      "Issue created: #21",
+      "Issue created: #22",
+      "Issue created: #23",
+      "Issue created: #24",
+      "Issue created: #25"
+    ]
+  },
+  {
+    "Name": "custom ignore overrides conventional vendor filtering",
+    "Files": {
+      "src/task.sh": {
+        "Before": "",
+        "After": "# TODO: Owned work\n"
+      },
+      "src/vendor/task.sh": {
+        "Before": "",
+        "After": "# TODO: Nested work\n"
+      },
+      "third_party/task.sh": {
+        "Before": "",
+        "After": "# TODO: Third work\n"
+      },
+      "third_party_backup/task.sh": {
+        "Before": "",
+        "After": "# TODO: Nearby third work\n"
+      },
+      "vendor-near/task.sh": {
+        "Before": "",
+        "After": "# TODO: Nearby vendor work\n"
+      },
+      "vendor/task.sh": {
+        "Before": "",
+        "After": "# TODO: Vendor work\n"
+      },
+      "generated/task.sh": {
+        "Before": "",
+        "After": "# TODO: Generated work\n"
+      }
+    },
+    "ExcludeVendored": "true",
+    "Ignore": "^generated/",
+    "Operations": [
+      {
+        "Method": "GET",
+        "Path": "/search/issues?q=repo%3Aoffline%2Ffixture+is%3Aissue+in%3Atitle+Owned+work&per_page=30",
+        "Status": 200,
+        "Response": "{\"total_count\":0,\"incomplete_results\":false,\"items\":[]}"
+      },
+      {
+        "Method": "POST",
+        "Path": "/repos/offline/fixture/issues",
+        "Body": "{\"title\":\"Owned work\",\"body\":\"https://example.invalid/offline/fixture/blob/1111111111111111111111111111111111111111/src/task.sh#L1\\n\\n```sh\\n\\n# TODO: Owned work\\n\\n```\",\"labels\":[],\"assignees\":[\"offline-actor\"]}",
+        "Status": 201,
+        "Response": "{\"number\":20}"
+      },
+      {
+        "Method": "GET",
+        "Path": "/search/issues?q=repo%3Aoffline%2Ffixture+is%3Aissue+in%3Atitle+Nested+work&per_page=30",
+        "Status": 200,
+        "Response": "{\"total_count\":0,\"incomplete_results\":false,\"items\":[]}"
+      },
+      {
+        "Method": "POST",
+        "Path": "/repos/offline/fixture/issues",
+        "Body": "{\"title\":\"Nested work\",\"body\":\"https://example.invalid/offline/fixture/blob/1111111111111111111111111111111111111111/src/vendor/task.sh#L1\\n\\n```sh\\n\\n# TODO: Nested work\\n\\n```\",\"labels\":[],\"assignees\":[\"offline-actor\"]}",
+        "Status": 201,
+        "Response": "{\"number\":21}"
+      },
+      {
+        "Method": "GET",
+        "Path": "/search/issues?q=repo%3Aoffline%2Ffixture+is%3Aissue+in%3Atitle+Third+work&per_page=30",
+        "Status": 200,
+        "Response": "{\"total_count\":0,\"incomplete_results\":false,\"items\":[]}"
+      },
+      {
+        "Method": "POST",
+        "Path": "/repos/offline/fixture/issues",
+        "Body": "{\"title\":\"Third work\",\"body\":\"https://example.invalid/offline/fixture/blob/1111111111111111111111111111111111111111/third_party/task.sh#L1\\n\\n```sh\\n\\n# TODO: Third work\\n\\n```\",\"labels\":[],\"assignees\":[\"offline-actor\"]}",
+        "Status": 201,
+        "Response": "{\"number\":22}"
+      },
+      {
+        "Method": "GET",
+        "Path": "/search/issues?q=repo%3Aoffline%2Ffixture+is%3Aissue+in%3Atitle+Nearby+third+work&per_page=30",
+        "Status": 200,
+        "Response": "{\"total_count\":0,\"incomplete_results\":false,\"items\":[]}"
+      },
+      {
+        "Method": "POST",
+        "Path": "/repos/offline/fixture/issues",
+        "Body": "{\"title\":\"Nearby third work\",\"body\":\"https://example.invalid/offline/fixture/blob/1111111111111111111111111111111111111111/third_party_backup/task.sh#L1\\n\\n```sh\\n\\n# TODO: Nearby third work\\n\\n```\",\"labels\":[],\"assignees\":[\"offline-actor\"]}",
+        "Status": 201,
+        "Response": "{\"number\":23}"
+      },
+      {
+        "Method": "GET",
+        "Path": "/search/issues?q=repo%3Aoffline%2Ffixture+is%3Aissue+in%3Atitle+Nearby+vendor+work&per_page=30",
+        "Status": 200,
+        "Response": "{\"total_count\":0,\"incomplete_results\":false,\"items\":[]}"
+      },
+      {
+        "Method": "POST",
+        "Path": "/repos/offline/fixture/issues",
+        "Body": "{\"title\":\"Nearby vendor work\",\"body\":\"https://example.invalid/offline/fixture/blob/1111111111111111111111111111111111111111/vendor-near/task.sh#L1\\n\\n```sh\\n\\n# TODO: Nearby vendor work\\n\\n```\",\"labels\":[],\"assignees\":[\"offline-actor\"]}",
+        "Status": 201,
+        "Response": "{\"number\":24}"
+      },
+      {
+        "Method": "GET",
+        "Path": "/search/issues?q=repo%3Aoffline%2Ffixture+is%3Aissue+in%3Atitle+Vendor+work&per_page=30",
+        "Status": 200,
+        "Response": "{\"total_count\":0,\"incomplete_results\":false,\"items\":[]}"
+      },
+      {
+        "Method": "POST",
+        "Path": "/repos/offline/fixture/issues",
+        "Body": "{\"title\":\"Vendor work\",\"body\":\"https://example.invalid/offline/fixture/blob/1111111111111111111111111111111111111111/vendor/task.sh#L1\\n\\n```sh\\n\\n# TODO: Vendor work\\n\\n```\",\"labels\":[],\"assignees\":[\"offline-actor\"]}",
+        "Status": 201,
+        "Response": "{\"number\":25}"
+      }
+    ],
+    "Output": [
+      "Issue created: #20",
+      "Issue created: #21",
+      "Issue created: #22",
+      "Issue created: #23",
+      "Issue created: #24",
+      "Issue created: #25"
+    ]
   }
 ]

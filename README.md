@@ -772,6 +772,7 @@ jobs:
 | `APP_PRIVATE_KEY` | Secret          | -       | No       | Required for production project integration; unused in dry-run |
 | `dry-run`         | Input (boolean) | `false` | No       | Exercise the action wrapper offline without creating issues |
 | `ignore`          | Input (string)  | `""`    | No       | Regular expression matching repository-relative paths to ignore |
+| `exclude-vendored` | Input (boolean) | `false` | No | Exclude root vendor directories when `ignore` is empty |
 | `optional-project-auth` | Input (boolean) | `false` | No | Opt in to project integration being optional |
 | `project` | Input (string) | `organization/devantler-tech/5` | No | Project selection; explicitly empty omits integration when opted in |
 
@@ -788,6 +789,11 @@ Production callers can pass `optional-project-auth: true` and `project: ""` to o
 project integration. Existing callers retain the current project selection and
 default-off rollout choice. Configured projects still require their existing
 authorization. Rollout and flag retirement remain tracked in #340.
+
+Opt in with `exclude-vendored: true` to ignore root `vendor/` and `third_party/`
+when no custom `ignore` is supplied. Nested and similarly named paths remain
+eligible. A nonempty custom expression overrides this filter unchanged. The
+compatibility default stays off until consumer rollout and retirement in #394.
 
 </details>
 
@@ -807,6 +813,7 @@ an empty project and every source path excluded. All three grant only
 | `APP_PRIVATE_KEY` | Secret          | -       | No       | Preserved production interface; catalogue smoke callers must omit it |
 | `dry-run`         | Input (boolean) | `false` | No       | Catalogue callers explicitly enable offline execution |
 | `ignore`          | Input (string)  | `""`    | No       | Repository-relative path expression forwarded to the wrapper |
+| `exclude-vendored` | Input (boolean) | `false` | No | Preserved production choice; the vendor smoke enables it |
 | `optional-project-auth` | Input (boolean) | `false` | No | Preserved production choice; the no-project evaluation enables it |
 | `project` | Input (string) | `organization/devantler-tech/5` | No | Preserved project selection; the no-project evaluation sets it empty |
 
@@ -834,6 +841,7 @@ This is wrapper coverage, not live token generation or project-adoption proof.
 | `APP_PRIVATE_KEY` | Secret | - | No | Retained source interface; never pass a key to this fixture |
 | `dry-run` | Input | `false` | No | Retained production default; the fixture executes the production branch |
 | `ignore` | Input | `""` | No | Forwarded scanner exclusion pattern |
+| `exclude-vendored` | Input | `false` | No | Retained compatibility default, omitted by the positive caller |
 | `optional-project-auth` | Input | `false` | No | Retained compatibility default, omitted by the positive caller |
 | `project` | Input | `organization/devantler-tech/5` | No | Retained project default, checked by the offline dependency |
 | `fixture-skip-app-token` | Input | `false` | No | Fixture-only deliberate fault proving missing token output is rejected |

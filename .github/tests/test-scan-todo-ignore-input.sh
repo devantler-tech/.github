@@ -67,8 +67,8 @@ action_env="$(yq -r \
    | select(.name == "📝 Create issues from TODOs")
    | .env.INPUT_IGNORE // ""' "$action")"
 # shellcheck disable=SC2016 # GitHub expression compared literally.
-[[ "$action_env" == '${{ inputs.ignore }}' ]] ||
-  fail "the scanner action must bind INPUT_IGNORE to inputs.ignore; got: ${action_env:-<missing>}"
+[[ "$action_env" == '${{ inputs.ignore || steps.vendored-ignore.outputs.ignore }}' ]] ||
+  fail "the scanner action must preserve custom ignore before the optional vendor output; got: ${action_env:-<missing>}"
 
 action_run="$(yq -r \
   '.runs.steps[]
