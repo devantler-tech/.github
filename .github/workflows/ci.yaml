@@ -3806,6 +3806,7 @@ jobs:
     permissions: {}
     with:
       disable-issue-side-effects: true
+      align-npm-with-consumer-contract: true
       warn-missing-breaking-bang: true
       dry-run: true
       offline-test: true
