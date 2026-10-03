@@ -76,6 +76,32 @@ function evaluate(gate, values, status) {
   return (explicitStatus || status === 'success') && Boolean(result);
 }
 
+function assertExactBotExclusions(expression, expected, label) {
+  const exclusions = [...String(expression).matchAll(
+    /!contains\(fromJSON\('([^']+)'\),\s*([^)]+)\)/g,
+  )].map(match => ({values: JSON.parse(match[1]), context: match[2].trim()}));
+  const contexts = ['github.event.pull_request.user.login', 'inputs.pr-owner'];
+  assert.deepEqual(exclusions.map(exclusion => exclusion.context).sort(), [...contexts].sort(),
+    `${label}: exclusion contexts`);
+  const normalized = [...expected].map(value => value.toLowerCase()).sort();
+  for (const exclusion of exclusions) {
+    assert.deepEqual(exclusion.values.map(value => value.toLowerCase()).sort(), normalized,
+      `${label}: complete exclusions for ${exclusion.context}`);
+  }
+}
+
+function addExtraBotExclusion(expression, extra) {
+  let mutated = false;
+  const result = String(expression).replace(/fromJSON\('([^']+)'\)/g, (match, json) => {
+    const values = JSON.parse(json);
+    values.push(extra);
+    mutated = true;
+    return `fromJSON('${JSON.stringify(values)}')`;
+  });
+  assert.equal(mutated, true, 'extra-bot ablation did not find an exclusion list');
+  return result;
+}
+
 const fixtures = [];
 for (const input of [true, 'true', 'TRUE', undefined, false, 'false'])
 for (const status of ['failure', 'success', 'cancelled'])
@@ -144,6 +170,16 @@ for (const output of ['artifact-name', 'changed', 'manual-required']) {
 }
 const go = JSON.parse(fs.readFileSync(`${directory}/validate-go-project.json`, 'utf8'));
 const signer = JSON.parse(fs.readFileSync(`${directory}/apply-signed-fixes.json`, 'utf8'));
+const policies = [['signer', signer.jobs['apply-fixes'].if]];
+for (const lane of ['tidy', 'golangci-lint', 'lint']) {
+  policies.push([lane, go.jobs[lane].steps.find(step => step.id === 'fixes').with['upload-enabled']]);
+}
+for (const [label, expression] of policies) {
+  assertExactBotExclusions(expression, bots, label);
+  assert.throws(() => assertExactBotExclusions(addExtraBotExclusion(expression, 'some-other-bot[bot]'), bots, label),
+    error => error.code === 'ERR_ASSERTION' && error.message.includes(`${label}: complete exclusions`),
+    `${label}: arbitrary extra bot exclusion was accepted`);
+}
 const identities = ['human', 'github-actions[bot]', 'ksail-bot', 'botantler-1[bot]', 'release-please[bot]', '', ...bots, 'RENOVATE[BOT]'];
 let identityCases = 0;
 for (const author of identities)
