@@ -34,15 +34,21 @@ mutate 'unsigned event head' "$tip" 'if [ "$verified" != "true" ]; then' 'if fal
 # shellcheck disable=SC2016
 mutate 'unsigned replacement head' "$commit" 'if [ "$verified" != "true" ]; then' 'if false; then' 'replacement-false: commit accepted a failing fixture'
 # shellcheck disable=SC2016
-mutate 'missing post-publication verification' "$commit" 'verify_signed "$oid"' ':' 'payload-integrity: creation or verification identity/count changed'
+mutate 'missing staged verification' "$commit" 'verify_signed "$oid" "$head_oid"' ':' 'payload-integrity: creation or verification identity/count changed'
+# shellcheck disable=SC2016
+mutate 'missing consumer expected head' "$commit" '[{name:$branch,beforeOid:$head,afterOid:$oid,force:false},' '[{name:$branch,afterOid:$oid,force:false},' 'ref-concurrent: commit accepted a failing fixture'
+# shellcheck disable=SC2016
+mutate 'blind staging cleanup' "$commit" '[{name:$ref,beforeOid:$before,afterOid:"0000000000000000000000000000000000000000",force:false}]' '[{name:$ref,afterOid:"0000000000000000000000000000000000000000",force:false}]' 'mutation-empty: uncertain commit response authorized blind cleanup'
+# shellcheck disable=SC2016
+mutate 'forced consumer update' "$commit" '[{name:$branch,beforeOid:$head,afterOid:$oid,force:false},' '[{name:$branch,beforeOid:$head,afterOid:$oid,force:true},' 'payload-integrity: commit unexpectedly failed'
 # shellcheck disable=SC2016
 mutate 'wrong expected head' "$commit" 'expectedHeadOid: $oid,' 'expectedHeadOid: "0000000000000000000000000000000000000000",' 'payload-integrity: commit unexpectedly failed'
 # shellcheck disable=SC2016
 mutate 'ignored Git status failure' "$commit" 'git status --porcelain -z --no-renames -uall >"$workdir/status"' 'git status --porcelain -z --no-renames -uall >"$workdir/status" || true' 'git-status-failed: commit accepted a failing fixture'
 # shellcheck disable=SC2016
 mutate 'ignored Git headline failure' "$commit" 'headline="$(git log -1 --format=%s)"' 'headline="$(git log -1 --format=%s)" || true' 'git-log-failed: commit accepted a failing fixture'
-# shellcheck disable=SC2016
-mutate 'ignored Git head failure' "$commit" 'head_oid="$(git rev-parse HEAD)"' 'head_oid="$(git rev-parse HEAD)" || true' 'git-rev-parse-failed: unexpected API call'
+# Head-read errors are also rejected by the independent full-OID validation;
+# softening that read alone no longer removes the behavioral guarantee.
 
 before=$(cat <<'BLOCK'
 if ! jq -e 'type == "object" and (.commit | type == "object") and (.commit.message | type == "string")' <<<"$head_json" >/dev/null; then
