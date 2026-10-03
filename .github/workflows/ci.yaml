@@ -1726,6 +1726,23 @@ jobs:
         shell: bash
         run: bash .github/tests/test-refresh-gh-digests.sh
 
+      - name: 🧪 Check the reviewed digest updater boundary
+        run: bash .github/tests/test-gh-digest-updater.sh
+
+      - name: 🔒 Prepare real release digests without write authority
+        id: digest-candidate
+        run: |
+          bash .github/scripts/prepare-gh-digest-update.sh
+          cp .scripts/gh-release-digests.tsv "$RUNNER_TEMP/gh-release-digests.tsv"
+
+      - name: 📦 Retain the complete candidate manifest
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: gh-digest-candidate
+          path: ${{ runner.temp }}/gh-release-digests.tsv
+          if-no-files-found: error
+          retention-days: 1
+
       - name: 🧪 Exercise ensure-gh-skill.sh (guards, fast-return, platform/arch/integrity errors)
         shell: bash
         run: |

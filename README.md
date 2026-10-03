@@ -1008,6 +1008,13 @@ list. With `use-app-token: true`, the merge and the sync are signed as one commi
 
 ### 🔄 Update Agent Skills
 
+The catalogue refreshes its declared GitHub CLI release digests weekly and on demand through
+[the reviewed digest updater](.github/workflows/refresh-gh-digests.yaml). It resolves the shared
+installer version, validates every supported platform, then opens a signed draft containing only
+the digest manifest. No-change runs mint no write token. The draft must pass normal review and CI
+before its digests become installer authority; unsupported custom versions retain their warning
+and existing verification behavior.
+
 <details>
 <summary>Click to expand</summary>
 
