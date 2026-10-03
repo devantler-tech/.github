@@ -9,13 +9,17 @@ cp "$root/.scripts/refresh-gh-digests.sh" "$tmp/work/refresh-gh-digests.sh"
 cat > "$tmp/bin/curl" <<'STUB'
 #!/usr/bin/env bash
 set -euo pipefail
-if [ "$#" -ne 4 ] || [ "$1" != -fsSL ] || [ "$2" != -o ] ||
-   [ "$4" != https://github.com/cli/cli/releases/download/v999.0.0/gh_999.0.0_checksums.txt ]; then
+if [[ "$#" != 18 || "$1" != -q || "$2" != --fail || "$3" != --silent || "$4" != --show-error ||
+      "$5" != --location || "$6" != --proto || "$7" != '=https' || "$8" != --proto-redir ||
+      "$9" != '=https' || "${10}" != --connect-timeout || "${11}" != 10 ||
+      "${12}" != --max-time || "${13}" != 60 || "${14}" != --max-filesize || "${15}" != 1048576 ||
+      "${16}" != --output ||
+      "${18}" != https://github.com/cli/cli/releases/download/v999.0.0/gh_999.0.0_checksums.txt ]]; then
   echo 'unexpected checksum download request' >&2
   exit 90
 fi
 printf 'called\n' >> "$CURL_CALLS"
-cp "$CURL_FIXTURE" "$3"
+cp "$CURL_FIXTURE" "${17}"
 if [ "${CURL_FAIL:-false}" = true ]; then exit 22; fi
 STUB
 chmod +x "$tmp/bin/curl"
@@ -70,6 +74,34 @@ make_fixture
 export CURL_FAIL=true
 reject failed-download-with-partial-payload
 unset CURL_FAIL
+
+# Snapshot and retained-row reads must both fail closed without replacing pins.
+for tool in cat grep awk; do
+  real_tool="$(command -v "$tool")"
+  {
+    # shellcheck disable=SC2016 # Write expansions for the fixture invocation.
+    printf '%s\n' '#!/usr/bin/env bash' 'set -euo pipefail' \
+      'for argument in "$@"; do' \
+      '  if [[ -n "${READ_FAIL_TARGET:-}" && "$argument" == "$READ_FAIL_TARGET" ]]; then exit 2; fi' \
+      '  if [[ "${FAIL_RETAINED_READ:-false}" == true && "$argument" == *"!= v"* ]]; then' \
+      '    printf called >>"${READ_FAIL_MARKER:?}"; exit 2' \
+      '  fi' \
+      'done'
+    printf 'exec %q "$@"\n' "$real_tool"
+  } >"$tmp/bin/$tool"
+  chmod +x "$tmp/bin/$tool"
+done
+make_fixture
+export READ_FAIL_TARGET="$manifest"
+reject failed-prior-manifest-read
+unset READ_FAIL_TARGET
+make_fixture
+export FAIL_RETAINED_READ=true READ_FAIL_MARKER="$tmp/retained-read-called"
+reject failed-retained-row-read
+[[ "$(cat "$READ_FAIL_MARKER")" == called && "$(wc -l < "$tmp/calls" | tr -d ' ')" == 1 ]] || {
+  echo 'FAIL: retained-row control did not reach its intended post-download read' >&2; exit 1;
+}
+unset FAIL_RETAINED_READ READ_FAIL_MARKER
 
 make_fixture
 for version in '' 999.0 999.0.0-extra '999.0.0?redirect=1'; do

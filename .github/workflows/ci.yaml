@@ -1726,6 +1726,23 @@ jobs:
         shell: bash
         run: bash .github/tests/test-refresh-gh-digests.sh
 
+      - name: 🧪 Check the reviewed digest updater boundary
+        run: bash .github/tests/test-gh-digest-updater.sh
+
+      - name: 🔒 Prepare real release digests without write authority
+        id: digest-candidate
+        run: |
+          bash .github/scripts/prepare-gh-digest-update.sh
+          cp .scripts/gh-release-digests.tsv "$RUNNER_TEMP/gh-release-digests.tsv"
+
+      - name: 📦 Retain the complete candidate manifest
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: gh-digest-candidate
+          path: ${{ runner.temp }}/gh-release-digests.tsv
+          if-no-files-found: error
+          retention-days: 1
+
       - name: 🧪 Exercise ensure-gh-skill.sh (guards, fast-return, platform/arch/integrity errors)
         shell: bash
         run: |
@@ -2238,6 +2255,64 @@ jobs:
           echo "✅ macos-missing-unzip: guarded before download as expected"
 
           rm -rf "$okbin" "$badver" "$noskill" "$win" "$badarch" "$oldskill" "$nounzip"
+
+      - name: 🔒 Install the real CLI through the reviewed candidate digest
+        timeout-minutes: 5
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EXPECTED_GH_VERSION: ${{ steps.digest-candidate.outputs.version }}
+          INSTALL_NAMESPACE: gh-native-${{ github.run_id }}-${{ github.run_attempt }}
+        run: |
+          set -euo pipefail
+          runner_gh="$(command -v gh)"
+          probe="$(mktemp -d "$RUNNER_TEMP/gh-native-probe.XXXXXX")"
+          mkdir "$probe/bin"
+          cat > "$probe/bin/gh" <<'EOF'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          if [[ $# == 1 && $1 == --version ]]; then
+            echo 'gh version 0.0.0'
+            exit 0
+          fi
+          if [[ $# == 2 && $1 == skill && $2 == --help ]]; then
+            exit 0
+          fi
+          if [[ $# == 2 && $1 == attestation && $2 == --help ]]; then
+            exec "$TRUSTED_GH" "$@"
+          fi
+          if [[ $# == 7 && $1 == attestation && $2 == verify &&
+                ${3##*/} == "gh_${EXPECTED_GH_VERSION}_linux_amd64.tar.gz" &&
+                $4 == --repo && $5 == cli/cli && $6 == --signer-workflow &&
+                $7 == cli/cli/.github/workflows/deployment.yml ]]; then
+            "$TRUSTED_GH" "$@"
+            echo 'PASS: real runner CLI verified the release-workflow attestation'
+            exit 0
+          fi
+          echo '::error::Unexpected CLI invocation in native cold-install proof' >&2
+          exit 1
+          EOF
+          chmod +x "$probe/bin/gh"
+          PATH="$probe/bin:$PATH" TRUSTED_GH="$runner_gh" REQUIRED="$EXPECTED_GH_VERSION" \
+            bash .scripts/ensure-gh-skill.sh > "$probe/install.log" 2>&1 || {
+              cat "$probe/install.log"
+              exit 1
+            }
+          cat "$probe/install.log"
+          grep -Fx "Verified gh_${EXPECTED_GH_VERSION}_linux_amd64.tar.gz against the reviewed digest pinned for v${EXPECTED_GH_VERSION} linux/amd64." "$probe/install.log"
+          grep -Fx 'PASS: real runner CLI verified the release-workflow attestation' "$probe/install.log"
+          grep -Fx "$RUNNER_TEMP/$INSTALL_NAMESPACE/bin" "$GITHUB_PATH"
+
+      - name: Verify the runner uses the installed CLI in the next step
+        shell: bash
+        env:
+          EXPECTED_GH_VERSION: ${{ steps.digest-candidate.outputs.version }}
+          INSTALL_NAMESPACE: gh-native-${{ github.run_id }}-${{ github.run_attempt }}
+        run: |
+          set -euo pipefail
+          test "$(command -v gh)" = "$RUNNER_TEMP/$INSTALL_NAMESPACE/bin/gh"
+          test "$(gh --version | awk '/^gh version /{print $3; exit}')" = "$EXPECTED_GH_VERSION"
+          gh skill --help
 
   # ── .scripts/gh-skill-install.sh (shared idempotent install helper) ─
   test-gh-skill-install-script:

@@ -35,11 +35,15 @@ if [ ! -f "$manifest" ]; then
 fi
 
 sums_url="https://github.com/cli/cli/releases/download/v${version}/gh_${version}_checksums.txt"
-tmp=$(mktemp -d)
+tmp=$(mktemp -d "$(dirname "$manifest")/.gh-digests.XXXXXX")
 trap 'rm -rf "$tmp"' EXIT
+# Snapshot the existing reviewed bytes before fetching or preparing replacement.
+# Read failures are errors, never an empty set of retained version pins.
+cat "$manifest" > "$tmp/original"
 
 echo "Fetching $sums_url"
-if ! curl -fsSL -o "$tmp/sums" "$sums_url"; then
+if ! curl -q --fail --silent --show-error --location --proto '=https' --proto-redir '=https' \
+  --connect-timeout 10 --max-time 60 --max-filesize 1048576 --output "$tmp/sums" "$sums_url"; then
   echo "::error::could not fetch the checksums file for v${version}; is that a published cli/cli release?" >&2
   exit 1
 fi
@@ -71,11 +75,10 @@ done
 
 # Drop any existing rows for this version, keep everything else (comments, other
 # versions), then append the freshly fetched set and sort the data rows for a stable diff.
+awk '/^[[:space:]]*(#|$)/' "$tmp/original" > "$tmp/header"
+awk -F'\t' -v v="$version" '!/^[[:space:]]*(#|$)/ && $1 != v' "$tmp/original" > "$tmp/retained"
 {
-  grep -E '^[[:space:]]*(#|$)' "$manifest" || true
-} > "$tmp/header"
-{
-  grep -vE '^[[:space:]]*(#|$)' "$manifest" | awk -F'\t' -v v="$version" '$1 != v' || true
+  cat "$tmp/retained"
   printf '%b' "$rows"
 } | sort -t"$(printf '\t')" -k1,1V -k2,2 -k3,3 > "$tmp/data"
 

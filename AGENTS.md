@@ -520,6 +520,12 @@ The auto-merge workflow's own allow-lists (`TRUSTED_BOT_AUTHORS`, `TRUSTED_TRIGG
 
 **Task menu** (1–2 items/run; high care):
 
+The catalogue-owned `refresh-gh-digests.yaml` updater runs only from reviewed main, validates the
+complete manifest before minting a repository-scoped App token, and opens a signed draft limited
+to the manifest. Preserve its source/credential/path mutations and the fail-closed retained-pin
+regression. The read-only native CI preparation supplies actual release checksums; it is not
+proof that a draft update merged or that a consumer installed the reviewed pinned archive.
+
 - **Triage** new issues/PRs; one insightful comment on the oldest un-commented item.
 - **Action/version hygiene:** keep third-party actions pinned & aligned; bundle Dependabot `github_actions` PRs; flag majors. (There are no first-party self-reference pins to bump — self-references resolve via the same-commit self-checkout.)
 - **Workflow health & dedup:** consolidate duplicated steps, split overgrown jobs, improve caching, remove dead workflows — backward-compatible, one concern per draft PR, `actionlint`-clean.
