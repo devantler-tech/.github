@@ -109,6 +109,13 @@ authority and never changes settings. Keep both observation/failure controls and
 credential-boundary mutations in CI. Provider adoption remains in #85; scheduling and flag
 retirement remain in #404.
 
+Routine repository/admin-team monitoring is described in
+[`.github/governance-audits.md`](.github/governance-audits.md). Its daily schedule is enabled;
+manual execution requires explicit opt-in on main. Keep admission, private-diagnostic suppression,
+complete-outcome reporting and source/credential mutations in required CI. Scheduled admission
+is reviewed and the actual main controls pass; #395 owns scheduled observation and
+rollout-flag retirement. A complete manual result does not retire legacy maintenance (#84).
+
 **Validate before every PR** (the sole required check, `CI - Required Checks`, gates on this):
 
 ```sh
