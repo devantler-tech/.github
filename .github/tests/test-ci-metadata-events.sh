@@ -138,6 +138,43 @@ fi
 }
 echo 'ok: reviewed validator accepts healthy Git history, rejects bad edits and ignores hostile candidate scripts'
 
+# Main-only deployments must not be mistaken for this PR's changes/deletions.
+cat >"$work/history/trusted/deploy/kustomization.yaml" <<'KUSTOMIZATION'
+resources:
+  - guard.yaml
+KUSTOMIZATION
+cat >"$work/history/trusted/deploy/guard.yaml" <<'RESOURCE'
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: retained
+RESOURCE
+git -C "$work/history/trusted" add deploy/kustomization.yaml deploy/guard.yaml
+git -C "$work/history/trusted" commit -qm 'fix: baseline rendered resource'
+shared_sha="$(git -C "$work/history/trusted" rev-parse HEAD)"
+printf 'Documentation only\n' >"$work/history/trusted/README.md"
+git -C "$work/history/trusted" add README.md
+git -C "$work/history/trusted" commit -qm 'docs: unrelated PR'
+head_sha="$(git -C "$work/history/trusted" rev-parse HEAD)"
+git -C "$work/history/trusted" checkout -q --detach "$shared_sha"
+cp "$work/history/trusted/deploy/guard.yaml" "$work/history/trusted/deploy/main-only.yaml"
+yq -i '.metadata.name = "main-only"' "$work/history/trusted/deploy/main-only.yaml"
+yq -i '.resources += ["main-only.yaml"]' "$work/history/trusted/deploy/kustomization.yaml"
+git -C "$work/history/trusted" add deploy/kustomization.yaml deploy/main-only.yaml
+git -C "$work/history/trusted" commit -qm 'fix: main-only deployment'
+base_sha="$(git -C "$work/history/trusted" rev-parse HEAD)"
+run_history 'docs: unrelated PR' 1 >"$work/history.log" 2>&1 || fail 'main-only deployment was treated as a PR release change'
+mkdir "$work/history/temp"
+git -C "$work/history/trusted" archive "$head_sha" deploy | tar -x -C "$work/history/candidate"
+cp "$repo_root/scripts/validate-deploy-deletions.sh" "$work/history/trusted/scripts/"
+: >"$work/history/temp/pr-body.txt"
+yq -r '.jobs.metadata-guards.steps[] | select(.name == "🗑️ Validate deploy/ deletions are acknowledged") | .run' "$workflow" >"$work/history/deletions.sh"
+(
+  cd "$work/history"
+  env BASE_SHA="$base_sha" HEAD_SHA="$head_sha" RUNNER_TEMP="$work/history/temp" bash -eo pipefail deletions.sh
+) >"$work/history.log" 2>&1 || fail 'main-only resource was treated as a PR deletion'
+echo 'ok: diverged main-only deploy changes do not require a release title or deletion acknowledgement'
+
 mkdir -p "$work/api/bin" "$work/api/temp"
 yq -r '.jobs.metadata-guards.steps[] | select(.id == "pr") | .run' "$workflow" >"$work/api/read.sh"
 yq -r '.jobs.metadata-guards.steps[] | select(.name == "🔎 Refuse changed metadata") | .run' "$workflow" >"$work/api/recheck.sh"
@@ -169,11 +206,11 @@ run_api healthy "$work/api/healthy.json" 354 refs/heads/main read.sh
 run_api healthy "$work/api/healthy.json" 354 refs/heads/main recheck.sh
 for case_name in failure closed fork malformed-sha missing-commits; do
   case "$case_name" in
-  closed) change='.state = "closed"' ;;
-  fork) change='.head.repo.full_name = "other/fork"' ;;
-  malformed-sha) change='.head.sha = "main"' ;;
-  missing-commits) change='del(.commits)' ;;
-  *) change='.' ;;
+    closed) change='.state = "closed"' ;;
+    fork) change='.head.repo.full_name = "other/fork"' ;;
+    malformed-sha) change='.head.sha = "main"' ;;
+    missing-commits) change='del(.commits)' ;;
+    *) change='.' ;;
   esac
   jq "$change" "$work/api/healthy.json" >"$work/api/case.json"
   if run_api "$case_name" "$work/api/case.json" 354 refs/heads/main read.sh >"$work/api.log" 2>&1; then
@@ -211,12 +248,12 @@ echo 'ok: manual metadata checks use trusted feedback while full CI protection r
 
 for mutation in no-dispatch candidate-workflow skip-guards candidate-validator no-pipefail unsafe-checkout; do
   case "$mutation" in
-  no-dispatch) expression='del(.on.workflow_dispatch)' ;;
-  candidate-workflow) expression='.on.pull_request = {} | del(.on.workflow_dispatch)' ;;
-  skip-guards) expression='.jobs.metadata-guards.if = "false"' ;;
-  candidate-validator) expression='(.jobs.metadata-guards.steps[] | select(.run // "" | contains("validate-release-contract.sh"))).run |= sub("trusted/scripts/"; "candidate/scripts/")' ;;
-  no-pipefail) expression='del(.jobs.metadata-guards.steps[].shell)' ;;
-  unsafe-checkout) expression='(.jobs.metadata-guards.steps[] | select(.with.path == "trusted")).with.allow-unsafe-pr-checkout = true' ;;
+    no-dispatch) expression='del(.on.workflow_dispatch)' ;;
+    candidate-workflow) expression='.on.pull_request = {} | del(.on.workflow_dispatch)' ;;
+    skip-guards) expression='.jobs.metadata-guards.if = "false"' ;;
+    candidate-validator) expression='(.jobs.metadata-guards.steps[] | select(.run // "" | contains("validate-release-contract.sh"))).run |= sub("trusted/scripts/"; "candidate/scripts/")' ;;
+    no-pipefail) expression='del(.jobs.metadata-guards.steps[].shell)' ;;
+    unsafe-checkout) expression='(.jobs.metadata-guards.steps[] | select(.with.path == "trusted")).with.allow-unsafe-pr-checkout = true' ;;
   esac
   yq "$expression" "$workflow" >"$work/mutated.yaml"
   if check_metadata "$work/mutated.yaml" "$work/render.yaml" >"$work/mutation.log" 2>&1; then
