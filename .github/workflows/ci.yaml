@@ -3934,10 +3934,8 @@ jobs:
     with:
       app-name: app
       dry-run: true
-      # enable-caller-pin is deliberately OMITTED here: this job is the default-off
-      # half of the flag's workflow_call coverage, and omitting it also proves the
-      # input is genuinely optional. The enabled half is test-publish-app-caller-pin
-      # below.
+      # Omitted input uses default-on enforcement. This dry-run validates the interface;
+      # shipped omitted/true/false behavior is exercised by test-publish-preflight.sh.
 
   test-publish-app-caller-pin:
     if: "${{ github.event_name == 'push' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
@@ -4040,7 +4038,7 @@ jobs:
       id-token: write
     with:
       dry-run: true
-      # Default-off half, as above: enable-caller-pin is deliberately omitted.
+      # Omitted input uses default-on enforcement; this dry-run validates the interface.
 
   test-publish-manifests-caller-pin:
     if: "${{ github.event_name == 'push' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"

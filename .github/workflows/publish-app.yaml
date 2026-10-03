@@ -17,9 +17,9 @@ on:
         default: false
         type: boolean
       enable-caller-pin:
-        description: "Enforce that the caller pinned this workflow to a commit SHA before signing. Opt-in while rolling out; see AGENTS.md 'Shipping a new capability behind an opt-in flag'."
+        description: "Require a commit-SHA caller before signing. Enabled by default; explicit false remains supported during caller cleanup (#284)."
         required: false
-        default: false
+        default: true
         type: boolean
       enable-signed-promotion:
         description: "Stage, sign and verify image and manifests before exposing release tags. Requires enable-caller-pin; default-off during rollout (#371)."
