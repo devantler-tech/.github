@@ -19,9 +19,10 @@ guard() {
     elif ([$job.steps[]|select((.uses // "")|startswith("actions/checkout@"))] |
       length != 1 or any(.with["persist-credentials"] != false))
     then error("scanner checkout must disable persisted credentials")
-    elif ([$job.steps[]|select(command == "bash .github/tests/test-todo-scanner.sh")] |
-      length != 1 or any(.if != null or (.shell != null and .shell != "bash") or
-        (."continue-on-error" // false) != false or ."working-directory" != null))
+    elif (["bash .github/tests/test-todo-scanner.sh", "bash .github/tests/test-todo-scanner-controls.sh"] |
+      any(. as $command | [$job.steps[]|select(command == $command)] |
+        length != 1 or any(.if != null or (.shell != null and .shell != "bash") or
+          (."continue-on-error" // false) != false or ."working-directory" != null)))
     then error("real scanner command must execute and propagate failure")
     elif ([$ci.defaults.run // {},$job.defaults.run // {}] | any(
       (.shell != null and .shell != "bash") or (."working-directory" != null and ."working-directory" != ".")))
@@ -48,6 +49,10 @@ live credential	.jobs["test-todo-scanner"].env.TOKEN="${{ secrets.APP_PRIVATE_KE
 persisted checkout	.jobs["test-todo-scanner"].steps |= map(if (.uses // ""|startswith("actions/checkout@")) then .with["persist-credentials"]=true else . end)	persisted credentials
 missing scanner	.jobs["test-todo-scanner"].steps |= map(select((.run // ""|contains("test-todo-scanner.sh"))|not))	command must execute
 printed scanner	.jobs["test-todo-scanner"].steps |= map(if (.run // ""|contains("test-todo-scanner.sh")) then .run="echo bash .github/tests/test-todo-scanner.sh" else . end)	command must execute
+missing native controls	.jobs["test-todo-scanner"].steps |= map(select((.run // ""|contains("test-todo-scanner-controls.sh"))|not))	command must execute
+printed native controls	.jobs["test-todo-scanner"].steps |= map(if (.run // ""|contains("test-todo-scanner-controls.sh")) then .run="echo bash .github/tests/test-todo-scanner-controls.sh" else . end)	command must execute
+skipped native controls	.jobs["test-todo-scanner"].steps |= map(if (.run // ""|contains("test-todo-scanner-controls.sh")) then .if="false" else . end)	command must execute
+ignored native control failure	.jobs["test-todo-scanner"].steps |= map(if (.run // ""|contains("test-todo-scanner-controls.sh")) then .["continue-on-error"]=true else . end)	command must execute
 skipped scanner	.jobs["test-todo-scanner"].steps |= map(if (.run // ""|contains("test-todo-scanner.sh")) then .if="false" else . end)	command must execute
 ignored failure	.jobs["test-todo-scanner"]["continue-on-error"]=true	failure boundary
 ignored scanner failure	.jobs["test-todo-scanner"].steps |= map(if (.run // ""|contains("test-todo-scanner.sh")) then .["continue-on-error"]=true else . end)	command must execute
@@ -56,4 +61,4 @@ shadow directory	.jobs["test-todo-scanner"].defaults.run["working-directory"]="s
 missing required dependency	.jobs["ci-required-checks"].needs |= map(select(. != "test-todo-scanner"))	gate required CI
 missing required result	.jobs["ci-required-checks"].steps |= map(if .env.JOB_RESULTS then .env.JOB_RESULTS |= gsub("needs.test-todo-scanner.result";"needs.other.result") else . end)	evaluate scanner result
 CASES
-echo 'PASS: 12 CI mutations preserve the real scanner boundary'
+echo 'PASS: 16 CI mutations preserve the real scanner boundary'

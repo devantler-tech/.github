@@ -141,7 +141,6 @@ jobs:
         # Local syntax remains required by actionlint; migration is tracked in #1234.
         uses: ./actions/validate-shell-pipelines # zizmor: ignore[self-repository]
         with:
-          enabled: "true"
           paths: .github/fixtures/validate-shell-pipelines/good.sh
       - name: Prepare tracked negative fixtures without executing them
         shell: bash
@@ -158,7 +157,6 @@ jobs:
         # Local syntax remains required by actionlint; migration is tracked in #1234.
         uses: ./actions/validate-shell-pipelines # zizmor: ignore[self-repository]
         with:
-          enabled: "true"
           working-directory: ${{ runner.temp }}/shell-pipelines-fixture
           paths: unsafe.sh
       - name: Reject a malformed script
@@ -167,7 +165,6 @@ jobs:
         # Local syntax remains required by actionlint; migration is tracked in #1234.
         uses: ./actions/validate-shell-pipelines # zizmor: ignore[self-repository]
         with:
-          enabled: "true"
           working-directory: ${{ runner.temp }}/shell-pipelines-fixture
           paths: malformed.sh
       - name: Assert action outcomes and output boundaries
@@ -209,12 +206,12 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - name: Omitted opt-in skips a missing repository
+      - name: Omitted enablement validates a tracked scope
         id: omitted
         # Local syntax remains required by actionlint; migration is tracked in #1234.
         uses: ./actions/validate-shell-pipelines # zizmor: ignore[self-repository]
         with:
-          working-directory: missing-directory
+          paths: .github/fixtures/validate-shell-pipelines/good.sh
       - name: Explicit false skips invalid scope
         id: disabled
         # Local syntax remains required by actionlint; migration is tracked in #1234.
@@ -222,14 +219,14 @@ jobs:
         with:
           enabled: "false"
           paths: ../invalid
-      - name: Reject invalid opt-in spelling
+      - name: Reject invalid enablement spelling
         id: invalid
         continue-on-error: true
         # Local syntax remains required by actionlint; migration is tracked in #1234.
         uses: ./actions/validate-shell-pipelines # zizmor: ignore[self-repository]
         with:
           enabled: "yes"
-      - name: Assert disabled and invalid calls never validate
+      - name: Assert default validation and opt-out boundaries
         shell: bash
         env:
           OMITTED: ${{ steps.omitted.outputs.validated }}
@@ -237,7 +234,7 @@ jobs:
           INVALID_VALIDATED: ${{ steps.invalid.outputs.validated }}
           INVALID: ${{ steps.invalid.outcome }}
         run: |
-          test -z "$OMITTED"
+          test "$OMITTED" = true
           test -z "$DISABLED"
           test -z "$INVALID_VALIDATED"
           test "$INVALID" = failure
@@ -264,7 +261,6 @@ jobs:
         id: validate
         uses: ./actions/validate-naming
         with:
-          enabled: "true"
           working-directory: .github/fixtures/validate-naming
       - name: Assert validation ran
         shell: bash
@@ -294,11 +290,11 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - name: Omitted opt-in skips even a missing repository
+      - name: Omitted enablement validates the default configuration
         id: omitted
         uses: ./actions/validate-naming
         with:
-          working-directory: missing-directory
+          working-directory: .github/fixtures/validate-naming
       - name: Explicit false skips a seeded naming violation
         id: disabled
         uses: ./actions/validate-naming
@@ -306,13 +302,13 @@ jobs:
           enabled: "false"
           config-file: invalid.yaml
           working-directory: .github/fixtures/validate-naming
-      - name: Assert neither disabled call validated
+      - name: Assert default validation and opt-out boundaries
         shell: bash
         env:
           OMITTED: ${{ steps.omitted.outputs.validated }}
           DISABLED: ${{ steps.disabled.outputs.validated }}
         run: |
-          test -z "$OMITTED"
+          test "$OMITTED" = true
           test -z "$DISABLED"
 
   test-validate-naming-rejects:
@@ -335,10 +331,9 @@ jobs:
         continue-on-error: true
         uses: ./actions/validate-naming
         with:
-          enabled: "true"
           working-directory: .github/fixtures/validate-naming
           config-file: invalid.yaml
-      - name: Reject invalid opt-in spelling
+      - name: Reject invalid enablement spelling
         id: invalid
         continue-on-error: true
         uses: ./actions/validate-naming
@@ -491,6 +486,9 @@ jobs:
 
       - name: 🧪 Exercise the real pinned scanner offline
         run: bash .github/tests/test-todo-scanner.sh
+
+      - name: 🧪 Detect native scanner discovery and payload regressions
+        run: bash .github/tests/test-todo-scanner-controls.sh
 
   test-create-issues-from-todos:
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
@@ -3238,6 +3236,10 @@ jobs:
         shell: bash
         run: bash .github/tests/test-todo-workflow-readonly-controls.sh
 
+      - name: 🧪 Check native TODO compatibility replay and independent boundaries
+        shell: bash
+        run: bash .github/tests/test-todo-production-default-fixture.sh
+
       - name: 📋 Check ci.yaml test wiring is complete
         shell: bash
         run: |
@@ -4056,6 +4058,35 @@ jobs:
       contents: read
     with:
       dry-run: true
+
+  test-scan-for-todo-comments-no-project:
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    name: "[Test] Scan for TODO Comments - Production Steps Without a Project"
+    uses: ./.github/workflows/scan-for-todo-comments-readonly.yaml
+    permissions:
+      contents: read
+    with:
+      dry-run: false
+      optional-project-auth: true
+      project: ""
+      # Exercise the production wrapper without authorizing or requesting issue writes.
+      ignore: ".*"
+
+  test-scan-for-todo-comments-default:
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    name: "[Test] Scan for TODO Comments - Production Compatibility Defaults"
+    uses: ./.github/workflows/scan-for-todo-comments-default-fixture.yaml
+    permissions:
+      contents: read
+
+  test-scan-for-todo-comments-default-control:
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    name: "[Test] Scan for TODO Comments - Reject Missing Project Token"
+    uses: ./.github/workflows/scan-for-todo-comments-default-fixture.yaml
+    permissions:
+      contents: read
+    with:
+      fixture-skip-app-token: true
 
   test-scan-for-todo-comments-ignore:
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
@@ -5768,6 +5799,9 @@ jobs:
       - test-publish-caller-pin-live
       - test-scan-for-todo-comments
       - test-scan-for-todo-comments-ignore
+      - test-scan-for-todo-comments-no-project
+      - test-scan-for-todo-comments-default
+      - test-scan-for-todo-comments-default-control
       - test-sync-cluster-policies
       - test-sync-cluster-policies-allowlist
       - test-update-agent-skills
@@ -5896,6 +5930,9 @@ jobs:
             ${{ needs.test-publish-caller-pin-live.result }}
             ${{ needs.test-scan-for-todo-comments.result }}
             ${{ needs.test-scan-for-todo-comments-ignore.result }}
+            ${{ needs.test-scan-for-todo-comments-no-project.result }}
+            ${{ needs.test-scan-for-todo-comments-default.result }}
+            ${{ needs.test-scan-for-todo-comments-default-control.result }}
             ${{ needs.test-sync-cluster-policies.result }}
             ${{ needs.test-sync-cluster-policies-allowlist.result }}
             ${{ needs.test-update-agent-skills.result }}

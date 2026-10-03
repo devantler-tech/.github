@@ -13,6 +13,16 @@ on:
         required: false
         default: ""
         type: string
+      optional-project-auth:
+        description: "Opt in to optional project integration; existing callers keep their behavior"
+        required: false
+        default: false
+        type: boolean
+      project:
+        description: "Project selection; set empty with optional-project-auth to omit project integration"
+        required: false
+        default: "organization/devantler-tech/5"
+        type: string
     secrets:
       APP_PRIVATE_KEY:
         description: "Required for production project integration; unused in dry-run"
@@ -100,8 +110,9 @@ jobs:
         with:
           client-id: ${{ vars.APP_CLIENT_ID }}
           app-private-key: ${{ secrets.APP_PRIVATE_KEY }}
-          project: organization/devantler-tech/5
+          project: ${{ inputs.project }}
           ignore: ${{ inputs.ignore }}
+          optional-project-auth: ${{ inputs.optional-project-auth }}
       # The sibling composite runs its own actions/checkout, whose git clean deletes this
       # untracked self-checkout mid-job. That is intended (it hides the actions sources from
       # the to-do scan above), but the runner re-reads the composite's action.yaml from disk to

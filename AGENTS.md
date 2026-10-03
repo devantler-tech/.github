@@ -338,7 +338,11 @@ App secret. Regenerate with `bash .github/scripts/generate-todo-readonly.sh`; ne
 the generated workflow. `.github/tests/test-todo-workflow-readonly.sh` verifies independent
 production parity, the full job permission ceiling and both executed smoke callers before
 the coverage guard accepts the production/projection pair. Existing wrapper/scanner fixtures
-remain required. Remaining project/authentication coverage is tracked in #334 and #340.
+remain required. The contents-read-only isolated-image job runs the immutable scanner with
+network access disabled and no App/project credentials. Its native negative controls retain
+literal API expectations while removing TODO markers or corrupting an expected issue payload;
+each must fail for its own reason, paired with healthy executions. Remaining project/authentication
+coverage is tracked in #340; consumer failure handling remains in #367.
 
 Every `.github/tests/test-*.sh` is a test entrypoint and must have an explicit invocation in a
 `ci.yaml` step's `run:` block. Put `bash .github/tests/test-name.sh` (or the executable path) in a
@@ -414,6 +418,22 @@ Two App identities exist:
 
 ### Validation Commands
 
+**Production to-do input forwarding:** the reusable scanner exposes the composite's
+optional-project integration choices while retaining its existing defaults.
+The generated read-only workflow runs the exact production steps with an empty
+project and all paths excluded in required CI; both offline dry-run calls remain.
+Keep default/forwarding controls, projection parity and all three caller boundaries
+covered. This proves the no-project wrapper path; #340 still owns live project
+association, consumer rollout and flag retirement. The separately generated default
+fixture retains the production defaults and native conditional routing, with only
+offline dependencies. Keep both its compatibility caller and missing-token control
+required; this fixture never proves live token generation or project association.
+
+**Manifest naming:** `validate-naming` runs by default using the caller's versioned
+configuration. An explicit `enabled: "false"` skips configuration reads and setup.
+Keep the omitted-input Linux/macOS fixtures, seeded-violation failure and opt-out
+boundaries required in CI. .github#274 owns consumer cleanup and input retirement.
+
 **Shell pipeline assertions:** `lint-shell-pipelines` invokes the shared guard with
 `enabled: true` over the real script directories declared in that CI job's
 `SCAN_PATHS`. Keep new script-owning directories in this scope and extend
@@ -422,7 +442,10 @@ The test proves each scope rejects a deliberate regression without executing the
 scanned scripts. Intentionally invalid product fixtures stay in `.github/fixtures`
 and are exercised separately. Repair findings by checking producer completion
 before searching captured output; do not blanket-exempt the repository's scripts.
-The shared action remains default-off for other consumers; devantler-tech/actions#1357 owns that rollout.
+The shared action validates by default, including when callers omit `enabled`.
+An explicit `enabled: "false"` skips setup and discovery. Linux/macOS fixtures cover
+omitted-input clean, unsafe and malformed scans; .github#268 owns consumer adoption
+and the later removal of the temporary opt-out input.
 
 **Retired repository links:** `validate-retired-repo-links` is a default-off,
 read-only Go validator with no module dependencies. Keep both flag states, real
@@ -468,7 +491,7 @@ The auto-merge workflow's own allow-lists (`TRUSTED_BOT_AUTHORS`, `TRUSTED_TRIGG
 
 **Failure-mode coverage for gating workflows (the convention):** every **gating** reusable workflow — one whose job is to *fail a PR on bad input* — carries **both** a *passes-on-good-input* and a *blocks-on-bad-input* self-test, because a happy-path test alone cannot catch a gate that silently stopped biting. The pattern (per `test-govulncheck-strict-blocks` and `test-zizmor-blocks`): point the gate's **own** action — pinned to the **same SHA**, guarded by a `*-action-lockstep` check — at a deliberately-bad fixture under `.github/tests/`, `continue-on-error`, then assert the run *failed* **and** reported the expected finding (so an operational error can't false-pass). The fixture lives **outside** the gate's own scan scope (e.g. `.github/tests/zizmor-fixture/` is outside `.github/workflows/`) so it never trips the real gate. **Non-gating** workflows (release/publish/deploy dry-runs, `delete-workflow-runs`, `enable-auto-merge`, `template-sync`, `sync-cluster-policies`, `update-agent-skills`, `scan-for-todo-comments`) have no "bad input" to reject, so a happy-path `[Test]` job is complete coverage. Where a clean failure-mode fixture is genuinely impractical (e.g. `dependency-review` needs a PR diff introducing a bad dependency), record the reasoned gap rather than forcing a fragile test.
 
-**Applied-fixes failure handling (tested invariant):** the signer requires a valid head-commit message before deciding that a signature check is unnecessary. Failed Git headline or head-identity reads fail the job before a commit request. `test-apply-signed-fixes-behavior.sh` executes the workflow's actual inline steps against disposable Git repositories and an offline API fixture, covering both signature paths, exact payload bytes, expected-head binding, no-change and replacement runs, patch conflicts, and operational errors. Its ablation suite proves that missing verification and softened read failures are detected. Test helpers stay outside the consumer tree; the privileged job still executes no checked-out code. The commit API publishes before the signature read, so post-publication verification failure does not prove that the branch remained unchanged; devantler-tech/actions#1007 tracks that stronger requirement separately.
+**Applied-fixes failure handling (tested invariant):** the signer requires a valid head-commit message before deciding that a signature check is unnecessary. Failed Git headline or head-identity reads fail the job before a commit request. `test-apply-signed-fixes-behavior.sh` executes the workflow's actual inline steps against disposable Git repositories and an offline API fixture, covering both signature paths, exact payload bytes, expected-head binding, no-change and replacement runs, patch conflicts, and operational errors. Changes are committed to a temporary branch identified by the check-run ID; only an exact signed commit with the original head as its single parent can advance the consumer branch. One atomic, non-forced ref transaction compares both tips and deletes the staging ref. Cleanup deletes only an acknowledged staging tip and retains uncertain or concurrently changed refs. Temporary branches can trigger ordinary consumer workflows; cancellation can leave a ref requiring later inspection. Its ablation suite detects missing verification, removed expected heads, blind cleanup, forced updates and softened read failures. Test helpers stay outside the consumer tree; the privileged job still executes no checked-out code.
 
 **Task menu** (1–2 items/run; high care):
 

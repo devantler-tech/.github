@@ -36,7 +36,7 @@ jq -e '
 jq -e '
   [.jobs | to_entries[] | select(.value.uses == "./.github/workflows/scan-for-todo-comments.yaml" or
     .value.uses == "./.github/workflows/scan-for-todo-comments-readonly.yaml") | .key] |
-  sort == ["test-scan-for-todo-comments", "test-scan-for-todo-comments-ignore"]
+  sort == ["test-scan-for-todo-comments", "test-scan-for-todo-comments-ignore", "test-scan-for-todo-comments-no-project"]
 ' "$work/ci.json" >/dev/null || {
   echo 'FAIL: unexpected TODO workflow caller' >&2
   exit 1
@@ -52,6 +52,36 @@ jq -e '
   echo 'FAIL: TODO smoke must use the secret-free read-only entrypoint and preserve inputs' >&2
   exit 1
 }
+# The production steps run with the same complete read-only projection. Exclude
+# all sources and grant no issue-write ceiling even if the scanner regresses.
+guard_no_project() {
+  jq -e '
+    .jobs["test-scan-for-todo-comments-no-project"] as $job |
+    $job.uses == "./.github/workflows/scan-for-todo-comments-readonly.yaml" and
+    $job.permissions == {contents:"read"} and $job.secrets == null and $job.env == null and
+    $job.with == {"dry-run":false,"optional-project-auth":true,project:"",ignore:".*"} and
+    $job.if == "${{ github.event_name != '\''merge_group'\'' && !startsWith(github.event.head_commit.message, '\''chore(main): release '\'') }}" and
+    $job.needs == null and ($job["continue-on-error"] // false) == false and
+    (.jobs["ci-required-checks"].needs | index("test-scan-for-todo-comments-no-project")) != null and
+    any(.jobs["ci-required-checks"].steps[];
+      (.env.JOB_RESULTS // "" | contains("needs.test-scan-for-todo-comments-no-project.result")) and
+      (.run // "" | contains("$JOB_RESULTS")))
+  ' "$1" >/dev/null
+}
+guard_no_project "$work/ci.json" || { echo 'FAIL: no-project production evaluation lost its read-only execution boundary' >&2; exit 1; }
+for mutation in \
+  '.jobs["test-scan-for-todo-comments-no-project"].permissions.issues="write"' \
+  '.jobs["test-scan-for-todo-comments-no-project"].with.project="organization/devantler-tech/5"' \
+  '.jobs["test-scan-for-todo-comments-no-project"].with.ignore=""' \
+  '.jobs["test-scan-for-todo-comments-no-project"].with["optional-project-auth"]=false' \
+  '.jobs["test-scan-for-todo-comments-no-project"].if="false"' \
+  '.jobs["ci-required-checks"].needs |= map(select(. != "test-scan-for-todo-comments-no-project"))'; do
+  jq "$mutation" "$work/ci.json" >"$work/mutated-ci.json"
+  if guard_no_project "$work/mutated-ci.json"; then
+    echo 'FAIL: no-project evaluation regression accepted' >&2; exit 1
+  fi
+done
+
 # Reuse the existing independent execution/gate controls for both entrypoints.
 bash "$root/.github/tests/test-todo-workflow-dry-run.sh" "$production" "$ci" --guard-only
 jq '.jobs.todos.permissions.issues="write"' "$work/projection.json" >"$work/writable.json"
@@ -63,4 +93,4 @@ cmp -s "$work/generated.json" "$work/checked.json" || {
   echo 'FAIL: TODO generator differs from independent read-only projection' >&2
   exit 1
 }
-echo 'PASS: complete TODO projection and two callers have a read-only token ceiling'
+echo 'PASS: complete TODO projection and three callers have a read-only token ceiling'
