@@ -20,6 +20,15 @@
           "breakingHeaderPattern": "^(\\w*)(?:\\((.*)\\))?!: (.*)$"
         }
       }
-    ]
+    ],
+    [
+      "@semantic-release/release-notes-generator",
+      {
+        "parserOpts": {
+          "breakingHeaderPattern": "^(\\w*)(?:\\((.*)\\))?!: (.*)$"
+        }
+      }
+    ],
+    "@semantic-release/github"
   ]
 }
