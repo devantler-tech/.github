@@ -21,6 +21,11 @@ on:
         required: false
         default: false
         type: boolean
+      enable-signed-promotion:
+        description: "Stage, sign and verify image and manifests before exposing release tags. Requires enable-caller-pin; default-off during rollout (#371)."
+        required: false
+        default: false
+        type: boolean
 
 permissions: {}
 
@@ -156,6 +161,27 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ env.GH_TOKEN }}
 
+      - name: 🔒 Prepare signed image staging
+        id: staging
+        if: ${{ inputs.enable-signed-promotion == true || inputs.enable-signed-promotion == 'true' }}
+        shell: bash
+        env:
+          JOB_WORKFLOW_REF: ${{ steps.caller.outputs.ref }}
+          RUN_ID: ${{ github.run_id }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+        run: |
+          set -euo pipefail
+          if ! [[ "${JOB_WORKFLOW_REF:-}" =~ ^[^@]+@[0-9a-f]{40}$ ]]; then
+            echo '::error::signed promotion requires enable-caller-pin and a SHA-pinned signer identity' >&2
+            exit 1
+          fi
+          if ! [[ "${RUN_ID:-}" =~ ^[0-9]+$ && "${RUN_ATTEMPT:-}" =~ ^[0-9]+$ ]]; then
+            echo '::error::signed promotion requires a numeric workflow run ID and attempt' >&2
+            exit 1
+          fi
+          image="$(printf '%s' "${REGISTRY}/${IMAGE_NAME}" | tr '[:upper:]' '[:lower:]')"
+          echo "tag=${image}:staging-${RUN_ID}-${RUN_ATTEMPT}" >> "$GITHUB_OUTPUT"
+
       - name: 🏷️ Derive image tags
         uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
         id: meta
@@ -172,7 +198,7 @@ jobs:
         with:
           context: .
           push: true
-          tags: ${{ steps.meta.outputs.tags }}
+          tags: ${{ (inputs.enable-signed-promotion == true || inputs.enable-signed-promotion == 'true') && steps.staging.outputs.tag || steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
 
       - name: 📌 Pin image digest in manifests
@@ -195,6 +221,7 @@ jobs:
           grep -qF "${IMAGE}@${DIGEST}" "$file" || { echo "::error::image pin did not apply to $file"; exit 1; }
 
       - name: 📦 Push & sign manifests artifact
+        if: ${{ !(inputs.enable-signed-promotion == true || inputs.enable-signed-promotion == 'true') }}
         env:
           IMAGE: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           DIGEST: ${{ steps.build.outputs.digest }}
@@ -228,3 +255,60 @@ jobs:
           flux tag artifact "oci://${ARTIFACT}:${VERSION}" --tag latest --creds "${ACTOR}:${GH_TOKEN}"
           cosign sign --yes "${ARTIFACT}@${ARTIFACT_DIGEST}"
           cosign sign --yes "${IMAGE}@${DIGEST}"
+
+      - name: 📦 Sign & promote image and manifests
+        if: ${{ inputs.enable-signed-promotion == true || inputs.enable-signed-promotion == 'true' }}
+        shell: bash
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+          DEPLOY_PATH: ${{ inputs.deploy-path }}
+          VERSION: ${{ steps.version.outputs.version }}
+          REF_NAME: ${{ github.ref_name }}
+          SHA: ${{ github.sha }}
+          SERVER_URL: ${{ github.server_url }}
+          REPOSITORY: ${{ github.repository }}
+          ACTOR: ${{ github.actor }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          JOB_WORKFLOW_REF: ${{ steps.caller.outputs.ref }}
+          RUN_ID: ${{ github.run_id }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+        run: |
+          set -euo pipefail
+          : "${VERSION:?semantic-version tag step did not resolve a version}"
+          [[ "$DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]] || {
+            echo '::error::build did not produce a valid image digest' >&2
+            exit 1
+          }
+          IMAGE="$(printf '%s' "${REGISTRY}/${IMAGE_NAME}" | tr '[:upper:]' '[:lower:]')"
+          ARTIFACT="${IMAGE}/manifests"
+          PUSHED="$(flux push artifact "oci://${ARTIFACT}:staging-${RUN_ID}-${RUN_ATTEMPT}" \
+            --path="${DEPLOY_PATH}" --source="${SERVER_URL}/${REPOSITORY}" \
+            --revision="${REF_NAME}@sha1:${SHA}" --creds "${ACTOR}:${GH_TOKEN}" --output json)"
+          ARTIFACT_DIGEST="$(jq -r '.digest // ""' <<<"$PUSHED")"
+          [[ "$ARTIFACT_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]] || {
+            echo '::error::flux push did not report the pushed artifact digest' >&2
+            exit 1
+          }
+          # Both artifacts must verify against this immutable producer before
+          # any selectable tag is exposed. Registry tag writes are sequential,
+          # not a cross-repository transaction.
+          cosign sign --yes "${IMAGE}@${DIGEST}"
+          cosign sign --yes "${ARTIFACT}@${ARTIFACT_DIGEST}"
+          cosign verify --certificate-identity "${SERVER_URL}/${JOB_WORKFLOW_REF}" \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com "${IMAGE}@${DIGEST}"
+          cosign verify --certificate-identity "${SERVER_URL}/${JOB_WORKFLOW_REF}" \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com "${ARTIFACT}@${ARTIFACT_DIGEST}"
+          docker buildx imagetools create --prefer-index=false --tag "${IMAGE}:${VERSION}" \
+            --metadata-file="$RUNNER_TEMP/image-promotion.json" "${IMAGE}@${DIGEST}"
+          [[ "$(jq -r '.["containerimage.descriptor"].digest // ""' "$RUNNER_TEMP/image-promotion.json")" == "$DIGEST" ]] || {
+            echo '::error::image promotion changed the verified digest' >&2
+            exit 1
+          }
+          flux tag artifact "oci://${ARTIFACT}@${ARTIFACT_DIGEST}" --tag "$VERSION" --creds "${ACTOR}:${GH_TOKEN}"
+          case "$VERSION" in
+            *-*) ;; # Prereleases remain version-selectable without moving latest.
+            *)
+              docker buildx imagetools create --prefer-index=false --tag "${IMAGE}:latest" "${IMAGE}@${DIGEST}"
+              flux tag artifact "oci://${ARTIFACT}@${ARTIFACT_DIGEST}" --tag latest --creds "${ACTOR}:${GH_TOKEN}"
+              ;;
+          esac

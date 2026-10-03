@@ -3176,6 +3176,10 @@ jobs:
         shell: bash
         run: bash .github/tests/test-publish-preflight.sh
 
+      - name: 🔏 Check application image and manifests promotion
+        shell: bash
+        run: bash .github/tests/test-app-signed-promotion.sh
+
       - name: 🔏 Check manifests promotion never exposes an unsigned release
         shell: bash
         run: bash .github/tests/test-publish-manifests-promotion.sh
