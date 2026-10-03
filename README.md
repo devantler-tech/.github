@@ -172,6 +172,8 @@ Consumer rollout and flag removal are tracked in [devantler-tech/actions#1186](h
 
 The release is published with a GitHub App token, so the caller must set the `APP_CLIENT_ID` repository/organization **variable** alongside the `APP_PRIVATE_KEY` **secret**. The App always needs `contents: write` (tags/releases). By default it also needs `issues: write` + `pull-requests: write` for semantic-release success/fail hooks. Set `disable-issue-side-effects: true` to suppress those hooks and mint the token with `contents: write` only.
 
+Npm alignment is rollout-gated and off by default while [#392](https://github.com/devantler-tech/.github/issues/392) tracks caller adoption and removal of the temporary flag. Set `align-npm-with-consumer-contract: true` to read requirements from the consumer's `packageManager` field and npm entries under `devEngines.packageManager` after checkout. An exact stable `packageManager` version is installed exactly; integrity-suffixed descriptors fail explicitly because this workflow cannot verify their digest. Otherwise, blocking `devEngines` entries must describe complete npm majors (`11`, `11.x`, `^11.0.0`, or `>=11.0.0 <12.0.0`). Arrays are alternatives: versionless npm entries satisfy the contract, and when no entry matches the final alternative's `onFail` controls the result. `warn` and `ignore` keep the current npm; `error` and `download` align to a supported complete-major alternative or fail. Compatible declarations resolve to the exact `packageManager` version, consumers with no blocking npm version keep the bundled npm, and explicit nulls, unknown properties, malformed, contradictory, prerelease, or otherwise unenforceable contracts fail explicitly.
+
 Release runs for one repository and ref run one at a time, in the order they were queued, and waiting runs are kept (up to GitHub's limit of 100) rather than cancelled. Two merges that land close together therefore produce two sequential release runs instead of racing for the same version. Callers need no `concurrency` block of their own.
 
 Consumers that maintain explicit `type!:` breaking-change handling can set `warn-missing-breaking-bang: true` to catch accidental removal. Before releasing, the workflow warns when an explicitly listed `@semantic-release/commit-analyzer` has no nonempty `parserOpts.breakingHeaderPattern`. The check reads JSON from `.releaserc`, `.releaserc.json`, or the `release` key in `package.json`; it never changes files or blocks a release. The default is off, so consumers that have not adopted this convention get no warning noise.
@@ -190,6 +192,7 @@ jobs:
     uses: devantler-tech/.github/.github/workflows/create-release.yaml@<full-commit-sha> # vX.Y.Z
     with:
       disable-issue-side-effects: true
+      align-npm-with-consumer-contract: true
     secrets:
       APP_PRIVATE_KEY: ${{ secrets.APP_PRIVATE_KEY }}
 ```
@@ -201,6 +204,7 @@ jobs:
 | `APP_CLIENT_ID`              | Variable        | -       | Yes      | GitHub App client ID used to mint the release token                       |
 | `APP_PRIVATE_KEY`            | Secret          | -       | No       | GitHub App private key; required for consumer releases and previews, omitted for offline tests |
 | `disable-issue-side-effects` | Input (boolean) | `false` | No       | Disable success/fail hooks and omit issue/pull-request token permissions  |
+| `align-npm-with-consumer-contract` | Input (boolean) | `false` | No | Temporarily opt in to npm contract alignment; [#392](https://github.com/devantler-tech/.github/issues/392) tracks retirement |
 | `warn-missing-breaking-bang` | Input (boolean) | `false` | No       | Warn about missing explicit breaking-header handling in supported JSON configurations |
 | `dry-run`                    | Input (boolean) | `false` | No       | Run semantic-release in dry-run mode (no tags or publishes)               |
 | `offline-test`               | Input (boolean) | `false` | No       | Run secret-free catalogue release-decision fixtures; requires dry-run     |
@@ -626,6 +630,8 @@ jobs:
 
 Because the signing happens inside this reusable workflow, the cosign certificate identity (OIDC `subject`) is this workflow's path — `https://github.com/devantler-tech/.github/.github/workflows/publish-manifests.yaml@<ref>` — not the caller's. Verifiers (e.g. a Flux `OCIRepository` `verify.matchOIDCIdentity`) must match that.
 
+Opt in with both `enable-signed-promotion: true` and `enable-caller-pin: true` to publish under a non-version staging tag first. The workflow signs and verifies the produced digest against its exact SHA-pinned OIDC identity before exposing the version tag; only stable releases then move `latest`. Failed signing or verification leaves both consumer-selectable tags unchanged, although the staging artifact remains. Existing-version immutability, the application-image sibling and consumer migration remain tracked in #371; this does not yet refuse an existing version or change existing callers.
+
 #### Usage
 
 ```yaml
@@ -656,6 +662,7 @@ jobs:
 | `deploy-path` | Input (string) | `./deploy`           | No       | Path to the Kubernetes manifests directory packaged as the OCI artifact                                                              |
 | `dry-run` | Input (boolean) | `false` | No | Skip publication and validate only the workflow interface |
 | `enable-caller-pin` | Input (boolean) | `false` | No       | Refuse to publish unless the caller pinned this workflow to a 40-character commit SHA. The signing certificate records the calling ref, and the cluster's trust rules verify it, so an unpinned caller lets a superseded revision mint a trusted signature. Opt-in during rollout (devantler-tech/actions#864); every current caller already qualifies |
+| `enable-signed-promotion` | Input (boolean) | `false` | No | Stage, sign and verify the digest before publishing version and stable latest tags. Requires `enable-caller-pin`; rollout and retirement are tracked in #371 |
 
 </details>
 
