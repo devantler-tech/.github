@@ -2,6 +2,7 @@ name: 🧪 CI
 
 on:
   pull_request:
+    # Retain edited until the separate metadata status requirement is verified live.
     types: [opened, synchronize, reopened, edited, ready_for_review]
   push:
     branches: [main]
@@ -5640,7 +5641,7 @@ jobs:
           COMMIT_COUNT: ${{ github.event.pull_request.commits }}
         run: |
           first_subject="$(git log --format=%s "$BASE_SHA..$HEAD_SHA" | tail -1)"
-          git diff --name-only -z "$BASE_SHA" "$HEAD_SHA" |
+          git diff --name-only -z "$BASE_SHA...$HEAD_SHA" |
             bash scripts/validate-release-contract.sh "$PR_TITLE" "$COMMIT_COUNT" "$first_subject"
 
       - name: 🧹 Validate deploy/ kustomize build
@@ -5660,8 +5661,10 @@ jobs:
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           PR_BODY: ${{ github.event.pull_request.body }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
-          git worktree add --detach "$RUNNER_TEMP/base" "$BASE_SHA"
+          MERGE_BASE="$(git merge-base "$BASE_SHA" "$HEAD_SHA")"
+          git worktree add --detach "$RUNNER_TEMP/base" "$MERGE_BASE"
           kubectl kustomize "$RUNNER_TEMP/base/deploy" > "$RUNNER_TEMP/base-render.yaml" ||
             { echo "deploy-deletions: UNKNOWN — the base deploy/ tree does not render; repair main first" >&2; exit 2; }
           kubectl kustomize deploy/ > "$RUNNER_TEMP/head-render.yaml" ||
@@ -5726,6 +5729,9 @@ jobs:
 
       - name: 🧪 Test trusted deploy/ guards ruleset
         run: bash tests/deploy-guards-ruleset.sh
+
+      - name: 🧪 Test pull request metadata event routing
+        run: bash .github/tests/test-ci-metadata-events.sh
 
       - name: 🧪 Test retained signing-rule safety
         run: bash tests/signing-rule-retirement.sh
