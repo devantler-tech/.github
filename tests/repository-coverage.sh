@@ -150,48 +150,8 @@ run_check "$work/unseen-archived"
 [[ "$rc" -eq 2 && "$out" == *"UNSEEN fixture-repo-10"* ]] ||
   fail "a listing that misses an archived declared repository should fail closed, got rc=$rc: $out"
 
-# 11–13. The API path, through a stub `gh` that answers the installation's
-#        repository selection and the org listing.
-mkdir -p "$work/bin"
-cat >"$work/bin/gh" <<'EOF'
-#!/usr/bin/env bash
-case "$*" in
-  *installation/repositories*)
-    [[ "${STUB_SELECTION:-}" == "fail" ]] && exit 1
-    echo "${STUB_SELECTION:-}"
-    ;;
-  *orgs/*/repos*) cat "$STUB_LISTING" ;;
-  *) exit 1 ;;
-esac
-EOF
-chmod +x "$work/bin/gh"
-
-run_api_check() {
-  local dir="$1" selection="$2"
-  set +e
-  out="$(PATH="$work/bin:$PATH" STUB_SELECTION="$selection" STUB_LISTING="$dir/live.txt" \
-    REPOSITORY_COVERAGE_RENDER="$dir/render.yaml" bash "$check" 2>&1)"
-  rc=$?
-  set -e
-}
-
-# 11. An installation on every repository: the listing is trusted.
-build_fixture "$work/api-all"
-run_api_check "$work/api-all" all
-[[ "$rc" -eq 0 && "$out" == *"all 10 live repositories are declared"* ]] ||
-  fail "an installation on all repositories should pass, got rc=$rc: $out"
-
-# 12. An installation on selected repositories can miss an undeclared private
-#     one while still seeing every declared one: fail closed.
-build_fixture "$work/api-selected"
-run_api_check "$work/api-selected" selected
-[[ "$rc" -eq 2 && "$out" == *"covers 'selected' repositories"* ]] ||
-  fail "an installation on selected repositories should fail closed, got rc=$rc: $out"
-
-# 13. The selection cannot be read (not an installation token): fail closed.
-build_fixture "$work/api-unreadable"
-run_api_check "$work/api-unreadable" fail
-[[ "$rc" -eq 2 && "$out" == *"repository selection failed"* ]] ||
-  fail "an unreadable installation selection should fail closed, got rc=$rc: $out"
-
+# The actual API client is covered separately with documented JSON responses,
+# authenticated installation metadata, and stable complete pages.
+bash "$repo_root/tests/repository-coverage-api.sh"
+bash "$repo_root/tests/repository-coverage-boundary.sh"
 echo "repository-coverage test: all cases passed"

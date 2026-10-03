@@ -30,6 +30,10 @@ permissions: {}
 
 jobs:
   repository-coverage-check:
+    if: >-
+      github.repository == 'devantler-tech/.github'
+      && github.ref == 'refs/heads/main'
+      && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
     name: 🧭 Repository coverage check
     runs-on: ubuntu-latest
     permissions:
@@ -38,6 +42,7 @@ jobs:
       - name: 📑 Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ github.workflow_sha }}
           persist-credentials: false
 
       - name: 🔑 Get GitHub App Token
@@ -55,12 +60,15 @@ jobs:
           # GITHUB_TOKEN sees public repositories only. The check fails closed if
           # the installation is limited to selected repositories, or if the
           # listing misses any declared repository.
-          owner: ${{ github.repository_owner }} # zizmor: ignore[github-app]
+          owner: devantler-tech # zizmor: ignore[github-app]
           permission-metadata: read
 
       - name: 🧭 Compare live repositories with deploy/
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          GH_INSTALLATION_ID: ${{ steps.app-token.outputs.installation-id }}
+          GH_APP_CLIENT_ID: ${{ vars.APP_CLIENT_ID }}
+          GH_APP_PRIVATE_KEY: ${{ secrets.APP_PRIVATE_KEY }}
         run: bash scripts/check-repository-coverage.sh
 
   # Nothing else reads a scheduled result, so a red run would stay invisible.
