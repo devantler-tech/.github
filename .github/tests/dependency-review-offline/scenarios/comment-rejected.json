@@ -1,5 +1,5 @@
 {
-  "description": "The token cannot write to the pull request: the action attempts the summary once and the rejected write is the last request.",
+  "description": "The token cannot write to the pull request: the action attempts the summary once, the rejected write is the last request, and the action warns that the summary was not written.",
   "inputs": {
     "comment-summary-in-pr": "always",
     "warn-only": "true"
@@ -31,6 +31,12 @@
     "outcome": "success",
     "comment": "rejected",
     "blocked-hosts": [],
+    "annotations": [
+      {
+        "level": "warning",
+        "includes": "Unable to write summary to pull-request"
+      }
+    ],
     "requests": [
       {
         "method": "GET",

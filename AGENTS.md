@@ -373,17 +373,20 @@ loopback stand-in that serves one scenario's reviewed responses, records every r
 answers anything else 404 (401 without the fixture token). A step cannot override the runner's
 `GITHUB_*` values, so `.github/tests/fixtures/offline-github-env.cjs` is preloaded into the
 action's own process: it points the action at the stand-in and a fixture event, refuses to
-start without them, and stops the process from resolving any other host. The job holds
-`contents: read` and no credential. Each file in
+start without them, stops the process from resolving any other host, and copies what the
+action prints so its errors and warnings can be checked. The preload routes the action and
+detects a regression; it is not a sandbox. What keeps the test from changing anything live is
+that the job holds `contents: read` and the action receives only a fixture token. Each file in
 `.github/tests/dependency-review-offline/scenarios/` is one matrix leg and states the action
-inputs, the responses, and the complete conversation and result the action must produce;
-`dependency-review-offline.sh` starts the stand-in and checks the record. To add a scenario,
-add its file and its matrix entry. `test-dependency-review-comments.sh` rejects a matrix that
-differs from the scenario files, a restored write permission or credential, and a scenario
-set that no longer covers every comment mode and result; `test-dependency-review-offline.sh`
-exercises the stand-in, the preload and the check without the action. A bump of the action
-pin that changes its conversation fails the affected leg: read what changed in the job log
-before updating the scenario file.
+inputs, the responses, and what the action must produce: the complete conversation, the
+outcome, the summary, and every error and warning it raises, so a failed read or write is
+never silent. `dependency-review-offline.sh` starts the stand-in and checks the record. To
+add a scenario, add its file and its matrix entry. `test-dependency-review-comments.sh`
+rejects a matrix that differs from the scenario files, a restored write permission or
+credential, and a scenario set that no longer covers every comment mode and result;
+`test-dependency-review-offline.sh` exercises the stand-in, the preload and the check without
+the action. A bump of the action pin that changes its conversation or its messages fails the
+affected leg: read what changed in the job log before updating the scenario file.
 
 Every `.github/tests/test-*.sh` is a test entrypoint and must have an explicit invocation in a
 `ci.yaml` step's `run:` block. Put `bash .github/tests/test-name.sh` (or the executable path) in a

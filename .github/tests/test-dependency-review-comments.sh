@@ -166,7 +166,8 @@ check_ci() { # <ci.json> [reviewed-scenarios.json]
         "OFFLINE_GITHUB_EVENT_NAME": "pull_request",
         "OFFLINE_GITHUB_EVENT_PATH": "${{ github.workspace }}/.github/tests/dependency-review-offline/event.json",
         "OFFLINE_GITHUB_REPOSITORY": "offline/fixture",
-        "OFFLINE_BLOCKED_HOSTS_FILE": "${{ steps.offline.outputs.blocked-hosts-file }}"})
+        "OFFLINE_BLOCKED_HOSTS_FILE": "${{ steps.offline.outputs.blocked-hosts-file }}",
+        "OFFLINE_ACTION_LOG_FILE": "${{ steps.offline.outputs.action-log-file }}"})
     then error("the action must run through the composite against the stand-in with the fixture token")
     elif ($job.steps[] | select(.id == "verify") |
       .env != {
@@ -231,6 +232,7 @@ stand-in for a fixed scenario	(.jobs["test-dependency-review-comments"].steps[] 
 conditional stand-in	(.jobs["test-dependency-review-comments"].steps[] | select(.id == "offline")).if="false"	start for the matrix scenario
 remote action reference	(.jobs["test-dependency-review-comments"].steps[] | select(.id == "review")).uses="devantler-tech/.github/actions/dependency-review@main"	through the composite against the stand-in
 missing preload	del((.jobs["test-dependency-review-comments"].steps[] | select(.id == "review")).env.NODE_OPTIONS)	through the composite against the stand-in
+missing action log	del((.jobs["test-dependency-review-comments"].steps[] | select(.id == "review")).env.OFFLINE_ACTION_LOG_FILE)	through the composite against the stand-in
 live API address	(.jobs["test-dependency-review-comments"].steps[] | select(.id == "review")).env.OFFLINE_GITHUB_API_URL="https://api.github.com"	through the composite against the stand-in
 live repository	(.jobs["test-dependency-review-comments"].steps[] | select(.id == "review")).env.OFFLINE_GITHUB_REPOSITORY="${{ github.repository }}"	through the composite against the stand-in
 live event	(.jobs["test-dependency-review-comments"].steps[] | select(.id == "review")).env.OFFLINE_GITHUB_EVENT_PATH="${{ github.event_path }}"	through the composite against the stand-in

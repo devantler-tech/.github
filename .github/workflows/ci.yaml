@@ -670,6 +670,7 @@ jobs:
           OFFLINE_GITHUB_EVENT_PATH: ${{ github.workspace }}/.github/tests/dependency-review-offline/event.json
           OFFLINE_GITHUB_REPOSITORY: offline/fixture
           OFFLINE_BLOCKED_HOSTS_FILE: ${{ steps.offline.outputs.blocked-hosts-file }}
+          OFFLINE_ACTION_LOG_FILE: ${{ steps.offline.outputs.action-log-file }}
         with:
           comment-summary-in-pr: ${{ steps.offline.outputs.comment-summary-in-pr }}
           warn-only: ${{ steps.offline.outputs.warn-only }}

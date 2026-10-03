@@ -1,5 +1,5 @@
 {
-  "description": "The pull request's comments cannot be listed: the action cannot tell whether a summary exists and writes nothing.",
+  "description": "The pull request's comments cannot be listed: the action cannot tell whether a summary exists, writes nothing, and warns that the summary was not written.",
   "inputs": {
     "comment-summary-in-pr": "always",
     "warn-only": "true"
@@ -25,6 +25,12 @@
     "outcome": "success",
     "comment": "none",
     "blocked-hosts": [],
+    "annotations": [
+      {
+        "level": "warning",
+        "includes": "Unable to write summary to pull-request"
+      }
+    ],
     "requests": [
       {
         "method": "GET",

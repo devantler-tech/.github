@@ -16,6 +16,7 @@
     "outcome": "success",
     "comment": "none",
     "blocked-hosts": [],
+    "annotations": [],
     "requests": [
       {
         "method": "GET",

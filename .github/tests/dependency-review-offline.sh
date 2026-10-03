@@ -4,7 +4,7 @@
 #   start  <scenario>   build and start the stand-in, and hand its address and the
 #                       scenario's action inputs to the job
 #   verify <scenario>   stop the stand-in, print what it recorded, and check it
-#   check  <scenario-file> <request-record> <blocked-hosts-file>
+#   check  <scenario-file> <request-record> <blocked-hosts-file> <action-log>
 #                       the check on its own; reads REVIEW_OUTCOME and COMMENT_CONTENT
 #
 # The action under test receives only the fixture token below. A scenario file holds the
@@ -16,12 +16,14 @@ root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 scenarios="$root/.github/tests/dependency-review-offline/scenarios"
 token=offline-fixture-token
 
+# Report a failed check and stop.
 fail() {
   echo "FAIL: $*" >&2
   exit 1
 }
 
-scenario_file() {
+# Print the reviewed file of a scenario name, refusing anything outside the reviewed directory.
+scenario_file() { # <scenario>
   [[ "$1" =~ ^[a-z0-9-]+$ && -f "$scenarios/$1.json" ]] || fail "unknown scenario '$1'"
   printf '%s\n' "$scenarios/$1.json"
 }
@@ -38,12 +40,16 @@ validate() { # <scenario-file>
     (.expect.requests | type) == "array" and (.expect.requests | length) > 0 and
     all(.expect.requests[]; (.method | type) == "string" and (.path | type) == "string" and
       (.query | type) == "object" and all(.query[]; type == "string")) and
-    (.expect["blocked-hosts"] | type) == "array"' "$1" >/dev/null ||
+    (.expect["blocked-hosts"] | type) == "array" and
+    (.expect.annotations | type) == "array" and
+    all(.expect.annotations[]; (.level == "error" or .level == "warning") and
+      (.includes | type) == "string" and (.includes | length) > 0)' "$1" >/dev/null ||
     fail "the scenario does not state its action inputs and a complete expectation"
 }
 
-check() {
-  local scenario="$1" record="$2" blocked="$3" requests expected got unmatched
+# Compare what the stand-in recorded, and how the action ended, with the scenario.
+check() { # <scenario-file> <request-record> <blocked-hosts-file> <action-log>
+  local scenario="$1" record="$2" blocked="$3" log="$4" requests expected got unmatched raised
   local outcome="${REVIEW_OUTCOME:-}" content="${COMMENT_CONTENT:-}"
 
   validate "$scenario"
@@ -72,6 +78,17 @@ check() {
 
   [[ "$outcome" == "$(jq -r '.expect.outcome' "$scenario")" ]] ||
     fail "the action finished with '$outcome'; the scenario expects '$(jq -r '.expect.outcome' "$scenario")'"
+
+  # The errors and warnings the action raised, in order. A failed read or write must be
+  # visible in the job, and a review that went well must raise none.
+  raised="$(jq -Rcn '[inputs | capture("^::(?<level>error|warning)(?: [^:]*)?::(?<message>.*)$")]' "$log" 2>/dev/null)" ||
+    fail "the action log is unreadable"
+  jq -e --slurpfile scenario "$scenario" '
+    $scenario[0].expect.annotations as $expected |
+    length == ($expected | length) and
+    all(range(0; length) as $i |
+      .[$i].level == $expected[$i].level and (.[$i].message | contains($expected[$i].includes)); .)' <<<"$raised" >/dev/null ||
+    fail "the errors and warnings the action raised differ from the scenario's: $raised"
 
   COMMENT_CONTENT="$content" jq -e --slurpfile scenario "$scenario" '
     $scenario[0].expect as $expect |
@@ -107,6 +124,7 @@ start)
   go build -o "$work/api" "$root/.github/tests/fixtures/offline-github-api/main.go"
   : >"$work/requests.jsonl"
   : >"$work/blocked-hosts"
+  : >"$work/action.log"
   nohup "$work/api" -scenario "$scenario" -record "$work/requests.jsonl" \
     -address-file "$work/address" -token "$token" </dev/null >"$work/api.log" 2>&1 &
   echo "$!" >"$work/pid"
@@ -121,6 +139,7 @@ start)
   {
     echo "api-url=$(cat "$work/address")"
     echo "blocked-hosts-file=$work/blocked-hosts"
+    echo "action-log-file=$work/action.log"
     jq -r '.inputs | to_entries[] | "\(.key)=\(.value)"' "$scenario"
   } >>"${GITHUB_OUTPUT:?}"
   echo "Offline stand-in for '$2' listens on $(cat "$work/address")"
@@ -146,14 +165,19 @@ verify)
   echo "::group::Hosts the action could not resolve"
   cat "$work/blocked-hosts"
   echo "::endgroup::"
-  echo "::group::Action outcome and comment content"
-  printf 'outcome: %s\n%s\n' "${REVIEW_OUTCOME:-}" "${COMMENT_CONTENT:-}"
+  # Indented, so the runner does not raise the action's annotations a second time here.
+  echo "::group::Errors and warnings the action raised"
+  sed -n -E '/^::(error|warning)[ :]/s/^/  /p' "$work/action.log"
   echo "::endgroup::"
-  check "$scenario" "$work/requests.jsonl" "$work/blocked-hosts"
+  echo "::group::Action outcome and comment content"
+  content="${COMMENT_CONTENT:-}"
+  printf 'outcome: %s\n  %s\n' "${REVIEW_OUTCOME:-}" "${content//$'\n'/$'\n'  }"
+  echo "::endgroup::"
+  check "$scenario" "$work/requests.jsonl" "$work/blocked-hosts" "$work/action.log"
   ;;
 check)
-  [[ $# == 4 ]] || fail "usage: dependency-review-offline.sh check <scenario-file> <request-record> <blocked-hosts-file>"
-  check "$2" "$3" "$4"
+  [[ $# == 5 ]] || fail "usage: dependency-review-offline.sh check <scenario-file> <request-record> <blocked-hosts-file> <action-log>"
+  check "$2" "$3" "$4" "$5"
   ;;
 *)
   echo "usage: dependency-review-offline.sh <start|verify|check> ..." >&2

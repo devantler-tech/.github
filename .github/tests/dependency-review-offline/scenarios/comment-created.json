@@ -46,6 +46,7 @@
     "outcome": "success",
     "comment": "created",
     "blocked-hosts": [],
+    "annotations": [],
     "requests": [
       {
         "method": "GET",

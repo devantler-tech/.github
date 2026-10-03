@@ -83,6 +83,12 @@
     "blocked-hosts": [
       "api.securityscorecards.dev"
     ],
+    "annotations": [
+      {
+        "level": "error",
+        "includes": "Dependency review detected vulnerable packages"
+      }
+    ],
     "requests": [
       {
         "method": "GET",

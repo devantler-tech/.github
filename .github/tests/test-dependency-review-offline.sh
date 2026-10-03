@@ -85,16 +85,30 @@ refused_hosts() { # <scenario-file> <output-file>
   jq -r '.expect["blocked-hosts"][]' "$1" >"$2"
 }
 
+# What the action would print while raising the errors and warnings the scenario expects,
+# between ordinary output.
+raised() { # <scenario-file> <output-file>
+  {
+    echo 'Offline replay output'
+    jq -r '.expect.annotations // [] | .[] | "::\(.level)::\(.includes) (offline replay)"' "$1"
+    echo '  ::error::indented text is ordinary output'
+  } >"$2"
+}
+
 accept() { # <scenario-file> — uses the current record
   refused_hosts "$1" "$work/refused-hosts"
+  raised "$1" "$work/raised.log"
   REVIEW_OUTCOME="$(jq -r '.expect.outcome' "$1")" COMMENT_CONTENT="$(report "$1")" \
-    bash "$helper" check "$1" "$work/requests.jsonl" "$work/refused-hosts" >"$work/check.log" 2>&1 ||
+    bash "$helper" check "$1" "$work/requests.jsonl" "$work/refused-hosts" "$work/raised.log" >"$work/check.log" 2>&1 ||
     fail "$(basename "$1" .json): the reviewed conversation was rejected: $(cat "$work/check.log")"
 }
 
-# Run the check with a deliberate mistake; it must fail and name that mistake.
-reject() { # <label> <diagnostic> <scenario-file> <record> <blocked-hosts> <outcome> <content>
-  if REVIEW_OUTCOME="$6" COMMENT_CONTENT="$7" bash "$helper" check "$3" "$4" "$5" >"$work/check.log" 2>&1; then
+# Run the check with a deliberate mistake; it must fail and name that mistake. Without an
+# action log of its own, the action raised exactly what the scenario expects.
+reject() { # <label> <diagnostic> <scenario-file> <record> <blocked-hosts> <outcome> <content> [action-log]
+  local log="${8:-$work/raised.log}"
+  [[ $# -ge 8 ]] || raised "$3" "$log"
+  if REVIEW_OUTCOME="$6" COMMENT_CONTENT="$7" bash "$helper" check "$3" "$4" "$5" "$log" >"$work/check.log" 2>&1; then
     fail "accepted $1"
   fi
   grep -qF "$2" "$work/check.log" || fail "$1 was rejected for the wrong reason: $(cat "$work/check.log")"
@@ -253,6 +267,23 @@ reject 'a write with an unreviewed query' 'differ from the reviewed conversation
 printf 'api.github.com\n' >"$work/reached"
 reject 'a lookup of the live API' 'could not resolve differ' "$created" "$good" "$work/reached" success "$(report "$created")"
 
+printf '::warning::Unable to write summary to pull-request.\n' >"$work/warned.log"
+reject 'a warning from a review that should raise none' 'errors and warnings the action raised differ' "$created" "$good" "$blocked" success "$(report "$created")" "$work/warned.log"
+
+printf '::error title=Review::Dependency review failed\n' >"$work/errored.log"
+reject 'an error with properties from a review that should raise none' 'errors and warnings the action raised differ' "$created" "$good" "$blocked" success "$(report "$created")" "$work/errored.log"
+
+reject 'a missing action log' 'action log is unreadable' "$created" "$good" "$blocked" success "$(report "$created")" "$work/absent.log"
+
+jq 'del(.expect.annotations)' "$created" >"$work/no-annotations.json"
+reject 'a scenario without expected errors and warnings' 'complete expectation' "$work/no-annotations.json" "$good" "$blocked" success "$(report "$created")"
+
+jq '.expect.annotations = [{"level": "notice", "includes": "x"}]' "$created" >"$work/bad-level.json"
+reject 'a scenario with an unknown annotation level' 'complete expectation' "$work/bad-level.json" "$good" "$blocked" success "$(report "$created")"
+
+jq '.expect.annotations = [{"level": "warning", "includes": ""}]' "$created" >"$work/any-warning.json"
+reject 'a scenario that accepts any warning' 'complete expectation' "$work/any-warning.json" "$good" "$blocked" success "$(report "$created")"
+
 jq 'del(.expect.outcome)' "$created" >"$work/no-expectation.json"
 reject 'a scenario without an expected outcome' 'complete expectation' "$work/no-expectation.json" "$good" "$blocked" success "$(report "$created")"
 
@@ -300,6 +331,36 @@ stop_api
 jq -cs '[.[0], .[1], .[3]][]' "$work/requests.jsonl" >"$work/one-page.jsonl"
 reject 'an update that skipped the later page' 'differ from the reviewed conversation' "$updated" "$work/one-page.jsonl" "$blocked" success "$(report "$updated")"
 
+# A failed read is never a posted summary, and it is never silent. Where a summary is
+# expected, the conversation of each failed read is rejected; and in its own scenario the
+# action must raise exactly the reviewed error or warning.
+: >"$work/silent.log"
+for failed in "$scenarios/compare-forbidden.json" "$scenarios/comments-unreadable.json" "$scenarios/comment-rejected.json"; do
+  name="$(basename "$failed" .json)"
+  start_api "$failed"
+  replay "$failed"
+  stop_api
+  cp "$work/requests.jsonl" "$work/failed.jsonl"
+  # The rejected write has the reviewed requests of a created summary; only its answer differs.
+  claimed='differ from the reviewed conversation'
+  [[ "$name" != comment-rejected ]] || claimed='summary comment is not'
+  reject "a summary claimed from the $name conversation" "$claimed" "$created" "$work/failed.jsonl" "$blocked" success "$(report "$created")"
+  reject "a silent $name" 'errors and warnings the action raised differ' "$failed" "$work/failed.jsonl" "$blocked" "$(jq -r '.expect.outcome' "$failed")" "$(report "$failed")" "$work/silent.log"
+done
+
+warned="$scenarios/on-failure-warned.json"
+start_api "$warned"
+replay "$warned"
+stop_api
+refused_hosts "$warned" "$work/scorecard"
+printf '::error::Dependency review detected vulnerable packages.\n' >"$work/escalated.log"
+reject 'an error where a warning is expected' 'errors and warnings the action raised differ' "$warned" "$work/requests.jsonl" "$work/scorecard" success "$(report "$warned")" "$work/escalated.log"
+printf '::warning::Something else went wrong.\n' >"$work/other-warning.log"
+reject 'another warning than the reviewed one' 'errors and warnings the action raised differ' "$warned" "$work/requests.jsonl" "$work/scorecard" success "$(report "$warned")" "$work/other-warning.log"
+raised "$warned" "$work/twice.log"
+printf '::warning::Unable to write summary to pull-request.\n' >>"$work/twice.log"
+reject 'a second warning beside the reviewed one' 'errors and warnings the action raised differ' "$warned" "$work/requests.jsonl" "$work/scorecard" success "$(report "$warned")" "$work/twice.log"
+
 # A scenario served by the wrong conversation: comments off, yet the action wrote one.
 reject 'a comment while comments are off' 'differ from the reviewed conversation' "$never" "$good" "$blocked" success "$(report "$never")"
 
@@ -315,8 +376,8 @@ hosted_start() { # <scenario>
   address="$(sed -n 's/^api-url=//p' "$work/output")"
 }
 hosted_start comment-updated
-printf 'api-url=%s\nblocked-hosts-file=%s\ncomment-summary-in-pr=always\nwarn-only=true\n' \
-  "$address" "$hosted/blocked-hosts" >"$work/output.expected"
+printf 'api-url=%s\nblocked-hosts-file=%s\naction-log-file=%s\ncomment-summary-in-pr=always\nwarn-only=true\n' \
+  "$address" "$hosted/blocked-hosts" "$hosted/action.log" >"$work/output.expected"
 cmp -s "$work/output" "$work/output.expected" || fail "the start step handed over the wrong outputs: $(cat "$work/output")"
 replay "$updated"
 REVIEW_OUTCOME=success COMMENT_CONTENT="$(report "$updated")" bash "$helper" verify comment-updated >"$work/verify.log" 2>&1 ||
@@ -324,6 +385,19 @@ REVIEW_OUTCOME=success COMMENT_CONTENT="$(report "$updated")" bash "$helper" ver
 grep -qF 'PASS: comment-updated — 4 recorded requests' "$work/verify.log" || fail 'the verify step did not report the conversation'
 grep -qF '"method":"PATCH"' "$work/verify.log" || fail 'the verify step did not print the recorded requests'
 if kill -0 "$hosted_pid" 2>/dev/null; then fail 'the verify step left the stand-in running'; fi
+hosted_pid=''
+
+# What the action raised reaches the verify step through the action log, and is printed
+# indented so the runner does not raise it again.
+hosted_start comment-rejected
+replay "$scenarios/comment-rejected.json"
+raised "$scenarios/comment-rejected.json" "$hosted/action.log"
+REVIEW_OUTCOME=success COMMENT_CONTENT="$(report "$scenarios/comment-rejected.json")" \
+  bash "$helper" verify comment-rejected >"$work/verify.log" 2>&1 ||
+  fail "the hosted verify step rejected the reviewed warning: $(cat "$work/verify.log")"
+grep -qxF '  ::warning::Unable to write summary to pull-request (offline replay)' "$work/verify.log" ||
+  fail 'the verify step did not print the raised warning indented'
+if grep -qE '^::(error|warning)' "$work/verify.log"; then fail 'the verify step raised an annotation of its own'; fi
 hosted_pid=''
 
 reject_step() { # <label> <diagnostic> <step> <scenario>
@@ -367,21 +441,28 @@ const https = require('node:https');
   const response = await fetch(`${process.env.GITHUB_API_URL}/repos/offline/fixture/issues/7/comments`,
     { headers: { authorization: `token ${process.env.FIXTURE_TOKEN}` } });
   console.log(`loopback ${response.status}`);
+  process.stdout.write('::warning::raised on standard output\n');
+  process.stderr.write(Buffer.from('::error::raised on standard error\n'));
 })();
 PROBE
 start_api "$created"
 : >"$work/preload-blocked"
+: >"$work/preload-action.log"
 env -i PATH="$PATH" FIXTURE_TOKEN="$token" NODE_OPTIONS="--require=$preload" \
   OFFLINE_GITHUB_API_URL="$address" OFFLINE_GITHUB_EVENT_NAME=pull_request \
   OFFLINE_GITHUB_EVENT_PATH="$root/.github/tests/dependency-review-offline/event.json" \
   OFFLINE_GITHUB_REPOSITORY=offline/fixture OFFLINE_BLOCKED_HOSTS_FILE="$work/preload-blocked" \
+  OFFLINE_ACTION_LOG_FILE="$work/preload-action.log" \
   GITHUB_API_URL=https://api.github.com GITHUB_EVENT_NAME=push GITHUB_REPOSITORY=devantler-tech/.github \
   node "$work/probe.cjs" >"$work/probe.log" 2>&1 || fail "the preloaded process failed: $(cat "$work/probe.log")"
 stop_api
-printf '%s %s/graphql pull_request %s offline/fixture\nfetch ENOTFOUND\nhttps ENOTFOUND\nloopback 200\n' \
-  "$address" "$address" "$root/.github/tests/dependency-review-offline/event.json" >"$work/probe.expected"
+printf '%s %s/graphql pull_request %s offline/fixture\nfetch ENOTFOUND\nhttps ENOTFOUND\nloopback 200\n%s\n%s\n' \
+  "$address" "$address" "$root/.github/tests/dependency-review-offline/event.json" \
+  '::warning::raised on standard output' '::error::raised on standard error' >"$work/probe.expected"
 cmp -s "$work/probe.log" "$work/probe.expected" ||
   fail "the preload did not redirect and isolate the process: $(cat "$work/probe.log")"
+cmp -s "$work/preload-action.log" "$work/probe.expected" ||
+  fail "the preload did not copy what the process printed: $(cat "$work/preload-action.log")"
 printf 'api.github.com\nuploads.github.com\n' >"$work/preload-blocked.expected"
 cmp -s "$work/preload-blocked" "$work/preload-blocked.expected" ||
   fail "the preload did not record the refused hosts: $(cat "$work/preload-blocked")"
@@ -398,12 +479,13 @@ refuse_preload() { # <label> <diagnostic> <env assignments...>
 }
 complete=(OFFLINE_GITHUB_API_URL=http://127.0.0.1:9 OFFLINE_GITHUB_EVENT_NAME=pull_request
   OFFLINE_GITHUB_EVENT_PATH=/dev/null OFFLINE_GITHUB_REPOSITORY=offline/fixture
-  OFFLINE_BLOCKED_HOSTS_FILE="$work/preload-blocked")
+  OFFLINE_BLOCKED_HOSTS_FILE="$work/preload-blocked" OFFLINE_ACTION_LOG_FILE="$work/preload-action.log")
 refuse_preload 'no stand-in address' 'OFFLINE_GITHUB_API_URL is not set' "${complete[@]:1}"
 refuse_preload 'the live API address' 'must be the loopback stand-in' OFFLINE_GITHUB_API_URL=https://api.github.com "${complete[@]:1}"
 refuse_preload 'a loopback look-alike host' 'must be the loopback stand-in' OFFLINE_GITHUB_API_URL=http://127.0.0.1:80.example.com "${complete[@]:1}"
 refuse_preload 'no fixture event' 'OFFLINE_GITHUB_EVENT_PATH is not set' "${complete[@]:0:2}" "${complete[@]:3}"
 refuse_preload 'no fixture repository' 'OFFLINE_GITHUB_REPOSITORY is not set' "${complete[@]:0:3}" "${complete[@]:4}"
-refuse_preload 'no blocked-host record' 'OFFLINE_BLOCKED_HOSTS_FILE is not set' "${complete[@]:0:4}"
+refuse_preload 'no blocked-host record' 'OFFLINE_BLOCKED_HOSTS_FILE is not set' "${complete[@]:0:4}" "${complete[@]:5}"
+refuse_preload 'no action log' 'OFFLINE_ACTION_LOG_FILE is not set' "${complete[@]:0:5}"
 
 echo "PASS: offline stand-in, preload and conversation check — $scenario_count scenarios accepted, $controls mistakes rejected"

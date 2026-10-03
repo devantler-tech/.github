@@ -50,8 +50,11 @@ type entry struct {
 	Status     int                 `json:"status"`
 }
 
+// maxBody bounds a recorded request body; a larger one is refused rather than truncated.
 const maxBody = 1 << 20
 
+// loadScenario reads the reviewed routes of a scenario file and rejects any the stand-in
+// could not serve exactly as written.
 func loadScenario(path string) ([]route, error) {
 	raw, err := os.ReadFile(path)
 	if err != nil {
@@ -86,6 +89,7 @@ func loadScenario(path string) ([]route, error) {
 	return routes, nil
 }
 
+// authorized reports whether an Authorization header carries the fixture token.
 func authorized(header, token string) bool {
 	scheme, value, found := strings.Cut(header, " ")
 	if !found {
@@ -98,6 +102,7 @@ func authorized(header, token string) bool {
 	return false
 }
 
+// match returns the index of the first route that answers a request, or -1.
 func match(routes []route, request *http.Request) int {
 	query := request.URL.Query()
 	for index, candidate := range routes {
@@ -118,6 +123,8 @@ func match(routes []route, request *http.Request) int {
 	return -1
 }
 
+// recordedBody returns a request body as the record stores it: JSON as sent, other text as
+// a string, and nothing as null.
 func recordedBody(raw []byte) json.RawMessage {
 	if len(bytes.TrimSpace(raw)) == 0 {
 		return json.RawMessage("null")
@@ -129,6 +136,7 @@ func recordedBody(raw []byte) json.RawMessage {
 	return quoted
 }
 
+// server answers requests from the reviewed routes and records each one.
 type server struct {
 	routes  []route
 	token   string
@@ -137,6 +145,9 @@ type server struct {
 	record  *os.File
 }
 
+// ServeHTTP records a request and then answers it: 401 without the fixture token, 413 for a
+// body it cannot record whole, the matching route otherwise, and 404 when no route
+// describes it.
 func (s *server) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
 	// A body the stand-in cannot read whole is never recorded as if it were complete.
 	raw, unreadable := io.ReadAll(http.MaxBytesReader(writer, request.Body, maxBody))
@@ -197,6 +208,7 @@ func (s *server) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
 	}
 }
 
+// run starts the stand-in from its command line and returns once it has stopped.
 func run() error {
 	scenarioPath := flag.String("scenario", "", "scenario file holding the reviewed routes")
 	recordPath := flag.String("record", "", "file that receives one JSON line per request")
@@ -215,24 +227,28 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	defer record.Close()
+	// The record is the test's evidence, so a close that fails is the stand-in's failure.
+	return errors.Join(serve(routes, *token, *addressPath, record), record.Close())
+}
 
+// serve answers requests until the process is asked to stop.
+func serve(routes []route, token, addressPath string, record *os.File) error {
 	listener, err := net.Listen("tcp4", "127.0.0.1:0")
 	if err != nil {
 		return err
 	}
 	baseURL := "http://" + listener.Addr().String()
-	handler := &server{routes: routes, token: *token, baseURL: baseURL, record: record}
+	handler := &server{routes: routes, token: token, baseURL: baseURL, record: record}
 	httpServer := &http.Server{Handler: handler, ReadHeaderTimeout: 10 * time.Second}
 
 	// Publish the address only once the listener exists, and atomically, so a caller
 	// that sees the file can connect.
-	pending := filepath.Join(filepath.Dir(*addressPath), "."+filepath.Base(*addressPath)+".pending")
+	pending := filepath.Join(filepath.Dir(addressPath), "."+filepath.Base(addressPath)+".pending")
 	if err := os.WriteFile(pending, []byte(baseURL+"\n"), 0o600); err != nil {
-		return err
+		return errors.Join(err, listener.Close())
 	}
-	if err := os.Rename(pending, *addressPath); err != nil {
-		return err
+	if err := os.Rename(pending, addressPath); err != nil {
+		return errors.Join(err, listener.Close())
 	}
 
 	stop := make(chan os.Signal, 1)
@@ -249,6 +265,7 @@ func run() error {
 	return httpServer.Shutdown(deadline)
 }
 
+// main exits non-zero when the stand-in could not start, serve or keep its record.
 func main() {
 	if err := run(); err != nil {
 		fmt.Fprintln(os.Stderr, "offline-github-api:", err)

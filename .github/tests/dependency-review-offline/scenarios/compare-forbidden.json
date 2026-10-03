@@ -1,5 +1,5 @@
 {
-  "description": "The dependency changes cannot be read: the action fails and never touches the pull request's comments.",
+  "description": "The dependency changes cannot be read: the action fails with an error naming the cause and never touches the pull request's comments.",
   "inputs": {
     "comment-summary-in-pr": "always",
     "warn-only": "true"
@@ -19,6 +19,12 @@
     "outcome": "failure",
     "comment": "none",
     "blocked-hosts": [],
+    "annotations": [
+      {
+        "level": "error",
+        "includes": "Dependency review is not supported on this repository"
+      }
+    ],
     "requests": [
       {
         "method": "GET",
