@@ -60,21 +60,18 @@ for workflow in "${signing_workflows[@]}"; do
   [[ "$guard_env" == '${{ steps.caller.outputs.ref }}' ]] ||
     fail "$workflow guard must bind JOB_WORKFLOW_REF to the resolve step output; got: $guard_env"
 
-  # ---- feature-flag-first: opt-in input, default-off, both states covered ----
-  # AGENTS.md "Shipping a new capability behind an opt-in flag" requires new reusable-workflow
-  # behaviour to ship default-off so existing callers see zero behaviour change on merge. That
-  # matters more than usual here: the guard only runs on a real publish, which CI never exercises
-  # (the dry-run test skips the whole publish job), so a misfire would surface at release time.
+  # Proven enforcement is the default; the release input still preserves an explicit opt-out.
+  # The preflight simulation also executes omitted, true and false inputs in shipped step order.
   flag_default="$(yq -r '.on.workflow_call.inputs["enable-caller-pin"].default' "$workflow")"
-  [[ "$flag_default" == "false" ]] ||
-    fail "$workflow enable-caller-pin must default to false; got: $flag_default"
+  [[ "$flag_default" == "true" ]] ||
+    fail "$workflow enable-caller-pin must default to true; got: $flag_default"
 
   flag_type="$(yq -r '.on.workflow_call.inputs["enable-caller-pin"].type' "$workflow")"
   [[ "$flag_type" == "boolean" ]] ||
     fail "$workflow enable-caller-pin must be a boolean input; got: $flag_type"
 
-  # Flag OFF (the default) => neither new step runs, so a caller that omits the input is unaffected.
-  # Flag ON => both run. Both states are expressed by the same guard, so assert it on both steps.
+  # Explicit false skips both steps; true and omitted input run both. Keep the same input gate
+  # on resolution and admission until the caller declarations are cleaned up under #284.
   for step_id_or_name in "caller" "$guard_name"; do
     gated="$(STEP="$step_id_or_name" yq -r \
       '[.jobs[].steps[] | select(.id == strenv(STEP) or .name == strenv(STEP)) | .if // ""] | .[0]' \

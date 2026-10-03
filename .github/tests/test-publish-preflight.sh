@@ -51,15 +51,24 @@ cat >"$scratch/bin/docker" <<'EOF'
 printf 'docker %s\n' "$*" >>"$CALLS"
 printf '%s\n' "$STUB_ARTIFACT_DIGEST"
 EOF
-chmod +x "$scratch/bin/flux" "$scratch/bin/cosign" "$scratch/bin/docker"
+cat >"$scratch/bin/curl" <<'EOF'
+#!/usr/bin/env bash
+case "$*" in
+  *https://oidc.invalid/token\&audience=sigstore*) ;;
+  *) echo 'unexpected token endpoint' >&2; exit 1 ;;
+esac
+printf 'oidc request\n' >>"$OIDC_CALLS"
+cat "$OIDC_FIXTURE"
+EOF
+chmod +x "$scratch/bin/flux" "$scratch/bin/cosign" "$scratch/bin/docker" "$scratch/bin/curl"
 
 # ---- the simulated job ------------------------------------------------------------------------
 
 # Run steps see ONLY the stubs and this explicit set of tools, none of which can write to a registry.
-# A step that reaches for anything else — oras, crane, curl, gh — fails loudly instead of writing
+# A step that reaches for anything else — oras, crane, gh — fails loudly instead of writing
 # where the no-push assertions below cannot see it. Add a tool here only if it cannot publish.
 mkdir -p "$scratch/tools"
-for tool in bash cat cut grep head jq sed sort tail tr wc yq; do
+for tool in base64 bash cat cut grep head jq sed sort tail tr wc yq; do
   tool_path="$(command -v "$tool")" || fail "this test needs $tool on PATH"
   ln -s "$tool_path" "$scratch/tools/$tool"
 done
@@ -204,6 +213,11 @@ run_job() {
   : >"$sim_outputs"
   : >"$calls"
   : >"$log"
+  : >"$scratch/oidc-calls"
+  local oidc_payload
+  oidc_payload="$(jq -nc --arg ref "${SIM_CALLER_REF:-devantler-tech/.github/$sim_workflow@$sha40}" \
+    '{job_workflow_ref:$ref}' | base64 | tr -d '\n' | tr '+/' '-_' | tr -d '=')"
+  printf '{"value":"header.%s.signature"}\n' "$oidc_payload" >"$scratch/oidc-token.json"
   local pair line unmodelled entries
   for pair in "$@"; do printf '%s\n' "$pair" >>"$sim_inputs"; done
   sim_json="$scratch/$(basename "$sim_workflow").json"
@@ -328,6 +342,9 @@ run_job() {
     (cd "$workdir" && env -i PATH="$step_path" HOME="$HOME" TMPDIR="$scratch" \
       CALLS="$calls" UNMODELLED="$scratch/unmodelled" STUB_ARTIFACT_DIGEST="$artifact_digest" \
       GITHUB_OUTPUT="$scratch/github-output" \
+      OIDC_FIXTURE="$scratch/oidc-token.json" OIDC_CALLS="$scratch/oidc-calls" \
+      ACTIONS_ID_TOKEN_REQUEST_URL="https://oidc.invalid/token" \
+      ACTIONS_ID_TOKEN_REQUEST_TOKEN="stub-not-a-secret" \
       ${job_env[@]+"${job_env[@]}"} ${step_env[@]+"${step_env[@]}"} \
       "$scratch/tools/bash" --noprofile --norc "${shell_flags[@]}" "$run_file") \
       >"$scratch/step.log" 2>&1 || status=$?
@@ -433,6 +450,41 @@ first_write="$(head -n 1 "$calls")"
 [[ "$first_write" == "image push 🐳 Build & push image" ]] ||
   fail "publish-app's first registry write is not the image push: $first_write"
 echo "ok   publish-app publishes a good release and injects the digest after the build"
+
+# Both publishers run their actual OIDC resolver and admission guard by default. A moving ref
+# must fail before checkout or registry activity; explicit false preserves the rollout interface.
+for workflow in "$app" "$manifests"; do
+  job=publish
+  [[ "$workflow" == "$app" ]] || job=publish-manifests
+  for setting in omitted true false; do
+    wd="$scratch/pin-$job-$setting"
+    new_app "$wd"
+    passed=(app-name=app)
+    [[ "$workflow" == "$app" ]] || passed=()
+    [[ "$setting" == omitted ]] || passed+=("enable-caller-pin=$setting")
+    run_job "$workflow" "$job" "$wd" tag v1.2.3 ${passed[@]+"${passed[@]}"} ||
+      fail "$workflow failed a good $setting caller-pin release: $(cat "$log")"
+    if [[ "$setting" == false ]]; then
+      [[ ! -s "$scratch/oidc-calls" ]] || fail "$workflow explicit false requested OIDC"
+      ! grep -qF '== 🔒 Require a SHA-pinned caller' "$log" ||
+        fail "$workflow explicit false ran the pin guard"
+    else
+      grep -qxF 'oidc request' "$scratch/oidc-calls" ||
+        fail "$workflow $setting input did not request OIDC"
+      grep -qF '== 🔒 Require a SHA-pinned caller' "$log" ||
+        fail "$workflow $setting input did not run the pin guard"
+      if SIM_CALLER_REF="devantler-tech/.github/$workflow@refs/heads/main" \
+        run_job "$workflow" "$job" "$wd" tag v1.2.3 ${passed[@]+"${passed[@]}"}; then
+        fail "$workflow $setting input accepted a moving caller ref"
+      fi
+      nothing_pushed "$workflow $setting moving ref"
+      refused_with "$workflow $setting moving ref" 'must be called by a 40-character commit SHA'
+      ! grep -qF 'setup actions/checkout' "$log" ||
+        fail "$workflow $setting moving ref reached checkout"
+    fi
+  done
+done
+echo 'ok   both publishers enforce omitted/true pin inputs before checkout and preserve explicit false'
 
 # A repository name with uppercase letters: docker/metadata-action lowercases the image it pushes,
 # so the pinned reference and the manifests path must be lowercase too, or the push after the
