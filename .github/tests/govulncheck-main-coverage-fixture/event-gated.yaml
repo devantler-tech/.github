@@ -9,7 +9,7 @@ on:
       scan-default-branch:
         required: false
         type: boolean
-        default: false
+        default: true
 jobs:
   changes:
     runs-on: ubuntu-latest

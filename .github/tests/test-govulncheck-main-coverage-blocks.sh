@@ -69,15 +69,15 @@ check path-filter-inside-function-call.yaml \
 check top-level-ref-predicate.yaml \
   "AND-s a top-level ref predicate"
 
-# The opt-in input: present, off by default, and gating the right thing.
+# The compatible rollout input: present, on by default, and gating the right thing.
 check flag-not-referenced.yaml \
   "does not reference 'inputs.scan-default-branch'"
 check flag-and-ed-at-top-level.yaml \
   "AND-s 'inputs.scan-default-branch' at the top level"
 check flag-gates-wrong-arm.yaml \
   "no OR-arm both references 'inputs.scan-default-branch' and carries the default-branch clause"
-check flag-defaults-true.yaml \
-  "defaults to 'true', not false"
+check flag-defaults-false.yaml \
+  "defaults to 'false', not true"
 check unflagged-arm-not-pr-gated.yaml \
   "neither gated by 'inputs.scan-default-branch' nor restricted to pull requests"
 

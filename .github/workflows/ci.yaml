@@ -3489,9 +3489,9 @@ jobs:
       pull-requests: read
       code-quality: write # callers must grant this for the coverage upload (GitHub Code Quality)
 
-  # ── Flag-ON counterpart of test-validate-go-project (the both-states rule) ──
+  # ── Explicit-OFF counterpart of the default-ON vulnerability scan ──
   # test-validate-go-project above omits `scan-default-branch` entirely, so it exercises
-  # the default — the OFF state every existing consumer gets. This job passes it as true.
+  # the default — the ON state. This job passes false to preserve OFF-path coverage.
   # Together they cover both states of the flag, per AGENTS.md "Shipping a new capability
   # behind an opt-in flag": a flag whose off-path is untested can regress silently, and so
   # can an on-path that was never instantiated.
@@ -3503,11 +3503,11 @@ jobs:
   # what the structural guard in test-govulncheck-main-coverage.sh asserts instead.
   test-validate-go-project-scan-default-branch:
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
-    name: "[Test] Validate Go Project - Default-Branch Scan Opted In"
+    name: "[Test] Validate Go Project - Default-Branch Scan Opted Out"
     uses: ./.github/workflows/validate-go-project-readonly.yaml
     with:
       working-directory: .github/tests/go-valid-fixture
-      scan-default-branch: true
+      scan-default-branch: false
       # Opted out explicitly: this self-test proves a different input and must not write to its branch.
       apply-signed-fixes: false
     permissions:
@@ -4188,8 +4188,8 @@ jobs:
   # These jobs exercise the SAME action the gate uses against a pinned-vulnerable
   # fixture (.github/tests/govulncheck-allowlist) so the contract is provable and stable:
   #   • allowlisted ⇒ the scan PASSES,  • strict (no allow-file) ⇒ the scan FAILS.
-  # The govulncheck job in validate-go-project.yaml is skipped on this repo, so it
-  # cannot self-test itself — hence a dedicated, faithful replica here.
+  # The default-on caller scans this repo's clean fixture on main pushes. Dedicated
+  # vulnerable fixtures below establish allowlist and strict-failure verdicts.
   test-govulncheck-allowlist-honored:
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
     name: "[Test] Govulncheck Allowlist - Allowlisted Advisory Passes"
