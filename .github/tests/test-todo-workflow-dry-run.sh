@@ -24,14 +24,20 @@ guard() {
       (.shell == null or .shell == "bash") and
       (.["working-directory"] == null or .["working-directory"] == ".");
     .workflow as $wf | .ci as $ci | $wf.jobs["dry-run"] as $job |
-    if $wf.on.workflow_call.inputs["dry-run"].default != false or
+    if $wf.on.workflow_call.inputs["optional-project-auth"].type != "boolean" or
+      $wf.on.workflow_call.inputs["optional-project-auth"].default != false or
+      $wf.on.workflow_call.inputs.project.type != "string" or
+      $wf.on.workflow_call.inputs.project.default != "organization/devantler-tech/5"
+    then error("production project choices must preserve their existing defaults")
+    elif $wf.on.workflow_call.inputs["dry-run"].default != false or
       $wf.on.workflow_call.secrets.APP_PRIVATE_KEY.required != false
     then error("dry-run stays default-off and its unused secret must be optional")
     elif $wf.permissions != {} or $wf.jobs.todos.if != "${{ !inputs.dry-run }}" or
       $wf.jobs.todos.permissions != {contents:"read",issues:"write"} or
       ([$wf.jobs.todos.steps[] | select(.uses == "./.devantler-tech-actions/actions/create-issues-from-todos") | .with] !=
         [{"client-id":"${{ vars.APP_CLIENT_ID }}","app-private-key":"${{ secrets.APP_PRIVATE_KEY }}",
-          project:"organization/devantler-tech/5",ignore:"${{ inputs.ignore }}"}])
+          project:"${{ inputs.project }}",ignore:"${{ inputs.ignore }}",
+          "optional-project-auth":"${{ inputs.optional-project-auth }}"}])
     then error("production gate, permissions and project authentication must remain intact")
     elif $job == null or $job.if != "${{ inputs.dry-run }}" or
       ($job["continue-on-error"] // false) != false or $job.needs != null
@@ -103,6 +109,12 @@ while IFS=$'\t' read -r label mutation diagnostic; do
   count=$((count + 1))
 done <<'CASES'
 required unused secret	.workflow.on.workflow_call.secrets.APP_PRIVATE_KEY.required=true	unused secret
+optional project default activated	.workflow.on.workflow_call.inputs["optional-project-auth"].default=true	existing defaults
+optional project wrong type	.workflow.on.workflow_call.inputs["optional-project-auth"].type="string"	existing defaults
+project default changed	.workflow.on.workflow_call.inputs.project.default=""	existing defaults
+production optional forwarding missing	.workflow.jobs.todos.steps |= map(if .with.project then del(.with["optional-project-auth"]) else . end)	production gate
+production optional forwarding constant	.workflow.jobs.todos.steps |= map(if .with.project then .with["optional-project-auth"]="false" else . end)	production gate
+production project forwarding constant	.workflow.jobs.todos.steps |= map(if .with.project then .with.project="organization/devantler-tech/5" else . end)	production gate
 default live activation	.workflow.on.workflow_call.inputs["dry-run"].default=true	default-off
 production gate bypass	.workflow.jobs.todos.if=null	production gate
 production write scope lost	.workflow.jobs.todos.permissions.issues="read"	production gate
