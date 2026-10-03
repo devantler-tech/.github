@@ -76,7 +76,13 @@ function evaluate(gate, values, status) {
   return (explicitStatus || status === 'success') && Boolean(result);
 }
 
-function assertExactBotExclusions(expression, expected, label) {
+function normalizePredicate(expression) {
+  return String(expression).trim()
+    .replace(/^\$\{\{\s*|\s*\}\}$/g, '')
+    .replace(/\s+/g, ' ');
+}
+
+function assertExactBotExclusions(expression, expected, label, signedFixesRequired) {
   const exclusions = [...String(expression).matchAll(
     /!contains\(fromJSON\('([^']+)'\),\s*([^)]+)\)/g,
   )].map(match => ({values: JSON.parse(match[1]), context: match[2].trim()}));
@@ -88,6 +94,16 @@ function assertExactBotExclusions(expression, expected, label) {
     assert.deepEqual(exclusion.values.map(value => value.toLowerCase()).sort(), normalized,
       `${label}: complete exclusions for ${exclusion.context}`);
   }
+  const encoded = JSON.stringify(expected);
+  const expectedPredicate = [
+    signedFixesRequired ? "needs.changes.outputs.signed-fixes == 'true'" : null,
+    "github.event_name == 'pull_request'",
+    'github.event.pull_request.head.repo.fork != true',
+    `!contains(fromJSON('${encoded}'), github.event.pull_request.user.login)`,
+    `!contains(fromJSON('${encoded}'), inputs.pr-owner)`,
+  ].filter(Boolean).join(' && ');
+  assert.equal(normalizePredicate(expression), expectedPredicate,
+    `${label}: complete eligibility predicate`);
 }
 
 function addExtraBotExclusion(expression, extra) {
@@ -100,6 +116,13 @@ function addExtraBotExclusion(expression, extra) {
   });
   assert.equal(mutated, true, 'extra-bot ablation did not find an exclusion list');
   return result;
+}
+
+function addIndependentBotExclusion(expression, context, extra) {
+  const source = String(expression);
+  const suffix = source.trimEnd().endsWith('}}') ? ' }}' : '';
+  const body = suffix ? source.trimEnd().slice(0, -2).trimEnd() : source;
+  return `${body} && ${context} != '${extra}'${suffix}`;
 }
 
 const fixtures = [];
@@ -170,15 +193,19 @@ for (const output of ['artifact-name', 'changed', 'manual-required']) {
 }
 const go = JSON.parse(fs.readFileSync(`${directory}/validate-go-project.json`, 'utf8'));
 const signer = JSON.parse(fs.readFileSync(`${directory}/apply-signed-fixes.json`, 'utf8'));
-const policies = [['signer', signer.jobs['apply-fixes'].if]];
+const policies = [['signer', signer.jobs['apply-fixes'].if, false]];
 for (const lane of ['tidy', 'golangci-lint', 'lint']) {
-  policies.push([lane, go.jobs[lane].steps.find(step => step.id === 'fixes').with['upload-enabled']]);
+  policies.push([lane, go.jobs[lane].steps.find(step => step.id === 'fixes').with['upload-enabled'], true]);
 }
-for (const [label, expression] of policies) {
-  assertExactBotExclusions(expression, bots, label);
-  assert.throws(() => assertExactBotExclusions(addExtraBotExclusion(expression, 'some-other-bot[bot]'), bots, label),
+for (const [label, expression, signedFixesRequired] of policies) {
+  assertExactBotExclusions(expression, bots, label, signedFixesRequired);
+  assert.throws(() => assertExactBotExclusions(addExtraBotExclusion(expression, 'some-other-bot[bot]'), bots, label, signedFixesRequired),
     error => error.code === 'ERR_ASSERTION' && error.message.includes(`${label}: complete exclusions`),
     `${label}: arbitrary extra bot exclusion was accepted`);
+  assert.throws(() => assertExactBotExclusions(addIndependentBotExclusion(
+    expression, 'github.event.pull_request.user.login', 'some-other-bot[bot]'), bots, label, signedFixesRequired),
+  error => error.code === 'ERR_ASSERTION' && error.message.includes(`${label}: complete eligibility predicate`),
+  `${label}: independent extra bot exclusion was accepted`);
 }
 const identities = ['human', 'github-actions[bot]', 'ksail-bot', 'botantler-1[bot]', 'release-please[bot]', '', ...bots, 'RENOVATE[BOT]'];
 let identityCases = 0;
