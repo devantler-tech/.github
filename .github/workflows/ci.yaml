@@ -5675,6 +5675,9 @@ jobs:
       - name: 🔒 Test live admin-audit credential boundary
         run: bash tests/repository-admin-audit-boundary.sh
 
+      - name: 🔒 Test premature governance-audit failures
+        run: bash tests/governance-audit-aborts.sh
+
       - name: 🔎 Test organization-settings observations
         run: bash tests/organization-settings.sh
 
