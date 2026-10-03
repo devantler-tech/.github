@@ -20,6 +20,8 @@ yq -o=json '.' "$workflow" | jq -e --arg tags "$expected_tags" '
    [$steps | to_entries[] | select(.value.id == "build") | .key][0])
 ' >/dev/null || fail 'image build does not enforce default-off staging before publication'
 mkdir -p "$work/bin" "$work/state"
+cp "$root/.github/scripts/require-unpublished-version.sh" "$work/require-unpublished-version.sh"
+cp "$root/.github/tests/fixtures/registry-read-curl.sh" "$work/bin/curl"
 yq -r '.jobs.publish.steps[] | select(.id == "staging") | .run' "$workflow" >"$work/staging.sh"
 yq -r '.jobs.publish.steps[] | select(.name == "📦 Sign & promote image and manifests") | .run' "$workflow" >"$work/promote.sh"
 [[ -s "$work/staging.sh" && -s "$work/promote.sh" ]] || fail 'missing production promotion steps'
@@ -82,7 +84,12 @@ done
 : >"$work/output"
 run_step none 1.2.3 "$identity" "$work/staging.sh"
 grep -qx 'tag=ghcr.io/devantler-tech/app:staging-123-2' "$work/output" || fail 'wrong staging reference'
-for fault in manifest-push image-sign manifest-sign image-verify manifest-verify image-promotion changed-digest; do
+: >"$work/trace"
+for fault in registry-existing registry-image-only registry-manifests-only; do
+  if run_step "$fault" 1.2.3 "$identity" "$work/staging.sh" >"$work/log" 2>&1; then fail "$fault authorized image staging"; fi
+  [[ ! -s "$work/trace" ]] || fail 'existing version made a registry write'
+done
+for fault in manifest-push image-sign manifest-sign image-verify manifest-verify image-promotion changed-digest registry-existing; do
   rm -f "$work/state/"* "$work/trace"
   if run_step "$fault" 1.2.3 "$identity" "$work/promote.sh" >"$work/log" 2>&1; then fail "accepted failed $fault"; fi
   if grep -q 'latest' "$work/trace"; then fail "advanced latest after failed $fault"; fi
@@ -101,11 +108,13 @@ done
 echo 'app-promotion: healthy stable/prerelease and signing, verification, push and digest failures pass'
 
 if [[ "$#" == 0 ]]; then
-  for mutation in early-image-tags missing-verification; do
+  for mutation in early-image-tags missing-verification missing-version-refusal missing-manifests-refusal; do
     # shellcheck disable=SC2016 # Literal workflow expression in the negative control.
     case "$mutation" in
       early-image-tags) expression='(.jobs.publish.steps[] | select(.id == "build")).with.tags = "${{ steps.meta.outputs.tags }}"' ;;
       missing-verification) expression='(.jobs.publish.steps[] | select(.name == "📦 Sign & promote image and manifests")).run |= sub("cosign verify"; "echo verify")' ;;
+      missing-version-refusal) expression='(.jobs.publish.steps[] | select(.id == "staging")).run |= sub("bash.*require-unpublished-version[.]sh.*"; "true")' ;;
+      missing-manifests-refusal) expression='(.jobs.publish.steps[] | select(.id == "staging")).run |= sub("\\$name/manifests"; "$name")' ;;
     esac
     yq "$expression" "$workflow" >"$work/mutated.yaml"
     [[ "$(cat "$work/mutated.yaml")" != "$(cat "$workflow")" ]] || fail "mutation did not change workflow: $mutation"

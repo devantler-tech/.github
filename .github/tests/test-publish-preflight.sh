@@ -244,9 +244,22 @@ run_job() {
   [[ "$(wf '.jobs | keys | join(" ")')" == "$sim_job" ]] ||
     fail "$sim_workflow runs jobs besides $sim_job, which could publish while it refuses; model them"
   unmodelled="$(in_job '$J | keys | map(select(. != "name" and . != "if" and . != "runs-on"
-    and . != "permissions" and . != "env" and . != "steps")) | join(" ")')"
+    and . != "permissions" and . != "env" and . != "steps" and . != "concurrency")) | join(" ")')"
   [[ -z "$unmodelled" ]] ||
     fail "$sim_workflow job $sim_job sets $unmodelled, which this test does not model"
+  # GitHub serializes opted-in writers for one target, across both workflow families.
+  # Legacy callers retain unique groups; queue:max prevents pending releases replacing each other.
+  local concurrency_group
+  case "$sim_job" in
+    publish) concurrency_group='${{ (inputs.enable-signed-promotion == true || inputs.enable-signed-promotion == '\''true'\'') && format('\''publish-verified-{0}'\'', github.repository) || format('\''publish-legacy-app-{0}-{1}'\'', github.run_id, github.run_attempt) }}' ;;
+    publish-manifests) concurrency_group='${{ (inputs.enable-signed-promotion == true || inputs.enable-signed-promotion == '\''true'\'') && format('\''publish-verified-{0}'\'', inputs.oci-name || github.repository) || format('\''publish-legacy-manifests-{0}-{1}'\'', github.run_id, github.run_attempt) }}' ;;
+    *) fail 'unmodelled publication concurrency group' ;;
+  esac
+  [[ "$(in_job '$J.concurrency | keys | sort | join(" ")')" == 'cancel-in-progress group queue' &&
+     "$(in_job '$J.concurrency.group')" == "$concurrency_group" &&
+     "$(in_job '$J.concurrency.queue')" == max &&
+     "$(in_job '$J.concurrency["cancel-in-progress"]')" == false ]] ||
+    fail "$sim_workflow does not serialize verified publication without canceling releases"
   # shellcheck disable=SC2016 # GitHub expression compared literally.
   [[ "$(in_job '$J.if // ""')" == '${{ !inputs.dry-run }}' ]] ||
     fail "$sim_workflow job $sim_job is no longer gated exactly on the dry-run input; model its condition"
@@ -420,19 +433,8 @@ manifests=.github/workflows/publish-manifests.yaml
 # `command not found` message, so there the silenced case is skipped rather than claimed.
 if [[ "$("$scratch/tools/bash" -c 'echo "${BASH_VERSINFO[0]}"')" -ge 4 ]]; then
   probe="$scratch/probe.yaml"
-  cat >"$probe" <<'EOF'
-on:
-  workflow_call:
-    inputs:
-      dry-run: {type: boolean, default: false}
-jobs:
-  publish:
-    if: ${{ !inputs.dry-run }}
-    runs-on: ubuntu-latest
-    steps:
-      - name: sneaky
-        run: oras push ghcr.io/x:1 2>/dev/null || true
-EOF
+  yq '.jobs.publish.steps = [{"name": "sneaky", "run": "oras push ghcr.io/x:1 2>/dev/null || true"}]' \
+    "$app" >"$probe"
   if out="$(run_job "$probe" publish "$scratch" tag v1.2.3 2>&1)"; then
     fail "the simulation ran a silenced command outside its tool set without noticing"
   fi

@@ -34,6 +34,10 @@ jobs:
     name: Publish image & manifests
     if: ${{ !inputs.dry-run }}
     runs-on: ubuntu-latest
+    concurrency:
+      group: ${{ (inputs.enable-signed-promotion == true || inputs.enable-signed-promotion == 'true') && format('publish-verified-{0}', github.repository) || format('publish-legacy-app-{0}-{1}', github.run_id, github.run_attempt) }}
+      queue: max
+      cancel-in-progress: false
     permissions:
       contents: read # checkout
       packages: write # push image + manifests OCI artifact
@@ -161,6 +165,26 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ env.GH_TOKEN }}
 
+      - name: 🔒 Reserve publisher helper checkout
+        if: ${{ inputs.enable-signed-promotion == true || inputs.enable-signed-promotion == 'true' }}
+        run: |
+          { test ! -e .devantler-tech-publisher && test ! -L .devantler-tech-publisher; } || { echo '::error::reserved publisher helper path already exists'; exit 1; }
+
+      - name: 📑 Checkout immutable publisher helpers
+        if: ${{ inputs.enable-signed-promotion == true || inputs.enable-signed-promotion == 'true' }}
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ${{ job.workflow_repository }}
+          ref: ${{ job.workflow_sha }}
+          path: .devantler-tech-publisher
+          persist-credentials: false
+
+      - name: 🔒 Prepare immutable publication guard
+        if: ${{ inputs.enable-signed-promotion == true || inputs.enable-signed-promotion == 'true' }}
+        run: |
+          cp .devantler-tech-publisher/.github/scripts/require-unpublished-version.sh "$RUNNER_TEMP/require-unpublished-version.sh"
+          rm -rf -- .devantler-tech-publisher
+
       - name: 🔒 Prepare signed image staging
         id: staging
         if: ${{ inputs.enable-signed-promotion == true || inputs.enable-signed-promotion == 'true' }}
@@ -169,6 +193,9 @@ jobs:
           JOB_WORKFLOW_REF: ${{ steps.caller.outputs.ref }}
           RUN_ID: ${{ github.run_id }}
           RUN_ATTEMPT: ${{ github.run_attempt }}
+          VERSION: ${{ steps.version.outputs.version }}
+          ACTOR: ${{ github.actor }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
           if ! [[ "${JOB_WORKFLOW_REF:-}" =~ ^[^@]+@[0-9a-f]{40}$ ]]; then
@@ -180,6 +207,9 @@ jobs:
             exit 1
           fi
           image="$(printf '%s' "${REGISTRY}/${IMAGE_NAME}" | tr '[:upper:]' '[:lower:]')"
+          name="$(printf '%s' "$IMAGE_NAME" | tr '[:upper:]' '[:lower:]')"
+          OCI_REPOSITORIES="$(printf '%s\n%s' "$name" "$name/manifests")" \
+            bash "$RUNNER_TEMP/require-unpublished-version.sh"
           echo "tag=${image}:staging-${RUN_ID}-${RUN_ATTEMPT}" >> "$GITHUB_OUTPUT"
 
       - name: 🏷️ Derive image tags
@@ -306,6 +336,9 @@ jobs:
             echo '::error::image promotion changed the verified digest' >&2
             exit 1
           }
+          name="$(printf '%s' "$IMAGE_NAME" | tr '[:upper:]' '[:lower:]')"
+          OCI_REPOSITORIES="$(printf '%s\n%s' "$name" "$name/manifests")" \
+            bash "$RUNNER_TEMP/require-unpublished-version.sh"
           docker buildx imagetools create --prefer-index=false --tag "${IMAGE}:${VERSION}" "${IMAGE}@${DIGEST}"
           flux tag artifact "oci://${ARTIFACT}@${ARTIFACT_DIGEST}" --tag "$VERSION" --creds "${ACTOR}:${GH_TOKEN}"
           case "$VERSION" in
