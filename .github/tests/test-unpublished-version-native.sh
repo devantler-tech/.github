@@ -28,6 +28,11 @@ export REGISTRY=registry.test:5443 ACTOR=fixture GH_TOKEN=synthetic-token VERSIO
 export OCI_REPOSITORIES=$'devantler-tech/app\ndevantler-tech/app/manifests'
 guard="$root/.github/scripts/require-unpublished-version.sh"
 bash "$guard"
+for authorization in '' 'Bearer wrong-token'; do
+  status="$(curl -sS --max-time 10 -o "$work/response" -w '%{http_code}' \
+    -H "Authorization: $authorization" "https://$REGISTRY/v2/devantler-tech/app/manifests/$VERSION")"
+  [[ "$status" == 401 ]] || { echo 'FAIL: native fixture accepted an unauthenticated manifest read'; exit 1; }
+done
 printf '{"schemaVersion":2,"mediaType":"application/vnd.oci.image.index.v1+json","manifests":[]}' >"$work/index.json"
 digest="sha256:$(sha256sum "$work/index.json" | cut -d ' ' -f1)"
 put() {
@@ -38,7 +43,7 @@ put() {
   [[ "$status" == 201 ]] || { echo "Native registry rejected fixture: HTTP $status" >&2; exit 1; }
 }
 read_digest() {
-  curl -fsS --max-time 10 -H 'Accept: application/vnd.oci.image.index.v1+json' \
+  curl -fsS --max-time 10 -H 'Authorization: Bearer synthetic-bearer' -H 'Accept: application/vnd.oci.image.index.v1+json' \
     "https://$REGISTRY/v2/$1/manifests/$2" >"$work/readback"
   printf 'sha256:%s\n' "$(sha256sum "$work/readback" | cut -d ' ' -f1)"
 }

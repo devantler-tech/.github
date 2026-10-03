@@ -8,6 +8,7 @@ import (
 	"net/http/httputil"
 	"net/url"
 	"os"
+	"strings"
 )
 
 func main() {
@@ -34,6 +35,13 @@ func main() {
 		}
 		if len(r.URL.Path) < 4 || r.URL.Path[:4] != "/v2/" {
 			http.NotFound(w, r)
+			return
+		}
+		if r.Method == http.MethodGet && strings.Contains(r.URL.Path, "/manifests/") &&
+			r.Header.Get("Authorization") != "Bearer synthetic-bearer" {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusUnauthorized)
+			_, _ = w.Write([]byte(`{"errors":[{"code":"DENIED"}]}`))
 			return
 		}
 		proxy.ServeHTTP(w, r)

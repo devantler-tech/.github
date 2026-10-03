@@ -22,7 +22,7 @@ mkdir -p "$scratch/bin"
 cp .github/scripts/require-unpublished-version.sh "$scratch/require-unpublished-version.sh"
 cp .github/tests/fixtures/registry-read-curl.sh "$scratch/bin/curl"
 chmod +x "$scratch/bin/curl"
-workflow=.github/workflows/publish-manifests.yaml
+workflow="${1:-.github/workflows/publish-manifests.yaml}"
 step='📦 Sign & promote manifests artifact'
 STEP="$step" yq -r '.jobs[].steps[] | select(.name == strenv(STEP)) | .run' "$workflow" >"$scratch/publish.sh"
 [[ -s "$scratch/publish.sh" && "$(cat "$scratch/publish.sh")" != null ]] || {
@@ -127,6 +127,12 @@ for failure in push digest sign verify version registry-existing; do
 done
 echo 'ok push, signing, verification and version-promotion failures leave release tags unchanged'
 [[ ! -s "$state/calls" ]] || fail 'existing version was not refused before staging'
+if run_case registry-raced 1.2.3 true "$caller" 123; then fail 'version created during signing was overwritten'; fi
+[[ -e "$state/verified" ]] || fail 'race fixture did not reach successful verification'
+[[ "$(<"$state/version")" == old-version && "$(<"$state/latest")" == old-latest ]] ||
+  fail 'late existing version moved release tags'
+! grep -q 'flux tag artifact' "$state/calls" || fail 'late registry check ran after promotion'
+echo 'ok a version appearing during signing is refused before promotion'
 run_case none 1.2.3 true "$caller" 123 || fail 'stable release failed'
 [[ "$(<"$state/version")" == "$digest" && "$(<"$state/latest")" == "$digest" ]] || fail 'stable tags were not promoted'
 [[ "$(<"$state/pushed")" == "oci://$artifact:staging-123-2" ]] || fail 'push exposed a version tag before signing'
@@ -161,3 +167,16 @@ for mutation in promotion pin moving family; do
   fi
 done
 echo 'ok configuration caller refuses missing controls, moving refs and the wrong workflow family'
+
+if [[ "$#" == 0 ]]; then
+  # Remove only the final refusal, leaving the initial absence check intact.
+  STEP="$step" yq '(.jobs[].steps[] | select(.name == strenv(STEP))).run |=
+    sub("# Promotions read the verified digest, never a mutable staging alias.\n.*require-unpublished-version[^\n]*";
+        "# Mutation removes the final refusal.")' "$workflow" >"$scratch/mutated.yaml"
+  if bash "$0" "$scratch/mutated.yaml" >"$scratch/mutation.log" 2>&1; then
+    fail 'accepted publication without the final absence check'
+  fi
+  grep -q 'version created during signing was overwritten' "$scratch/mutation.log" ||
+    fail 'final-refusal mutation failed for an unrelated reason'
+  echo 'ok removing the final refusal fails the late-version regression'
+fi

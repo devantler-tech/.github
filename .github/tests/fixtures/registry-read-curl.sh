@@ -17,7 +17,11 @@ else
   [[ "${17}" == --header && "${18}" == 'Authorization: Bearer synthetic-bearer' &&
      "${19}" == --header && "${20}" == 'Accept: application/vnd.oci.image.manifest.v1+json, application/vnd.oci.image.index.v1+json, application/vnd.docker.distribution.manifest.v2+json, application/vnd.docker.distribution.manifest.list.v2+json' &&
      "${21}" == "https://$REGISTRY/v2/"*"/manifests/$VERSION" ]] || exit 93
-  if [[ "${FAULT:-${FAIL_AT:-none}}" == registry-existing ]]; then
+  scenario="${FAULT:-${FAIL_AT:-none}}"
+  if [[ "$scenario" == registry-existing ||
+        ( "$scenario" == registry-image-only && "${21}" != */manifests/manifests/* ) ||
+        ( "$scenario" == registry-manifests-only && "${21}" == */manifests/manifests/* ) ||
+        ( "$scenario" == registry-raced && -e "$STATE/verified" ) ]]; then
     printf '{}' >"$output"; printf 200
   else
     printf '{"errors":[{"code":"MANIFEST_UNKNOWN"}]}' >"$output"; printf 404

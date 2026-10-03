@@ -452,7 +452,7 @@ fixture retains the production defaults and native conditional routing, with onl
 offline dependencies. Keep both its compatibility caller and missing-token control
 required; this fixture never proves live token generation or project association.
 
-**Verified publication:** Opted-in publishers authenticate and establish normalized version absence before staging and again before promotion. Preserve structured missing-version evidence, fail-closed authentication/read errors, both application targets, immutable helper checkout and removal before the image build. Keep `.github/tests/test-unpublished-version.sh`, promotion controls and the native disposable-registry proof in required CI. Separate writers can race the final check; registry tag writes are not atomic across repositories. #371 owns default-path and consumer rollout.
+**Verified publication:** Opted-in publishers authenticate and establish normalized version absence before staging and again before promotion. Preserve structured missing-version evidence, fail-closed authentication/read errors, both application targets, immutable helper checkout and removal before the image build. Serialize opted-in publishers for the same target within a caller repository with a shared concurrency group, queue:max and no cancellation. Keep `.github/tests/test-unpublished-version.sh`, promotion controls and the native disposable-registry proof in required CI. Other writers can race the final check; registry tag writes are not atomic across repositories. #371 owns default-path and consumer rollout.
 
 **Manifest naming:** `validate-naming` runs by default using the caller's versioned
 configuration. An explicit `enabled: "false"` skips configuration reads and setup.

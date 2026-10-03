@@ -22,8 +22,10 @@ while IFS= read -r repository; do
     --data-urlencode "service=$REGISTRY" --data-urlencode "scope=repository:$repository:pull" \
     --user "$ACTOR:$GH_TOKEN" "https://$REGISTRY/token")" || fail 'registry authentication request failed'
   [[ "$status" == 200 ]] || fail "registry authentication returned HTTP $status"
-  token="$(jq -er '(.token // .access_token) | select(type == "string" and length > 0)' "$work/token.json")" || fail 'invalid registry token response'
-  [[ "$token" =~ ^[A-Za-z0-9._~-]+$ ]] || fail 'invalid registry bearer token'
+  token="$(jq -ser 'select(length == 1) | .[0] | select(type == "object") |
+    select(.token == null or .access_token == null or .token == .access_token) |
+    (.token // .access_token) | select(type == "string" and length > 0)' "$work/token.json" 2>/dev/null)" || fail 'invalid registry token response'
+  [[ "$token" =~ ^[A-Za-z0-9._~+/-]+=*$ ]] || fail 'invalid registry bearer token'
   status="$(curl -q --silent --show-error --proto '=https' --tlsv1.2 \
     --connect-timeout 10 --max-time 30 --max-filesize 1048576 \
     --output "$work/manifest.json" --write-out '%{http_code}' \
@@ -33,8 +35,8 @@ while IFS= read -r repository; do
   case "$status" in
     200) fail "version $VERSION already exists in $repository; publish a new version" ;;
     404)
-      jq -e 'type == "object" and (.errors | type == "array" and length > 0 and
-        all(.[]; type == "object" and (.code == "MANIFEST_UNKNOWN" or .code == "NAME_UNKNOWN")))' \
+      jq -se 'length == 1 and (.[0] | type == "object" and (.errors | type == "array" and length > 0 and
+        all(.[]; type == "object" and (.code == "MANIFEST_UNKNOWN" or .code == "NAME_UNKNOWN"))))' \
         "$work/manifest.json" >/dev/null 2>&1 || fail 'registry did not establish version absence'
       ;;
     *) fail "registry version read returned HTTP $status" ;;

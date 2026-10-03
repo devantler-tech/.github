@@ -28,11 +28,18 @@ case "$url" in
       token-malformed) printf '{' >"$output"; printf 200 ;;
       token-empty) printf '{"token":""}' >"$output"; printf 200 ;;
       token-injection) printf '{"token":"bad\\nheader"}' >"$output"; printf 200 ;;
+      token-padded) printf '{"token":"synthetic+bearer/=="}' >"$output"; printf 200 ;;
+      token-multiple) printf '{"token":"synthetic-bearer"}\n{"token":"synthetic-bearer"}' >"$output"; printf 200 ;;
+      token-conflict) printf '{"token":"synthetic-bearer","access_token":"different"}' >"$output"; printf 200 ;;
       *) printf '{"token":"synthetic-bearer"}' >"$output"; printf 200 ;;
     esac
     ;;
   https://ghcr.io/v2/devantler-tech/app/manifests/1.2.3|https://ghcr.io/v2/devantler-tech/app/manifests/manifests/1.2.3)
-    [[ "$*" == *'Authorization: Bearer synthetic-bearer'* ]] || exit 96
+    if [[ "$SCENARIO" == token-padded ]]; then
+      [[ "$*" == *'Authorization: Bearer synthetic+bearer/=='* ]] || exit 96
+    else
+      [[ "$*" == *'Authorization: Bearer synthetic-bearer'* ]] || exit 96
+    fi
     [[ "$*" == *'application/vnd.oci.image.index.v1+json'* && "$*" == *'application/vnd.docker.distribution.manifest.list.v2+json'* ]] || exit 95
     case "$SCENARIO" in
       transport) exit 7 ;;
@@ -45,6 +52,7 @@ case "$url" in
       wrong-code) printf '{"errors":[{"code":"DENIED"}]}' >"$output"; printf 404 ;;
       mixed-errors) printf '{"errors":[{"code":"MANIFEST_UNKNOWN"},{"code":"DENIED"}]}' >"$output"; printf 404 ;;
       missing-code) printf '{"errors":[{}]}' >"$output"; printf 404 ;;
+      multiple-documents) printf '{"errors":[{"code":"DENIED"}]}\n{"errors":[{"code":"MANIFEST_UNKNOWN"}]}' >"$output"; printf 404 ;;
       exists) printf '{}' >"$output"; printf 200 ;;
       image-only)
         if [[ "$url" == */app/manifests/1.2.3 ]]; then printf '{}' >"$output"; printf 200;
@@ -73,14 +81,14 @@ if [[ "$#" == 0 ]]; then
     }
   done
 fi
-for scenario in absent missing-repository exists image-only manifests-only token-transport token-forbidden token-malformed token-empty token-injection transport forbidden throttled server redirect malformed empty wrong-code mixed-errors missing-code; do
+for scenario in absent missing-repository token-padded exists image-only manifests-only token-transport token-forbidden token-malformed token-empty token-injection token-multiple token-conflict transport forbidden throttled server redirect malformed empty wrong-code mixed-errors missing-code multiple-documents; do
   : >"$work/trace"
   status=0
   env -i PATH="$work/bin:$PATH" TRACE="$work/trace" SCENARIO="$scenario" REGISTRY=ghcr.io \
     OCI_REPOSITORIES=$'devantler-tech/app\ndevantler-tech/app/manifests' VERSION=1.2.3 \
     ACTOR=fixture GH_TOKEN=synthetic-token bash "$script" >"$work/log" 2>&1 || status=$?
   case "$scenario" in
-    absent|missing-repository)
+    absent|missing-repository|token-padded)
       [[ "$status" == 0 ]] || { cat "$work/log"; exit 1; }
       [[ "$(wc -l <"$work/trace" | tr -d ' ')" == 4 ]] || { echo 'FAIL: did not inspect both targets'; exit 1; }
       ;;

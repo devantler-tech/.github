@@ -41,6 +41,10 @@ jobs:
     name: Publish manifests
     if: ${{ !inputs.dry-run }}
     runs-on: ubuntu-latest
+    concurrency:
+      group: ${{ (inputs.enable-signed-promotion == true || inputs.enable-signed-promotion == 'true') && format('publish-verified-{0}', inputs.oci-name || github.repository) || format('publish-legacy-manifests-{0}-{1}', github.run_id, github.run_attempt) }}
+      queue: max
+      cancel-in-progress: false
     permissions:
       contents: read # checkout
       packages: write # push manifests OCI artifact
