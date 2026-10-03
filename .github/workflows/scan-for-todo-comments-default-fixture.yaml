@@ -16,6 +16,12 @@
           "default": "",
           "type": "string"
         },
+        "exclude-vendored": {
+          "description": "Opt in to excluding root vendor/ and third_party/ when ignore is empty; rollout retirement is tracked in #394",
+          "required": false,
+          "default": false,
+          "type": "boolean"
+        },
         "optional-project-auth": {
           "description": "Opt in to optional project integration; existing callers keep their behavior",
           "required": false,
@@ -99,6 +105,7 @@
             "app-private-key": "${{ secrets.APP_PRIVATE_KEY }}",
             "project": "${{ inputs.project }}",
             "ignore": "${{ inputs.ignore }}",
+            "exclude-vendored": "${{ inputs.exclude-vendored }}",
             "optional-project-auth": "${{ inputs.optional-project-auth }}"
           },
           "id": "fixture-scan",

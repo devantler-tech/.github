@@ -12,6 +12,12 @@ requests and closure comments. `InitialReads` replaces the normal issue and mile
 responses; `ForbiddenOutput` rejects misleading success messages in scenarios that
 report an unsuccessful operation. Fixture validation runs before image execution.
 
+Four vendor scenarios cover omitted and explicit-off inputs, opted-in exclusion
+of root `vendor/` and `third_party/`, and a custom ignore expression taking
+precedence. Their literal request plans retain nested and similarly named paths.
+The resolver checks the action's fixed output and forwarding as data; it never
+executes workflow expressions or action source.
+
 The pinned scanner currently continues from a rejected search to a create attempt,
 and from a rejected close request to a comment attempt. It can report unsuccessful
 creation or closure while exiting zero. The rejection scenarios record those facts;

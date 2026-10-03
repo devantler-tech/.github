@@ -18,13 +18,13 @@ GOOD_GATE="github.repository != 'x/y'
         (
           needs.changes.outputs.go == 'true'
           || (
-            (inputs.scan-default-branch == true || inputs.scan-default-branch == 'true')
+            (toJSON(inputs) == '{}' || inputs.scan-default-branch == true || inputs.scan-default-branch == 'true')
             && needs.changes.outputs.govulncheck == 'true'
           )
         )
         && github.event_name == 'pull_request'
       ) || (
-        (inputs.scan-default-branch == true || inputs.scan-default-branch == 'true')
+        (toJSON(inputs) == '{}' || inputs.scan-default-branch == true || inputs.scan-default-branch == 'true')
         && needs.changes.outputs.go != ''
         && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
       ))"
@@ -93,25 +93,25 @@ EOF
 # ── The control: everything correct. The guard must PASS this one. ────────────────
 emit good.yaml \
   "none — this is the control, and the guard must pass it." \
-  false "$GOOD_GO_FILTER" "$GOOD_VULN_FILTER" "$GOOD_OUTPUTS" "$GOOD_GATE"
+  true "$GOOD_GO_FILTER" "$GOOD_VULN_FILTER" "$GOOD_OUTPUTS" "$GOOD_GATE"
 
 # ── 1. A top-level event equality vetoes every arm, opt-in included. ──────────────
 emit event-gated.yaml \
   "an event equality AND-ed at the TOP level, so no opt-in can ever reach the default-branch scan." \
-  false "$GOOD_GO_FILTER" "$GOOD_VULN_FILTER" "$GOOD_OUTPUTS" \
+  true "$GOOD_GO_FILTER" "$GOOD_VULN_FILTER" "$GOOD_OUTPUTS" \
   "github.repository != 'x/y'
       && github.event_name == 'pull_request'
       && ((
         (
           needs.changes.outputs.go == 'true'
           || (
-            (inputs.scan-default-branch == true || inputs.scan-default-branch == 'true')
+            (toJSON(inputs) == '{}' || inputs.scan-default-branch == true || inputs.scan-default-branch == 'true')
             && needs.changes.outputs.govulncheck == 'true'
           )
         )
         && github.event_name == 'pull_request'
       ) || (
-        (inputs.scan-default-branch == true || inputs.scan-default-branch == 'true')
+        (toJSON(inputs) == '{}' || inputs.scan-default-branch == true || inputs.scan-default-branch == 'true')
         && needs.changes.outputs.go != ''
         && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
       ))"
@@ -119,19 +119,19 @@ emit event-gated.yaml \
 # ── 2. No default-branch clause at all: the path filter is the only gate. ─────────
 emit no-default-branch-clause.yaml \
   "no default-branch clause, so a non-Go push to the default branch reports green unscanned. Trips several coupled assertions; the blocks test pins the primary one." \
-  false "$GOOD_GO_FILTER" "$GOOD_VULN_FILTER" "$GOOD_OUTPUTS" \
+  true "$GOOD_GO_FILTER" "$GOOD_VULN_FILTER" "$GOOD_OUTPUTS" \
   "github.repository != 'x/y'
       && ((
         (
           needs.changes.outputs.go == 'true'
           || (
-            (inputs.scan-default-branch == true || inputs.scan-default-branch == 'true')
+            (toJSON(inputs) == '{}' || inputs.scan-default-branch == true || inputs.scan-default-branch == 'true')
             && needs.changes.outputs.govulncheck == 'true'
           )
         )
         && github.event_name == 'pull_request'
       ) || (
-        (inputs.scan-default-branch == true || inputs.scan-default-branch == 'true')
+        (toJSON(inputs) == '{}' || inputs.scan-default-branch == true || inputs.scan-default-branch == 'true')
         && needs.changes.outputs.go != ''
       ))"
 
@@ -142,7 +142,7 @@ emit no-default-branch-clause.yaml \
 # referenced and stop the assertion this fixture exists to pin from firing.
 emit flag-not-referenced.yaml \
   "the gate never references the opt-in input, so the default-branch scan lands on every consumer at once. Trips several coupled assertions; the blocks test pins the primary one." \
-  false "$GOOD_GO_FILTER" "$GOOD_VULN_FILTER" "$GOOD_OUTPUTS" \
+  true "$GOOD_GO_FILTER" "$GOOD_VULN_FILTER" "$GOOD_OUTPUTS" \
   "github.repository != 'x/y'
       && ((
         (needs.changes.outputs.go == 'true' || needs.changes.outputs.govulncheck == 'true')
@@ -155,20 +155,20 @@ emit flag-not-referenced.yaml \
 # ── 4. The flag AND-ed at the top level removes the scan everyone has today. ──────
 emit flag-and-ed-at-top-level.yaml \
   "the opt-in input AND-ed at the TOP level, so a caller that does not opt in loses its existing pull-request scan." \
-  false "$GOOD_GO_FILTER" "$GOOD_VULN_FILTER" "$GOOD_OUTPUTS" \
+  true "$GOOD_GO_FILTER" "$GOOD_VULN_FILTER" "$GOOD_OUTPUTS" \
   "github.repository != 'x/y'
       && inputs.scan-default-branch
       && ((
         (
           needs.changes.outputs.go == 'true'
           || (
-            (inputs.scan-default-branch == true || inputs.scan-default-branch == 'true')
+            (toJSON(inputs) == '{}' || inputs.scan-default-branch == true || inputs.scan-default-branch == 'true')
             && needs.changes.outputs.govulncheck == 'true'
           )
         )
         && github.event_name == 'pull_request'
       ) || (
-        (inputs.scan-default-branch == true || inputs.scan-default-branch == 'true')
+        (toJSON(inputs) == '{}' || inputs.scan-default-branch == true || inputs.scan-default-branch == 'true')
         && needs.changes.outputs.go != ''
         && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
       ))"
@@ -176,14 +176,14 @@ emit flag-and-ed-at-top-level.yaml \
 # ── 5. The path filter AND-ed at the top level makes the OR-arm decorative. ───────
 emit default-branch-and-ed.yaml \
   "the path filter AND-ed at the TOP level, so a default-branch run with no Go paths changed is still skipped." \
-  false "$GOOD_GO_FILTER" "$GOOD_VULN_FILTER" "$GOOD_OUTPUTS" \
+  true "$GOOD_GO_FILTER" "$GOOD_VULN_FILTER" "$GOOD_OUTPUTS" \
   "github.repository != 'x/y'
       && needs.changes.outputs.go == 'true'
       && ((
         needs.changes.outputs.govulncheck == 'true'
         && github.event_name == 'pull_request'
       ) || (
-        (inputs.scan-default-branch == true || inputs.scan-default-branch == 'true')
+        (toJSON(inputs) == '{}' || inputs.scan-default-branch == true || inputs.scan-default-branch == 'true')
         && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
       ))"
 
@@ -195,20 +195,20 @@ emit default-branch-and-ed.yaml \
 # vanishes from the top level, and this veto goes unreported.
 emit path-filter-inside-function-call.yaml \
   "the path filter AND-ed at the TOP level inside a function call, so it vetoes the default-branch arm while hiding from a naive paren-stripper." \
-  false "$GOOD_GO_FILTER" "$GOOD_VULN_FILTER" "$GOOD_OUTPUTS" \
+  true "$GOOD_GO_FILTER" "$GOOD_VULN_FILTER" "$GOOD_OUTPUTS" \
   "github.repository != 'x/y'
       && contains(fromJSON('[\"true\"]'), needs.changes.outputs.go)
       && ((
         (
           needs.changes.outputs.go == 'true'
           || (
-            (inputs.scan-default-branch == true || inputs.scan-default-branch == 'true')
+            (toJSON(inputs) == '{}' || inputs.scan-default-branch == true || inputs.scan-default-branch == 'true')
             && needs.changes.outputs.govulncheck == 'true'
           )
         )
         && github.event_name == 'pull_request'
       ) || (
-        (inputs.scan-default-branch == true || inputs.scan-default-branch == 'true')
+        (toJSON(inputs) == '{}' || inputs.scan-default-branch == true || inputs.scan-default-branch == 'true')
         && needs.changes.outputs.go != ''
         && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
       ))"
@@ -216,20 +216,20 @@ emit path-filter-inside-function-call.yaml \
 # ── 6. A top-level ref predicate excludes the default branch anyway. ──────────────
 emit top-level-ref-predicate.yaml \
   "a ref predicate AND-ed at the TOP level, which excludes the default branch whatever the OR-ed clause says." \
-  false "$GOOD_GO_FILTER" "$GOOD_VULN_FILTER" "$GOOD_OUTPUTS" \
+  true "$GOOD_GO_FILTER" "$GOOD_VULN_FILTER" "$GOOD_OUTPUTS" \
   "github.repository != 'x/y'
       && github.ref != 'refs/heads/main'
       && ((
         (
           needs.changes.outputs.go == 'true'
           || (
-            (inputs.scan-default-branch == true || inputs.scan-default-branch == 'true')
+            (toJSON(inputs) == '{}' || inputs.scan-default-branch == true || inputs.scan-default-branch == 'true')
             && needs.changes.outputs.govulncheck == 'true'
           )
         )
         && github.event_name == 'pull_request'
       ) || (
-        (inputs.scan-default-branch == true || inputs.scan-default-branch == 'true')
+        (toJSON(inputs) == '{}' || inputs.scan-default-branch == true || inputs.scan-default-branch == 'true')
         && needs.changes.outputs.go != ''
         && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
       ))"
@@ -237,10 +237,10 @@ emit top-level-ref-predicate.yaml \
 # ── 7. The flag gates an arm that is not the new capability. ──────────────────────
 emit flag-gates-wrong-arm.yaml \
   "the opt-in input gates the pull-request arm while the default-branch arm is unguarded, so the new scan is reachable without opting in." \
-  false "$GOOD_GO_FILTER" "$GOOD_VULN_FILTER" "$GOOD_OUTPUTS" \
+  true "$GOOD_GO_FILTER" "$GOOD_VULN_FILTER" "$GOOD_OUTPUTS" \
   "github.repository != 'x/y'
       && ((
-        (inputs.scan-default-branch == true || inputs.scan-default-branch == 'true')
+        (toJSON(inputs) == '{}' || inputs.scan-default-branch == true || inputs.scan-default-branch == 'true')
         && (needs.changes.outputs.go == 'true' || needs.changes.outputs.govulncheck == 'true')
         && github.event_name == 'pull_request'
       ) || (
@@ -252,19 +252,19 @@ emit flag-gates-wrong-arm.yaml \
 # ── 8. An extra arm fires on pushes for callers that never opted in. ──────────────
 emit unflagged-arm-not-pr-gated.yaml \
   "a third OR-arm that is neither gated by the opt-in input nor restricted to pull requests, so it runs for every consumer." \
-  false "$GOOD_GO_FILTER" "$GOOD_VULN_FILTER" "$GOOD_OUTPUTS" \
+  true "$GOOD_GO_FILTER" "$GOOD_VULN_FILTER" "$GOOD_OUTPUTS" \
   "github.repository != 'x/y'
       && ((
         (
           needs.changes.outputs.go == 'true'
           || (
-            (inputs.scan-default-branch == true || inputs.scan-default-branch == 'true')
+            (toJSON(inputs) == '{}' || inputs.scan-default-branch == true || inputs.scan-default-branch == 'true')
             && needs.changes.outputs.govulncheck == 'true'
           )
         )
         && github.event_name == 'pull_request'
       ) || (
-        (inputs.scan-default-branch == true || inputs.scan-default-branch == 'true')
+        (toJSON(inputs) == '{}' || inputs.scan-default-branch == true || inputs.scan-default-branch == 'true')
         && needs.changes.outputs.go != ''
         && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
       ) || (
@@ -272,15 +272,15 @@ emit unflagged-arm-not-pr-gated.yaml \
         && github.event_name == 'push'
       ))"
 
-# ── 9. A flag that defaults to true is not an opt-in. ─────────────────────────────
-emit flag-defaults-true.yaml \
-  "the opt-in input defaults to true, so the behaviour change lands on every consumer the moment it merges." \
-  true "$GOOD_GO_FILTER" "$GOOD_VULN_FILTER" "$GOOD_OUTPUTS" "$GOOD_GATE"
+# ── 9. A false default silently loses the proven default-branch coverage. ───────
+emit flag-defaults-false.yaml \
+  "the rollout input defaults to false, so omitted callers lose the corrected coverage." \
+  false "$GOOD_GO_FILTER" "$GOOD_VULN_FILTER" "$GOOD_OUTPUTS" "$GOOD_GATE"
 
 # ── 10. The nested allowlist form is missing. ─────────────────────────────────────
 emit missing-allowlist-entries.yaml \
   "the govulncheck filter omits the nested allowlist form, so an allowlist edit in a module selected by working-directory skips the scan." \
-  false "$GOOD_GO_FILTER" \
+  true "$GOOD_GO_FILTER" \
   "            govulncheck:
               - '.govulncheck-allow.txt'" \
   "$GOOD_OUTPUTS" "$GOOD_GATE"
@@ -298,13 +298,13 @@ emit allowlist-in-shared-go-filter.yaml \
 # ── 12. The dedicated output exists but the gate never consults it. ───────────────
 emit govulncheck-output-not-consumed.yaml \
   "the govulncheck filter output is produced but never read by the gate, so an allowlist-only commit still skips the scan that reads it." \
-  false "$GOOD_GO_FILTER" "$GOOD_VULN_FILTER" "$GOOD_OUTPUTS" \
+  true "$GOOD_GO_FILTER" "$GOOD_VULN_FILTER" "$GOOD_OUTPUTS" \
   "github.repository != 'x/y'
       && ((
         needs.changes.outputs.go == 'true'
         && github.event_name == 'pull_request'
       ) || (
-        (inputs.scan-default-branch == true || inputs.scan-default-branch == 'true')
+        (toJSON(inputs) == '{}' || inputs.scan-default-branch == true || inputs.scan-default-branch == 'true')
         && needs.changes.outputs.go != ''
         && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
       ))"
@@ -312,7 +312,7 @@ emit govulncheck-output-not-consumed.yaml \
 # ── 13. The dedicated output is never exposed, so the trigger silently never fires. ─
 emit missing-govulncheck-output.yaml \
   "the changes job never exposes the govulncheck output, so needs.changes.outputs.govulncheck is always empty." \
-  false "$GOOD_GO_FILTER" "$GOOD_VULN_FILTER" \
+  true "$GOOD_GO_FILTER" "$GOOD_VULN_FILTER" \
   "      go: \${{ steps.filter.outputs.go }}" \
   "$GOOD_GATE"
 
@@ -323,13 +323,13 @@ emit missing-govulncheck-output.yaml \
 # AND-ed with the flag — the shape a co-occurrence check would wave through.
 emit allowlist-trigger-not-flag-gated.yaml \
   "the allowlist term is OR-ed into the pull-request arm without the opt-in input, so an allowlist-only pull request runs the scan for every consumer that never opted in." \
-  false "$GOOD_GO_FILTER" "$GOOD_VULN_FILTER" "$GOOD_OUTPUTS" \
+  true "$GOOD_GO_FILTER" "$GOOD_VULN_FILTER" "$GOOD_OUTPUTS" \
   "github.repository != 'x/y'
       && ((
         (needs.changes.outputs.go == 'true' || needs.changes.outputs.govulncheck == 'true')
         && github.event_name == 'pull_request'
       ) || (
-        (inputs.scan-default-branch == true || inputs.scan-default-branch == 'true')
+        (toJSON(inputs) == '{}' || inputs.scan-default-branch == true || inputs.scan-default-branch == 'true')
         && needs.changes.outputs.go != ''
         && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
       ))"
@@ -340,7 +340,13 @@ emit allowlist-trigger-not-flag-gated.yaml \
 # scan blocks on an advisory that was already accepted.
 emit allow-file-not-working-dir-relative.yaml \
   "allow-file is a bare root-relative literal, so a nested module's allowlist triggers the scan but is not the file the scanner reads." \
-  false "$GOOD_GO_FILTER" "$GOOD_VULN_FILTER" "$GOOD_OUTPUTS" "$GOOD_GATE" \
+  true "$GOOD_GO_FILTER" "$GOOD_VULN_FILTER" "$GOOD_OUTPUTS" "$GOOD_GATE" \
   "$ROOT_ONLY_ALLOW_FILE"
+
+DIRECT_DEFAULT="toJSON(inputs) == '{}' || "
+emit direct-input-default-missing.yaml \
+  "direct required runs have empty inputs, so their enabled scan default must be explicit." \
+  true "$GOOD_GO_FILTER" "$GOOD_VULN_FILTER" "$GOOD_OUTPUTS" \
+  "${GOOD_GATE//$DIRECT_DEFAULT/}"
 
 echo "regenerated $(find . -maxdepth 1 -name '*.yaml' | wc -l | tr -d ' ') fixtures"

@@ -762,6 +762,7 @@ jobs:
 | `APP_PRIVATE_KEY` | Secret          | -       | No       | Required for production project integration; unused in dry-run |
 | `dry-run`         | Input (boolean) | `false` | No       | Exercise the action wrapper offline without creating issues |
 | `ignore`          | Input (string)  | `""`    | No       | Regular expression matching repository-relative paths to ignore |
+| `exclude-vendored` | Input (boolean) | `false` | No | Exclude root vendor directories when `ignore` is empty |
 | `optional-project-auth` | Input (boolean) | `false` | No | Opt in to project integration being optional |
 | `project` | Input (string) | `organization/devantler-tech/5` | No | Project selection; explicitly empty omits integration when opted in |
 
@@ -778,6 +779,11 @@ Production callers can pass `optional-project-auth: true` and `project: ""` to o
 project integration. Existing callers retain the current project selection and
 default-off rollout choice. Configured projects still require their existing
 authorization. Rollout and flag retirement remain tracked in #340.
+
+Opt in with `exclude-vendored: true` to ignore root `vendor/` and `third_party/`
+when no custom `ignore` is supplied. Nested and similarly named paths remain
+eligible. A nonempty custom expression overrides this filter unchanged. The
+compatibility default stays off until consumer rollout and retirement in #394.
 
 </details>
 
@@ -797,6 +803,7 @@ an empty project and every source path excluded. All three grant only
 | `APP_PRIVATE_KEY` | Secret          | -       | No       | Preserved production interface; catalogue smoke callers must omit it |
 | `dry-run`         | Input (boolean) | `false` | No       | Catalogue callers explicitly enable offline execution |
 | `ignore`          | Input (string)  | `""`    | No       | Repository-relative path expression forwarded to the wrapper |
+| `exclude-vendored` | Input (boolean) | `false` | No | Preserved production choice; the vendor smoke enables it |
 | `optional-project-auth` | Input (boolean) | `false` | No | Preserved production choice; the no-project evaluation enables it |
 | `project` | Input (string) | `organization/devantler-tech/5` | No | Preserved project selection; the no-project evaluation sets it empty |
 
@@ -824,6 +831,7 @@ This is wrapper coverage, not live token generation or project-adoption proof.
 | `APP_PRIVATE_KEY` | Secret | - | No | Retained source interface; never pass a key to this fixture |
 | `dry-run` | Input | `false` | No | Retained production default; the fixture executes the production branch |
 | `ignore` | Input | `""` | No | Forwarded scanner exclusion pattern |
+| `exclude-vendored` | Input | `false` | No | Retained compatibility default, omitted by the positive caller |
 | `optional-project-auth` | Input | `false` | No | Retained compatibility default, omitted by the positive caller |
 | `project` | Input | `organization/devantler-tech/5` | No | Retained project default, checked by the offline dependency |
 | `fixture-skip-app-token` | Input | `false` | No | Fixture-only deliberate fault proving missing token output is rejected |
@@ -1077,7 +1085,7 @@ jobs:
 | `working-directory`   | Input (string)  | `""`    | No       | Go module directory to validate. Empty means the repository root                                                                                                                                                                |
 | `go-memory-limit` | Input (string) | `8GiB` | No | Soft Go heap limit for deadcode and vulnerability analysis; lower it for smaller runners. Decimal Go units are accepted up to 8GiB; total runner memory is not capped. |
 | `manual-workflow-fixes` | Input (boolean) | `false` | No | Opt in to complete workflow-file patches for manual application, including after lint errors; existing upload eligibility still applies |
-| `scan-default-branch` | Input (boolean) | `false` | No       | Also run the vulnerability scan on every default-branch run, not just on pull requests. Off by default: a default branch that was green can legitimately go red once an advisory is published against code that already merged    |
+| `scan-default-branch` | Input (boolean) | `true` | No       | Scan every default-branch invocation and allowlist-only pull requests. Explicit false retains Go-diff pull-request coverage during input retirement (#285) |
 | `test-default-branch` | Input (boolean) | `true`  | No       | Run the Go test suite on every default-branch run, not just when the diff touched a Go file. On by default: a test can take a non-Go file as its subject, so a diff-only gate leaves the default branch reporting green over a suite it never ran. Set to `false` to accept a default branch that can report green without the suite having run          |
 | `maintenance-default-branch` | Input (boolean) | `false` | No | Also run tidy and dead-code analysis on default-branch pushes that change Go files. Findings fail validation without committing fixes to the default branch. Uses the repository's configured default branch name. |
 
@@ -1106,7 +1114,7 @@ generator and regenerate it; CI checks the complete projection and credential bo
 | `go-memory-limit` | Input (string) | `8GiB` | No | Soft Go heap limit for analysis; lower it for smaller runners, up to the 8GiB ceiling |
 | `apply-signed-fixes` | Input (boolean) | `false` | No | Ignored: signed fixes are always disabled |
 | `manual-workflow-fixes` | Input (boolean) | `false` | No | Prepare workflow-file fixes even after lint errors; patch upload is disabled and lint errors still fail |
-| `scan-default-branch` | Input (boolean) | `false` | No | Also scan vulnerabilities on default-branch invocations |
+| `scan-default-branch` | Input (boolean) | `true` | No | Scan default-branch invocations; explicit false remains supported during input retirement (#285) |
 | `test-default-branch` | Input (boolean) | `true` | No | Run the suite on default-branch invocations |
 | `maintenance-default-branch` | Input (boolean) | `false` | No | Run tidy and dead-code analysis for Go changes on the default branch |
 

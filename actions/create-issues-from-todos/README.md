@@ -12,6 +12,7 @@ Scan code for TODO comments and automatically create corresponding GitHub issues
 | `optional-project-auth` | Opt in to generating an App token only when a project is configured                   | ❌       | `"false"` |
 | `project`               | GitHub Project to add issues to                                                       | ❌       | -         |
 | `ignore`                | Regular expression matching repository-relative paths to ignore                       | ❌       | `""`      |
+| `exclude-vendored`      | Exclude root `vendor/` and `third_party/` when `ignore` is empty                        | ❌       | `"false"` |
 
 ¹ By default, provide `app-private-key` and one of `client-id` or `app-id`, preserving existing callers' App authentication. Prefer `client-id`; `app-id` is deprecated. With `optional-project-auth: 'true'`, App authentication is only needed for a configured project; invalid project credentials fail before checkout or scanning. Without a project, this opt-in skips App-token generation and needs no App inputs.
 
@@ -20,6 +21,12 @@ Scan code for TODO comments and automatically create corresponding GitHub issues
 The scanner treats the marker as a TODO in any letter case, wherever it appears in a comment,
 including in ordinary prose, and titles the issue with the text that follows it. When a comment
 only describes TODOs, hyphenate the word (`to-do`), or exclude the file with `ignore`.
+
+With `exclude-vendored: "true"` and an empty `ignore`, the scanner excludes root
+`vendor/` and `third_party/` directories. Nested directories and similarly named
+paths remain eligible. A nonempty custom `ignore` takes precedence unchanged.
+The compatibility default is off; consumer rollout and retirement of this flag
+are tracked in [#394](https://github.com/devantler-tech/.github/issues/394).
 
 ## Usage
 
@@ -33,7 +40,7 @@ steps:
     uses: devantler-tech/.github/actions/create-issues-from-todos@<full-commit-sha> # vX.Y.Z
     with:
       optional-project-auth: "true"
-      ignore: "^third_party/"
+      exclude-vendored: "true"
 ```
 
 ### With project integration
