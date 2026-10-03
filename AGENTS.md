@@ -426,6 +426,11 @@ Keep default/forwarding controls, projection parity and all three caller boundar
 covered. This proves the no-project wrapper path; #340 still owns live project
 association, consumer rollout and flag retirement.
 
+**Manifest naming:** `validate-naming` runs by default using the caller's versioned
+configuration. An explicit `enabled: "false"` skips configuration reads and setup.
+Keep the omitted-input Linux/macOS fixtures, seeded-violation failure and opt-out
+boundaries required in CI. .github#274 owns consumer cleanup and input retirement.
+
 **Shell pipeline assertions:** `lint-shell-pipelines` invokes the shared guard with
 `enabled: true` over the real script directories declared in that CI job's
 `SCAN_PATHS`. Keep new script-owning directories in this scope and extend
