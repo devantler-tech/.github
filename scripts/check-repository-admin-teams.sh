@@ -9,6 +9,7 @@ mode=installation
 [[ $# == 0 ]] || mode=organization-admin
 work="$(mktemp -d)"
 audit_finished=0
+# Bash 3.2 can report a nounset abort as zero; only a completed audit keeps its result.
 audit_cleanup() {
   local status=$?
   trap - EXIT

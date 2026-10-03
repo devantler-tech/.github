@@ -13,7 +13,12 @@ for auditor in check-repository-admin-teams check-repository-coverage; do
     esac
     awk -v injection="$injection" '
       {print}
-      /^trap .* EXIT$/ {print "printf '\''%s'\'' \"$work\" > \"$PROBE_PATH\""; print injection; found++}
+      /^trap .* EXIT$/ {
+        print "printf '\''%s'\'' \"$work\" > \"$PROBE_PATH\""
+        print "printf '\''private-fixture'\'' > \"$work/probe-artifact\""
+        print injection
+        found++
+      }
       END {if (found != 1) exit 99}
     ' "$root/scripts/$auditor.sh" >"$work/probe.sh"
     status=0

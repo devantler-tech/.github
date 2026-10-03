@@ -32,6 +32,7 @@ render="${REPOSITORY_COVERAGE_RENDER:-}"
 live="${REPOSITORY_COVERAGE_LIVE:-}"
 work="$(mktemp -d)"
 audit_finished=0
+# Bash 3.2 can report a nounset abort as zero; only a completed audit keeps its result.
 audit_cleanup() {
   local status=$?
   trap - EXIT
