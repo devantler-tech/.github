@@ -60,13 +60,19 @@ installation_proof() {
 prepare_installation_proof() {
   # Only the reviewed main workflow supplies an unrestricted, read-only installation
   # token. An arbitrary caller token cannot establish complete installation visibility.
-  [[ "${GITHUB_ACTIONS:-}" == true && "${GITHUB_EVENT_NAME:-}" == workflow_dispatch &&
+  [[ "${GITHUB_ACTIONS:-}" == true &&
     "${GITHUB_REPOSITORY:-}" == devantler-tech/.github &&
     "${GITHUB_REF:-}" == refs/heads/main &&
-    "${GITHUB_WORKFLOW_REF:-}" == devantler-tech/.github/.github/workflows/repository-admin-team-audit.yaml@refs/heads/main &&
     -n "${GH_TOKEN:-}" && -n "${GH_APP_PRIVATE_KEY:-}" &&
     "${GH_APP_CLIENT_ID:-}" =~ ^(Iv[0-9A-Za-z._-]+|[0-9]+)$ &&
     "${GH_INSTALLATION_ID:-}" =~ ^[1-9][0-9]*$ ]] || abort
+  case "${GITHUB_WORKFLOW_REF:-}" in
+    devantler-tech/.github/.github/workflows/repository-admin-team-audit.yaml@refs/heads/main)
+      [[ "${GITHUB_EVENT_NAME:-}" == workflow_dispatch ]] || abort ;;
+    devantler-tech/.github/.github/workflows/governance-audits.yaml@refs/heads/main)
+      [[ "${GITHUB_EVENT_NAME:-}" == workflow_dispatch || "${GITHUB_EVENT_NAME:-}" == schedule ]] || abort ;;
+    *) abort ;;
+  esac
   command -v openssl >/dev/null || abort
   command -v curl >/dev/null || abort
   installation_id="$GH_INSTALLATION_ID"

@@ -233,4 +233,8 @@ reset_case; GITHUB_EVENT_NAME=pull_request check 2 'installation mode rejects a 
 reset_case; GH_APP_PRIVATE_KEY='' check 2 'missing App key cannot prove selection'
 reset_case; GH_INSTALLATION_ID='77?redirect=1' check 2 'installation identity cannot redirect the credential request'
 reset_case; mutate "$work/fixtures/installation.json" 'del(.suspended_by)'; check 2 'missing installation suspension actor evidence'
+reset_case; GITHUB_WORKFLOW_REF=devantler-tech/.github/.github/workflows/governance-audits.yaml@refs/heads/main GITHUB_EVENT_NAME=workflow_dispatch check 0 'combined manual governance workflow is admitted'
+reset_case; GITHUB_WORKFLOW_REF=devantler-tech/.github/.github/workflows/governance-audits.yaml@refs/heads/main GITHUB_EVENT_NAME=schedule check 0 'combined scheduled governance workflow is admitted'
+reset_case; GITHUB_EVENT_NAME=schedule check 2 'manual-only audit cannot gain a scheduled execution path'
+reset_case; GITHUB_WORKFLOW_REF=devantler-tech/.github/.github/workflows/governance-audits.yaml@refs/heads/candidate GITHUB_EVENT_NAME=schedule check 2 'combined workflow rejects candidate source'
 echo 'PASS: live admin-team audit accepts complete evidence and fails closed without exposing private details'
