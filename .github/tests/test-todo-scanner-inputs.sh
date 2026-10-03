@@ -26,6 +26,9 @@ non-array initial reads	.[0].InitialReads={}
 empty initial reads	.[0].InitialReads=[]
 invalid initial read status	.[0].InitialReads=[{Method:"GET",Path:"/repos/offline/fixture/issues",Status:0,Response:"[]"}]
 non-string initial read response	.[0].InitialReads=[{Method:"GET",Path:"/repos/offline/fixture/issues",Status:503,Response:{message:"Failure"}}]
+non-string ignore	.[0].Ignore=false
+non-string vendor choice	.[0].ExcludeVendored=true
+unsupported vendor choice	.[0].ExcludeVendored="yes"
 CASES
 bash "$root/.github/tests/test-todo-scanner.sh" --check-fixtures "$root/.github/tests/todo-scanner/cases.json"
-echo 'PASS: 13 invalid scanner fixtures are rejected in validation and execution modes'
+echo 'PASS: 16 invalid scanner fixtures are rejected in validation and execution modes'

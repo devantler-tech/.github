@@ -37,5 +37,9 @@ swallowed terminal error	.runs.steps |= map(if .name == "📝 Create issues from
 missing preserved helper	.runs.steps |= map(if .name == "🧰 Preserve retry helper" then .run=":" else . end)	preserved retry helper differs
 mutable image tag	.runs.steps |= map(if .name == "📝 Create issues from TODOs" then .env.TODO_TO_ISSUE_IMAGE |= split("@")[0] else . end)	project authentication must be optional
 lower image floor	.runs.steps |= map(if .name == "📝 Create issues from TODOs" then .env.TODO_TO_ISSUE_IMAGE |= sub("v5.1.15"; "v5.0.0") else . end)	project authentication must be optional
+default-on vendor filtering	.inputs["exclude-vendored"].default="true"	vendor filtering must be guarded and default off
+unguarded vendor filtering	.runs.steps |= map(if .id == "vendored-ignore" then .if=null else . end)	vendor filtering must be guarded and default off
+vendor filter omits sources	.runs.steps |= map(if .id == "vendored-ignore" then .run="printf \u0027ignore=\\n\u0027 >>\"$GITHUB_OUTPUT\"\n" else . end)	Vendor output must remain a fixed literal
+vendor filter skips all sources	.runs.steps |= map(if .id == "vendored-ignore" then .run="printf \u0027ignore=.*\\n\u0027 >>\"$GITHUB_OUTPUT\"\n" else . end)	Vendor output must remain a fixed literal
 CASES
-echo 'PASS: 15 independent to-do action mutations are rejected'
+echo 'PASS: 19 independent to-do action mutations are rejected'

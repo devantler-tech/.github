@@ -4047,12 +4047,13 @@ jobs:
 
   test-scan-for-todo-comments:
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
-    name: "[Test] Scan for TODO Comments - Dry Run"
+    name: "[Test] Scan for TODO Comments - Dry Run (vendor exclusion)"
     uses: ./.github/workflows/scan-for-todo-comments-readonly.yaml
     permissions:
       contents: read
     with:
       dry-run: true
+      exclude-vendored: true
 
   test-scan-for-todo-comments-no-project:
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
