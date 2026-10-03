@@ -23,18 +23,19 @@ GITHUB_OUTPUT="$scratch/caller.output" bash "$scratch/resolver.sh"
 JOB_WORKFLOW_REF="$(sed -n 's/^ref=//p' "$scratch/caller.output")"
 [[ "$JOB_WORKFLOW_REF" == "devantler-tech/.github/.github/workflows/native-app-signing-trial.yaml@$TRIAL_HEAD" ]]
 export JOB_WORKFLOW_REF
-openssl req -x509 -newkey rsa:2048 -nodes -keyout "$scratch/key.pem" -out "$scratch/cert.pem" -days 1 -subj /CN=localhost -addext 'subjectAltName=DNS:localhost,IP:127.0.0.1' >/dev/null 2>&1
+openssl req -x509 -newkey rsa:2048 -nodes -keyout "$scratch/key.pem" -out "$scratch/cert.pem" -days 1 -subj /CN=registry.test -addext 'subjectAltName=DNS:registry.test,DNS:localhost,IP:127.0.0.1' >/dev/null 2>&1
 cat /etc/ssl/certs/ca-certificates.crt "$scratch/cert.pem" >"$scratch/ca-bundle.pem"
 export SSL_CERT_FILE="$scratch/ca-bundle.pem" CURL_CA_BUNDLE="$scratch/ca-bundle.pem"
-sudo mkdir -p /etc/docker/certs.d/localhost:5443
-sudo cp "$scratch/cert.pem" /etc/docker/certs.d/localhost:5443/ca.crt
+printf '127.0.0.1 registry.test\n' | sudo tee -a /etc/hosts >/dev/null
+sudo mkdir -p /etc/docker/certs.d/registry.test:5443
+sudo cp "$scratch/cert.pem" /etc/docker/certs.d/registry.test:5443/ca.crt
 docker run --rm -d --name "$container" -p 127.0.0.1:5443:5000 --tmpfs /var/lib/registry \
   -v "$scratch:/certs:ro" -e REGISTRY_HTTP_TLS_CERTIFICATE=/certs/cert.pem -e REGISTRY_HTTP_TLS_KEY=/certs/key.pem \
   registry@sha256:a3d8aaa63ed8681a604f1dea0aa03f100d5895b6a58ace528858a7b332415373 >/dev/null
 curl -fsS --retry 10 --retry-connrefused --retry-delay 1 --retry-max-time 30 --max-time 3 https://localhost:5443/v2/ >/dev/null
 mkdir "$scratch/deploy" "$scratch/build"
 printf 'FROM scratch\nCOPY marker /marker\n' >"$scratch/build/Dockerfile"
-export REGISTRY=localhost:5443 IMAGE_NAME=fixture REPOSITORY=devantler-tech/go-template
+export REGISTRY=registry.test:5443 IMAGE_NAME=fixture REPOSITORY=devantler-tech/go-template
 export SERVER_URL=https://github.com DEPLOY_PATH="$scratch/deploy" SHA="$expected_source"
 export ACTOR=fixture GH_TOKEN=offline-fixture RUNNER_TEMP="$scratch" APP_NAME=fixture
 export RUN_ID="$GITHUB_RUN_ID" RUN_ATTEMPT="$GITHUB_RUN_ATTEMPT"
