@@ -394,4 +394,5 @@ jobs:
       - name: 🧪 Evaluate release decisions without credentials
         env:
           DISABLE_ISSUE_SIDE_EFFECTS: ${{ inputs.disable-issue-side-effects }}
+          WARN_MISSING_BREAKING_BANG: ${{ inputs.warn-missing-breaking-bang }}
         run: bash .github/tests/create-release-fixture.sh
