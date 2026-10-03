@@ -5,7 +5,7 @@ set -euo pipefail
 root="$(cd "$(dirname "$0")/../.." && pwd)"
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
-for workflow in lint validate-go-project validate-go-project-readonly ci; do
+for workflow in lint validate-go-project validate-go-project-readonly apply-signed-fixes ci; do
   yq -o=json '.' "$root/.github/workflows/$workflow.yaml" >"$work/$workflow.json"
 done
 yq -o=json '.' "$root/.github/actions/prepare-fixes/action.yaml" >"$work/exporter.json"
@@ -37,7 +37,43 @@ function evaluate(gate, values, status) {
   });
   const syntax = expression.replace(/"(?:[^"\\]|\\.)*"/g, 'true');
   assert.match(syntax, /^(?:true|false|\s|&&|\|\||==|!=|!|[()])*$/, 'unsupported recovery gate syntax');
-  return (explicitStatus || status === 'success') && Boolean(Function(`"use strict"; return (${expression});`)());
+  // Parse this closed grammar as data; never execute workflow-derived code.
+  const tokens = expression.match(/"(?:[^"\\]|\\.)*"|true|false|&&|\|\||==|!=|!|[()]/g) || [];
+  let position = 0;
+  function primary() {
+    const token = tokens[position++];
+    if (token === '!') return !primary();
+    if (token === '(') {
+      const value = or();
+      assert.equal(tokens[position++], ')', 'unclosed recovery group');
+      return value;
+    }
+    if (token === 'true' || token === 'false') return token === 'true';
+    assert.ok(token?.startsWith('"'), 'unexpected recovery primitive');
+    return JSON.parse(token);
+  }
+  function comparison() {
+    let value = primary();
+    if (tokens[position] === '==' || tokens[position] === '!=') {
+      const operator = tokens[position++];
+      const right = primary();
+      value = operator === '==' ? value == right : value != right;
+    }
+    return value;
+  }
+  function and() {
+    let value = comparison();
+    while (tokens[position] === '&&') { position++; const right = comparison(); value = Boolean(value) && Boolean(right); }
+    return value;
+  }
+  function or() {
+    let value = and();
+    while (tokens[position] === '||') { position++; const right = and(); value = Boolean(value) || Boolean(right); }
+    return value;
+  }
+  const result = or();
+  assert.equal(position, tokens.length, 'unconsumed recovery syntax');
+  return (explicitStatus || status === 'success') && Boolean(result);
 }
 
 const fixtures = [];
@@ -107,6 +143,28 @@ for (const output of ['artifact-name', 'changed', 'manual-required']) {
   assert.equal(exporter.outputs[output].value, '${{ steps.prepare.outputs.' + output + ' }}');
 }
 const go = JSON.parse(fs.readFileSync(`${directory}/validate-go-project.json`, 'utf8'));
+const signer = JSON.parse(fs.readFileSync(`${directory}/apply-signed-fixes.json`, 'utf8'));
+const identities = ['human', 'github-actions[bot]', 'ksail-bot', 'botantler-1[bot]', 'release-please[bot]', '', ...bots, 'RENOVATE[BOT]'];
+let identityCases = 0;
+for (const author of identities)
+for (const owner of identities)
+for (const event of ['pull_request', 'push', 'merge_group'])
+for (const fork of [false, true])
+for (const apply of [true, false]) {
+  const allowed = event === 'pull_request' && !fork && !bots.includes(author.toLowerCase()) && !bots.includes(owner.toLowerCase());
+  const values = {
+    'github.event_name': event, 'github.event.pull_request.head.repo.fork': fork,
+    'github.event.pull_request.user.login': author, 'inputs.pr-owner': owner,
+    'needs.changes.outputs.signed-fixes': String(apply),
+  };
+  assert.equal(evaluate(signer.jobs['apply-fixes'].if, values, 'success'), allowed, 'signer identity policy');
+  for (const lane of ['tidy', 'golangci-lint', 'lint']) {
+    const call = go.jobs[lane].steps.find(step => step.id === 'fixes');
+    assert.equal(evaluate(call.with['upload-enabled'], values, 'success'), allowed && apply, lane + ' identity policy');
+  }
+  identityCases++;
+}
+console.log(`PASS: signer and all three Go exporter policies across ${identityCases} identity/authority cases`);
 const exporterUpload = exporter.runs.steps.find(step => (step.uses || '').startsWith('actions/upload-artifact@'));
 for (const lane of ['tidy', 'golangci-lint', 'lint']) {
   const steps = go.jobs[lane].steps;

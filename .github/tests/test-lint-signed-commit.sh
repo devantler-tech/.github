@@ -277,6 +277,14 @@ conjuncts="$(grep -o '&&' <<<"$job_if" | wc -l | tr -d ' ')"
   fail "apply-fixes' if: must carry exactly the 4 audited conjuncts (pull_request, non-fork, non-bot author, non-bot pr-owner), found $((conjuncts + 1)); a predicate added here can suppress every eligible pull request while assertions 7-9 stay green"
 
 
+# Exact dependency aliases in BOTH contexts are the recorded policy (#278).
+IFS= read -r expected_policy <<'POLICY'
+github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork != true && !contains(fromJSON('["dependabot[bot]","dependabot","renovate[bot]","renovatebot","renovate"]'), github.event.pull_request.user.login) && !contains(fromJSON('["dependabot[bot]","dependabot","renovate[bot]","renovatebot","renovate"]'), inputs.pr-owner)
+POLICY
+normalized_policy="$(tr '\n' ' ' <<<"$job_if" | tr -s ' ' | sed 's/^ *//;s/ *$//')"
+[[ "$normalized_policy" == "$expected_policy" ]] ||
+  fail "apply-fixes must preserve the complete recorded dependency-alias policy in both author contexts"
+
 # ── The job executes nothing from the checked-out tree ───────────────────────────────────
 
 # CodeQL alert 312 (actions/untrusted-checkout/medium) on this workflow was dismissed as a
