@@ -26,19 +26,27 @@ scenario_file() {
   printf '%s\n' "$scenarios/$1.json"
 }
 
-check() {
-  local scenario="$1" record="$2" blocked="$3" requests expected got unmatched
-  local outcome="${REVIEW_OUTCOME:-}" content="${COMMENT_CONTENT:-}"
-
+# The job passes exactly two inputs to the action, so a scenario that left one out would run
+# with the action's default instead; and a request is reviewed only with its whole query.
+validate() { # <scenario-file>
   jq -e '
+    (.inputs | type) == "object" and (.inputs | keys) == ["comment-summary-in-pr", "warn-only"] and
+    all(.inputs[]; type == "string" and test("^[a-z-]+$")) and
     (.expect | type) == "object" and
     (.expect.outcome == "success" or .expect.outcome == "failure") and
     (.expect.comment | IN("created", "updated", "rejected", "none")) and
     (.expect.requests | type) == "array" and (.expect.requests | length) > 0 and
     all(.expect.requests[]; (.method | type) == "string" and (.path | type) == "string" and
-      ((.query // {}) | type) == "object") and
-    (.expect["blocked-hosts"] | type) == "array"' "$scenario" >/dev/null ||
-    fail "the scenario does not state a complete expectation"
+      (.query | type) == "object" and all(.query[]; type == "string")) and
+    (.expect["blocked-hosts"] | type) == "array"' "$1" >/dev/null ||
+    fail "the scenario does not state its action inputs and a complete expectation"
+}
+
+check() {
+  local scenario="$1" record="$2" blocked="$3" requests expected got unmatched
+  local outcome="${REVIEW_OUTCOME:-}" content="${COMMENT_CONTENT:-}"
+
+  validate "$scenario"
 
   requests="$(jq -cs '
     if all(.[]; type == "object" and (.method | type) == "string" and (.path | type) == "string" and
@@ -54,10 +62,9 @@ check() {
   [[ -z "$unmatched" ]] ||
     fail "the action sent a request the scenario does not describe: $unmatched"
 
-  expected="$(jq -c '[.expect.requests[] | {method, path} + (if has("query") then {query} else {} end)]' "$scenario")"
-  got="$(jq -c --argjson expected "$expected" '
-    [range(0; length) as $i | .[$i] |
-      {method, path} + (if ($expected[$i] // {} | has("query")) then {query: (.query | map_values(.[0]))} else {} end)]' <<<"$requests")"
+  # Method, path and the whole query of every request, in order: nothing more, nothing less.
+  expected="$(jq -cS '[.expect.requests[] | {method, path, query: (.query | map_values([.]))}]' "$scenario")"
+  got="$(jq -cS '[.[] | {method, path, query}]' <<<"$requests")"
   [[ "$got" == "$expected" ]] ||
     fail "the recorded requests differ from the reviewed conversation
   expected: $expected
@@ -83,8 +90,8 @@ check() {
     end' <<<"$requests" >/dev/null ||
     fail "the summary comment is not '$(jq -r '.expect.comment' "$scenario")' with the action's own report"
 
-  [[ "$(sort -u "$blocked" | jq -Rcn '[inputs | select(length > 0)]')" == "$(jq -c '.expect["blocked-hosts"] | sort' "$scenario")" ]] ||
-    fail "the action tried to reach hosts the scenario does not expect: $(sort -u "$blocked" | tr '\n' ' ')"
+  [[ "$(jq -Rcn '[inputs | select(length > 0)] | unique' "$blocked")" == "$(jq -c '.expect["blocked-hosts"] | unique' "$scenario")" ]] ||
+    fail "the hosts the action could not resolve differ from the scenario's: $(jq -Rcn '[inputs | select(length > 0)] | unique' "$blocked")"
 
   echo "PASS: $(basename "$scenario" .json) — $(jq 'length' <<<"$requests") recorded requests match the reviewed conversation"
 }
@@ -93,14 +100,15 @@ case "${1:-}" in
 start)
   [[ $# == 2 ]] || fail "usage: dependency-review-offline.sh start <scenario>"
   scenario="$(scenario_file "$2")"
+  validate "$scenario"
   work="${RUNNER_TEMP:?}/dependency-review-offline"
   rm -rf "$work"
   mkdir -p "$work"
-  go build -o "$work/api" "$root/.github/tests/fixtures/offline-github-api.go"
+  go build -o "$work/api" "$root/.github/tests/fixtures/offline-github-api/main.go"
   : >"$work/requests.jsonl"
   : >"$work/blocked-hosts"
   nohup "$work/api" -scenario "$scenario" -record "$work/requests.jsonl" \
-    -address-file "$work/address" -token "$token" >"$work/api.log" 2>&1 &
+    -address-file "$work/address" -token "$token" </dev/null >"$work/api.log" 2>&1 &
   echo "$!" >"$work/pid"
   for _ in $(seq 1 100); do
     [[ -s "$work/address" ]] && break

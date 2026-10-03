@@ -106,7 +106,7 @@ yq -o=json '.' actions/dependency-review/action.yaml | jq -e '
 ci="${2:-.github/workflows/ci.yaml}"
 scenarios=.github/tests/dependency-review-offline/scenarios
 yq -o=json '.' "$ci" >"$tmp/ci.json"
-jq -n '[inputs | {name: (input_filename | split("/") | last | rtrimstr(".json")),
+jq -n '[inputs | {name: (input_filename | split("/") | last | rtrimstr(".json")), inputs: (.inputs | keys),
     mode: .inputs["comment-summary-in-pr"], comment: .expect.comment, outcome: .expect.outcome}]' \
   "$scenarios"/*.json >"$tmp/scenarios.json"
 
@@ -140,6 +140,8 @@ check_ci() { # <ci.json> [reviewed-scenarios.json]
     then error("the offline comment job must run and propagate failures")
     elif $job.strategy != {"fail-fast": false, "matrix": {"scenario": ($reviewed | map(.name) | sort)}}
     then error("the offline comment job must run every reviewed scenario")
+    elif ($reviewed | length) == 0 or any($reviewed[]; .inputs != ["comment-summary-in-pr", "warn-only"])
+    then error("every scenario must state exactly the inputs the job passes")
     elif ((["always", "on-failure", "never"] - ($reviewed | map(.mode))) +
       (["created", "updated", "rejected", "none"] - ($reviewed | map(.comment))) +
       (["success", "failure"] - ($reviewed | map(.outcome))) | length) != 0
@@ -250,20 +252,35 @@ missing required dependency	.jobs["ci-required-checks"].needs |= map(select(. !=
 missing required verdict	.jobs["ci-required-checks"].steps |= map(if .env.JOB_RESULTS then .env.JOB_RESULTS |= gsub("needs.test-dependency-review-comments.result"; "needs.other.result") else . end)	evaluate the offline comment result
 CASES
 
-# A scenario set that lost a comment mode, result or outcome is not the reviewed coverage.
-for lost in '.mode == "always"' '.mode == "on-failure"' '.mode == "never"' '.comment == "created"' \
-  '.comment == "updated"' '.comment == "rejected"' '.comment == "none"' '.outcome == "failure"'; do
-  jq "map(select($lost | not))" "$tmp/scenarios.json" >"$tmp/scenarios-reduced.json"
-  jq --slurpfile reduced "$tmp/scenarios-reduced.json" \
-    '.jobs["test-dependency-review-comments"].strategy.matrix.scenario = ($reduced[0] | map(.name) | sort)' \
+# Mutate the reviewed scenario set, with the matrix kept in step: a set that lost a comment
+# mode, result or outcome, or a scenario that leaves an action input to its default, is not
+# the reviewed coverage.
+while IFS=$'\t' read -r label mutation diagnostic; do
+  jq "$mutation" "$tmp/scenarios.json" >"$tmp/scenarios-mutated.json"
+  jq --slurpfile mutated "$tmp/scenarios-mutated.json" \
+    '.jobs["test-dependency-review-comments"].strategy.matrix.scenario = ($mutated[0] | map(.name) | sort)' \
     "$tmp/ci.json" >"$tmp/ci-mutated.json"
-  if check_ci "$tmp/ci-mutated.json" "$tmp/scenarios-reduced.json" >"$tmp/ci-result" 2>&1; then
-    fail "accepted a scenario set without: $lost"
+  if check_ci "$tmp/ci-mutated.json" "$tmp/scenarios-mutated.json" >"$tmp/ci-result" 2>&1; then
+    fail "accepted scenario regression: $label"
   fi
-  grep -qF 'cover every comment mode, result and outcome' "$tmp/ci-result" ||
-    fail "reduced scenario set rejected for the wrong reason: $lost"
+  grep -qF "$diagnostic" "$tmp/ci-result" || {
+    cat "$tmp/ci-result" >&2
+    fail "scenario regression rejected for the wrong reason: $label"
+  }
   ci_controls=$((ci_controls + 1))
-done
+done <<'CASES'
+no scenario with comments always on	map(select(.mode != "always"))	cover every comment mode, result and outcome
+no scenario with comments on failure	map(select(.mode != "on-failure"))	cover every comment mode, result and outcome
+no scenario with comments off	map(select(.mode != "never"))	cover every comment mode, result and outcome
+no created summary	map(select(.comment != "created"))	cover every comment mode, result and outcome
+no updated summary	map(select(.comment != "updated"))	cover every comment mode, result and outcome
+no rejected summary	map(select(.comment != "rejected"))	cover every comment mode, result and outcome
+no withheld summary	map(select(.comment != "none"))	cover every comment mode, result and outcome
+no failing review	map(select(.outcome != "failure"))	cover every comment mode, result and outcome
+scenario without warn-only	map(if .name == "comment-never" then .inputs = ["comment-summary-in-pr"] else . end)	exactly the inputs the job passes
+scenario with an unreviewed input	map(if .name == "comment-never" then .inputs += ["fail-on-severity"] else . end)	exactly the inputs the job passes
+no scenario at all	[]	exactly the inputs the job passes
+CASES
 
 # Regression controls exercise the same validator against deliberate mistakes.
 # shellcheck disable=SC2016 # GitHub expressions in jq mutation fixtures.

@@ -634,6 +634,7 @@ jobs:
           - compare-forbidden
           - on-failure-clean
           - on-failure-vulnerable
+          - on-failure-warned
     permissions:
       contents: read
     steps:

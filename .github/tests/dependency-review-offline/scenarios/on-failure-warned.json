@@ -1,16 +1,13 @@
 {
-  "description": "An enforcing review with comments on failure only, on a pull request whose critically vulnerable runtime dependency sits on a later page of changes: the action fails and creates the summary naming the advisory. Its scorecard lookup is outside the stand-in and refused.",
+  "description": "The default warn-only review with comments on failure only, on a pull request that adds a critically vulnerable runtime dependency: the action succeeds with a warning and still creates the summary naming the advisory. Its scorecard lookup is outside the stand-in and refused.",
   "inputs": {
     "comment-summary-in-pr": "on-failure",
-    "warn-only": "false"
+    "warn-only": "true"
   },
   "routes": [
     {
       "method": "GET",
       "path": "/repos/offline/fixture/dependency-graph/compare/1111111111111111111111111111111111111111...2222222222222222222222222222222222222222",
-      "query": {
-        "page": "2"
-      },
       "status": 200,
       "body": [
         {
@@ -36,28 +33,6 @@
     },
     {
       "method": "GET",
-      "path": "/repos/offline/fixture/dependency-graph/compare/1111111111111111111111111111111111111111...2222222222222222222222222222222222222222",
-      "status": 200,
-      "headers": {
-        "Link": "<{{base_url}}/repos/offline/fixture/dependency-graph/compare/1111111111111111111111111111111111111111...2222222222222222222222222222222222222222?per_page=5&page=2>; rel=\"next\""
-      },
-      "body": [
-        {
-          "change_type": "added",
-          "manifest": "package-lock.json",
-          "ecosystem": "npm",
-          "name": "offline-fixture-dependency",
-          "version": "2.0.0",
-          "package_url": "pkg:npm/offline-fixture-dependency@2.0.0",
-          "license": "MIT",
-          "source_repository_url": "https://github.com/offline/fixture-dependency",
-          "scope": "runtime",
-          "vulnerabilities": []
-        }
-      ]
-    },
-    {
-      "method": "GET",
       "path": "/repos/offline/fixture/issues/7/comments",
       "status": 200,
       "body": []
@@ -67,7 +42,7 @@
       "path": "/repos/offline/fixture/issues/7/comments",
       "status": 201,
       "body": {
-        "id": 501,
+        "id": 601,
         "body": "created",
         "user": {
           "login": "github-actions[bot]",
@@ -77,7 +52,7 @@
     }
   ],
   "expect": {
-    "outcome": "failure",
+    "outcome": "success",
     "comment": "created",
     "comment-includes": "GHSA-ffff-gggg-hhhh",
     "blocked-hosts": [
@@ -88,14 +63,6 @@
         "method": "GET",
         "path": "/repos/offline/fixture/dependency-graph/compare/1111111111111111111111111111111111111111...2222222222222222222222222222222222222222",
         "query": {
-          "per_page": "5"
-        }
-      },
-      {
-        "method": "GET",
-        "path": "/repos/offline/fixture/dependency-graph/compare/1111111111111111111111111111111111111111...2222222222222222222222222222222222222222",
-        "query": {
-          "page": "2",
           "per_page": "5"
         }
       },

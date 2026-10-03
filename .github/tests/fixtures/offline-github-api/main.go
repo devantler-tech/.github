@@ -138,8 +138,9 @@ type server struct {
 }
 
 func (s *server) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
-	raw, err := io.ReadAll(io.LimitReader(request.Body, maxBody))
-	if err != nil {
+	// A body the stand-in cannot read whole is never recorded as if it were complete.
+	raw, unreadable := io.ReadAll(http.MaxBytesReader(writer, request.Body, maxBody))
+	if unreadable != nil {
 		raw = nil
 	}
 	recorded := entry{
@@ -156,6 +157,9 @@ func (s *server) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
 	case !recorded.Authorized:
 		recorded.Status = http.StatusUnauthorized
 		body = []byte(`{"message":"Bad credentials (the offline stand-in accepts only its fixture token)"}`)
+	case unreadable != nil:
+		recorded.Status = http.StatusRequestEntityTooLarge
+		body = []byte(`{"message":"The offline stand-in could not read this request body"}`)
 	default:
 		recorded.Route = match(s.routes, request)
 		if recorded.Route < 0 {

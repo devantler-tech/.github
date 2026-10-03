@@ -22,7 +22,10 @@
     "requests": [
       {
         "method": "GET",
-        "path": "/repos/offline/fixture/dependency-graph/compare/1111111111111111111111111111111111111111...2222222222222222222222222222222222222222"
+        "path": "/repos/offline/fixture/dependency-graph/compare/1111111111111111111111111111111111111111...2222222222222222222222222222222222222222",
+        "query": {
+          "per_page": "5"
+        }
       }
     ]
   }

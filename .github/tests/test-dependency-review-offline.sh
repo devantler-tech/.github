@@ -14,8 +14,10 @@ preload="$root/.github/tests/fixtures/offline-github-env.cjs"
 token=offline-fixture-token
 work="$(mktemp -d)"
 api_pid=''
+hosted_pid=''
 cleanup() {
   [[ -z "$api_pid" ]] || kill "$api_pid" >/dev/null 2>&1 || true
+  [[ -z "$hosted_pid" ]] || kill "$hosted_pid" >/dev/null 2>&1 || true
   rm -rf "$work"
 }
 trap cleanup EXIT
@@ -25,7 +27,7 @@ fail() {
   exit 1
 }
 
-go build -o "$work/api" "$root/.github/tests/fixtures/offline-github-api.go"
+go build -o "$work/api" "$root/.github/tests/fixtures/offline-github-api/main.go"
 
 start_api() { # <scenario-file>
   rm -f "$work/address" "$work/requests.jsonl"
@@ -78,9 +80,15 @@ replay() { # <scenario-file>
   done
 }
 
+# The hosts the scenario expects the action to be refused, one per line.
+refused_hosts() { # <scenario-file> <output-file>
+  jq -r '.expect["blocked-hosts"][]' "$1" >"$2"
+}
+
 accept() { # <scenario-file> — uses the current record
+  refused_hosts "$1" "$work/refused-hosts"
   REVIEW_OUTCOME="$(jq -r '.expect.outcome' "$1")" COMMENT_CONTENT="$(report "$1")" \
-    bash "$helper" check "$1" "$work/requests.jsonl" "$work/blocked-hosts" >"$work/check.log" 2>&1 ||
+    bash "$helper" check "$1" "$work/requests.jsonl" "$work/refused-hosts" >"$work/check.log" 2>&1 ||
     fail "$(basename "$1" .json): the reviewed conversation was rejected: $(cat "$work/check.log")"
 }
 
@@ -117,6 +125,9 @@ jq -e 'length == 1 and .[0].id == 202' "$work/response" >/dev/null || fail 'the 
   fail 'the update route was not served'
 [[ "$(request PATCH "$address/repos/offline/fixture/issues/comments/202" "token $token" 'not json')" == 200 ]] ||
   fail 'a non-JSON body was not served'
+head -c 1049600 /dev/zero | tr '\0' 'a' >"$work/oversized"
+[[ "$(request PATCH "$address/repos/offline/fixture/issues/comments/202" "token $token" "@$work/oversized")" == 413 ]] ||
+  fail 'a body the stand-in cannot record whole was served'
 stop_api
 
 jq -cs '[.[] | [.method, .path, .authorized, .route, .status]]' "$work/requests.jsonl" >"$work/recorded"
@@ -125,11 +136,13 @@ jq -cn --arg listing "$listing" '[
   ["GET", "/repos/offline/fixture/pulls/7", true, -1, 404], ["DELETE", $listing, true, -1, 404],
   ["GET", $listing, true, 2, 200], ["GET", $listing, true, 1, 200],
   ["PATCH", "/repos/offline/fixture/issues/comments/202", true, 3, 200],
-  ["PATCH", "/repos/offline/fixture/issues/comments/202", true, 3, 200]]' >"$work/expected"
+  ["PATCH", "/repos/offline/fixture/issues/comments/202", true, 3, 200],
+  ["PATCH", "/repos/offline/fixture/issues/comments/202", true, -1, 413]]' >"$work/expected"
 cmp -s "$work/recorded" "$work/expected" ||
   fail "the stand-in recorded something else: $(cat "$work/recorded")"
 jq -es '.[5].query == {"per_page": ["100"]} and .[6].query == {"page": ["2"]} and
-  .[0].body == null and .[7].body == {"body": "x"} and .[8].body == "not json"' "$work/requests.jsonl" >/dev/null ||
+  .[0].body == null and .[7].body == {"body": "x"} and .[8].body == "not json" and
+  .[9].body == null' "$work/requests.jsonl" >/dev/null ||
   fail 'the stand-in recorded the wrong query or body'
 if grep -qF -e live-token -e "$token" "$work/requests.jsonl"; then fail 'the record holds a token'; fi
 
@@ -231,14 +244,32 @@ reject 'a refused comment' 'summary comment is not' "$created" "$work/refused.js
 jq -c 'if .method == "POST" then .body = null else . end' "$good" >"$work/no-body.jsonl"
 reject 'a comment without a body' 'summary comment is not' "$created" "$work/no-body.jsonl" "$blocked" success "$(report "$created")"
 
+jq -c 'if .path | contains("/compare/") then .query = {"per_page": ["100"]} else . end' "$good" >"$work/other-query.jsonl"
+reject 'a read with another page size' 'differ from the reviewed conversation' "$created" "$work/other-query.jsonl" "$blocked" success "$(report "$created")"
+
+jq -c 'if .method == "POST" then .query = {"extra": ["1"]} else . end' "$good" >"$work/extra-query.jsonl"
+reject 'a write with an unreviewed query' 'differ from the reviewed conversation' "$created" "$work/extra-query.jsonl" "$blocked" success "$(report "$created")"
+
 printf 'api.github.com\n' >"$work/reached"
-reject 'a lookup of the live API' 'tried to reach hosts' "$created" "$good" "$work/reached" success "$(report "$created")"
+reject 'a lookup of the live API' 'could not resolve differ' "$created" "$good" "$work/reached" success "$(report "$created")"
 
 jq 'del(.expect.outcome)' "$created" >"$work/no-expectation.json"
 reject 'a scenario without an expected outcome' 'complete expectation' "$work/no-expectation.json" "$good" "$blocked" success "$(report "$created")"
 
 jq '.expect.requests = []' "$created" >"$work/no-requests.json"
 reject 'a scenario without a reviewed conversation' 'complete expectation' "$work/no-requests.json" "$good" "$blocked" success "$(report "$created")"
+
+jq 'del(.expect.requests[0].query)' "$created" >"$work/no-query.json"
+reject 'a reviewed request without its query' 'complete expectation' "$work/no-query.json" "$good" "$blocked" success "$(report "$created")"
+
+jq 'del(.inputs["warn-only"])' "$created" >"$work/no-input.json"
+reject 'a scenario that leaves an input to its default' 'action inputs' "$work/no-input.json" "$good" "$blocked" success "$(report "$created")"
+
+jq '.inputs["fail-on-severity"] = "low"' "$created" >"$work/extra-input.json"
+reject 'a scenario with an input the job does not pass' 'action inputs' "$work/extra-input.json" "$good" "$blocked" success "$(report "$created")"
+
+jq '.inputs["warn-only"] = true' "$created" >"$work/typed-input.json"
+reject 'a scenario with a non-string input' 'action inputs' "$work/typed-input.json" "$good" "$blocked" success "$(report "$created")"
 
 # A write of the wrong kind: the update scenario answered with a new comment.
 jq '.expect.comment = "updated"' "$created" >"$work/wrong-kind.json"
@@ -248,13 +279,19 @@ reject 'a new comment where an update is expected' 'summary comment is not' "$wo
 jq '.expect.comment = "none"' "$created" >"$work/no-comment.json"
 reject 'a comment where none is expected' 'summary comment is not' "$work/no-comment.json" "$good" "$blocked" success "$(report "$created")"
 
-# The enforcing scenario's report must name the advisory it blocked on.
+# The enforcing scenario's report must name the advisory it blocked on, which sits on the
+# later page of changes, and its refused scorecard lookup is part of what was reviewed.
 start_api "$vulnerable"
 replay "$vulnerable"
 stop_api
+refused_hosts "$vulnerable" "$work/scorecard"
+[[ -s "$work/scorecard" ]] || fail 'the enforcing scenario no longer expects a refused lookup'
 jq -c 'if .method == "POST" then .body.body = "Offline replay report" else . end' "$work/requests.jsonl" >"$work/no-advisory.jsonl"
-reject 'a report that omits the advisory' 'summary comment is not' "$vulnerable" "$work/no-advisory.jsonl" "$blocked" failure 'Offline replay report'
-reject 'an enforcing review that passed' "finished with 'success'" "$vulnerable" "$work/requests.jsonl" "$blocked" success "$(report "$vulnerable")"
+reject 'a report that omits the advisory' 'summary comment is not' "$vulnerable" "$work/no-advisory.jsonl" "$work/scorecard" failure 'Offline replay report'
+reject 'an enforcing review that passed' "finished with 'success'" "$vulnerable" "$work/requests.jsonl" "$work/scorecard" success "$(report "$vulnerable")"
+reject 'a lookup that was not refused' 'could not resolve differ' "$vulnerable" "$work/requests.jsonl" "$blocked" failure "$(report "$vulnerable")"
+jq -cs '[.[0], .[2], .[3]][]' "$work/requests.jsonl" >"$work/first-page-only.jsonl"
+reject 'a review that skipped the later page of changes' 'differ from the reviewed conversation' "$vulnerable" "$work/first-page-only.jsonl" "$work/scorecard" failure "$(report "$vulnerable")"
 
 # The update must reach the existing summary through the later page.
 start_api "$updated"
@@ -265,6 +302,56 @@ reject 'an update that skipped the later page' 'differ from the reviewed convers
 
 # A scenario served by the wrong conversation: comments off, yet the action wrote one.
 reject 'a comment while comments are off' 'differ from the reviewed conversation' "$never" "$good" "$blocked" success "$(report "$never")"
+
+# ── The hosted job's two steps, end to end ────────────────────────────────────
+export RUNNER_TEMP="$work/runner"
+mkdir "$RUNNER_TEMP"
+hosted="$RUNNER_TEMP/dependency-review-offline"
+hosted_start() { # <scenario>
+  : >"$work/output"
+  GITHUB_OUTPUT="$work/output" bash "$helper" start "$1" >"$work/start.log" 2>&1 ||
+    fail "the hosted start step failed: $(cat "$work/start.log")"
+  hosted_pid="$(cat "$hosted/pid")"
+  address="$(sed -n 's/^api-url=//p' "$work/output")"
+}
+hosted_start comment-updated
+printf 'api-url=%s\nblocked-hosts-file=%s\ncomment-summary-in-pr=always\nwarn-only=true\n' \
+  "$address" "$hosted/blocked-hosts" >"$work/output.expected"
+cmp -s "$work/output" "$work/output.expected" || fail "the start step handed over the wrong outputs: $(cat "$work/output")"
+replay "$updated"
+REVIEW_OUTCOME=success COMMENT_CONTENT="$(report "$updated")" bash "$helper" verify comment-updated >"$work/verify.log" 2>&1 ||
+  fail "the hosted verify step rejected the reviewed conversation: $(cat "$work/verify.log")"
+grep -qF 'PASS: comment-updated — 4 recorded requests' "$work/verify.log" || fail 'the verify step did not report the conversation'
+grep -qF '"method":"PATCH"' "$work/verify.log" || fail 'the verify step did not print the recorded requests'
+if kill -0 "$hosted_pid" 2>/dev/null; then fail 'the verify step left the stand-in running'; fi
+hosted_pid=''
+
+reject_step() { # <label> <diagnostic> <step> <scenario>
+  if GITHUB_OUTPUT="$work/output" REVIEW_OUTCOME=success COMMENT_CONTENT=report \
+    bash "$helper" "$3" "$4" >"$work/step.log" 2>&1; then
+    fail "the $3 step accepted $1"
+  fi
+  grep -qF "$2" "$work/step.log" || fail "$1 was refused for the wrong reason: $(cat "$work/step.log")"
+  controls=$((controls + 1))
+}
+reject_step 'an unknown scenario' "unknown scenario 'absent'" start absent
+reject_step 'a scenario outside the reviewed directory' 'unknown scenario' start ../event
+reject_step 'an unknown scenario' "unknown scenario 'absent'" verify absent
+
+# The action talked to nothing: the conversation it should have had is missing.
+hosted_start comment-created
+reject_step 'an action that never reached the stand-in' 'sent no request' verify comment-created
+if kill -0 "$hosted_pid" 2>/dev/null; then fail 'a failed verify step left the stand-in running'; fi
+
+# A stand-in that died mid-run cannot vouch for the conversation.
+hosted_start comment-created
+kill "$hosted_pid"
+for _ in $(seq 1 100); do
+  kill -0 "$hosted_pid" 2>/dev/null || break
+  sleep 0.1
+done
+reject_step 'a stand-in that exited early' 'exited before the action finished' verify comment-created
+hosted_pid=''
 
 # ── The preload ────────────────────────────────────────────────────────────────
 cat >"$work/probe.cjs" <<'PROBE'
