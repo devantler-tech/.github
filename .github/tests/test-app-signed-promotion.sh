@@ -86,7 +86,7 @@ for fault in manifest-push image-sign manifest-sign image-verify manifest-verify
   rm -f "$work/state/"* "$work/trace"
   if run_step "$fault" 1.2.3 "$identity" "$work/promote.sh" >"$work/log" 2>&1; then fail "accepted failed $fault"; fi
   if grep -q 'latest' "$work/trace"; then fail "advanced latest after failed $fault"; fi
-  if [[ "$fault" != image-promotion && "$fault" != changed-digest ]] && grep -qE '(--tag 1.2.3|--tag ghcr.io/devantler-tech/app:1.2.3)' "$work/trace"; then fail "exposed version before successful signatures: $fault"; fi
+  if grep -qE '(--tag 1.2.3|--tag ghcr.io/devantler-tech/app:1.2.3)' "$work/trace"; then fail "exposed version after failed staging or verification: $fault"; fi
 done
 for version in 1.2.3 1.2.3-rc.1; do
   rm -f "$work/state/"* "$work/trace"

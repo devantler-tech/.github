@@ -298,12 +298,15 @@ jobs:
             --certificate-oidc-issuer https://token.actions.githubusercontent.com "${IMAGE}@${DIGEST}"
           cosign verify --certificate-identity "${SERVER_URL}/${JOB_WORKFLOW_REF}" \
             --certificate-oidc-issuer https://token.actions.githubusercontent.com "${ARTIFACT}@${ARTIFACT_DIGEST}"
-          docker buildx imagetools create --prefer-index=false --tag "${IMAGE}:${VERSION}" \
+          # Confirm the copy preserves the signed manifest format on an
+          # unselectable staging tag before exposing the release version.
+          docker buildx imagetools create --prefer-index=false --tag "${IMAGE}:verified-${RUN_ID}-${RUN_ATTEMPT}" \
             --metadata-file="$RUNNER_TEMP/image-promotion.json" "${IMAGE}@${DIGEST}"
           [[ "$(jq -r '.["containerimage.descriptor"].digest // ""' "$RUNNER_TEMP/image-promotion.json")" == "$DIGEST" ]] || {
             echo '::error::image promotion changed the verified digest' >&2
             exit 1
           }
+          docker buildx imagetools create --prefer-index=false --tag "${IMAGE}:${VERSION}" "${IMAGE}@${DIGEST}"
           flux tag artifact "oci://${ARTIFACT}@${ARTIFACT_DIGEST}" --tag "$VERSION" --creds "${ACTOR}:${GH_TOKEN}"
           case "$VERSION" in
             *-*) ;; # Prereleases remain version-selectable without moving latest.
