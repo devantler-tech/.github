@@ -1,0 +1,9 @@
+{
+  "organization": "devantler-tech",
+  "settings": {
+    "web_commit_signoff_required": true,
+    "default_repository_permission": "read",
+    "members_can_create_repositories": true,
+    "two_factor_requirement_enabled": true
+  }
+}
