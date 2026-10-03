@@ -467,18 +467,20 @@ jobs:
     #
     # The input is compared against both the boolean and the string because a workflow
     # reachable from more than one trigger receives it either way (AGENTS.md, *Gotchas*).
+    # Direct required runs have an empty input object and inherit the enabled default.
+    # Reusable calls supply their declared defaults, so explicit false remains off.
     if: |
       ((
         (
           needs.changes.outputs.go == 'true'
           || (
-            (inputs.scan-default-branch == true || inputs.scan-default-branch == 'true')
+            (toJSON(inputs) == '{}' || inputs.scan-default-branch == true || inputs.scan-default-branch == 'true')
             && needs.changes.outputs.govulncheck == 'true'
           )
         )
         && github.event_name == 'pull_request'
       ) || (
-        (inputs.scan-default-branch == true || inputs.scan-default-branch == 'true')
+        (toJSON(inputs) == '{}' || inputs.scan-default-branch == true || inputs.scan-default-branch == 'true')
         && needs.changes.outputs.go != ''
         && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
       ))

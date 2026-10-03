@@ -4803,6 +4803,16 @@ jobs:
       - name: 🧪 Assert govulncheck runs on the default branch and on allowlist edits
         run: bash .github/tests/test-govulncheck-main-coverage.sh
 
+      - name: 🧪 Evaluate the direct-run default with native GitHub inputs
+        shell: bash
+        env:
+          DIRECT_INPUTS: ${{ toJSON(inputs) }}
+          DIRECT_SCAN_DEFAULT: ${{ toJSON(inputs) == '{}' || inputs.scan-default-branch == true || inputs.scan-default-branch == 'true' }}
+        run: |
+          set -euo pipefail
+          [[ "$DIRECT_INPUTS" == '{}' && "$DIRECT_SCAN_DEFAULT" == true ]]
+          echo 'PASS: native empty inputs inherit the enabled scan default'
+
   # ── Failing-input counterpart to the job above (the both-tests convention) ──
   # The trigger guard is itself a gate, and its checks are structural string analysis over
   # a GitHub expression — unusually easy to make silently vacuous (a `strip_groups`

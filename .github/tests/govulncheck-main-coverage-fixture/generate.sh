@@ -18,13 +18,13 @@ GOOD_GATE="github.repository != 'x/y'
         (
           needs.changes.outputs.go == 'true'
           || (
-            (inputs.scan-default-branch == true || inputs.scan-default-branch == 'true')
+            (toJSON(inputs) == '{}' || inputs.scan-default-branch == true || inputs.scan-default-branch == 'true')
             && needs.changes.outputs.govulncheck == 'true'
           )
         )
         && github.event_name == 'pull_request'
       ) || (
-        (inputs.scan-default-branch == true || inputs.scan-default-branch == 'true')
+        (toJSON(inputs) == '{}' || inputs.scan-default-branch == true || inputs.scan-default-branch == 'true')
         && needs.changes.outputs.go != ''
         && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
       ))"
@@ -105,13 +105,13 @@ emit event-gated.yaml \
         (
           needs.changes.outputs.go == 'true'
           || (
-            (inputs.scan-default-branch == true || inputs.scan-default-branch == 'true')
+            (toJSON(inputs) == '{}' || inputs.scan-default-branch == true || inputs.scan-default-branch == 'true')
             && needs.changes.outputs.govulncheck == 'true'
           )
         )
         && github.event_name == 'pull_request'
       ) || (
-        (inputs.scan-default-branch == true || inputs.scan-default-branch == 'true')
+        (toJSON(inputs) == '{}' || inputs.scan-default-branch == true || inputs.scan-default-branch == 'true')
         && needs.changes.outputs.go != ''
         && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
       ))"
@@ -125,13 +125,13 @@ emit no-default-branch-clause.yaml \
         (
           needs.changes.outputs.go == 'true'
           || (
-            (inputs.scan-default-branch == true || inputs.scan-default-branch == 'true')
+            (toJSON(inputs) == '{}' || inputs.scan-default-branch == true || inputs.scan-default-branch == 'true')
             && needs.changes.outputs.govulncheck == 'true'
           )
         )
         && github.event_name == 'pull_request'
       ) || (
-        (inputs.scan-default-branch == true || inputs.scan-default-branch == 'true')
+        (toJSON(inputs) == '{}' || inputs.scan-default-branch == true || inputs.scan-default-branch == 'true')
         && needs.changes.outputs.go != ''
       ))"
 
@@ -162,13 +162,13 @@ emit flag-and-ed-at-top-level.yaml \
         (
           needs.changes.outputs.go == 'true'
           || (
-            (inputs.scan-default-branch == true || inputs.scan-default-branch == 'true')
+            (toJSON(inputs) == '{}' || inputs.scan-default-branch == true || inputs.scan-default-branch == 'true')
             && needs.changes.outputs.govulncheck == 'true'
           )
         )
         && github.event_name == 'pull_request'
       ) || (
-        (inputs.scan-default-branch == true || inputs.scan-default-branch == 'true')
+        (toJSON(inputs) == '{}' || inputs.scan-default-branch == true || inputs.scan-default-branch == 'true')
         && needs.changes.outputs.go != ''
         && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
       ))"
@@ -183,7 +183,7 @@ emit default-branch-and-ed.yaml \
         needs.changes.outputs.govulncheck == 'true'
         && github.event_name == 'pull_request'
       ) || (
-        (inputs.scan-default-branch == true || inputs.scan-default-branch == 'true')
+        (toJSON(inputs) == '{}' || inputs.scan-default-branch == true || inputs.scan-default-branch == 'true')
         && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
       ))"
 
@@ -202,13 +202,13 @@ emit path-filter-inside-function-call.yaml \
         (
           needs.changes.outputs.go == 'true'
           || (
-            (inputs.scan-default-branch == true || inputs.scan-default-branch == 'true')
+            (toJSON(inputs) == '{}' || inputs.scan-default-branch == true || inputs.scan-default-branch == 'true')
             && needs.changes.outputs.govulncheck == 'true'
           )
         )
         && github.event_name == 'pull_request'
       ) || (
-        (inputs.scan-default-branch == true || inputs.scan-default-branch == 'true')
+        (toJSON(inputs) == '{}' || inputs.scan-default-branch == true || inputs.scan-default-branch == 'true')
         && needs.changes.outputs.go != ''
         && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
       ))"
@@ -223,13 +223,13 @@ emit top-level-ref-predicate.yaml \
         (
           needs.changes.outputs.go == 'true'
           || (
-            (inputs.scan-default-branch == true || inputs.scan-default-branch == 'true')
+            (toJSON(inputs) == '{}' || inputs.scan-default-branch == true || inputs.scan-default-branch == 'true')
             && needs.changes.outputs.govulncheck == 'true'
           )
         )
         && github.event_name == 'pull_request'
       ) || (
-        (inputs.scan-default-branch == true || inputs.scan-default-branch == 'true')
+        (toJSON(inputs) == '{}' || inputs.scan-default-branch == true || inputs.scan-default-branch == 'true')
         && needs.changes.outputs.go != ''
         && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
       ))"
@@ -240,7 +240,7 @@ emit flag-gates-wrong-arm.yaml \
   true "$GOOD_GO_FILTER" "$GOOD_VULN_FILTER" "$GOOD_OUTPUTS" \
   "github.repository != 'x/y'
       && ((
-        (inputs.scan-default-branch == true || inputs.scan-default-branch == 'true')
+        (toJSON(inputs) == '{}' || inputs.scan-default-branch == true || inputs.scan-default-branch == 'true')
         && (needs.changes.outputs.go == 'true' || needs.changes.outputs.govulncheck == 'true')
         && github.event_name == 'pull_request'
       ) || (
@@ -258,13 +258,13 @@ emit unflagged-arm-not-pr-gated.yaml \
         (
           needs.changes.outputs.go == 'true'
           || (
-            (inputs.scan-default-branch == true || inputs.scan-default-branch == 'true')
+            (toJSON(inputs) == '{}' || inputs.scan-default-branch == true || inputs.scan-default-branch == 'true')
             && needs.changes.outputs.govulncheck == 'true'
           )
         )
         && github.event_name == 'pull_request'
       ) || (
-        (inputs.scan-default-branch == true || inputs.scan-default-branch == 'true')
+        (toJSON(inputs) == '{}' || inputs.scan-default-branch == true || inputs.scan-default-branch == 'true')
         && needs.changes.outputs.go != ''
         && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
       ) || (
@@ -304,7 +304,7 @@ emit govulncheck-output-not-consumed.yaml \
         needs.changes.outputs.go == 'true'
         && github.event_name == 'pull_request'
       ) || (
-        (inputs.scan-default-branch == true || inputs.scan-default-branch == 'true')
+        (toJSON(inputs) == '{}' || inputs.scan-default-branch == true || inputs.scan-default-branch == 'true')
         && needs.changes.outputs.go != ''
         && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
       ))"
@@ -329,7 +329,7 @@ emit allowlist-trigger-not-flag-gated.yaml \
         (needs.changes.outputs.go == 'true' || needs.changes.outputs.govulncheck == 'true')
         && github.event_name == 'pull_request'
       ) || (
-        (inputs.scan-default-branch == true || inputs.scan-default-branch == 'true')
+        (toJSON(inputs) == '{}' || inputs.scan-default-branch == true || inputs.scan-default-branch == 'true')
         && needs.changes.outputs.go != ''
         && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
       ))"
@@ -342,5 +342,11 @@ emit allow-file-not-working-dir-relative.yaml \
   "allow-file is a bare root-relative literal, so a nested module's allowlist triggers the scan but is not the file the scanner reads." \
   true "$GOOD_GO_FILTER" "$GOOD_VULN_FILTER" "$GOOD_OUTPUTS" "$GOOD_GATE" \
   "$ROOT_ONLY_ALLOW_FILE"
+
+DIRECT_DEFAULT="toJSON(inputs) == '{}' || "
+emit direct-input-default-missing.yaml \
+  "direct required runs have empty inputs, so their enabled scan default must be explicit." \
+  true "$GOOD_GO_FILTER" "$GOOD_VULN_FILTER" "$GOOD_OUTPUTS" \
+  "${GOOD_GATE//$DIRECT_DEFAULT/}"
 
 echo "regenerated $(find . -maxdepth 1 -name '*.yaml' | wc -l | tr -d ' ') fixtures"

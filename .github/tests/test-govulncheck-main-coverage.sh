@@ -314,6 +314,18 @@ elif ! grep -qF 'inputs.working-directory' <<<"$allow_file"; then
 fi
 
 if [[ "$status" -eq 0 ]]; then
+  direct_default="(toJSON(inputs) == '{}' || inputs.scan-default-branch == true || inputs.scan-default-branch == 'true')"
+  direct_count="$(grep -oF "$direct_default" <<<"$flat" | wc -l | tr -d ' ' || true)"
+  if [[ "$direct_count" != 2 ]]; then
+    fail "direct required runs must inherit the enabled default in both scan arms"
+  fi
+  native_default="$(yq -r '.jobs["test-govulncheck-main-coverage"].steps[] | select(.env.DIRECT_SCAN_DEFAULT != null) | .env.DIRECT_SCAN_DEFAULT' .github/workflows/ci.yaml)"
+  # shellcheck disable=SC2016 # Fixed GitHub expression compared as data.
+  [[ "$native_default" == '${{ toJSON(inputs) == '\''{}'\'' || inputs.scan-default-branch == true || inputs.scan-default-branch == '\''true'\'' }}' ]] ||
+    fail "the native direct-input evaluation must match the production default"
+fi
+
+if [[ "$status" -eq 0 ]]; then
   echo "govulncheck defaults to complete default-branch coverage, preserves explicit false, and scans allowlist edits with the matching allowlist ✅"
 fi
 

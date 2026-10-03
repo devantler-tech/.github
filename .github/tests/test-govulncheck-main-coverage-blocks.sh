@@ -78,6 +78,8 @@ check flag-gates-wrong-arm.yaml \
   "no OR-arm both references 'inputs.scan-default-branch' and carries the default-branch clause"
 check flag-defaults-false.yaml \
   "defaults to 'false', not true"
+check direct-input-default-missing.yaml \
+  "direct required runs must inherit the enabled default in both scan arms"
 check unflagged-arm-not-pr-gated.yaml \
   "neither gated by 'inputs.scan-default-branch' nor restricted to pull requests"
 
