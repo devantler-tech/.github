@@ -88,7 +88,10 @@ check() {
     echo "FAIL: $label expected $expected, got $status" >&2
     exit 1
   }
-  [[ "$status" == 0 ]] || ! grep -q 'all .* live repositories are declared' "$work/result"
+  if [[ "$status" != 0 ]] && grep -q 'all .* live repositories are declared' "$work/result"; then
+    echo "FAIL: $label reported success with status $status" >&2
+    exit 1
+  fi
   echo "PASS: $label"
 }
 reset_case
