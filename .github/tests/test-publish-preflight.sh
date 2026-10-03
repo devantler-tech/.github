@@ -67,7 +67,7 @@ step_path="$scratch/bin:$scratch/tools"
 
 # Per-run state, reset by run_job.
 sim_workflow=""
-sim_json=""                       # the workflow under simulation as JSON, converted once per file
+sim_json="" # the workflow under simulation as JSON, converted once per file
 sim_job=""
 sim_step=""
 sim_ref_type=""
@@ -122,7 +122,8 @@ lookup_expr() { # <expression> — the value GitHub would substitute for ${{ <ex
       case "$1" in
         "inputs.enable-signed-promotion == true || inputs.enable-signed-promotion == 'true'")
           [[ "$(lookup_expr inputs.enable-signed-promotion)" == true ]] && printf true || printf false
-          return 0 ;;
+          return 0
+          ;;
       esac
       input="${1#inputs.}"
       [[ "$(wf '.on.workflow_call.inputs | has($in)' --arg in "$input")" == true ]] || return 1
@@ -143,6 +144,13 @@ lookup_expr() { # <expression> — the value GitHub would substitute for ${{ <ex
       ;;
     "!(inputs.enable-signed-promotion == true || inputs.enable-signed-promotion == 'true')")
       [[ "$(lookup_expr inputs.enable-signed-promotion)" != true ]] && printf true || printf false
+      ;;
+    "(inputs.enable-signed-promotion == true || inputs.enable-signed-promotion == 'true') && steps.staging.outputs.tag || steps.meta.outputs.tags")
+      if [[ "$(lookup_expr inputs.enable-signed-promotion)" == true ]]; then
+        lookup_expr steps.staging.outputs.tag
+      else
+        lookup_expr steps.meta.outputs.tags
+      fi
       ;;
     *) return 1 ;;
   esac
@@ -186,7 +194,7 @@ env_entries() { # <jq path to an env mapping> — one key=value line per entry, 
 run_job() {
   sim_workflow="$1"
   sim_job="$2"
-  local workdir="$3" count i name if_expr if_value uses action run_file push id status
+  local workdir="$3" count i name if_expr if_value uses action run_file push id status tags
   sim_ref_type="$4"
   sim_ref_name="$5"
   sim_repository="${SIM_REPOSITORY:-devantler-tech/app}"
@@ -265,11 +273,19 @@ run_job() {
           [[ ! -s "$calls" ]] ||
             fail "$sim_workflow step '$name' sets up $action after the first registry write"
           printf 'setup %s\n' "$action" >>"$log"
+          if [[ "$action" == docker/metadata-action ]]; then
+            printf '%s.tags=ghcr.io/%s:%s\n' "$id" "$(printf '%s' "$sim_repository" | tr '[:upper:]' '[:lower:]')" \
+              "$(lookup_expr steps.version.outputs.version)" >>"$sim_outputs"
+          fi
           ;;
         docker/build-push-action)
           push="$(step '.with.push // false | tostring')"
           [[ "$push" == "true" ]] || fail "$sim_workflow '$name' builds without pushing; model it"
           printf 'image push %s\n' "$name" >>"$calls"
+          # Observe the selected build references, including conditional staging.
+          # A build that leaks a version/latest alias must be visible to this model.
+          tags="$(resolve "$(step '.with.tags')")" || fail 'unmodelled build tags'
+          printf 'image tags %s\n' "$tags" >>"$calls"
           [[ -z "$id" ]] || printf '%s.digest=%s\n' "$id" "$image_digest" >>"$sim_outputs"
           ;;
         *) fail "$sim_workflow step '$name' uses $action, which this test does not model; classify it" ;;
