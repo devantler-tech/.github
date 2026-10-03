@@ -2,6 +2,20 @@
 # Exercise the shipped publication step against an offline registry boundary.
 # Signing/verification failure must not expose an unsigned semantic-version tag.
 set -euo pipefail
+# The live configuration caller must opt in only through a SHA-pinned publisher.
+validate_caller() {
+  yq -e '
+  (.jobs["publish-manifests"].uses |
+    test("^devantler-tech/actions/\\.github/workflows/publish-manifests\\.yaml@[0-9a-f]{40}$")) and
+  (.jobs["publish-manifests"].with["enable-caller-pin"] == true) and
+  (.jobs["publish-manifests"].with["enable-signed-promotion"] == true) and
+  (.jobs["publish-manifests"].with["oci-name"] == "devantler-tech/github-config")
+  ' "$1" >/dev/null
+}
+validate_caller .github/workflows/cd.yaml || {
+  echo 'FAIL: configuration publication requires a SHA-pinned, verified-promotion caller' >&2
+  exit 1
+}
 scratch="$(mktemp -d)"
 trap 'rm -rf "$scratch"' EXIT
 mkdir -p "$scratch/bin"
@@ -126,3 +140,19 @@ default_mode="$(yq -r '.on.workflow_call.inputs["enable-signed-promotion"].defau
 run_case none 1.2.3 "$default_mode" '' 123 || fail 'legacy default changed'
 [[ "$(<"$state/pushed")" == "oci://$artifact:1.2.3" && "$(<"$state/latest")" == "$digest" ]] || fail 'legacy publication changed'
 echo 'ok default-off preserves existing callers; opted-in malformed identities fail before writes'
+
+# Keep these controls in required CI, using the same predicate as the real caller.
+for mutation in promotion pin moving family; do
+  fixture="$scratch/caller-$mutation.yaml"
+  cp .github/workflows/cd.yaml "$fixture"
+  case "$mutation" in
+    promotion) yq -i '.jobs["publish-manifests"].with["enable-signed-promotion"] = false' "$fixture" ;;
+    pin) yq -i '.jobs["publish-manifests"].with["enable-caller-pin"] = false' "$fixture" ;;
+    moving) yq -i '.jobs["publish-manifests"].uses |= sub("@[0-9a-f]{40}$"; "@main")' "$fixture" ;;
+    family) yq -i '.jobs["publish-manifests"].uses |= sub("publish-manifests"; "publish-app")' "$fixture" ;;
+  esac
+  if validate_caller "$fixture" 2>/dev/null; then
+    fail "configuration caller accepted the $mutation regression"
+  fi
+done
+echo 'ok configuration caller refuses missing controls, moving refs and the wrong workflow family'

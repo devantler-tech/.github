@@ -38,7 +38,7 @@ jobs:
     # ecosystem, no cooldown for devantler-tech/*).
     # Keep the ref a 40-hex commit: it is part of the cosign subject the platform
     # verifies, so its shape is load-bearing here.
-    uses: devantler-tech/actions/.github/workflows/publish-manifests.yaml@df7fd4f83edade31c121a9de563d9a7b9b1f900d # v13.10.3
+    uses: devantler-tech/actions/.github/workflows/publish-manifests.yaml@1d726483facb9340655489913f609082677be8f5 # v13.10.6
     with:
       oci-name: devantler-tech/github-config
       # Without this, a ref the platform verifier does not accept fails nothing
@@ -48,3 +48,5 @@ jobs:
       # into a loud pre-signing failure in this workflow instead — the publish
       # refuses before the artifact exists, and the error names the fix.
       enable-caller-pin: true
+      # Promote only after the staged digest has been signed and verified.
+      enable-signed-promotion: true
