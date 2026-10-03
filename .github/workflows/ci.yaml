@@ -1721,6 +1721,10 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: 🧪 Reject ambiguous release-checksum manifest input
+        shell: bash
+        run: bash .github/tests/test-refresh-gh-digests.sh
+
       - name: 🧪 Exercise ensure-gh-skill.sh (guards, fast-return, platform/arch/integrity errors)
         shell: bash
         run: |
