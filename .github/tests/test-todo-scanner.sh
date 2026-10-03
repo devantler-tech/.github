@@ -30,6 +30,8 @@ jq -e '
     all(.Files[]; (.Before|type == "string") and (.After|type == "string")) and
     (.Operations|type == "array" and all(valid_exchange)) and
     (.Output|type == "array" and all(type == "string" and length > 0)) and
+    (if has("Ignore") then .Ignore|type == "string" else true end) and
+    (if has("ExcludeVendored") then .ExcludeVendored|IN("true","false") else true end) and
     (if has("WantFailure") then .WantFailure|type == "boolean" else true end) and
     (if has("ForbiddenOutput") then .ForbiddenOutput|type == "array" and all(type == "string" and length > 0) else true end) and
     (if has("InitialReads") then .InitialReads|type == "array" and length > 0 and all(valid_exchange and .Method == "GET") else true end))
@@ -85,7 +87,7 @@ for ((i=0; i<count; i++)); do
   done <"$TODO_CASE_DIR/files"
   git -C "$GITHUB_WORKSPACE" diff --no-ext-diff --no-color >"$TODO_CASE_DIR/diff"
   jq --rawfile diff "$TODO_CASE_DIR/diff" -f "$fixture/plan.jq" "$TODO_CASE_DIR/source.json" >"$TODO_CASE_DIR/case.json"
-  ignore="$(jq -r '.Ignore // ""' "$TODO_CASE_DIR/source.json")"
+  ignore="$(bash "$root/.github/tests/todo-ignore-resolution.sh" "$work/action.json" "$TODO_CASE_DIR/source.json")"
   jq -n --arg ignore "$ignore" '{
     "${{ github.repository }}":"offline/fixture",
     "${{ github.event.before || github.base_ref }}":"fixture-base",
@@ -98,7 +100,7 @@ for ((i=0; i<count; i++)); do
     "${{ github.actor }}":"offline-actor",
     "${{ github.api_url }}":"https://api.example.invalid",
     "${{ github.server_url }}":"https://example.invalid",
-    "${{ inputs.ignore }}":$ignore}' >"$TODO_CASE_DIR/context.json"
+    "${{ inputs.ignore || steps.vendored-ignore.outputs.ignore }}":$ignore}' >"$TODO_CASE_DIR/context.json"
   jq -e --slurpfile context "$TODO_CASE_DIR/context.json" '
     .runs.steps[] | select(.name == "📝 Create issues from TODOs") | .env |
     with_entries(.value = (.value | tostring | . as $value |
