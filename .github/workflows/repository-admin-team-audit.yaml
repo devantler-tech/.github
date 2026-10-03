@@ -50,4 +50,7 @@ jobs:
       - name: Audit effective team permissions
         env:
           GH_TOKEN: ${{ steps.audit-token.outputs.token }}
+          GH_INSTALLATION_ID: ${{ steps.audit-token.outputs.installation-id }}
+          GH_APP_CLIENT_ID: ${{ vars.APP_CLIENT_ID }}
+          GH_APP_PRIVATE_KEY: ${{ secrets.APP_PRIVATE_KEY }}
         run: bash scripts/check-repository-admin-teams.sh

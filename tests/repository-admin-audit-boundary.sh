@@ -25,7 +25,11 @@ verify() {
       "permission-metadata":"read",
       "permission-administration":"read"} and
     .jobs.audit.steps[3].run == "bash scripts/check-repository-admin-teams.sh" and
-    .jobs.audit.steps[3].env.GH_TOKEN == "${{ steps.audit-token.outputs.token }}"
+    .jobs.audit.steps[3].env == {
+      GH_TOKEN:"${{ steps.audit-token.outputs.token }}",
+      GH_INSTALLATION_ID:"${{ steps.audit-token.outputs.installation-id }}",
+      GH_APP_CLIENT_ID:"${{ vars.APP_CLIENT_ID }}",
+      GH_APP_PRIVATE_KEY:"${{ secrets.APP_PRIVATE_KEY }}"}
   ' "$1" >/dev/null 2>&1
 }
 verify "$work/source.json" || { echo 'FAIL: live audit must retain its default-off main-only read-only boundary' >&2; exit 1; }
@@ -40,6 +44,8 @@ unguarded credentials	.jobs.audit.if="true"
 write-scoped workflow token	.jobs.audit.permissions.contents="write"
 write-scoped App token	.jobs.audit.steps[2].with["permission-administration"]="write"
 partial repository selection	.jobs.audit.steps[2].with.repositories="fixture_public"
+partial repository identities	.jobs.audit.steps[2].with.repository_ids="1"
+unbound installation proof	.jobs.audit.steps[3].env.GH_INSTALLATION_ID="77"
 mutable source checkout	.jobs.audit.steps[1].with.ref="main"
 persisted credentials	.jobs.audit.steps[1].with["persist-credentials"]=true
 implicit human fallback	.jobs.audit.steps[3].run+=" --organization-admin"

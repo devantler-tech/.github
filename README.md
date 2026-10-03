@@ -1141,6 +1141,14 @@ result rather than a policy pass. Logs contain aggregate counts only.
 The workflow is default off and runs only from reviewed `main`. Enable its
 `run-audit` dispatch input for an evaluation. Its App token requests repository
 Metadata and Administration read permissions; missing grants fail token creation.
+A short-lived App JWT separately reads the authenticated installation's identity,
+all-repository selection and suspension state, binds it to that token's installation
+ID, and rechecks it after the audit. The JWT goes only to a fixed GitHub GET endpoint;
+the key and request configuration use private temporary files and are removed.
+GitHub's [installation read](https://docs.github.com/en/rest/apps/apps#get-an-installation-for-the-authenticated-app)
+provides this proof; its [repository-list response](https://docs.github.com/en/rest/apps/installations#list-repositories-accessible-to-the-app-installation)
+provides the independent pagination totals. Installation mode requires this reviewed
+main workflow context and its unrestricted token mint.
 A skipped run is not evidence of compliance. Live grant verification, activation
 and flag retirement remain tracked in #395, as part of maintenance retirement #84.
 
