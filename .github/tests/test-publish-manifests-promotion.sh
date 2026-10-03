@@ -6,19 +6,26 @@ scratch="$(mktemp -d)"
 trap 'rm -rf "$scratch"' EXIT
 mkdir -p "$scratch/bin"
 workflow=.github/workflows/publish-manifests.yaml
-step='📦 Push & sign manifests artifact'
+step='📦 Sign & promote manifests artifact'
 STEP="$step" yq -r '.jobs[].steps[] | select(.name == strenv(STEP)) | .run' "$workflow" >"$scratch/publish.sh"
-[[ -s "$scratch/publish.sh" ]] || {
+[[ -s "$scratch/publish.sh" && "$(cat "$scratch/publish.sh")" != null ]] || {
   echo 'FAIL: missing production publication step' >&2
   exit 1
 }
+STEP='📦 Push & sign manifests artifact' yq -r '.jobs[].steps[] | select(.name == strenv(STEP)) | .run' "$workflow" >"$scratch/legacy.sh"
+# Bind the graph to complementary guards; GitHub evaluates them in hosted CI.
+STEP="$step" yq -r '.jobs[].steps[] | select(.name == strenv(STEP)) | .if' "$workflow" >"$scratch/signed.if"
+STEP='📦 Push & sign manifests artifact' yq -r '.jobs[].steps[] | select(.name == strenv(STEP)) | .if' "$workflow" >"$scratch/legacy.if"
+# shellcheck disable=SC2016 # literal GitHub expressions, never shell expansion
+[[ "$(cat "$scratch/signed.if")" == '${{ inputs.enable-signed-promotion == true || inputs.enable-signed-promotion == '\''true'\'' }}' ]]
+# shellcheck disable=SC2016 # literal GitHub expressions, never shell expansion
+[[ "$(cat "$scratch/legacy.if")" == '${{ !(inputs.enable-signed-promotion == true || inputs.enable-signed-promotion == '\''true'\'') }}' ]]
 digest='sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
 artifact=ghcr.io/devantler-tech/fixture/manifests
 identity='https://github.com/devantler-tech/.github/.github/workflows/publish-manifests.yaml@0123456789abcdef0123456789abcdef01234567'
 # Bind the exercised values to the actual workflow boundary, not a test-only input.
 STEP="$step" yq -o=json '.jobs[].steps[] | select(.name == strenv(STEP)) | .env' "$workflow" |
   jq -e '
-    .ENABLE_SIGNED_PROMOTION == "${{ inputs.enable-signed-promotion }}" and
     .JOB_WORKFLOW_REF == "${{ steps.caller.outputs.ref }}" and
     .RUN_ID == "${{ github.run_id }}" and
     .RUN_ATTEMPT == "${{ github.run_attempt }}"
@@ -79,6 +86,8 @@ fail() {
 }
 run_case() {
   local failure="$1" version="$2" flag="$3" caller="$4" run_id="$5"
+  local script="$scratch/legacy.sh"
+  [[ "$flag" != true ]] || script="$scratch/publish.sh"
   state="$(mktemp -d "$scratch/case.XXXXXX")"
   printf 'old-version\n' >"$state/version"
   printf 'old-latest\n' >"$state/latest"
@@ -90,7 +99,7 @@ run_case() {
     REPOSITORY=devantler-tech/fixture SERVER_URL=https://github.com VERSION="$version" \
     REF_NAME="v$version" SHA=0123456789abcdef0123456789abcdef01234567 DEPLOY_PATH=deploy \
     ACTOR=fixture GH_TOKEN=offline-fixture \
-    bash "$scratch/publish.sh" >"$scratch/out" 2>&1
+    bash "$script" >"$scratch/out" 2>&1
 }
 caller="${identity#https://github.com/}"
 for failure in push digest sign verify version; do

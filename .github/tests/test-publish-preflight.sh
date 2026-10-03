@@ -119,6 +119,11 @@ lookup_expr() { # <expression> — the value GitHub would substitute for ${{ <ex
     secrets.GITHUB_TOKEN) printf '%s' "stub-not-a-secret" ;;
     env.*) lookup_line "$scratch/job-env" "${1#env.}" ;;
     inputs.*)
+      case "$1" in
+        "inputs.enable-signed-promotion == true || inputs.enable-signed-promotion == 'true'")
+          [[ "$(lookup_expr inputs.enable-signed-promotion)" == true ]] && printf true || printf false
+          return 0 ;;
+      esac
       input="${1#inputs.}"
       [[ "$(wf '.on.workflow_call.inputs | has($in)' --arg in "$input")" == true ]] || return 1
       # Passed by the caller (even as an empty string) wins; otherwise the declared default applies.
@@ -135,6 +140,9 @@ lookup_expr() { # <expression> — the value GitHub would substitute for ${{ <ex
       id="${id%%.outputs.*}"
       # An output the step never set is the empty string on a runner.
       lookup_line "$sim_outputs" "${id}.${1##*.outputs.}" || true
+      ;;
+    "!(inputs.enable-signed-promotion == true || inputs.enable-signed-promotion == 'true')")
+      [[ "$(lookup_expr inputs.enable-signed-promotion)" != true ]] && printf true || printf false
       ;;
     *) return 1 ;;
   esac
