@@ -22,12 +22,12 @@ changed="$(git diff --name-only)"
 untracked="$(git ls-files --others --exclude-standard)" || fail 'Could not establish untracked-path absence'
 [[ -z "$untracked" ]] || fail 'Refresh left untracked files'
 awk -F'\t' -v version="$version" '
-  $1 == version {
-    if (NF != 4 || $2 !~ /^(linux|macOS)$/ || $3 !~ /^(amd64|arm64)$/ ||
-        length($4) != 64 || $4 !~ /^[0-9a-f]+$/ || seen[$2 FS $3]++) exit 1
-    count++
-  }
+  /^[[:space:]]*(#|$)/ { next }
+  NF != 4 || $1 !~ /^[0-9]+\.[0-9]+\.[0-9]+$/ ||
+    $2 !~ /^(linux|macOS)$/ || $3 !~ /^(amd64|arm64)$/ ||
+    length($4) != 64 || $4 !~ /^[0-9a-f]+$/ || seen[$1 FS $2 FS $3]++ { exit 1 }
+  $1 == version { count++ }
   END { if (count != 4) exit 1 }
-' .scripts/gh-release-digests.tsv || fail 'Refresh did not bind all four unique platform assets'
+' .scripts/gh-release-digests.tsv || fail 'Complete manifest validation failed; current version needs four unique assets'
 printf 'version=%s\n' "$version" >>"${GITHUB_OUTPUT:?}"
 if [[ -n "$changed" ]]; then printf 'changed=true\n'; else printf 'changed=false\n'; fi >>"$GITHUB_OUTPUT"

@@ -129,6 +129,36 @@ for failed_read in status ls-files; do
 done
 unset FAIL_GIT_READ
 echo 'PASS: failed status and untracked-path reads stop without eligibility outputs'
+cp "$work/repo/.scripts/gh-release-digests.tsv" "$work/healthy-manifest"
+older_digest="$(printf '%64s' '' | tr ' ' e)"
+for corruption in version platform architecture digest fields duplicate; do
+  cp "$work/healthy-manifest" "$work/repo/.scripts/gh-release-digests.tsv"
+  older_version=2.89.0 older_os=linux older_arch=amd64 older_hash="$older_digest" extra=''
+  case "$corruption" in
+    version) older_version=invalid ;;
+    platform) older_os=windows ;;
+    architecture) older_arch=s390x ;;
+    digest) older_hash=invalid ;;
+    fields) extra=$'\textra' ;;
+  esac
+  printf '%s\t%s\t%s\t%s%s\n' "$older_version" "$older_os" "$older_arch" "$older_hash" "$extra" \
+    >>"$work/repo/.scripts/gh-release-digests.tsv"
+  if [[ "$corruption" == duplicate ]]; then
+    printf '2.89.0\tlinux\tamd64\t%s\n' "$older_digest" >>"$work/repo/.scripts/gh-release-digests.tsv"
+  fi
+  git -C "$work/repo" add .scripts/gh-release-digests.tsv
+  git -C "$work/repo" -c user.name=Fixture -c user.email=fixture@example.invalid -c commit.gpgsign=false commit -qm "$corruption"
+  : >"$work/output"
+  if prepare; then fail "retained $corruption corruption authorized preparation"; fi
+  grep -F 'Complete manifest validation failed' "$work/log" >/dev/null || {
+    cat "$work/log"; fail 'retained-row rejection did not reach manifest validation';
+  }
+  [[ ! -s "$work/output" ]] || fail 'retained corruption produced eligibility outputs'
+done
+cp "$work/healthy-manifest" "$work/repo/.scripts/gh-release-digests.tsv"
+git -C "$work/repo" add .scripts/gh-release-digests.tsv
+git -C "$work/repo" -c user.name=Fixture -c user.email=fixture@example.invalid -c commit.gpgsign=false commit -qm restored
+echo 'PASS: every retained row is validated before eligibility output'
 : >"$work/downloads"
 yq -i '.inputs."gh-version".default = "2.89.0"' "$work/repo/actions/setup-agent-skills/action.yaml"
 if prepare; then fail 'conflicting default versions accepted'; fi
