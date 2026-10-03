@@ -154,10 +154,10 @@ passing when either file changes. Because the repairing pull request cannot edit
 enforcement to `evaluate` while the `github-config` reconciliation is suspended, then restore both.
 
 Organization-required workflows ignore pull request title/body edits even when their trigger lists
-`edited`. `pr-metadata-guards.yaml` provides read-only feedback from reviewed main through
-`pull_request_target`; its validators use the workflow's immutable source revision and the candidate
-is data only. It has no required-status binding. Fork checkout protection remains enabled; a refused
-fork checkout is a visible feedback failure, and the existing full CI protection still applies.
+`edited`. `pr-metadata-guards.yaml` provides manually dispatched read-only feedback from reviewed main.
+It reads the current open catalogue PR through GitHub's API, binds validators to the workflow's
+immutable source revision, and treats the candidate as data only. It refuses fork PRs and other
+bases. It has no required-status binding; the existing full CI protection still applies.
 Keep `.github/tests/test-ci-metadata-events.sh` passing. Retain catalogue CI's `edited` trigger
 until trusted producer, current-head attribution and live enforcement are proven under #250.
 
