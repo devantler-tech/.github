@@ -13,6 +13,11 @@ on:
         required: false
         default: ""
         type: string
+      exclude-vendored:
+        description: "Opt in to excluding root vendor/ and third_party/ when ignore is empty; rollout retirement is tracked in #394"
+        required: false
+        default: false
+        type: boolean
       optional-project-auth:
         description: "Opt in to optional project integration; existing callers keep their behavior"
         required: false
@@ -63,13 +68,14 @@ jobs:
           TODO_EXPECTED_BEFORE: ${{ github.event.before || github.base_ref }}
           TODO_EXPECTED_COMMITS: ${{ toJSON(github.event.commits) }}
           TODO_EXPECTED_DIFF: ${{ github.event.pull_request.diff_url }}
-          TODO_EXPECTED_IGNORE: ${{ inputs.ignore }}
+          TODO_EXPECTED_IGNORE: ${{ inputs.ignore || ((inputs.exclude-vendored == true || inputs.exclude-vendored == 'true') && '^(vendor|third_party)/') || '' }}
         run: bash .devantler-tech-actions/.github/tests/todo-action-smoke.sh prepare
 
       - name: 🧪 Run actual wrapper offline
         uses: ./.devantler-tech-actions/actions/create-issues-from-todos
         with:
           ignore: ${{ inputs.ignore }}
+          exclude-vendored: ${{ inputs.exclude-vendored }}
           optional-project-auth: "true"
 
       # The composite checkout cleans this directory. Restore the exact workflow
@@ -125,6 +131,7 @@ jobs:
           app-private-key: ${{ secrets.APP_PRIVATE_KEY }}
           project: ${{ inputs.project }}
           ignore: ${{ inputs.ignore }}
+          exclude-vendored: ${{ inputs.exclude-vendored }}
           optional-project-auth: ${{ inputs.optional-project-auth }}
 
       # The sibling composite runs its own actions/checkout, whose git clean deletes this

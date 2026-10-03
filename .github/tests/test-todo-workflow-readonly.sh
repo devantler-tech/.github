@@ -46,7 +46,7 @@ jq -e '
   . as $ci | all($ids[]; . as $id | $ci.jobs[$id] |
     .uses == "./.github/workflows/scan-for-todo-comments-readonly.yaml" and
     .secrets == null and .env == null and .with["dry-run"] == true) and
-  $ci.jobs["test-scan-for-todo-comments"].with == {"dry-run":true} and
+  $ci.jobs["test-scan-for-todo-comments"].with == {"dry-run":true,"exclude-vendored":true} and
   $ci.jobs["test-scan-for-todo-comments-ignore"].with == {"dry-run":true, ignore:"^\\.github/tests/"}
 ' "$work/ci.json" >/dev/null || {
   echo 'FAIL: TODO smoke must use the secret-free read-only entrypoint and preserve inputs' >&2

@@ -37,6 +37,7 @@ guard() {
       ([$wf.jobs.todos.steps[] | select(.uses == "./.devantler-tech-actions/actions/create-issues-from-todos") | .with] !=
         [{"client-id":"${{ vars.APP_CLIENT_ID }}","app-private-key":"${{ secrets.APP_PRIVATE_KEY }}",
           project:"${{ inputs.project }}",ignore:"${{ inputs.ignore }}",
+          "exclude-vendored":"${{ inputs.exclude-vendored }}",
           "optional-project-auth":"${{ inputs.optional-project-auth }}"}])
     then error("production gate, permissions and project authentication must remain intact")
     elif $job == null or $job.if != "${{ inputs.dry-run }}" or
@@ -55,7 +56,7 @@ guard() {
     then error("action and fixture must resolve at this workflow commit")
     elif ([$job.steps[]|select(.uses == "./.devantler-tech-actions/actions/create-issues-from-todos")] |
       length != 1 or any((runnable|not) or
-        .with != {ignore:"${{ inputs.ignore }}","optional-project-auth":"true"}))
+        .with != {ignore:"${{ inputs.ignore }}","exclude-vendored":"${{ inputs.exclude-vendored }}","optional-project-auth":"true"}))
     then error("actual offline action must execute with unchanged ignore and no project")
     elif (["prepare","verify-once"] | all(. as $mode |
       [$job.steps[]|select(command == "bash .devantler-tech-actions/.github/tests/todo-action-smoke.sh "+$mode)] |
@@ -66,7 +67,8 @@ guard() {
     elif ([$job.steps[]|select(command == "bash .devantler-tech-actions/.github/tests/todo-action-smoke.sh prepare")|.env] !=
       [{TODO_EXPECTED_TOKEN:"${{ github.token }}",TODO_EXPECTED_BEFORE:"${{ github.event.before || github.base_ref }}",
         TODO_EXPECTED_COMMITS:"${{ toJSON(github.event.commits) }}",
-        TODO_EXPECTED_DIFF:"${{ github.event.pull_request.diff_url }}",TODO_EXPECTED_IGNORE:"${{ inputs.ignore }}"}])
+        TODO_EXPECTED_DIFF:"${{ github.event.pull_request.diff_url }}",
+        TODO_EXPECTED_IGNORE:"${{ inputs.ignore || ((inputs.exclude-vendored == true || inputs.exclude-vendored == \u0027true\u0027) && \u0027^(vendor|third_party)/\u0027) || \u0027\u0027 }}"}])
     then error("fixture expectations must bind independently to caller inputs")
     elif ($job.steps|to_entries|map(select(.value.with.path == ".devantler-tech-actions"))|.[0].key) as $checkout |
       ($job.steps|to_entries|map(select((.value|command)|endswith("todo-action-smoke.sh prepare")))|.[0].key) as $prepare |
