@@ -627,7 +627,7 @@ jobs:
 | `app-name`    | Input (string) | -          | Yes      | Container name in the deployment manifest to pin to the built image digest |
 | `deploy-path` | Input (string) | `./deploy` | No       | Path to the Kubernetes manifests directory packaged as the OCI artifact    |
 | `dry-run` | Input (boolean) | `false` | No | Skip publication and validate only the workflow interface |
-| `enable-caller-pin` | Input (boolean) | `false` | No       | Refuse to publish unless the caller pinned this workflow to a 40-character commit SHA. The signing certificate records the calling ref, and the cluster's trust rules verify it, so an unpinned caller lets a superseded revision mint a trusted signature. Opt-in during rollout (devantler-tech/actions#864); every current caller already qualifies |
+| `enable-caller-pin` | Input (boolean) | `true` | No | Require a 40-character commit-SHA caller before signing. The authenticated OIDC calling ref is the certificate identity. Explicit false remains supported during caller cleanup in #284 |
 | `enable-signed-promotion` | Input (boolean) | `false` | No | Stage the image and manifests, sign and verify both exact digests before exposing version tags, then move latest only for stable releases. Requires `enable-caller-pin`; rollout is tracked in #371 |
 
 Opt in with both `enable-signed-promotion: true` and `enable-caller-pin: true` to stage the image and manifests under run-specific tags. Both exact digests must pass signing and identity verification before version tags are exposed; prereleases never move `latest`. Image promotion preserves the verified manifest format and checks its produced digest. Registry tag writes are sequential, so a promotion failure can leave only one version or latest tag updated; this is not an atomic release transaction. Existing-version refusal and production caller adoption remain in #371 and #242.
@@ -674,7 +674,7 @@ jobs:
 | `oci-name`    | Input (string) | `${{ github.repository }}` | No       | OCI repository name (`<owner>/<name>`) the artifact is published under, without the registry prefix or trailing `/manifests`. Override for invalid OCI path components |
 | `deploy-path` | Input (string) | `./deploy`           | No       | Path to the Kubernetes manifests directory packaged as the OCI artifact                                                              |
 | `dry-run` | Input (boolean) | `false` | No | Skip publication and validate only the workflow interface |
-| `enable-caller-pin` | Input (boolean) | `false` | No       | Refuse to publish unless the caller pinned this workflow to a 40-character commit SHA. The signing certificate records the calling ref, and the cluster's trust rules verify it, so an unpinned caller lets a superseded revision mint a trusted signature. Opt-in during rollout (devantler-tech/actions#864); every current caller already qualifies |
+| `enable-caller-pin` | Input (boolean) | `true` | No | Require a 40-character commit-SHA caller before signing. The authenticated OIDC calling ref is the certificate identity. Explicit false remains supported during caller cleanup in #284 |
 | `enable-signed-promotion` | Input (boolean) | `false` | No | Stage, sign and verify the digest before publishing version and stable latest tags. Requires `enable-caller-pin`; rollout and retirement are tracked in #371 |
 
 </details>
