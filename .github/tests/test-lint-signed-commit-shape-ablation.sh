@@ -161,4 +161,19 @@ grep -qF "$call_message" <<<"$out" ||
   fail "decoy comment: a comment spelling the call satisfied the signing-API assertion; got: ${out}"
 echo "ok: decoy comment — a comment spelling the call does not stand in for the mutation"
 
-echo "PASS: the createCommitOnBranch assertion matches the call by shape, not by spacing, and still refuses a lane that dropped it"
+for identity in renovatebot 'github-actions[bot]'; do
+  fixture="$work/identity-policy.yaml"
+  IDENTITY="$identity" yq '.jobs["apply-fixes"].if |= sub("renovatebot", strenv(IDENTITY) + "-changed")' "$signer" >"$fixture"
+  out="$(run_guard "$fixture")"
+  grep -qF 'complete recorded dependency-alias policy' <<<"$out" ||
+    fail "changed alias policy was not rejected at its policy boundary"
+  echo "ok: identity policy mutation is rejected before the structure digest"
+done
+fixture="$work/extra-exclusion.yaml"
+yq '.jobs["apply-fixes"].if |= sub("renovatebot", "renovatebot\",\"github-actions[bot]")' "$signer" >"$fixture"
+out="$(run_guard "$fixture")"
+grep -qF 'complete recorded dependency-alias policy' <<<"$out" ||
+  fail "an added automation exclusion was not rejected at its policy boundary"
+echo "ok: automation exclusion requires an explicit policy decision"
+
+echo "PASS: signing call shape and exact branch eligibility retain meaningful positive and negative controls"
