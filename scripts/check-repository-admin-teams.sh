@@ -8,7 +8,19 @@ mode=installation
 [[ $# == 0 || ( $# == 1 && "$1" == --organization-admin ) ]] || { echo 'usage: check-repository-admin-teams.sh [--organization-admin]' >&2; exit 2; }
 [[ $# == 0 ]] || mode=organization-admin
 work="$(mktemp -d)"
-trap 'rm -rf "$work"' EXIT
+audit_finished=0
+# Bash 3.2 can report a nounset abort as zero; only a completed audit keeps its result.
+audit_cleanup() {
+  local status=$?
+  trap - EXIT
+  rm -rf "$work" || status=2
+  if [[ "$audit_finished" != 1 ]]; then
+    echo 'repository-admin-teams: UNKNOWN; audit did not finish' >&2
+    status=2
+  fi
+  exit "$status"
+}
+trap 'audit_cleanup' EXIT
 # Effective Boolean metadata supports custom roles. The documented singular
 # field is sufficient for known built-in roles; malformed or conflicting rights
 # and custom roles without effective metadata remain unknown.
@@ -189,6 +201,8 @@ if [[ "$mode" == installation ]]; then
 fi
 if ((findings > 0)); then
   echo "repository-admin-teams: $findings policy finding(s) across $checked active repositories" >&2
+  audit_finished=1
   exit 1
 fi
 echo "repository-admin-teams: PASS; source=$mode; all $checked active repositories have exactly one Admins admin team"
+audit_finished=1

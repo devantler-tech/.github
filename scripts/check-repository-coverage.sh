@@ -31,7 +31,19 @@ repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 render="${REPOSITORY_COVERAGE_RENDER:-}"
 live="${REPOSITORY_COVERAGE_LIVE:-}"
 work="$(mktemp -d)"
-trap 'rm -rf "$work"' EXIT
+audit_finished=0
+# Bash 3.2 can report a nounset abort as zero; only a completed audit keeps its result.
+audit_cleanup() {
+  local status=$?
+  trap - EXIT
+  rm -rf "$work" || status=2
+  if [[ "$audit_finished" != 1 ]]; then
+    echo 'repository-coverage: UNKNOWN; audit did not finish' >&2
+    status=2
+  fi
+  exit "$status"
+}
+trap 'audit_cleanup' EXIT
 
 abort() {
   echo "repository-coverage: $*" >&2
@@ -138,7 +150,9 @@ fi
 live_count="$(wc -l <"$work/live-active" | tr -d ' ')"
 if ((findings > 0)); then
   echo "repository-coverage: ${findings} finding(s) across ${live_count} live repositories" >&2
+  audit_finished=1
   exit 1
 fi
 
 echo "repository-coverage: all ${live_count} live repositories are declared in deploy/"
+audit_finished=1
