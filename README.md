@@ -630,6 +630,8 @@ jobs:
 
 Because the signing happens inside this reusable workflow, the cosign certificate identity (OIDC `subject`) is this workflow's path — `https://github.com/devantler-tech/.github/.github/workflows/publish-manifests.yaml@<ref>` — not the caller's. Verifiers (e.g. a Flux `OCIRepository` `verify.matchOIDCIdentity`) must match that.
 
+Opt in with both `enable-signed-promotion: true` and `enable-caller-pin: true` to publish under a non-version staging tag first. The workflow signs and verifies the produced digest against its exact SHA-pinned OIDC identity before exposing the version tag; only stable releases then move `latest`. Failed signing or verification leaves both consumer-selectable tags unchanged, although the staging artifact remains. Existing-version immutability, the application-image sibling and consumer migration remain tracked in #371; this does not yet refuse an existing version or change existing callers.
+
 #### Usage
 
 ```yaml
@@ -660,6 +662,7 @@ jobs:
 | `deploy-path` | Input (string) | `./deploy`           | No       | Path to the Kubernetes manifests directory packaged as the OCI artifact                                                              |
 | `dry-run` | Input (boolean) | `false` | No | Skip publication and validate only the workflow interface |
 | `enable-caller-pin` | Input (boolean) | `false` | No       | Refuse to publish unless the caller pinned this workflow to a 40-character commit SHA. The signing certificate records the calling ref, and the cluster's trust rules verify it, so an unpinned caller lets a superseded revision mint a trusted signature. Opt-in during rollout (devantler-tech/actions#864); every current caller already qualifies |
+| `enable-signed-promotion` | Input (boolean) | `false` | No | Stage, sign and verify the digest before publishing version and stable latest tags. Requires `enable-caller-pin`; rollout and retirement are tracked in #371 |
 
 </details>
 
