@@ -424,7 +424,10 @@ The generated read-only workflow runs the exact production steps with an empty
 project and all paths excluded in required CI; both offline dry-run calls remain.
 Keep default/forwarding controls, projection parity and all three caller boundaries
 covered. This proves the no-project wrapper path; #340 still owns live project
-association, consumer rollout and flag retirement.
+association, consumer rollout and flag retirement. The separately generated default
+fixture retains the production defaults and native conditional routing, with only
+offline dependencies. Keep both its compatibility caller and missing-token control
+required; this fixture never proves live token generation or project association.
 
 **Manifest naming:** `validate-naming` runs by default using the caller's versioned
 configuration. An explicit `enabled: "false"` skips configuration reads and setup.

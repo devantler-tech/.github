@@ -3232,6 +3232,10 @@ jobs:
         shell: bash
         run: bash .github/tests/test-todo-workflow-readonly-controls.sh
 
+      - name: 🧪 Check native TODO compatibility replay and independent boundaries
+        shell: bash
+        run: bash .github/tests/test-todo-production-default-fixture.sh
+
       - name: 📋 Check ci.yaml test wiring is complete
         shell: bash
         run: |
@@ -4062,6 +4066,22 @@ jobs:
       project: ""
       # Exercise the production wrapper without authorizing or requesting issue writes.
       ignore: ".*"
+
+  test-scan-for-todo-comments-default:
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    name: "[Test] Scan for TODO Comments - Production Compatibility Defaults"
+    uses: ./.github/workflows/scan-for-todo-comments-default-fixture.yaml
+    permissions:
+      contents: read
+
+  test-scan-for-todo-comments-default-control:
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    name: "[Test] Scan for TODO Comments - Reject Missing Project Token"
+    uses: ./.github/workflows/scan-for-todo-comments-default-fixture.yaml
+    permissions:
+      contents: read
+    with:
+      fixture-skip-app-token: true
 
   test-scan-for-todo-comments-ignore:
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
@@ -5775,6 +5795,8 @@ jobs:
       - test-scan-for-todo-comments
       - test-scan-for-todo-comments-ignore
       - test-scan-for-todo-comments-no-project
+      - test-scan-for-todo-comments-default
+      - test-scan-for-todo-comments-default-control
       - test-sync-cluster-policies
       - test-sync-cluster-policies-allowlist
       - test-update-agent-skills
@@ -5904,6 +5926,8 @@ jobs:
             ${{ needs.test-scan-for-todo-comments.result }}
             ${{ needs.test-scan-for-todo-comments-ignore.result }}
             ${{ needs.test-scan-for-todo-comments-no-project.result }}
+            ${{ needs.test-scan-for-todo-comments-default.result }}
+            ${{ needs.test-scan-for-todo-comments-default-control.result }}
             ${{ needs.test-sync-cluster-policies.result }}
             ${{ needs.test-sync-cluster-policies-allowlist.result }}
             ${{ needs.test-update-agent-skills.result }}

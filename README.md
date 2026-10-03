@@ -800,6 +800,27 @@ write permissions, secrets, input drift or weakened execution. Production consum
 using `scan-for-todo-comments.yaml` with their existing authorization. Live project behavior
 and optional project-authentication rollout remain tracked separately in #340.
 
+### 📝 Scan for TODO Comments (Default Fixture)
+
+[.github/workflows/scan-for-todo-comments-default-fixture.yaml](.github/workflows/scan-for-todo-comments-default-fixture.yaml)
+is a generated catalogue CI fixture. It retains the production branch and input
+defaults while replacing external token generation, checkout and Docker execution
+with offline dependencies. GitHub evaluates the original composite conditions.
+Required positive and broken-token callers verify default-off routing, the default
+project and exact token forwarding without creating issues or changing projects.
+This is wrapper coverage, not live token generation or project-adoption proof.
+
+#### Secrets and Inputs
+
+| Key | Type | Default | Required | Description |
+| --- | --- | --- | --- | --- |
+| `APP_PRIVATE_KEY` | Secret | - | No | Retained source interface; never pass a key to this fixture |
+| `dry-run` | Input | `false` | No | Retained production default; the fixture executes the production branch |
+| `ignore` | Input | `""` | No | Forwarded scanner exclusion pattern |
+| `optional-project-auth` | Input | `false` | No | Retained compatibility default, omitted by the positive caller |
+| `project` | Input | `organization/devantler-tech/5` | No | Retained project default, checked by the offline dependency |
+| `fixture-skip-app-token` | Input | `false` | No | Fixture-only deliberate fault proving missing token output is rejected |
+
 ### 🔍 Scan for Workflow Vulnerabilities
 
 <details>
