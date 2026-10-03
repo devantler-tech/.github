@@ -2,7 +2,7 @@
 
 Run [`gh skill update --all`](https://github.blog/changelog/2026-04-16-manage-agent-skills-with-github-cli/) against installed skills and report any changes. Pairs with [`setup-agent-skills`](../setup-agent-skills/README.md).
 
-The `github-*` frontmatter that `gh skill install` injects into each `SKILL.md` (github-repo, github-path, github-ref, github-tree-sha) is the source of truth — this action asks the CLI to refresh those files against their upstreams, then reports whether any of them changed. It is agent-neutral: it operates on the `SKILL.md` files in `dir`, so it refreshes skills installed for any agent (Copilot, Claude Code, …). No lockfile.
+The `github-*` frontmatter that `gh skill install` injects into each `SKILL.md` (github-repo, github-path, github-ref, github-tree-sha) is the source of truth — this action asks the CLI to refresh those skills against their upstreams, then reports whether any file in a skill's directory changed. It is agent-neutral: it operates on the `SKILL.md` files in `dir`, so it refreshes skills installed for any agent (Copilot, Claude Code, …). No lockfile.
 
 ## Inputs
 
@@ -19,7 +19,7 @@ The `github-*` frontmatter that `gh skill install` injects into each `SKILL.md` 
 
 | Name | Description |
 |------|-------------|
-| `changed` | `true` when at least one `SKILL.md` was modified, `false` otherwise |
+| `changed` | `true` when any file in an installed skill's directory (the directory holding its `SKILL.md`) was added, removed or modified — content, executable bit or symlink target — so an update that touches only a bundled script, reference or template still counts; `false` otherwise |
 | `updated-skills` | Cleaned stdout from `gh skill update --all` (blank when nothing changed) |
 
 ## Usage
@@ -43,18 +43,21 @@ jobs:
       contents: write
       pull-requests: write
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@<full-commit-sha> # vX.Y.Z
         with:
-          persist-credentials: true
+          persist-credentials: false
 
       - id: update
-        uses: devantler-tech/.github/actions/update-agent-skills@v5
+        uses: devantler-tech/.github/actions/update-agent-skills@<full-commit-sha> # vX.Y.Z
         with:
           dir: .agents/skills
 
       - if: steps.update.outputs.changed == 'true'
-        uses: peter-evans/create-pull-request@v8
+        uses: peter-evans/create-pull-request@<full-commit-sha> # vX.Y.Z
         with:
+          sign-commits: true
+          token: ${{ github.token }}
+          branch-token: ${{ github.token }}
           commit-message: "chore(deps): update agent skills"
           title: "chore(deps): update agent skills"
           body: |
@@ -78,20 +81,9 @@ For repositories that organise skills into subdirectories (e.g. a plugin marketp
 #   ...
 
 - id: update
-  uses: devantler-tech/.github/actions/update-agent-skills@v5
+  uses: devantler-tech/.github/actions/update-agent-skills@<full-commit-sha> # vX.Y.Z
   with:
     dir: plugins   # discovers plugins/go/skills, plugins/github/skills, … and updates each
-```
-
-## Migrating from `update-copilot-skills` (v4 and earlier)
-
-`update-copilot-skills` was renamed to `update-agent-skills`; its inputs, outputs, and behaviour are unchanged. Update the `uses:` reference:
-
-```diff
-- uses: devantler-tech/.github/actions/update-copilot-skills@v4
-+ uses: devantler-tech/.github/actions/update-agent-skills@v5
-   with:
-     dir: .agents/skills
 ```
 
 ## Requirements

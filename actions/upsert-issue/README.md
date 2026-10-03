@@ -26,11 +26,13 @@ When several issues share the title, the newest open one is used, otherwise the 
 
 ## Usage
 
+The containing job needs `issues: write`.
+
 ### Create or update an issue
 
 ```yaml
 steps:
-  - uses: devantler-tech/.github/actions/upsert-issue@main
+  - uses: devantler-tech/.github/actions/upsert-issue@<full-commit-sha> # vX.Y.Z
     with:
       title: "[report] My Report"
       body-file: report.md
@@ -40,7 +42,7 @@ steps:
 
 ```yaml
 steps:
-  - uses: devantler-tech/.github/actions/upsert-issue@main
+  - uses: devantler-tech/.github/actions/upsert-issue@<full-commit-sha> # vX.Y.Z
     with:
       title: "[report] My Report"
       body: "No violations found."
@@ -55,7 +57,7 @@ steps:
   - id: report
     run: bun run report:my-report
 
-  - uses: devantler-tech/.github/actions/upsert-issue@main
+  - uses: devantler-tech/.github/actions/upsert-issue@<full-commit-sha> # vX.Y.Z
     with:
       title: "[report] My Report"
       body-file: ${{ steps.report.outputs.report-path }}

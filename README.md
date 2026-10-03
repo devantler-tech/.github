@@ -14,7 +14,7 @@ The shared CI/CD building blocks used across all DevantlerTech projects — both
 ## Using them
 
 An **action** is a step inside one of your jobs. A **reusable workflow** replaces a whole job. Both
-are called by path from this repository, pinned to a ref:
+are called by path from this repository, pinned to a full commit SHA:
 
 ```yaml
 jobs:
@@ -22,16 +22,16 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       # an action — a step in your own job
-      - uses: devantler-tech/.github/actions/setup-go-toolchain@<ref>
+      - uses: devantler-tech/.github/actions/setup-go-toolchain@<full-commit-sha> # vX.Y.Z
 
   release:
     # a reusable workflow — the whole job comes from here
-    uses: devantler-tech/.github/.github/workflows/create-release.yaml@<ref>
+    uses: devantler-tech/.github/.github/workflows/create-release.yaml@<full-commit-sha> # vX.Y.Z
     secrets:
       APP_PRIVATE_KEY: ${{ secrets.APP_PRIVATE_KEY }}
 ```
 
-Pin `<ref>` to a commit SHA. Each entry in the tables below links to its own inputs and outputs.
+Replace `<full-commit-sha>` with the selected release's full 40-character commit SHA and `vX.Y.Z` with its version. The placeholders must be replaced before running these examples. Each entry in the tables below links to its own inputs and outputs.
 
 The diagram below shows how GitHub Workflows, Jobs, Steps, Reusable Workflows, and Actions relate.
 
@@ -73,9 +73,9 @@ flowchart TD
 | [update-agent-skills](actions/update-agent-skills/README.md) | Run `gh skill update --all` against installed skills and report changes |
 | [upload-coverage](actions/upload-coverage/README.md) | Upload a Cobertura coverage report to GitHub Code Quality |
 | [upsert-issue](actions/upsert-issue/README.md) | Create, update, reopen, or close a GitHub issue by title |
-| [validate-naming](actions/validate-naming/README.md) | Opt-in, configurable Kubernetes manifest and machine patch naming validation |
+| [validate-naming](actions/validate-naming/README.md) | Configurable Kubernetes manifest and machine patch naming validation |
 | [validate-retired-repo-links](actions/validate-retired-repo-links/README.md) | Catch links to retired GitHub repositories with documented historical exceptions |
-| [validate-shell-pipelines](actions/validate-shell-pipelines/README.md) | Opt-in detection of early-exit grep assertions that can invert results under pipefail |
+| [validate-shell-pipelines](actions/validate-shell-pipelines/README.md) | Detect early-exit grep assertions that can invert results under pipefail |
 
 ### Distribution
 
@@ -93,7 +93,7 @@ them by path as shown above. The reasoning, and when it would be worth revisitin
 [`world-at-ruin-required-regressions.yaml`](.github/workflows/world-at-ruin-required-regressions.yaml)
 is a target-specific GitHub ruleset workflow source, not a caller-facing reusable workflow. The
 World at Ruin organization ruleset is managed declaratively by `devantler-tech/.github` and selects
-this repository, path and `refs/heads/main`. provider-upjet-github v0.19.1 does not expose GitHub's
+this repository, path and `refs/heads/main`. provider-upjet-github v0.20.0 does not expose GitHub's
 immutable workflow SHA selector, so reviewed Actions `main` is the strongest source binding the
 deployed provider can express. `github.workflow_sha` still binds each individual run to the exact
 Actions revision GitHub selected. At runtime the workflow checks out candidate product bytes at
@@ -172,6 +172,8 @@ Consumer rollout and flag removal are tracked in [devantler-tech/actions#1186](h
 
 The release is published with a GitHub App token, so the caller must set the `APP_CLIENT_ID` repository/organization **variable** alongside the `APP_PRIVATE_KEY` **secret**. The App always needs `contents: write` (tags/releases). By default it also needs `issues: write` + `pull-requests: write` for semantic-release success/fail hooks. Set `disable-issue-side-effects: true` to suppress those hooks and mint the token with `contents: write` only.
 
+Npm alignment is rollout-gated and off by default while [#392](https://github.com/devantler-tech/.github/issues/392) tracks caller adoption and removal of the temporary flag. Set `align-npm-with-consumer-contract: true` to read requirements from the consumer's `packageManager` field and npm entries under `devEngines.packageManager` after checkout. An exact stable `packageManager` version is installed exactly; integrity-suffixed descriptors fail explicitly because this workflow cannot verify their digest. Otherwise, blocking `devEngines` entries must describe complete npm majors (`11`, `11.x`, `^11.0.0`, or `>=11.0.0 <12.0.0`). Arrays are alternatives: versionless npm entries satisfy the contract, and when no entry matches the final alternative's `onFail` controls the result. `warn` and `ignore` keep the current npm; `error` and `download` align to a supported complete-major alternative or fail. Compatible declarations resolve to the exact `packageManager` version, consumers with no blocking npm version keep the bundled npm, and explicit nulls, unknown properties, malformed, contradictory, prerelease, or otherwise unenforceable contracts fail explicitly.
+
 Release runs for one repository and ref run one at a time, in the order they were queued, and waiting runs are kept (up to GitHub's limit of 100) rather than cancelled. Two merges that land close together therefore produce two sequential release runs instead of racing for the same version. Callers need no `concurrency` block of their own.
 
 Consumers that maintain explicit `type!:` breaking-change handling can set `warn-missing-breaking-bang: true` to catch accidental removal. Before releasing, the workflow warns when an explicitly listed `@semantic-release/commit-analyzer` has no nonempty `parserOpts.breakingHeaderPattern`. The check reads JSON from `.releaserc`, `.releaserc.json`, or the `release` key in `package.json`; it never changes files or blocks a release. The default is off, so consumers that have not adopted this convention get no warning noise.
@@ -187,9 +189,10 @@ For catalogue self-tests, set `offline-test: true` together with `dry-run: true`
 ```yaml
 jobs:
   release:
-    uses: devantler-tech/.github/.github/workflows/create-release.yaml@{ref} # ref
+    uses: devantler-tech/.github/.github/workflows/create-release.yaml@<full-commit-sha> # vX.Y.Z
     with:
       disable-issue-side-effects: true
+      align-npm-with-consumer-contract: true
     secrets:
       APP_PRIVATE_KEY: ${{ secrets.APP_PRIVATE_KEY }}
 ```
@@ -201,6 +204,7 @@ jobs:
 | `APP_CLIENT_ID`              | Variable        | -       | Yes      | GitHub App client ID used to mint the release token                       |
 | `APP_PRIVATE_KEY`            | Secret          | -       | No       | GitHub App private key; required for consumer releases and previews, omitted for offline tests |
 | `disable-issue-side-effects` | Input (boolean) | `false` | No       | Disable success/fail hooks and omit issue/pull-request token permissions  |
+| `align-npm-with-consumer-contract` | Input (boolean) | `false` | No | Temporarily opt in to npm contract alignment; [#392](https://github.com/devantler-tech/.github/issues/392) tracks retirement |
 | `warn-missing-breaking-bang` | Input (boolean) | `false` | No       | Warn about missing explicit breaking-header handling in supported JSON configurations |
 | `dry-run`                    | Input (boolean) | `false` | No       | Run semantic-release in dry-run mode (no tags or publishes)               |
 | `offline-test`               | Input (boolean) | `false` | No       | Run secret-free catalogue release-decision fixtures; requires dry-run     |
@@ -219,7 +223,7 @@ jobs:
 ```yaml
 jobs:
   delete-runs:
-    uses: devantler-tech/.github/.github/workflows/delete-workflow-runs.yaml@{ref} # ref
+    uses: devantler-tech/.github/.github/workflows/delete-workflow-runs.yaml@<full-commit-sha> # vX.Y.Z
     permissions:
       actions: write
       contents: read
@@ -245,6 +249,30 @@ jobs:
 
 </details>
 
+### 🗑️ Delete Workflow Runs (Read-Only)
+
+[.github/workflows/delete-workflow-runs-readonly.yaml](.github/workflows/delete-workflow-runs-readonly.yaml)
+executes the same pinned cleanup action with `actions: read` and `contents: read` only.
+Use it for previews and catalogue tests that must have no authority to delete workflow history.
+Deletion requires the production entrypoint above and an explicit `dry-run: false`.
+
+The read-only entrypoint is generated from the complete production wrapper by
+`bash .github/scripts/generate-cleanup-readonly.sh`. Required CI checks preserve its
+input behavior and source parity. Hosted dry-runs prove execution and the credential
+boundary; deterministic native retention and deletion fixtures are tracked in #350.
+
+#### Inputs
+
+| Key | Type | Default | Required | Description |
+| --- | --- | --- | --- | --- |
+| `repository` | Input (string) | Calling repo | No | Repository whose workflow runs are previewed |
+| `days` | Input (number) | `30` | No | Days-worth of runs to retain |
+| `minimum-runs` | Input (number) | `6` | No | Minimum runs to retain per workflow |
+| `delete-workflow-pattern` | Input (string) | - | No | Workflow name or filename to match |
+| `delete-workflow-by-state-pattern` | Input (string) | `ALL` | No | Comma-separated workflow state filters |
+| `delete-run-by-conclusion-pattern` | Input (string) | `ALL` | No | Comma-separated run conclusion filters |
+| `dry-run` | Input (boolean) | `true` | No | Log proposed deletions; a false value still cannot grant deletion authority |
+
 ### 🛡️ Dependency Review
 
 <details>
@@ -259,7 +287,9 @@ It is **non-blocking by default** (`warn-only: true`, `fail-on-severity: critica
 ```yaml
 jobs:
   dependency-review:
-    uses: devantler-tech/.github/.github/workflows/dependency-review.yaml@{ref} # ref
+    uses: devantler-tech/.github/.github/workflows/dependency-review.yaml@<full-commit-sha> # vX.Y.Z
+    permissions:
+      contents: read
 ```
 
 #### Inputs
@@ -293,7 +323,7 @@ substitute for this independent credential.
 ```yaml
 jobs:
   dependency-review:
-    uses: devantler-tech/.github/.github/workflows/dependency-review.yaml@{ref} # ref
+    uses: devantler-tech/.github/.github/workflows/dependency-review.yaml@<full-commit-sha> # vX.Y.Z
     permissions:
       contents: read
     with:
@@ -322,7 +352,11 @@ caller contexts where the independent credential is available.
 ```yaml
 jobs:
   pages:
-    uses: devantler-tech/.github/.github/workflows/deploy-github-pages.yaml@{ref} # ref
+    uses: devantler-tech/.github/.github/workflows/deploy-github-pages.yaml@<full-commit-sha> # vX.Y.Z
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
     with:
       ruby-version: "3.3" # optional
       jekyll-env: production # optional
@@ -414,6 +448,12 @@ differ from event delivery order; evaluations still read current PR state. Actor
 and evidence-removal events keep their intentional workflow-level cancellation of stale runs, using
 the compatible `single` queue. Additional arrivals beyond GitHub's 100-pending limit are cancelled.
 
+The catalogue's queue test checks that all three queued jobs complete successfully
+in the same run attempt. Its observer retries transient HTTP server failures with
+bounded backoff and discards failed responses. Missing pages, duplicate jobs,
+stale attempts and unsuccessful slots fail the check; use **Re-run all jobs** to
+repeat the burst after a failure.
+
 **With review enforcement turned on** — the `enforce-review-gates` input, or the
 `ENFORCE_MERGE_GATES` repository/organization variable — it additionally requires, on the PR's
 _current_ commit, both a passing review (CodeRabbit approved, or a clean Codex pass when CodeRabbit
@@ -449,7 +489,7 @@ on:
 
 jobs:
   auto-merge:
-    uses: devantler-tech/.github/.github/workflows/enable-auto-merge.yaml@{ref} # ref
+    uses: devantler-tech/.github/.github/workflows/enable-auto-merge.yaml@<full-commit-sha> # vX.Y.Z
     permissions:
       actions: read
       pull-requests: write
@@ -517,7 +557,7 @@ MegaLinter always runs read-only, without a GitHub token or persisted checkout c
 ```yaml
 jobs:
   lint:
-    uses: devantler-tech/.github/.github/workflows/lint.yaml@{ref} # ref
+    uses: devantler-tech/.github/.github/workflows/lint.yaml@<full-commit-sha> # vX.Y.Z
     permissions:
       contents: read
     with:
@@ -558,7 +598,7 @@ on:
 
 jobs:
   publish-app:
-    uses: devantler-tech/.github/.github/workflows/publish-app.yaml@{ref} # ref
+    uses: devantler-tech/.github/.github/workflows/publish-app.yaml@<full-commit-sha> # vX.Y.Z
     permissions:
       contents: read # checkout
       packages: write # push image + manifests OCI artifact
@@ -568,7 +608,7 @@ jobs:
       deploy-path: ./deploy # optional
 ```
 
-> **Note:** Must be invoked from a semver tag (`vX.Y.Z`) — Docker semver tagging and Flux `OCIRepository` semver selection depend on it. The calling job must grant `packages: write` and `id-token: write` (and `contents: read` for checkout); no secrets are required (auth uses the GHCR-scoped `GITHUB_TOKEN`).
+> **Note:** Must be invoked from a complete semantic-version tag (`vMAJOR.MINOR.PATCH`, optionally with `-PRERELEASE` and `+BUILD`) — Docker semver tagging and Flux `OCIRepository` semver selection depend on it. Anything else, such as `v1.2.3garbage` or a version whose numbers exceed 15 digits, is refused before publishing; build metadata is dropped from the published version because an OCI tag cannot carry `+`. The `app-name` container check on `deploy-path/deployment.yaml` also runs before anything is pushed, so a bad manifest leaves the registry untouched. The calling job must grant `packages: write` and `id-token: write` (and `contents: read` for checkout); no secrets are required (auth uses the GHCR-scoped `GITHUB_TOKEN`).
 
 #### Secrets and Inputs
 
@@ -590,6 +630,8 @@ jobs:
 
 Because the signing happens inside this reusable workflow, the cosign certificate identity (OIDC `subject`) is this workflow's path — `https://github.com/devantler-tech/.github/.github/workflows/publish-manifests.yaml@<ref>` — not the caller's. Verifiers (e.g. a Flux `OCIRepository` `verify.matchOIDCIdentity`) must match that.
 
+Opt in with both `enable-signed-promotion: true` and `enable-caller-pin: true` to publish under a non-version staging tag first. The workflow signs and verifies the produced digest against its exact SHA-pinned OIDC identity before exposing the version tag; only stable releases then move `latest`. Failed signing or verification leaves both consumer-selectable tags unchanged, although the staging artifact remains. Existing-version immutability, the application-image sibling and consumer migration remain tracked in #371; this does not yet refuse an existing version or change existing callers.
+
 #### Usage
 
 ```yaml
@@ -600,7 +642,7 @@ on:
 
 jobs:
   publish-manifests:
-    uses: devantler-tech/.github/.github/workflows/publish-manifests.yaml@{ref} # ref
+    uses: devantler-tech/.github/.github/workflows/publish-manifests.yaml@<full-commit-sha> # vX.Y.Z
     permissions:
       contents: read # checkout
       packages: write # push manifests OCI artifact
@@ -610,7 +652,7 @@ jobs:
       deploy-path: ./deploy # optional
 ```
 
-> **Note:** Must be invoked from a semver tag (`vX.Y.Z`) — Flux `OCIRepository` semver selection depends on it. The calling job must grant `packages: write` and `id-token: write` (and `contents: read` for checkout); no secrets are required (auth uses the GHCR-scoped `GITHUB_TOKEN`). Override `oci-name` when the repo name is an invalid OCI path component (e.g. `.github` → `devantler-tech/github-config`).
+> **Note:** Must be invoked from a complete semantic-version tag (`vMAJOR.MINOR.PATCH`, optionally with `-PRERELEASE` and `+BUILD`) — Flux `OCIRepository` semver selection depends on it. Anything else, such as `v1.2.3garbage` or a version whose numbers exceed 15 digits, is refused before publishing; build metadata is dropped from the published version because an OCI tag cannot carry `+`. The calling job must grant `packages: write` and `id-token: write` (and `contents: read` for checkout); no secrets are required (auth uses the GHCR-scoped `GITHUB_TOKEN`). Override `oci-name` when the repo name is an invalid OCI path component (e.g. `.github` → `devantler-tech/github-config`).
 
 #### Secrets and Inputs
 
@@ -620,6 +662,7 @@ jobs:
 | `deploy-path` | Input (string) | `./deploy`           | No       | Path to the Kubernetes manifests directory packaged as the OCI artifact                                                              |
 | `dry-run` | Input (boolean) | `false` | No | Skip publication and validate only the workflow interface |
 | `enable-caller-pin` | Input (boolean) | `false` | No       | Refuse to publish unless the caller pinned this workflow to a 40-character commit SHA. The signing certificate records the calling ref, and the cluster's trust rules verify it, so an unpinned caller lets a superseded revision mint a trusted signature. Opt-in during rollout (devantler-tech/actions#864); every current caller already qualifies |
+| `enable-signed-promotion` | Input (boolean) | `false` | No | Stage, sign and verify the digest before publishing version and stable latest tags. Requires `enable-caller-pin`; rollout and retirement are tracked in #371 |
 
 </details>
 
@@ -635,7 +678,10 @@ jobs:
 ```yaml
 jobs:
   publish-library:
-    uses: devantler-tech/.github/.github/workflows/publish-dotnet-library.yaml@{ref} # ref
+    uses: devantler-tech/.github/.github/workflows/publish-dotnet-library.yaml@<full-commit-sha> # vX.Y.Z
+    permissions:
+      contents: read
+      packages: write
     secrets:
       NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
 ```
@@ -661,7 +707,7 @@ jobs:
 ```yaml
 jobs:
   dotnet-test:
-    uses: devantler-tech/.github/.github/workflows/run-dotnet-tests.yaml@{ref} # ref
+    uses: devantler-tech/.github/.github/workflows/run-dotnet-tests.yaml@<full-commit-sha> # vX.Y.Z
     permissions:
       contents: read
       packages: read
@@ -698,7 +744,10 @@ The same explicit token boundary keeps the Code Quality uploader out of credenti
 ```yaml
 jobs:
   todos:
-    uses: devantler-tech/.github/.github/workflows/scan-for-todo-comments.yaml@{ref} # ref
+    uses: devantler-tech/.github/.github/workflows/scan-for-todo-comments.yaml@<full-commit-sha> # vX.Y.Z
+    permissions:
+      contents: read
+      issues: write
     with:
       ignore: "^third_party/"
     secrets:
@@ -713,15 +762,79 @@ jobs:
 | `APP_PRIVATE_KEY` | Secret          | -       | No       | Required for production project integration; unused in dry-run |
 | `dry-run`         | Input (boolean) | `false` | No       | Exercise the action wrapper offline without creating issues |
 | `ignore`          | Input (string)  | `""`    | No       | Regular expression matching repository-relative paths to ignore |
+| `exclude-vendored` | Input (boolean) | `false` | No | Exclude root vendor directories when `ignore` is empty |
+| `optional-project-auth` | Input (boolean) | `false` | No | Opt in to project integration being optional |
+| `project` | Input (string) | `organization/devantler-tech/5` | No | Project selection; explicitly empty omits integration when opted in |
 
 With `dry-run: true`, omit the App secret: an executed job uses only a contents-read token and a
 fail-closed Docker fixture to verify exactly one wrapper invocation and input forwarding. This
 does not scan source comments; catalogue CI separately exercises the real scanner image.
+The [scanner fixtures](.github/tests/todo-scanner/README.md) verify complete requests and results
+for healthy runs and API failures, while recording the pinned scanner's existing failure-handling limitations.
 The calling job still needs the static `issues: write` ceiling because GitHub validates the
 production job even when it is skipped. Production uses the workflow token for issues and the
 App token for the organization project.
 
+Production callers can pass `optional-project-auth: true` and `project: ""` to omit
+project integration. Existing callers retain the current project selection and
+default-off rollout choice. Configured projects still require their existing
+authorization. Rollout and flag retirement remain tracked in #340.
+
+Opt in with `exclude-vendored: true` to ignore root `vendor/` and `third_party/`
+when no custom `ignore` is supplied. Nested and similarly named paths remain
+eligible. A nonempty custom expression overrides this filter unchanged. The
+compatibility default stays off until consumer rollout and retirement in #394.
+
 </details>
+
+### 📝 Scan for TODO Comments (Read-Only)
+
+[.github/workflows/scan-for-todo-comments-readonly.yaml](.github/workflows/scan-for-todo-comments-readonly.yaml)
+is the internal catalogue smoke entrypoint. Two CI calls use `dry-run: true` to
+verify one offline wrapper invocation for default and configured ignore inputs.
+A third call exercises the actual production steps with optional integration,
+an empty project and every source path excluded. All three grant only
+`contents: read` and omit secrets; none can write issues or change a project.
+
+#### Secrets and Inputs
+
+| Key               | Type            | Default | Required | Description |
+|-------------------|-----------------|---------|----------|-------------|
+| `APP_PRIVATE_KEY` | Secret          | -       | No       | Preserved production interface; catalogue smoke callers must omit it |
+| `dry-run`         | Input (boolean) | `false` | No       | Catalogue callers explicitly enable offline execution |
+| `ignore`          | Input (string)  | `""`    | No       | Repository-relative path expression forwarded to the wrapper |
+| `exclude-vendored` | Input (boolean) | `false` | No | Preserved production choice; the vendor smoke enables it |
+| `optional-project-auth` | Input (boolean) | `false` | No | Preserved production choice; the no-project evaluation enables it |
+| `project` | Input (string) | `organization/devantler-tech/5` | No | Preserved project selection; the no-project evaluation sets it empty |
+
+Generate it with `bash .github/scripts/generate-todo-readonly.sh`. The complete production
+workflow is preserved, with only its display name changed and its issue permission removed.
+Required CI checks compare it independently with production and reject restored caller/callee
+write permissions, secrets, input drift or weakened execution. Production consumers continue
+using `scan-for-todo-comments.yaml` with their existing authorization. Live project behavior
+and optional project-authentication rollout remain tracked separately in #340.
+
+### 📝 Scan for TODO Comments (Default Fixture)
+
+[.github/workflows/scan-for-todo-comments-default-fixture.yaml](.github/workflows/scan-for-todo-comments-default-fixture.yaml)
+is a generated catalogue CI fixture. It retains the production branch and input
+defaults while replacing external token generation, checkout and Docker execution
+with offline dependencies. GitHub evaluates the original composite conditions.
+Required positive and broken-token callers verify default-off routing, the default
+project and exact token forwarding without creating issues or changing projects.
+This is wrapper coverage, not live token generation or project-adoption proof.
+
+#### Secrets and Inputs
+
+| Key | Type | Default | Required | Description |
+| --- | --- | --- | --- | --- |
+| `APP_PRIVATE_KEY` | Secret | - | No | Retained source interface; never pass a key to this fixture |
+| `dry-run` | Input | `false` | No | Retained production default; the fixture executes the production branch |
+| `ignore` | Input | `""` | No | Forwarded scanner exclusion pattern |
+| `exclude-vendored` | Input | `false` | No | Retained compatibility default, omitted by the positive caller |
+| `optional-project-auth` | Input | `false` | No | Retained compatibility default, omitted by the positive caller |
+| `project` | Input | `organization/devantler-tech/5` | No | Retained project default, checked by the offline dependency |
+| `fixture-skip-app-token` | Input | `false` | No | Fixture-only deliberate fault proving missing token output is rejected |
 
 ### 🔍 Scan for Workflow Vulnerabilities
 
@@ -735,7 +848,11 @@ App token for the organization project.
 ```yaml
 jobs:
   zizmor:
-    uses: devantler-tech/.github/.github/workflows/scan-for-workflow-vulnerabilities.yaml@{ref} # ref
+    uses: devantler-tech/.github/.github/workflows/scan-for-workflow-vulnerabilities.yaml@<full-commit-sha> # vX.Y.Z
+    permissions:
+      contents: read
+      actions: read
+      security-events: write
 ```
 
 </details>
@@ -763,12 +880,16 @@ The file must exist and be readable. A missing or unreadable file stops the sync
 
 A literal `!` re-include (one without glob characters) must still exist upstream. If upstream moves or drops that policy, the run fails and names the path before the target directory changes. Without that check it would open a pull request that deletes your vendored copy.
 
+The selected policies are copied and checked beside the target directory before it changes. If the copy or the swap fails, the run fails and the target keeps its previous policies. A run that selects nothing empties the target only when `.policyignore` excludes every upstream policy; otherwise it fails. Entries in the target whose names start with a dot are left in place.
+
+Set `dry-run: true` and omit `APP_PRIVATE_KEY` to validate the interface without syncing or opening a pull request. A real sync requires the App key and fails before token creation if it is missing.
+
 #### Usage
 
 ```yaml
 jobs:
   sync-cluster-policies:
-    uses: devantler-tech/.github/.github/workflows/sync-cluster-policies.yaml@{ref} # ref
+    uses: devantler-tech/.github/.github/workflows/sync-cluster-policies.yaml@<full-commit-sha> # vX.Y.Z
     secrets:
       APP_PRIVATE_KEY: ${{ secrets.APP_PRIVATE_KEY }}
     with:
@@ -779,7 +900,7 @@ jobs:
 
 | Key                    | Type            | Default | Required | Description                                              |
 |------------------------|-----------------|---------|----------|----------------------------------------------------------|
-| `APP_PRIVATE_KEY`      | Secret          | -       | Yes      | GitHub App private key                                   |
+| `APP_PRIVATE_KEY`      | Secret          | -       | For a real sync | GitHub App private key; omit for dry-runs             |
 | `kyverno-policies-dir` | Input (string)  | -       | Yes      | Directory to sync Kyverno policies to                    |
 | `dry-run`              | Input (boolean) | `false` | No       | Skip sync and PR creation (validate workflow interface only) |
 
@@ -806,7 +927,10 @@ on:
 
 jobs:
   template-sync:
-    uses: devantler-tech/.github/.github/workflows/template-sync.yaml@{ref} # ref
+    uses: devantler-tech/.github/.github/workflows/template-sync.yaml@<full-commit-sha> # vX.Y.Z
+    permissions:
+      contents: write
+      pull-requests: write
     with:
       source-repo-path: devantler-tech/platform-tenant-template
 ```
@@ -830,13 +954,24 @@ An opt-in caller must wire both the input and the corresponding secret:
 ```yaml
 jobs:
   template-sync:
-    uses: devantler-tech/.github/.github/workflows/template-sync.yaml@{ref} # ref
+    uses: devantler-tech/.github/.github/workflows/template-sync.yaml@<full-commit-sha> # vX.Y.Z
+    permissions:
+      contents: write
+      pull-requests: write
     with:
       source-repo-path: devantler-tech/platform-tenant-template
       use-app-token: true
     secrets:
       APP_PRIVATE_KEY: ${{ secrets.APP_PRIVATE_KEY }}
 ```
+
+When the caller has its own `.templatesyncignore`, the sync applies that committed
+copy and never the template's, so an entry the template adds after the caller was
+created does not apply to it by default. Set `merge-template-ignore-entries: true` to fix that: before the
+sync, the workflow appends every template entry the caller's list lacks, under a
+marked comment, and the sync PR carries the merged list. The caller's own entries
+are kept. To keep a single template entry out, add a `!<entry>` line to the caller's
+list. With `use-app-token: true`, the merge and the sync are signed as one commit.
 
 #### Secrets and Inputs
 
@@ -850,6 +985,7 @@ jobs:
 | `pr-labels`                      | Input (string)  | `dependencies,automation`                        | No       | Comma-separated labels for the sync PR                                      |
 | `pr-branch-name-prefix`          | Input (string)  | `chore/template-sync`                            | No       | Prefix for the branch the sync PR is opened from                            |
 | `template-sync-ignore-file-path` | Input (string)  | `.templatesyncignore`                            | No       | Path to the file listing consumer-owned (non-synced) files                  |
+| `merge-template-ignore-entries`  | Input (boolean) | `false`                                          | No       | Add the template's ignore entries this repository's list lacks before syncing |
 | `use-app-token`                  | Input (boolean) | `false`                                          | No       | Opt in to a signed App-authored sync PR that triggers the caller's CI      |
 | `dry-run`                        | Input (boolean) | `false`                                          | No       | Skip the sync and PR creation (validate workflow interface only)            |
 
@@ -874,7 +1010,7 @@ on:
 
 jobs:
   update-agent-skills:
-    uses: devantler-tech/.github/.github/workflows/update-agent-skills.yaml@{ref} # ref
+    uses: devantler-tech/.github/.github/workflows/update-agent-skills.yaml@<full-commit-sha> # vX.Y.Z
     permissions:
       contents: write
       pull-requests: write
@@ -927,15 +1063,14 @@ The workflow assumes skills were previously installed with [`devantler-tech/.git
 ```yaml
 jobs:
   go-test:
-    uses: devantler-tech/.github/.github/workflows/validate-go-project.yaml@{ref} # ref
+    uses: devantler-tech/.github/.github/workflows/validate-go-project-readonly.yaml@<full-commit-sha> # vX.Y.Z
     permissions:
-      contents: write
+      contents: read
+      pull-requests: read
       code-quality: write # required for GitHub Code Quality coverage upload
-    secrets:
-      APP_PRIVATE_KEY: ${{ secrets.APP_PRIVATE_KEY }}
     with:
       pr-owner: ${{ github.event.pull_request.user.login }} # optional
-      apply-signed-fixes: false # optional; on by default — pass false to keep this caller read-only (do so when the org-required run already signs for this repository, or two signers race for one branch tip)
+      apply-signed-fixes: false
 ```
 
 > **Note:** The calling workflow must grant `code-quality: write` so coverage can be uploaded to GitHub Code Quality. Coverage requires the repo's **Code Quality** to be enabled (_Settings → Code quality_).
@@ -948,10 +1083,40 @@ jobs:
 | `pr-owner`            | Input (string)  | -       | No       | Pull request author login (used to disable auto-commit for bot PRs)                                                                                                                                                             |
 | `apply-signed-fixes`  | Input (boolean) | `true`  | No       | Commit each fixer lane's auto-fixes back to the pull request branch as a signed commit (on by default; the org-required direct run is opted in by its workflow ref). Pass false to keep a caller read-only. Forks, Dependabot/Renovate branches and non-PR events are always read-only and fail with their diff if changes remain; other same-repository automation branches (release, bot-authored) do receive fixer commits like any contributor branch                                                                                                               |
 | `working-directory`   | Input (string)  | `""`    | No       | Go module directory to validate. Empty means the repository root                                                                                                                                                                |
+| `go-memory-limit` | Input (string) | `8GiB` | No | Soft Go heap limit for deadcode and vulnerability analysis; lower it for smaller runners. Decimal Go units are accepted up to 8GiB; total runner memory is not capped. |
 | `manual-workflow-fixes` | Input (boolean) | `false` | No | Opt in to complete workflow-file patches for manual application, including after lint errors; existing upload eligibility still applies |
-| `scan-default-branch` | Input (boolean) | `false` | No       | Also run the vulnerability scan on every default-branch run, not just on pull requests. Off by default: a default branch that was green can legitimately go red once an advisory is published against code that already merged    |
+| `scan-default-branch` | Input (boolean) | `true` | No       | Scan every default-branch invocation and allowlist-only pull requests. Explicit false retains Go-diff pull-request coverage during input retirement (#285) |
 | `test-default-branch` | Input (boolean) | `true`  | No       | Run the Go test suite on every default-branch run, not just when the diff touched a Go file. On by default: a test can take a non-Go file as its subject, so a diff-only gate leaves the default branch reporting green over a suite it never ran. Set to `false` to accept a default branch that can report green without the suite having run          |
 | `maintenance-default-branch` | Input (boolean) | `false` | No | Also run tidy and dead-code analysis on default-branch pushes that change Go files. Findings fail validation without committing fixes to the default branch. Uses the repository's configured default branch name. |
+
+### ✅ Validate Go Project (Read-Only)
+
+[.github/workflows/validate-go-project-readonly.yaml](.github/workflows/validate-go-project-readonly.yaml)
+runs the same lint, fix-export, build, test and coverage steps as Go validation,
+without credentials that can mutate repository content, issues or pull requests.
+Fixes fail with their diff; no signer is reachable. PR and status reporters are
+disabled. Coverage uploads retain their dedicated `code-quality: write` scope.
+
+Callers grant only `contents: read`, `pull-requests: read` and
+`code-quality: write`, and forward no secrets. Catalogue CI uses this entrypoint
+for all six Go fixtures. The ordinary Go workflow retains reporting and signed fixes.
+
+This workflow is generated from the production workflow by
+`bash .github/scripts/generate-go-readonly.sh`. Change the production source or
+generator and regenerate it; CI checks the complete projection and credential boundary.
+
+#### Inputs
+
+| Key | Type | Default | Required | Description |
+|-----|------|---------|----------|-------------|
+| `pr-owner` | Input (string) | - | No | Pull request author login |
+| `working-directory` | Input (string) | `""` | No | Go module directory; empty selects the repository root |
+| `go-memory-limit` | Input (string) | `8GiB` | No | Soft Go heap limit for analysis; lower it for smaller runners, up to the 8GiB ceiling |
+| `apply-signed-fixes` | Input (boolean) | `false` | No | Ignored: signed fixes are always disabled |
+| `manual-workflow-fixes` | Input (boolean) | `false` | No | Prepare workflow-file fixes even after lint errors; patch upload is disabled and lint errors still fail |
+| `scan-default-branch` | Input (boolean) | `true` | No | Scan default-branch invocations; explicit false remains supported during input retirement (#285) |
+| `test-default-branch` | Input (boolean) | `true` | No | Run the suite on default-branch invocations |
+| `maintenance-default-branch` | Input (boolean) | `false` | No | Run tidy and dead-code analysis for Go changes on the default branch |
 
 To enable default-branch maintenance validation, pass `maintenance-default-branch: true`
 in a caller that runs on pushes to its default branch. Pull-request checks remain
@@ -961,6 +1126,45 @@ assuming `main` or `master`. Go path filtering and merge-queue exclusions still 
 Rollout and flag retirement are tracked in [devantler-tech/actions#1170](https://github.com/devantler-tech/actions/issues/1170).
 
 </details>
+
+## Live admin-team audit
+
+The manual `Repository admin-team audit` workflow checks every active repository
+visible to an all-repository App installation, including repositories outside
+`deploy/`. It reads effective team permissions and requires exactly one admin
+team with the `admins` slug. Archived repositories are excluded. The Admins team
+must be secret, matching its declaration and excluding inherited child-team access
+beneath it. API failures,
+partial pagination, unknown permissions and inventory changes produce an unknown
+result rather than a policy pass. Logs contain aggregate counts only.
+
+Known built-in roles use GitHub's documented `permission` field when effective
+Boolean metadata is absent. Typed `permissions.admin` metadata supports custom
+roles when returned by the API. Unknown custom rights, malformed metadata and
+conflicting built-in rights remain UNKNOWN. Both forms use the same canonical
+permission join for policy evaluation and repeated-read stability checks.
+
+The workflow is default off and runs only from reviewed `main`. Enable its
+`run-audit` dispatch input for an evaluation. Its App token requests repository
+Metadata and Administration read permissions; missing grants fail token creation.
+A short-lived App JWT separately reads the authenticated installation's identity,
+all-repository selection and suspension state, binds it to that token's installation
+ID, and rechecks it after the audit. The JWT goes only to a fixed GitHub GET endpoint;
+the key and request configuration use private temporary files and are removed.
+GitHub's [installation read](https://docs.github.com/en/rest/apps/apps#get-an-installation-for-the-authenticated-app)
+provides this proof; its [repository-list response](https://docs.github.com/en/rest/apps/installations#list-repositories-accessible-to-the-app-installation)
+provides the independent pagination totals. Installation mode requires this reviewed
+main workflow context and its unrestricted token mint.
+A skipped run is not evidence of compliance. Live grant verification, activation
+and flag retirement remain tracked in #395, as part of maintenance retirement #84.
+
+An operator with organization-admin visibility can evaluate the shared checker
+with `bash scripts/check-repository-admin-teams.sh --organization-admin`.
+That explicit mode binds active admin membership to the organization identity
+and checks the complete census against independently returned public and private
+repository counts. It never substitutes for a failed App read or proves the App's
+selection or grants. Every mode repeats the complete team join and inventory read;
+changed repository or team identity, visibility or admin permission reports UNKNOWN.
 
 ## Contributing
 

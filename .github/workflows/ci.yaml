@@ -142,7 +142,6 @@ jobs:
         # Local syntax remains required by actionlint; migration is tracked in #1234.
         uses: ./actions/validate-shell-pipelines # zizmor: ignore[self-repository]
         with:
-          enabled: "true"
           paths: .github/fixtures/validate-shell-pipelines/good.sh
       - name: Prepare tracked negative fixtures without executing them
         shell: bash
@@ -159,7 +158,6 @@ jobs:
         # Local syntax remains required by actionlint; migration is tracked in #1234.
         uses: ./actions/validate-shell-pipelines # zizmor: ignore[self-repository]
         with:
-          enabled: "true"
           working-directory: ${{ runner.temp }}/shell-pipelines-fixture
           paths: unsafe.sh
       - name: Reject a malformed script
@@ -168,7 +166,6 @@ jobs:
         # Local syntax remains required by actionlint; migration is tracked in #1234.
         uses: ./actions/validate-shell-pipelines # zizmor: ignore[self-repository]
         with:
-          enabled: "true"
           working-directory: ${{ runner.temp }}/shell-pipelines-fixture
           paths: malformed.sh
       - name: Assert action outcomes and output boundaries
@@ -210,12 +207,12 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - name: Omitted opt-in skips a missing repository
+      - name: Omitted enablement validates a tracked scope
         id: omitted
         # Local syntax remains required by actionlint; migration is tracked in #1234.
         uses: ./actions/validate-shell-pipelines # zizmor: ignore[self-repository]
         with:
-          working-directory: missing-directory
+          paths: .github/fixtures/validate-shell-pipelines/good.sh
       - name: Explicit false skips invalid scope
         id: disabled
         # Local syntax remains required by actionlint; migration is tracked in #1234.
@@ -223,14 +220,14 @@ jobs:
         with:
           enabled: "false"
           paths: ../invalid
-      - name: Reject invalid opt-in spelling
+      - name: Reject invalid enablement spelling
         id: invalid
         continue-on-error: true
         # Local syntax remains required by actionlint; migration is tracked in #1234.
         uses: ./actions/validate-shell-pipelines # zizmor: ignore[self-repository]
         with:
           enabled: "yes"
-      - name: Assert disabled and invalid calls never validate
+      - name: Assert default validation and opt-out boundaries
         shell: bash
         env:
           OMITTED: ${{ steps.omitted.outputs.validated }}
@@ -238,7 +235,7 @@ jobs:
           INVALID_VALIDATED: ${{ steps.invalid.outputs.validated }}
           INVALID: ${{ steps.invalid.outcome }}
         run: |
-          test -z "$OMITTED"
+          test "$OMITTED" = true
           test -z "$DISABLED"
           test -z "$INVALID_VALIDATED"
           test "$INVALID" = failure
@@ -265,7 +262,6 @@ jobs:
         id: validate
         uses: ./actions/validate-naming
         with:
-          enabled: "true"
           working-directory: .github/fixtures/validate-naming
       - name: Assert validation ran
         shell: bash
@@ -295,11 +291,11 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - name: Omitted opt-in skips even a missing repository
+      - name: Omitted enablement validates the default configuration
         id: omitted
         uses: ./actions/validate-naming
         with:
-          working-directory: missing-directory
+          working-directory: .github/fixtures/validate-naming
       - name: Explicit false skips a seeded naming violation
         id: disabled
         uses: ./actions/validate-naming
@@ -307,13 +303,13 @@ jobs:
           enabled: "false"
           config-file: invalid.yaml
           working-directory: .github/fixtures/validate-naming
-      - name: Assert neither disabled call validated
+      - name: Assert default validation and opt-out boundaries
         shell: bash
         env:
           OMITTED: ${{ steps.omitted.outputs.validated }}
           DISABLED: ${{ steps.disabled.outputs.validated }}
         run: |
-          test -z "$OMITTED"
+          test "$OMITTED" = true
           test -z "$DISABLED"
 
   test-validate-naming-rejects:
@@ -336,10 +332,9 @@ jobs:
         continue-on-error: true
         uses: ./actions/validate-naming
         with:
-          enabled: "true"
           working-directory: .github/fixtures/validate-naming
           config-file: invalid.yaml
-      - name: Reject invalid opt-in spelling
+      - name: Reject invalid enablement spelling
         id: invalid
         continue-on-error: true
         uses: ./actions/validate-naming
@@ -481,6 +476,9 @@ jobs:
       - name: 🧪 Reject invalid scanner scenarios
         run: bash .github/tests/test-todo-scanner-inputs.sh
 
+      - name: 🧪 Verify complete scanner failure replay plans
+        run: bash .github/tests/test-todo-scanner-plans.sh
+
       - name: 🧪 Require completed scanner scenarios
         run: bash .github/tests/test-todo-scanner-verdict.sh
 
@@ -489,6 +487,9 @@ jobs:
 
       - name: 🧪 Exercise the real pinned scanner offline
         run: bash .github/tests/test-todo-scanner.sh
+
+      - name: 🧪 Detect native scanner discovery and payload regressions
+        run: bash .github/tests/test-todo-scanner-controls.sh
 
   test-create-issues-from-todos:
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
@@ -1721,6 +1722,10 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: 🧪 Reject ambiguous release-checksum manifest input
+        shell: bash
+        run: bash .github/tests/test-refresh-gh-digests.sh
+
       - name: 🧪 Exercise ensure-gh-skill.sh (guards, fast-return, platform/arch/integrity errors)
         shell: bash
         run: |
@@ -2458,6 +2463,11 @@ jobs:
         shell: bash
         run: bash .github/tests/test-update-agent-skills-mark-internal.sh
 
+      # A skill update that changes only an auxiliary file must still report changed=true (#266).
+      - name: 🧪 Test change detection covers each skill's whole directory
+        shell: bash
+        run: bash .github/tests/test-update-agent-skills-change-detection.sh
+
       # Opt-in per-skill PRs (#1309): the splitter isolates each skill's update and fails closed on
       # a change outside every skill; the workflow keeps its single PR with the flag off.
       - name: 🧩 Test the per-skill update splitter
@@ -3125,6 +3135,12 @@ jobs:
         shell: bash
         run: bash .github/tests/test-template-sync-pin-monotonicity.sh
 
+      # A template's new ignore entries must reach callers created before them
+      # (devantler-tech/platform-tenant-template#171).
+      - name: 🧩 Check Template Sync merges the template's ignore entries
+        shell: bash
+        run: bash .github/tests/test-template-sync-ignore-merge.sh
+
       - name: ✍️ Check every automated commit producer is signed
         shell: bash
         run: bash .github/tests/test-automated-commits-signed.sh
@@ -3156,6 +3172,14 @@ jobs:
       - name: 🔏 Check publish-app signs the manifests artifact by its pushed digest
         shell: bash
         run: bash .github/tests/test-publish-app-signs-by-digest.sh
+
+      - name: 🧱 Check publish workflows refuse a bad release before any registry write
+        shell: bash
+        run: bash .github/tests/test-publish-preflight.sh
+
+      - name: 🔏 Check manifests promotion never exposes an unsigned release
+        shell: bash
+        run: bash .github/tests/test-publish-manifests-promotion.sh
 
       - name: 📝 Check TODO scanner ignore-input forwarding
         shell: bash
@@ -3201,6 +3225,26 @@ jobs:
         shell: bash
         run: bash .github/tests/test-test-script-wiring.sh
 
+      - name: 🔐 Check cleanup self-tests cannot delete workflow history
+        shell: bash
+        run: bash .github/tests/test-cleanup-credentials.sh
+
+      - name: 🧪 Check cleanup credential and input regressions are rejected
+        shell: bash
+        run: bash .github/tests/test-cleanup-credentials-controls.sh
+
+      - name: 🔐 Check TODO self-tests have no issue-write ceiling
+        shell: bash
+        run: bash .github/tests/test-todo-workflow-readonly.sh
+
+      - name: 🧪 Check TODO projection and credential regressions are rejected
+        shell: bash
+        run: bash .github/tests/test-todo-workflow-readonly-controls.sh
+
+      - name: 🧪 Check native TODO compatibility replay and independent boundaries
+        shell: bash
+        run: bash .github/tests/test-todo-production-default-fixture.sh
+
       - name: 📋 Check ci.yaml test wiring is complete
         shell: bash
         run: |
@@ -3235,6 +3279,24 @@ jobs:
             grep -qE "^[[:space:]]+workflow_call:" "$wf" || continue
             wname="$(basename "$wf")"
             if ! grep -qE "uses:[[:space:]]*\./\.github/workflows/$wname([[:space:]]|\$)" "$ci"; then
+              # Cleanup is exercised through its complete source-derived projection.
+              # Verify its executed callers, credentials and source parity before
+              # accepting it as coverage of the production wrapper.
+              if [[ "$wname" == delete-workflow-runs.yaml ]]; then
+                if ! bash .github/tests/test-cleanup-credentials.sh; then
+                  status=1
+                fi
+                continue
+              fi
+              # TODO smoke calls use the complete read-only projection. Accept
+              # production coverage only after permission, execution and parity
+              # checks pass; a copied or truncated workflow is insufficient.
+              if [[ "$wname" == scan-for-todo-comments.yaml ]]; then
+                if ! bash .github/tests/test-todo-workflow-readonly.sh; then
+                  status=1
+                fi
+                continue
+              fi
               echo "::error file=$wf::reusable workflow '$wname' has no test job in $ci (expected a job step with 'uses: ./.github/workflows/$wname')"
               status=1
             fi
@@ -3343,7 +3405,7 @@ jobs:
   test-delete-workflow-runs-all:
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
     name: "[Test] Delete Workflow Runs - All Workflows"
-    uses: ./.github/workflows/delete-workflow-runs.yaml
+    uses: ./.github/workflows/delete-workflow-runs-readonly.yaml
     with:
       days: 30
       minimum-runs: 6
@@ -3351,86 +3413,94 @@ jobs:
       delete-run-by-conclusion-pattern: "ALL"
       dry-run: true
     permissions:
-      actions: write
+      actions: read
       contents: read
 
   test-delete-workflow-runs-specific:
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
     name: "[Test] Delete Workflow Runs - Specific Pattern"
-    uses: ./.github/workflows/delete-workflow-runs.yaml
+    uses: ./.github/workflows/delete-workflow-runs-readonly.yaml
     with:
       days: 7
       minimum-runs: 3
-      delete-workflow-pattern: "test-delete-workflow-runs.yaml"
+      delete-workflow-pattern: "ci.yaml"
       delete-run-by-conclusion-pattern: "cancelled,failure"
       dry-run: true
     permissions:
-      actions: write
+      actions: read
       contents: read
 
   test-delete-workflow-runs-minimal:
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
     name: "[Test] Delete Workflow Runs - Minimal Parameters"
-    uses: ./.github/workflows/delete-workflow-runs.yaml
-    with:
-      dry-run: true
+    uses: ./.github/workflows/delete-workflow-runs-readonly.yaml
     permissions:
-      actions: write
+      actions: read
       contents: read
+
+  # Validate the production workflow interface without selecting a Go module.
+  # Its repository exclusion skips every executed job here; behavior is tested
+  # through the source-derived read-only entrypoint below.
+  test-validate-go-project-interface:
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    name: "[Test] Validate Go Project - Production Interface"
+    uses: ./.github/workflows/validate-go-project.yaml
+    with:
+      working-directory: ""
+      apply-signed-fixes: false
+    # These are the callee's static ceiling; no production job executes.
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+      code-quality: write
 
   test-validate-go-project:
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
     name: "[Test] Validate Go Project"
-    uses: ./.github/workflows/validate-go-project.yaml
+    uses: ./.github/workflows/validate-go-project-readonly.yaml
     # Fixture-targeted: validate the known-good Go fixture (this repo is not itself a Go module).
     with:
+      go-memory-limit: 4GiB
       working-directory: .github/tests/go-valid-fixture
       # The OFF state, passed explicitly now that the input defaults to true: the read-only path
       # must still run the fixers and reject an unexpected dirty tree without committing to the
       # branch under test.
       apply-signed-fixes: false
     permissions:
-      contents: write
-      pull-requests: write
-      issues: write
+      contents: read
+      pull-requests: read
       code-quality: write # callers must grant this for the coverage upload (GitHub Code Quality)
 
   test-validate-go-project-manual-fixes:
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
     name: "[Test] Validate Go Project - Manual Workflow Fixes Opted In"
-    uses: ./.github/workflows/validate-go-project.yaml
+    uses: ./.github/workflows/validate-go-project-readonly.yaml
     with:
       working-directory: .github/tests/go-valid-fixture
       apply-signed-fixes: false
       manual-workflow-fixes: true
     permissions:
-      contents: write
-      pull-requests: write
-      issues: write
+      contents: read
+      pull-requests: read
       code-quality: write
 
-  # ── Flag-ON counterpart for signed auto-fixes ──
-  # The opted-out job above proves the read-only path. This call opts in against the same
-  # known-clean fixture, so GitHub instantiates the privileged path without producing an
-  # artifact or mutating the pull request branch. The success arm was executed once for real
-  # on a throwaway branch (devantler-tech/actions#1129): the tidy lane committed
-  # `chore: tidy go modules` through the App and read it back verified.
+  # The read-only entrypoint suppresses signed-fix opt-in; all fixers still run.
   test-validate-go-project-apply-signed-fixes:
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
-    name: "[Test] Validate Go Project - Signed Fixes Opted In"
-    uses: ./.github/workflows/validate-go-project.yaml
+    name: "[Test] Validate Go Project - Signed Fixes Suppressed"
+    uses: ./.github/workflows/validate-go-project-readonly.yaml
     with:
       working-directory: .github/tests/go-valid-fixture
       apply-signed-fixes: true
     permissions:
-      contents: write
-      pull-requests: write
-      issues: write
+      contents: read
+      pull-requests: read
       code-quality: write # callers must grant this for the coverage upload (GitHub Code Quality)
 
-  # ── Flag-ON counterpart of test-validate-go-project (the both-states rule) ──
+  # ── Explicit-OFF counterpart of the default-ON vulnerability scan ──
   # test-validate-go-project above omits `scan-default-branch` entirely, so it exercises
-  # the default — the OFF state every existing consumer gets. This job passes it as true.
+  # the default — the ON state. This job passes false to preserve OFF-path coverage.
   # Together they cover both states of the flag, per AGENTS.md "Shipping a new capability
   # behind an opt-in flag": a flag whose off-path is untested can regress silently, and so
   # can an on-path that was never instantiated.
@@ -3442,17 +3512,16 @@ jobs:
   # what the structural guard in test-govulncheck-main-coverage.sh asserts instead.
   test-validate-go-project-scan-default-branch:
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
-    name: "[Test] Validate Go Project - Default-Branch Scan Opted In"
-    uses: ./.github/workflows/validate-go-project.yaml
+    name: "[Test] Validate Go Project - Default-Branch Scan Opted Out"
+    uses: ./.github/workflows/validate-go-project-readonly.yaml
     with:
       working-directory: .github/tests/go-valid-fixture
-      scan-default-branch: true
+      scan-default-branch: false
       # Opted out explicitly: this self-test proves a different input and must not write to its branch.
       apply-signed-fixes: false
     permissions:
-      contents: write
-      pull-requests: write
-      issues: write
+      contents: read
+      pull-requests: read
       code-quality: write # callers must grant this for the coverage upload (GitHub Code Quality)
 
   # ── Flag-OFF counterpart for `test-default-branch` (the both-states rule) ──
@@ -3477,16 +3546,15 @@ jobs:
   test-validate-go-project-test-default-branch:
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
     name: "[Test] Validate Go Project - Default-Branch Test Opted Out"
-    uses: ./.github/workflows/validate-go-project.yaml
+    uses: ./.github/workflows/validate-go-project-readonly.yaml
     with:
       working-directory: .github/tests/go-valid-fixture
       test-default-branch: false
       # Opted out explicitly: this self-test proves a different input and must not write to its branch.
       apply-signed-fixes: false
     permissions:
-      contents: write
-      pull-requests: write
-      issues: write
+      contents: read
+      pull-requests: read
       code-quality: write # callers must grant this for the coverage upload (GitHub Code Quality)
 
   # The ordinary fixture call above omits maintenance-default-branch (OFF).
@@ -3495,15 +3563,14 @@ jobs:
   test-validate-go-project-maintenance-default-branch:
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
     name: "[Test] Validate Go Project - Default-Branch Maintenance Opted In"
-    uses: ./.github/workflows/validate-go-project.yaml
+    uses: ./.github/workflows/validate-go-project-readonly.yaml
     with:
       working-directory: .github/tests/go-valid-fixture
       maintenance-default-branch: true
       apply-signed-fixes: false
     permissions:
-      contents: write
-      pull-requests: write
-      issues: write
+      contents: read
+      pull-requests: read
       code-quality: write
 
   test-run-dotnet-tests-workflow:
@@ -3662,18 +3729,49 @@ jobs:
           RUN_ATTEMPT: ${{ github.run_attempt }}
         run: |
           set -euo pipefail
-          gh api "repos/$REPOSITORY/actions/runs/$RUN_ID/attempts/$RUN_ATTEMPT/jobs" \
-            --paginate --slurp > jobs.json
-          if ! jq -e '
-            [.[] | .jobs[] | select(.name | startswith("[Test] Enable Auto-Merge - Queue Slot "))]
-            | sort_by(.name)
-            | (map(.name) == [
-                "[Test] Enable Auto-Merge - Queue Slot 1",
-                "[Test] Enable Auto-Merge - Queue Slot 2",
-                "[Test] Enable Auto-Merge - Queue Slot 3"
-              ]) and all(.[]; .status == "completed" and .conclusion == "success")
+          # Retry only server failures, restarting the entire paginated read.
+          # A failed later page can already have emitted convincing partial data.
+          for attempt in 1 2 3; do
+            if gh api "repos/$REPOSITORY/actions/runs/$RUN_ID/attempts/$RUN_ATTEMPT/jobs?per_page=100" \
+              --paginate --slurp > jobs.json 2> jobs.error; then
+              break
+            fi
+            status="$(sed -nE 's/.*\(HTTP ([0-9]{3})\).*/\1/p' jobs.error | tail -1)"
+            if [[ "$attempt" == 3 || ! "$status" =~ ^5[0-9][0-9]$ ]]; then
+              cat jobs.error >&2
+              echo "::error::Could not read complete queue evidence."
+              exit 1
+            fi
+            echo "::notice::Queue evidence read failed with HTTP $status; retrying the complete read."
+            sleep "$((attempt * 2))"
+          done
+          if ! jq -se --argjson run "$RUN_ID" --argjson attempt "$RUN_ATTEMPT" '
+            length == 1 and (.[0] |
+            def integer: type == "number" and . >= 0 and floor == .;
+            type == "array" and length > 0
+            and all(.[];
+              type == "object" and (.total_count | integer)
+              and (.jobs | type == "array")
+              and all(.jobs[];
+                type == "object" and (.id | integer and . > 0)
+                and .run_id == $run and .run_attempt == $attempt
+                and (.name | type == "string")
+              )
+            )
+            and (map(.total_count) | unique | length == 1)
+            and ((map(.jobs | length) | add) == .[0].total_count)
+            and ([.[] | .jobs[].id] | length == (unique | length))
+            and (
+              [.[] | .jobs[] | select(.name | startswith("[Test] Enable Auto-Merge - Queue Slot "))]
+              | sort_by(.name)
+              | (map(.name) == [
+                  "[Test] Enable Auto-Merge - Queue Slot 1",
+                  "[Test] Enable Auto-Merge - Queue Slot 2",
+                  "[Test] Enable Auto-Merge - Queue Slot 3"
+                ]) and all(.[]; .status == "completed" and .conclusion == "success")
+            ))
           ' jobs.json; then
-            echo "::error::All three queue slots must finish successfully in this run attempt. Use Re-run all jobs to repeat the burst; rerunning only this observer cannot recreate it."
+            echo "::error::Complete evidence must show all three queue slots succeeded in this run attempt. Use Re-run all jobs to repeat the burst; rerunning only this observer cannot recreate it."
             exit 1
           fi
 
@@ -3697,6 +3795,12 @@ jobs:
       - name: 🧪 Verify fail-closed review/pre-merge gate
         run: bash .github/tests/test-enable-auto-merge-pentad-gate.sh
 
+      - name: Exercise queue observer recovery and incomplete evidence
+        run: bash .github/tests/test-queue-observer.sh
+
+      - name: Reject broken queue observer guards
+        run: bash .github/tests/test-queue-observer-controls.sh
+
   test-create-release:
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
     name: "[Test] Create Release - Dry Run"
@@ -3713,6 +3817,7 @@ jobs:
     permissions: {}
     with:
       disable-issue-side-effects: true
+      align-npm-with-consumer-contract: true
       warn-missing-breaking-bang: true
       dry-run: true
       offline-test: true
@@ -3935,7 +4040,7 @@ jobs:
 
   test-publish-manifests-caller-pin:
     if: "${{ github.event_name == 'push' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
-    name: "[Test] Publish Manifests - Dry Run (caller-pin enabled)"
+    name: "[Test] Publish Manifests - Dry Run (caller-pin and signed-promotion enabled)"
     uses: ./.github/workflows/publish-manifests.yaml
     # PUSH-ONLY — see test-deploy-github-pages. This job is a schema check; the
     # guard it covers runs in the skipped publish job.
@@ -3949,26 +4054,53 @@ jobs:
       # `if: ${{ !inputs.dry-run }}`, so the guard does not run — this proves the
       # input is accepted by name and type.
       enable-caller-pin: true
+      enable-signed-promotion: true
 
   test-scan-for-todo-comments:
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
-    name: "[Test] Scan for TODO Comments - Dry Run"
-    uses: ./.github/workflows/scan-for-todo-comments.yaml
+    name: "[Test] Scan for TODO Comments - Dry Run (vendor exclusion)"
+    uses: ./.github/workflows/scan-for-todo-comments-readonly.yaml
     permissions:
       contents: read
-      # Static ceiling for the skipped production job; the executed dry-run job
-      # explicitly restricts its token to contents: read and receives no App key.
-      issues: write
     with:
       dry-run: true
+      exclude-vendored: true
+
+  test-scan-for-todo-comments-no-project:
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    name: "[Test] Scan for TODO Comments - Production Steps Without a Project"
+    uses: ./.github/workflows/scan-for-todo-comments-readonly.yaml
+    permissions:
+      contents: read
+    with:
+      dry-run: false
+      optional-project-auth: true
+      project: ""
+      # Exercise the production wrapper without authorizing or requesting issue writes.
+      ignore: ".*"
+
+  test-scan-for-todo-comments-default:
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    name: "[Test] Scan for TODO Comments - Production Compatibility Defaults"
+    uses: ./.github/workflows/scan-for-todo-comments-default-fixture.yaml
+    permissions:
+      contents: read
+
+  test-scan-for-todo-comments-default-control:
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    name: "[Test] Scan for TODO Comments - Reject Missing Project Token"
+    uses: ./.github/workflows/scan-for-todo-comments-default-fixture.yaml
+    permissions:
+      contents: read
+    with:
+      fixture-skip-app-token: true
 
   test-scan-for-todo-comments-ignore:
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
     name: "[Test] Scan for TODO Comments - Dry Run (ignore configured)"
-    uses: ./.github/workflows/scan-for-todo-comments.yaml
+    uses: ./.github/workflows/scan-for-todo-comments-readonly.yaml
     permissions:
       contents: read
-      issues: write
     with:
       dry-run: true
       ignore: '^\.github/tests/'
@@ -3977,11 +4109,10 @@ jobs:
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
     name: "[Test] Sync Cluster Policies - Dry Run"
     uses: ./.github/workflows/sync-cluster-policies.yaml
+    permissions: {}
     with:
       kyverno-policies-dir: /tmp/test-policies
       dry-run: true
-    secrets:
-      APP_PRIVATE_KEY: ${{ secrets.APP_PRIVATE_KEY }}
 
   test-sync-cluster-policies-allowlist:
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
@@ -4004,6 +4135,12 @@ jobs:
         run: bash .github/tests/test-sync-cluster-policies-allowlist.sh
       - name: Verify policyignore matching and failed reads before filtering
         run: bash .github/tests/test-sync-cluster-policies-filter.sh
+      - name: Verify the target keeps its policies when the copy fails
+        run: bash .github/tests/test-sync-cluster-policies-copy.sh
+      - name: Verify secret-free dry-runs and required production authentication
+        run: bash .github/tests/test-sync-cluster-policies-credentials.sh
+      - name: Reject restored dry-run secrets and weakened production authentication
+        run: bash .github/tests/test-sync-cluster-policies-credentials-blocks.sh
 
   test-update-agent-skills:
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
@@ -4040,6 +4177,21 @@ jobs:
       use-app-token: false
       dry-run: true
 
+  # The ignore-entry merge is a release flag: instantiate its on state as well. Its behaviour is
+  # exercised offline by test-template-sync-ignore-merge.sh in lint-ci-coverage-parity.
+  test-template-sync-merge-ignore:
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    name: "[Test] Template Sync - Dry Run (Merge Ignore Entries)"
+    uses: ./.github/workflows/template-sync.yaml
+    permissions:
+      contents: write
+      pull-requests: write
+    with:
+      source-repo-path: devantler-tech/platform-tenant-template
+      use-app-token: false
+      merge-template-ignore-entries: true
+      dry-run: true
+
   # ── Govulncheck allowlist self-test (regression guard for #282/#283) ──────────
   # validate-go-project.yaml's vuln-scan gate honors a `.govulncheck-allow.txt`
   # allowlist so consumers can risk-accept a reachable advisory with no upstream
@@ -4048,8 +4200,8 @@ jobs:
   # These jobs exercise the SAME action the gate uses against a pinned-vulnerable
   # fixture (.github/tests/govulncheck-allowlist) so the contract is provable and stable:
   #   • allowlisted ⇒ the scan PASSES,  • strict (no allow-file) ⇒ the scan FAILS.
-  # The govulncheck job in validate-go-project.yaml is skipped on this repo, so it
-  # cannot self-test itself — hence a dedicated, faithful replica here.
+  # The default-on caller scans this repo's clean fixture on main pushes. Dedicated
+  # vulnerable fixtures below establish allowlist and strict-failure verdicts.
   test-govulncheck-allowlist-honored:
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
     name: "[Test] Govulncheck Allowlist - Allowlisted Advisory Passes"
@@ -4201,6 +4353,11 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+
+      - name: Exercise the configurable memory preflight with the Go runtime
+        run: bash .github/tests/test-go-memory-limit.sh
+      - name: Reject memory override wiring and parser regressions
+        run: bash .github/tests/test-go-memory-limit-controls.sh
 
       - name: 🧪 Assert govulncheck keeps a cold-cache-safe finite timeout + GOMEMLIMIT
         run: bash .github/tests/test-govulncheck-timeout.sh
@@ -4658,6 +4815,16 @@ jobs:
       - name: 🧪 Assert govulncheck runs on the default branch and on allowlist edits
         run: bash .github/tests/test-govulncheck-main-coverage.sh
 
+      - name: 🧪 Evaluate the direct-run default with native GitHub inputs
+        shell: bash
+        env:
+          DIRECT_INPUTS: ${{ toJSON(inputs) }}
+          DIRECT_SCAN_DEFAULT: ${{ toJSON(inputs) == '{}' || inputs.scan-default-branch == true || inputs.scan-default-branch == 'true' }}
+        run: |
+          set -euo pipefail
+          [[ "$DIRECT_INPUTS" == '{}' && "$DIRECT_SCAN_DEFAULT" == true ]]
+          echo 'PASS: native empty inputs inherit the enabled scan default'
+
   # ── Failing-input counterpart to the job above (the both-tests convention) ──
   # The trigger guard is itself a gate, and its checks are structural string analysis over
   # a GitHub expression — unusually easy to make silently vacuous (a `strip_groups`
@@ -4953,6 +5120,12 @@ jobs:
           working-directory: .github/tests/golangci-lint-fixture
           verify: false
 
+      - name: 📋 Verify Go validation credential boundary
+        run: bash .github/tests/test-go-validation-credentials.sh
+
+      - name: 🧪 Reject credential boundary regressions
+        run: bash .github/tests/test-go-validation-credentials-controls.sh
+
       - name: ✅ Assert the lint gate blocked on the violation
         shell: bash
         env:
@@ -5043,32 +5216,11 @@ jobs:
         with:
           persist-credentials: false
 
-      # The two jobs above hard-code the lint action SHA + version and the `go test`
-      # command. This guard asserts validate-go-project.yaml still pins the SAME ones, so
-      # the self-tests always exercise the real gate. If a gate is changed without
-      # updating the self-test, this check goes red and forces them to move in lockstep.
-      - name: 🔒 Assert the gate pins the self-tested lint action + test command
-        shell: bash
-        env:
-          GATE: .github/workflows/validate-go-project.yaml
-          # Match full lines, not bare refs — refs/commands also appear in comments, so a
-          # looser grep could false-pass if the real value changed while a comment did not.
-          EXPECTED_LINT_ACTION: "uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a"
-          EXPECTED_LINT_VERSION: "version: v2.11.4"
-          EXPECTED_TEST_CMD: "go test ./..."
-        run: |
-          set -euo pipefail
-          status=0
-          for expected in "$EXPECTED_LINT_ACTION" "$EXPECTED_LINT_VERSION" "$EXPECTED_TEST_CMD"; do
-            if ! grep -qF "$expected" "$GATE"; then
-              echo "::error::$GATE no longer contains '$expected'. If the lint action/version or test command changed intentionally, update test-validate-go-lint-blocks / test-validate-go-test-blocks and these EXPECTED values so the self-tests keep exercising the real gate."
-              status=1
-            fi
-          done
-          if [ "$status" -ne 0 ]; then
-            exit 1
-          fi
-          echo "validate-go-project.yaml pins the self-tested lint action + test command ✅"
+      # Bind the executed production and negative-fixture roles independently.
+      - name: 🔒 Assert the gate pins the self-tested lint action and command
+        run: bash .github/tests/test-catalogue-tool-pin-parity.sh golangci
+      - name: Reject stale literals, mismatched fixtures and substituted pin roles
+        run: bash .github/tests/test-catalogue-pin-guards-controls.sh
 
   test-validate-go-project-concurrency-key:
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
@@ -5400,40 +5552,9 @@ jobs:
         shell: bash
         run: bash .github/tests/test-actionlint-arguments-lockstep.sh
 
-      # `uses:` cannot be parametrized, so test-lint-blocks hard-codes the MegaLinter image
-      # SHA. This guard asserts test-lint-blocks, lint.yaml and validate-go-project.yaml (the
-      # org's other MegaLinter consumer) all pin that SAME image. If any of the three is bumped
-      # alone, this goes red and forces them to move together.
+      # Compare both executed gates with the independent failure fixture.
       - name: 🔒 Assert both gates pin the self-tested MegaLinter image
-        shell: bash
-        env:
-          # Match the full `uses:` line, not the bare SHA — the SHA also appears in
-          # comments, so a bare grep could false-pass if the real `uses:` changed while a
-          # comment still named the old one.
-          EXPECTED: "uses: oxsecurity/megalinter/flavors/go@9949bad031045f366be2467e00e8371a7328a2e2"
-        run: |
-          set -euo pipefail
-          status=0
-          for gate in .github/workflows/lint.yaml .github/workflows/validate-go-project.yaml; do
-            if ! grep -qF "$EXPECTED" "$gate"; then
-              echo "::error::$gate no longer pins '$EXPECTED'. If the MegaLinter image was bumped intentionally, update test-lint-blocks, both gates and this EXPECTED value together so the failure-mode self-test keeps exercising the real gate."
-              status=1
-            fi
-          done
-          # EXPECTED is itself written in ci.yaml, so a whole-file grep would always match.
-          # Read only the test-lint-blocks job: it ends at the next top-level job key.
-          blocks_job="$(awk '/^  test-lint-blocks:$/ { found = 1; next } found && /^  [A-Za-z0-9_-]+:$/ { exit } found' .github/workflows/ci.yaml)"
-          if [ -z "$blocks_job" ]; then
-            echo "::error::Could not find the test-lint-blocks job in .github/workflows/ci.yaml, so its MegaLinter image cannot be checked."
-            status=1
-          elif ! grep -qF "$EXPECTED" <<<"$blocks_job"; then
-            echo "::error::test-lint-blocks no longer pins '$EXPECTED'. If the MegaLinter image was bumped intentionally, update test-lint-blocks, both gates and this EXPECTED value together so the failure-mode self-test keeps exercising the real gate."
-            status=1
-          fi
-          if [ "$status" -ne 0 ]; then
-            exit 1
-          fi
-          echo "test-lint-blocks and both MegaLinter gates pin the same image ✅"
+        run: bash .github/tests/test-catalogue-tool-pin-parity.sh megalinter
 
   # ── apply-signed-fixes.yaml self-test ────────────────────────────────────────
   # A passes-on-good-input test is genuinely impractical here: this workflow's only good
@@ -5548,6 +5669,12 @@ jobs:
 
       - name: 🧪 Test active Admins policy
         run: bash tests/admin-team-policy.sh
+
+      - name: 🔎 Test live admin-team evidence offline
+        run: bash tests/repository-admin-teams.sh
+
+      - name: 🔒 Test live admin-audit credential boundary
+        run: bash tests/repository-admin-audit-boundary.sh
 
       - name: 🧪 Test declarative coverage
         run: bash tests/declarative-coverage.sh
@@ -5670,6 +5797,7 @@ jobs:
       - test-delete-workflow-runs-specific
       - test-delete-workflow-runs-minimal
       - test-validate-go-project
+      - test-validate-go-project-interface
       - test-validate-go-project-manual-fixes
       - test-validate-go-project-apply-signed-fixes
       - test-validate-go-project-scan-default-branch
@@ -5697,11 +5825,15 @@ jobs:
       - test-publish-caller-pin-live
       - test-scan-for-todo-comments
       - test-scan-for-todo-comments-ignore
+      - test-scan-for-todo-comments-no-project
+      - test-scan-for-todo-comments-default
+      - test-scan-for-todo-comments-default-control
       - test-sync-cluster-policies
       - test-sync-cluster-policies-allowlist
       - test-update-agent-skills
       - test-update-agent-skills-per-skill
       - test-template-sync
+      - test-template-sync-merge-ignore
       - test-govulncheck-allowlist-honored
       - test-govulncheck-strict-blocks
       - test-govulncheck-action-lockstep
@@ -5796,6 +5928,7 @@ jobs:
             ${{ needs.test-delete-workflow-runs-specific.result }}
             ${{ needs.test-delete-workflow-runs-minimal.result }}
             ${{ needs.test-validate-go-project.result }}
+            ${{ needs.test-validate-go-project-interface.result }}
             ${{ needs.test-validate-go-project-manual-fixes.result }}
             ${{ needs.test-validate-go-project-apply-signed-fixes.result }}
             ${{ needs.test-validate-go-project-scan-default-branch.result }}
@@ -5823,11 +5956,15 @@ jobs:
             ${{ needs.test-publish-caller-pin-live.result }}
             ${{ needs.test-scan-for-todo-comments.result }}
             ${{ needs.test-scan-for-todo-comments-ignore.result }}
+            ${{ needs.test-scan-for-todo-comments-no-project.result }}
+            ${{ needs.test-scan-for-todo-comments-default.result }}
+            ${{ needs.test-scan-for-todo-comments-default-control.result }}
             ${{ needs.test-sync-cluster-policies.result }}
             ${{ needs.test-sync-cluster-policies-allowlist.result }}
             ${{ needs.test-update-agent-skills.result }}
             ${{ needs.test-update-agent-skills-per-skill.result }}
             ${{ needs.test-template-sync.result }}
+            ${{ needs.test-template-sync-merge-ignore.result }}
             ${{ needs.test-govulncheck-allowlist-honored.result }}
             ${{ needs.test-govulncheck-strict-blocks.result }}
             ${{ needs.test-govulncheck-action-lockstep.result }}

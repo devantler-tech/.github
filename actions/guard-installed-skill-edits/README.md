@@ -83,12 +83,12 @@ available, to this check and to the diff.
 
 ```yaml
 - name: ⬇️ Checkout
-  uses: actions/checkout@<sha> # <version>
+  uses: actions/checkout@<full-commit-sha> # vX.Y.Z
   with:
     fetch-depth: 0
 
 - name: Guard installed skill edits
-  uses: devantler-tech/.github/actions/guard-installed-skill-edits@<sha> # <version>
+  uses: devantler-tech/.github/actions/guard-installed-skill-edits@<full-commit-sha> # vX.Y.Z
 ```
 
 Pass a different `skill-root` when the consumer installs skills somewhere other than
@@ -111,4 +111,3 @@ a `github-repo` whose value is a mapping or a sequence rather than a scalar, an 
 a diff that cannot be computed, or `yq` missing from `PATH`. The action never treats any of those
 as "no provenance", because "no provenance" is what marks a skill local and editable — it is the
 verdict that permits the edit.
-

@@ -8,7 +8,7 @@ Validation reads files without modifying them or contacting a cluster.
 
 | Name | Description | Required | Default |
 |------|-------------|----------|---------|
-| `enabled` | Opt in to validation; accepts exactly `true` or `false`. | No | `false` |
+| `enabled` | Run validation; set `false` to opt out. Accepts exactly `true` or `false`. | No | `true` |
 | `config-file` | Configuration path, relative to `working-directory` or absolute. | No | `.github/manifest-naming.yaml` |
 | `working-directory` | Repository directory, relative to `GITHUB_WORKSPACE` or absolute. | No | `.` |
 
@@ -25,17 +25,16 @@ permissions:
   contents: read
 
 steps:
-  - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+  - uses: actions/checkout@<full-commit-sha> # vX.Y.Z
     with:
       persist-credentials: false
-  - uses: devantler-tech/.github/actions/validate-naming@<full-commit-sha>
-    with:
-      enabled: "true"
+  - uses: devantler-tech/.github/actions/validate-naming@<full-commit-sha> # vX.Y.Z
 ```
 
-The temporary `enabled` input defaults off during the initial rollout; omission
-does not read configuration, install Go, or scan files. Rollout and input retirement
-are tracked in [devantler-tech/actions#1200](https://github.com/devantler-tech/actions/issues/1200).
+Validation runs by default and requires the repository's own configuration.
+An explicit `enabled: "false"` skips configuration reads, Go setup and file scanning.
+Consumer cleanup and input retirement are tracked in
+[devantler-tech/.github#274](https://github.com/devantler-tech/.github/issues/274).
 
 Enabled runs install the Go version declared in this action's `go.mod`, download
 its checksum-pinned YAML dependency with bounded retries, and build from the

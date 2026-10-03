@@ -22,11 +22,16 @@ on:
         type: string
         default: ""
         description: "Go module directory to validate. Empty = repo root (the normal consumer case); the CI self-test sets it to a fixture so this workflow can run in a repo that is not itself a Go module."
+      go-memory-limit:
+        required: false
+        type: string
+        default: "8GiB"
+        description: "Soft Go heap limit for deadcode and vulnerability analysis. Lower it for smaller runners; decimal Go units are bounded to 8GiB. It does not cap total runner memory."
       scan-default-branch:
         required: false
         type: boolean
-        default: false
-        description: "Opt in to the vulnerability scan's corrected coverage: it then runs on every default-branch invocation rather than only on pull requests, and a pull request that edits only a .govulncheck-allow.txt runs it too, so a risk acceptance is validated by the scanner it applies to. Off by default because both are behaviour changes for every consumer: a default branch that was reporting green can legitimately go red the moment an advisory is published against code that was already merged, and an allowlist-only pull request that used to skip the scan starts paying for it. Callers that omit this input keep the previous behaviour exactly. Roll out caller-by-caller, then flip this default to true and remove the input (devantler-tech/actions#788)."
+        default: true
+        description: "Scan vulnerabilities on every default-branch invocation and on allowlist-only pull requests. On by default after consumer rollout: newly published advisories can make already-merged code fail validation. Pass false to retain pull-request Go-diff coverage only during the compatible transition; input retirement is tracked in devantler-tech/.github#285."
       test-default-branch:
         required: false
         type: boolean
@@ -72,7 +77,7 @@ on:
 # Adding a discriminator only ever splits groups further; it cannot merge two that were
 # separate, so this direction of change cannot reintroduce #587.
 concurrency:
-  group: "validate-go-project-${{ github.repository }}-${{ github.ref }}-${{ github.ref == format('refs/heads/{0}', github.event.repository.default_branch) && github.run_id || '' }}-${{ github.workflow }}-${{ inputs.pr-owner }}-${{ inputs.working-directory }}-${{ inputs.scan-default-branch }}-${{ inputs.test-default-branch }}-${{ inputs.maintenance-default-branch }}-${{ inputs.apply-signed-fixes }}-${{ inputs.manual-workflow-fixes }}"
+  group: "validate-go-project-${{ github.repository }}-${{ github.ref }}-${{ github.ref == format('refs/heads/{0}', github.event.repository.default_branch) && github.run_id || '' }}-${{ github.workflow }}-${{ inputs.pr-owner }}-${{ inputs.working-directory }}-${{ inputs.scan-default-branch }}-${{ inputs.test-default-branch }}-${{ inputs.maintenance-default-branch }}-${{ inputs.apply-signed-fixes }}-${{ inputs.manual-workflow-fixes }}-${{ inputs.go-memory-limit }}"
   cancel-in-progress: true
 
 permissions: {}
@@ -398,6 +403,7 @@ jobs:
     timeout-minutes: 15
     env:
       GOMEMLIMIT: 8GiB
+      GO_MEMORY_LIMIT: ${{ toJSON(inputs) == '{}' && '8GiB' || inputs.go-memory-limit }}
     steps:
       - name: 🛡️ Harden runner
         uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
@@ -408,6 +414,22 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+
+      - name: Checkout the analysis helper at this workflow commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ${{ job.workflow_repository }}
+          ref: ${{ job.workflow_sha }}
+          path: .devantler-tech-actions
+          persist-credentials: false
+
+      - name: Validate the Go analysis memory limit
+        id: memory-limit
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash "$GITHUB_WORKSPACE/.devantler-tech-actions/.github/scripts/validate-go-memory-limit.sh" "$GO_MEMORY_LIMIT" 8
+          printf 'GOMEMLIMIT=%s\n' "$GO_MEMORY_LIMIT" >> "$GITHUB_ENV"
 
       - name: ⚙️ Setup Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
@@ -460,21 +482,19 @@ jobs:
     # alone means a push touching no Go path (a README edit) skips the scan, so the branch
     # keeps reporting green while a newly-published advisory already applies to it.
     #
-    # Fixing that changes behaviour in EVERY consumer repo at once, and the intended
-    # consequence is that a default branch which was green CAN now go red. Per AGENTS.md
-    # (*Shipping a new capability behind an opt-in flag*) it therefore ships behind
-    # `scan-default-branch`, default false, to be rolled out caller-by-caller before the
-    # default flips and the input is removed (#788).
+    # Default-branch coverage is enabled for omitted reusable inputs after consumer
+    # rollout. Explicit false preserves the earlier pull-request coverage during the
+    # compatible transition; the remaining input retirement is tracked in #285.
     #
     # The two arms, and why each is shaped this way:
     #
     #   * PULL-REQUEST ARM — unflagged, and identical to the behaviour shipped today
     #     except that an allowlist-only change now also triggers it. A consumer that
-    #     passes nothing gets exactly what it got before, which is what makes this
-    #     backward-compatible. `govulncheck` is its own filter output rather than an entry
-    #     in `go` so an allowlist edit triggers THIS job and not tidy/lint/deadcode/tests.
+    #     explicitly disables the input keeps its Go-diff coverage. `govulncheck` is
+    #     its own filter output rather than an entry in `go`, so an allowlist edit
+    #     triggers this job and not tidy/lint/deadcode/tests.
     #
-    #   * DEFAULT-BRANCH ARM — the new capability, reachable only when a caller opts in.
+    #   * DEFAULT-BRANCH ARM — enabled by default; explicit false disables this arm.
     #     It tests `go != ''` rather than being unconditional because an EMPTY output means
     #     the `changes` job did not run at all (it is itself gated); a concrete 'true' or
     #     'false' proves the filter ran, so the arm stays independent of how skipped-`needs`
@@ -483,18 +503,20 @@ jobs:
     #
     # The input is compared against both the boolean and the string because a workflow
     # reachable from more than one trigger receives it either way (AGENTS.md, *Gotchas*).
+    # Direct required runs have an empty input object and inherit the enabled default.
+    # Reusable calls supply their declared defaults, so explicit false remains off.
     if: |
       ((
         (
           needs.changes.outputs.go == 'true'
           || (
-            (inputs.scan-default-branch == true || inputs.scan-default-branch == 'true')
+            (toJSON(inputs) == '{}' || inputs.scan-default-branch == true || inputs.scan-default-branch == 'true')
             && needs.changes.outputs.govulncheck == 'true'
           )
         )
         && github.event_name == 'pull_request'
       ) || (
-        (inputs.scan-default-branch == true || inputs.scan-default-branch == 'true')
+        (toJSON(inputs) == '{}' || inputs.scan-default-branch == true || inputs.scan-default-branch == 'true')
         && needs.changes.outputs.go != ''
         && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
       ))
@@ -533,6 +555,7 @@ jobs:
       # the host the process grows until total RSS crosses the ceiling and the HOST kills
       # the runner mid-scan with an opaque exit 143. Guarded by test-govulncheck-timeout.
       GOMEMLIMIT: 8GiB
+      GO_MEMORY_LIMIT: ${{ toJSON(inputs) == '{}' && '8GiB' || inputs.go-memory-limit }}
     steps:
       - name: 🛡️ Harden runner
         uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
@@ -556,6 +579,14 @@ jobs:
 
       # Only reachable symbols block. A committed allowlist accepts exactly the
       # listed advisory IDs; operational errors always fail the check.
+      - name: Validate the Go analysis memory limit
+        id: memory-limit
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash "$GITHUB_WORKSPACE/.devantler-tech-actions/.github/scripts/validate-go-memory-limit.sh" "$GO_MEMORY_LIMIT" 8
+          printf 'GOMEMLIMIT=%s\n' "$GO_MEMORY_LIMIT" >> "$GITHUB_ENV"
+
       - name: 🔎 Detect govulncheck allowlist
         id: govulncheck-allow
         run: |
@@ -788,7 +819,7 @@ jobs:
     name: 📦 Tidy - apply fixes
     needs: [changes, tidy]
     if: ${{ needs.changes.outputs.signed-fixes == 'true' }}
-    uses: devantler-tech/.github/.github/workflows/apply-signed-fixes.yaml@9a045f58078010440eca19ee198218141f98fe0c # v2.5.7
+    uses: devantler-tech/.github/.github/workflows/apply-signed-fixes.yaml@18b1389c9e48c50da4769897258662cc78975b79 # v2.5.13
     permissions:
       contents: read
     with:
@@ -803,7 +834,7 @@ jobs:
     name: 🧹 Lint - golangci-lint - apply fixes
     needs: [changes, golangci-lint, apply-tidy-fixes]
     if: ${{ !cancelled() && needs.changes.outputs.signed-fixes == 'true' && needs.golangci-lint.result == 'success' && (needs.apply-tidy-fixes.result == 'success' || needs.apply-tidy-fixes.result == 'skipped') }}
-    uses: devantler-tech/.github/.github/workflows/apply-signed-fixes.yaml@9a045f58078010440eca19ee198218141f98fe0c # v2.5.7
+    uses: devantler-tech/.github/.github/workflows/apply-signed-fixes.yaml@18b1389c9e48c50da4769897258662cc78975b79 # v2.5.13
     permissions:
       contents: read
     with:
@@ -818,7 +849,7 @@ jobs:
     name: 🧹 Lint - apply fixes
     needs: [changes, lint, apply-golangci-lint-fixes]
     if: ${{ !cancelled() && needs.changes.outputs.signed-fixes == 'true' && needs.lint.result == 'success' && (needs.apply-golangci-lint-fixes.result == 'success' || needs.apply-golangci-lint-fixes.result == 'skipped') }}
-    uses: devantler-tech/.github/.github/workflows/apply-signed-fixes.yaml@9a045f58078010440eca19ee198218141f98fe0c # v2.5.7
+    uses: devantler-tech/.github/.github/workflows/apply-signed-fixes.yaml@18b1389c9e48c50da4769897258662cc78975b79 # v2.5.13
     permissions:
       contents: read
     with:
@@ -840,7 +871,7 @@ jobs:
     if: |
       needs.changes.outputs.go == 'true'
     permissions:
-      contents: write
+      contents: read
     steps:
       - name: 🛡️ Harden runner
         uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
@@ -926,7 +957,7 @@ jobs:
         )
       )
     permissions:
-      contents: write
+      contents: read
     steps:
       - name: 🛡️ Harden runner
         uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
@@ -1011,7 +1042,7 @@ jobs:
     if: |
       needs.changes.outputs.go == 'true'
     permissions:
-      contents: write
+      contents: read
       # Required by upload-coverage to post coverage to GitHub Code Quality. The CALLING workflow
       # must also grant this (a reusable workflow's token is capped by the caller's grant).
       code-quality: write

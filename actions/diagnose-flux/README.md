@@ -34,7 +34,7 @@ steps:
 
   - name: 🩺 Diagnose Flux on failure
     if: failure()
-    uses: devantler-tech/.github/actions/diagnose-flux@main
+    uses: devantler-tech/.github/actions/diagnose-flux@<full-commit-sha> # vX.Y.Z
 ```
 
 ### Describe a different set of Kustomizations
@@ -43,7 +43,7 @@ steps:
 steps:
   - name: 🩺 Diagnose Flux on failure
     if: failure()
-    uses: devantler-tech/.github/actions/diagnose-flux@main
+    uses: devantler-tech/.github/actions/diagnose-flux@<full-commit-sha> # vX.Y.Z
     with:
       kustomizations: infrastructure apps tenants
 ```

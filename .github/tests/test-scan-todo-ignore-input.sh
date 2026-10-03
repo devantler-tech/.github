@@ -44,8 +44,8 @@ default_has_ignore="$(yq -r \
 
 opt_in_uses="$(yq -r \
   '.jobs["test-scan-for-todo-comments-ignore"].uses // ""' .github/workflows/ci.yaml)"
-[[ "$opt_in_uses" == "./.github/workflows/scan-for-todo-comments.yaml" ]] ||
-  fail "the opt-in workflow_call test must invoke scan-for-todo-comments.yaml"
+[[ "$opt_in_uses" == "./.github/workflows/scan-for-todo-comments-readonly.yaml" ]] ||
+  fail "the opt-in workflow_call test must invoke the complete read-only TODO projection"
 
 ci_pattern="$(yq -r '.jobs["test-scan-for-todo-comments-ignore"].with.ignore // ""' \
   .github/workflows/ci.yaml)"
@@ -67,8 +67,8 @@ action_env="$(yq -r \
    | select(.name == "📝 Create issues from TODOs")
    | .env.INPUT_IGNORE // ""' "$action")"
 # shellcheck disable=SC2016 # GitHub expression compared literally.
-[[ "$action_env" == '${{ inputs.ignore }}' ]] ||
-  fail "the scanner action must bind INPUT_IGNORE to inputs.ignore; got: ${action_env:-<missing>}"
+[[ "$action_env" == '${{ inputs.ignore || steps.vendored-ignore.outputs.ignore }}' ]] ||
+  fail "the scanner action must preserve custom ignore before the optional vendor output; got: ${action_env:-<missing>}"
 
 action_run="$(yq -r \
   '.runs.steps[]

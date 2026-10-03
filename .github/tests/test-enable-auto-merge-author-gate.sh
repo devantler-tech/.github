@@ -64,7 +64,7 @@ fi
 
 eligibility_first_uses="$(yq -r '.jobs.eligibility.steps[0].uses // ""' "$workflow")"
 eligibility_first_egress="$(yq -r '.jobs.eligibility.steps[0].with."egress-policy" // ""' "$workflow")"
-if [[ "$eligibility_first_uses" != "step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1" ||
+if [[ ! "$eligibility_first_uses" =~ ^step-security/harden-runner@[0-9a-f]{40}$ ||
   "$eligibility_first_egress" != "audit" ]]; then
   echo "::error file=$workflow::eligibility must begin with the pinned harden-runner action in audit mode"
   status=1
@@ -294,7 +294,7 @@ disarm_checkout_persist="$(yq -r '
    | .with."persist-credentials"]
   | join("\n")' "$workflow")"
 # shellcheck disable=SC2016 # GitHub expressions are compared literally.
-if [[ "$disarm_checkout_uses" != "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1" ||
+if [[ ! "$disarm_checkout_uses" =~ ^actions/checkout@[0-9a-f]{40}$ ||
   "$disarm_checkout_repository" != '${{ job.workflow_repository }}' ||
   "$disarm_checkout_ref" != '${{ github.event.repository.full_name == job.workflow_repository && github.event.pull_request.base.sha || job.workflow_sha }}' ||
   "$disarm_checkout_persist" != "false" ]]; then

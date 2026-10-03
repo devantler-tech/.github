@@ -68,7 +68,11 @@ managed_rows="$(grep -c '^| `[a-z-]*\.yaml` | .*(net-new) | Managed (Create)' "$
 managed_rendered="$(yq -N 'select(.kind == "OrganizationRuleset" and (.spec.managementPolicies | contains(["Create"]))) | .metadata.name' "${render}" | grep -c . || true)"
 [[ "${managed_rendered}" == "5" ]] ||
   fail "expected 5 rendered managed (Create) organization rulesets, got ${managed_rendered}"
-grep -Fq '10 of the 24 org rulesets' "${inventory}" ||
-  fail "organization ruleset inventory must account for 10 UI-managed of 24 org rulesets"
+# Schema inspection is not a live census. Keep rendered ownership checks above,
+# and require the capability inventory to preserve that evidence boundary.
+if ! grep -Fq 'Schema support determines what can be declared; it does not prove adoption,' "${inventory}" ||
+  ! grep -Fq 'There is no current ruleset census in this schema inspection.' "${inventory}"; then
+  fail "provider capability inventory must distinguish reviewed schema from live adoption and census evidence"
+fi
 
 echo "world-at-ruin-regression-ruleset: OK"

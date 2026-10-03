@@ -19,7 +19,7 @@ Enable auto-merge on a pull request using GitHub CLI. The PR will only merge aut
 ```yaml
 steps:
   - name: Enable auto-merge
-    uses: devantler-tech/.github/actions/enable-auto-merge-on-pr@main
+    uses: devantler-tech/.github/actions/enable-auto-merge-on-pr@<full-commit-sha> # vX.Y.Z
     with:
       pr-number: ${{ github.event.pull_request.number }}
       merge-method: squash

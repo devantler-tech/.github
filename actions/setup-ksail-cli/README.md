@@ -13,5 +13,5 @@ failures use bounded retries; a trust failure stops installation immediately.
 ```yaml
 steps:
   - name: Setup KSail CLI
-    uses: devantler-tech/.github/actions/setup-ksail-cli@main
+    uses: devantler-tech/.github/actions/setup-ksail-cli@<full-commit-sha> # vX.Y.Z
 ```

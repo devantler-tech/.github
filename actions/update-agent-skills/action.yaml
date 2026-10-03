@@ -31,7 +31,7 @@ inputs:
     default: ${{ github.token }}
 outputs:
   changed:
-    description: "`true` when at least one SKILL.md was modified, `false` otherwise"
+    description: "`true` when any file in an installed skill's directory was added, removed or modified (content, executable bit or symlink target), `false` otherwise"
     value: ${{ steps.update.outputs.changed }}
   updated-skills:
     description: Raw stdout from `gh skill update --all` (blank when nothing changed)
@@ -74,33 +74,63 @@ runs:
           exit 1
         fi
 
-        # Snapshot SKILL.md contents before running so we can detect modifications
-        # without relying on git being present in the caller's environment.
+        # Snapshot every installed skill's WHOLE directory before running, so we can detect
+        # modifications without relying on git being present in the caller's environment. An
+        # upstream update may change only a bundled script, reference or template and leave
+        # SKILL.md byte-identical; hashing SKILL.md alone reported that as no change (#266).
         if ! command -v shasum >/dev/null 2>&1; then
-          echo "::error::'shasum' is required on the runner to detect SKILL.md changes but was not found on PATH."
+          echo "::error::'shasum' is required on the runner to detect skill changes but was not found on PATH."
           exit 1
         fi
+        # Every installed skill is a directory holding a SKILL.md; one per line.
+        list_skill_dirs() {
+          find "$INPUT_DIR" -type f -name SKILL.md -print0 \
+            | while IFS= read -r -d '' md; do dirname "$md"; done
+        }
+        # Writes one line per file under the skill directories read from stdin: the content hash of
+        # every regular file, plus every executable bit and symlink target, which change a skill
+        # without changing any file's bytes. Added and removed files change the listing itself.
+        # A `.git` inside a skill directory is repository state, not skill content.
+        snapshot() { # <out>
+          local dirs dir file files
+          dirs=$(sort -u)
+          files=$(mktemp)
+          while IFS= read -r dir; do
+            if [ -n "$dir" ] && [ -d "$dir" ]; then
+              find "$dir" -name .git -prune -o \( -type f -o -type l \) -print0
+            fi
+          done <<<"$dirs" | sort -zu >"$files"
+          {
+            while IFS= read -r -d '' file; do
+              if [ ! -L "$file" ]; then printf '%s\0' "$file"; fi
+            done <"$files" | xargs -0 -r shasum -a 256
+            while IFS= read -r -d '' file; do
+              if [ -L "$file" ]; then
+                printf 'link %s -> %s\n' "$file" "$(readlink "$file")"
+              elif [ -x "$file" ]; then
+                printf 'exec %s\n' "$file"
+              fi
+            done <"$files"
+          } >"$1"
+          rm -f "$files"
+        }
+        skill_dirs=$(list_skill_dirs)
         before=$(mktemp)
-        find "$INPUT_DIR" -type f -name SKILL.md -print0 \
-          | sort -z \
-          | xargs -0 -r shasum -a 256 >"$before"
+        printf '%s\n' "$skill_dirs" | snapshot "$before"
 
         # Discover all parent directories of skill subdirectories under INPUT_DIR.
         # gh skill update --dir X discovers X/*/SKILL.md and writes back to X/<skill>/SKILL.md.
         # Passing the immediate parent of each skill dir (e.g. .agents/skills or plugins/<p>/skills)
-        # ensures discovery and writes land in the same place.
+        # ensures discovery and writes land in the same place. Derived from the same skill list the
+        # snapshot covers, so the skills updated and the skills compared cannot drift apart.
         # Use a while-read loop instead of mapfile for bash 3.2 compatibility (macOS).
         roots=()
         while IFS= read -r root; do
           roots+=("$root")
         done < <(
-          find "$INPUT_DIR" -type f -name SKILL.md -print0 \
-            | while IFS= read -r -d '' md; do
-                skill_dir=$(dirname "$md")
-                parent_dir=$(dirname "$skill_dir")
-                echo "$parent_dir"
-              done \
-            | sort -u
+          while IFS= read -r skill_dir; do
+            if [ -n "$skill_dir" ]; then dirname "$skill_dir"; fi
+          done <<<"$skill_dirs" | sort -u
         )
 
         if [ ${#roots[@]} -eq 0 ]; then
@@ -151,10 +181,10 @@ runs:
             ;;
         esac
 
+        # Re-list the skills: one that appeared adds its files to the snapshot, and one that vanished
+        # (or lost its SKILL.md) drops at least that file from it, so both count as a change.
         after=$(mktemp)
-        find "$INPUT_DIR" -type f -name SKILL.md -print0 \
-          | sort -z \
-          | xargs -0 -r shasum -a 256 >"$after"
+        list_skill_dirs | snapshot "$after"
 
         if cmp -s "$before" "$after"; then
           echo "changed=false" >> "$GITHUB_OUTPUT"

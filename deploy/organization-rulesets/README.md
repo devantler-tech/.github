@@ -69,60 +69,50 @@ paths are compatible; changing the empty ref selector is not part of this retire
 The retirement decision and evidence are tracked in
 [#132](https://github.com/devantler-tech/.github/issues/132).
 
-## What stays UI-managed, and why
+## Provider capability and adoption gates
 
-`provider-upjet-github` v0.19.1 has a **narrower** ruleset schema than GitHub's API.
-Verified against the live CRDs, it does **not** support:
+The reviewed [v0.20.0 OrganizationRuleset schema](https://github.com/crossplane-contrib/provider-upjet-github/blob/a211e095e2fe49c477836acec2ad4a28aa60e030/package/crds/enterprise.github.m.upbound.io_organizationrulesets.yaml)
+has Git blob `566bb7e5736b64f4e60920e2f52e986c26a53ce4` and SHA-256
+`f50cfddb37f198f32ed950172fbf1c7891ca70806b379aa325098e85c5dacfad`.
+The same bytes appear at upstream main `0609e5fcca24d0f737c8cd9c6b4a39439f51f3ba`.
+Schema support determines what can be declared; it does not prove adoption,
+reconciliation or effective protection. Each adoption still needs Observe-first
+inventory, a reviewed full resource and live readback.
 
-- **`repository_property` conditions** (custom-property scoping) — only `refName`,
-  `repositoryName`, `repositoryId`.
-- **Rule types** `code_quality`, `copilot_code_review`, `repository_transfer`,
-  `repository_name`, and the push-file rules (`file_path_restriction`, `max_file_size`,
-  `file_extension_restriction`, `max_file_path_length`).
-- **Target `repository`** (only `branch`, `tag`, `push`).
-- **Bypass actor `EnterpriseOwner`**.
+| Capability | Reviewed schema | Remaining gate |
+|---|---|---|
+| Custom-property scoping | `conditions.repositoryProperty` is present | Full ruleset adoption and selector readback in [#69](https://github.com/devantler-tech/.github/issues/69) / [#121](https://github.com/devantler-tech/.github/issues/121) |
+| Copilot review | `rules.copilotCodeReview` is present | Maintainer activation decision and adoption; support does not enable review |
+| Push-file restrictions | All four restriction types and target `push` are present | A reviewed policy, scope and live positive/negative controls |
+| Required status checks | `doNotEnforceOnCreate` is a typed Boolean | Runtime create/reconcile evidence; imported rules remain Observe-only |
+| Enterprise-owner bypass | `EnterpriseOwner` is present | Declare the exact approved bypass list during adoption |
+| Code-quality rule | `codeQuality` is absent | Provider support in #69 / #121 |
+| Repository name and transfer rules | Target `repository` and `repositoryTransfer` are absent | Provider support; an available bypass actor does not supply the missing rule |
+| Secret-scanning alert resolution | `require_secret_scanning_alert_resolution` and its parameters are absent | [#194](https://github.com/devantler-tech/.github/issues/194): provider support or an approved adapter, plus real merge-blocking controls |
 
-So **10 of the 24 org rulesets cannot be faithfully expressed** and remain UI-managed:
+The [release's complete CRD tree](https://github.com/crossplane-contrib/provider-upjet-github/tree/a211e095e2fe49c477836acec2ad4a28aa60e030/package/crds)
+also contains organization and repository Actions
+permissions with `shaPinningRequired`, and `RepositoryCollaboratorSet`. Those
+#121 tasks are expressible, with authoritative ownership and live enforcement
+readback still required. Organization settings and actor/event workflow execution
+protection have no generated resource in that tree. Actions permissions and SHA
+pinning cannot stand in for those distinct policies.
 
-| Ruleset (org) | Blocked by |
-|---|---|
-| Require code scanning results | `repository_property` condition (custom property `Type`) |
-| Require workflows … EnableAutoMerge | `repository_property` condition |
-| Require workflows … LintDocumentation | `repository_property` condition |
-| Require workflows … ScanGitHubActions | `repository_property` condition |
-| Require workflows for .NET | `repository_property` condition (`language`) |
-| Require workflows for Go | `repository_property` condition (`language`) |
-| Require code quality results | rule type `code_quality` unsupported |
-| Automatically request Copilot code review | rule type `copilot_code_review` unsupported (also disabled) |
-| restrict-names | target `repository` unsupported |
-| restrict-transfers | target `repository` unsupported (+ `EnterpriseOwner` bypass) |
-
-These are tracked for re-adoption as the provider gains support in
-[#69](https://github.com/devantler-tech/.github/issues/69) (`roadmap`). Re-home each
-here Observe-first once expressible.
-
-> **⚠️ `required_status_checks` rulesets are expressible but NOT provider-creatable.**
-> A required-status-check org ruleset (requiring the `CodeRabbit` check) was added in
-> [#74](https://github.com/devantler-tech/.github/pull/74) and **reverted** — on create the
-> provider **panics**: `terraform-provider-github` v6.6.0 (`respository_rules_utils.go:343`)
-> does `requiredStatusMap["do_not_enforce_on_create"].(bool)`, but `provider-upjet-github`
-> v0.19.1's CRD doesn't expose `doNotEnforceOnCreate`, so the key is `nil` → `nil.(bool)`
-> panics. The field can't be set from the CR to avoid it, and v0.19.1 is the latest release.
-> So **"Require status checks to pass"** (and any CodeRabbit equivalent) must stay
-> **UI-created + Observe-imported** until the provider is fixed; that is also why the
-> `require-status-checks.yaml` import here is Observe-only. Tracked in
-> [#69](https://github.com/devantler-tech/.github/issues/69).
+There is no current ruleset census in this schema inspection. Do not derive a
+remaining-rule count from the earlier inventory or from an admin-team audit PASS.
+Team assignment coverage, ruleset adoption and maintenance retirement are separate
+gates; a team audit cannot clear the latter two.
 
 ## Push / tag / Actions-policy considerations
 
-- **Push rulesets** — none exist, and **not adoptable**: the provider supports
-  `target: push` (beta) but none of the push-file rule types above, so a push ruleset
-  can't be expressed. Tracked in [#69](https://github.com/devantler-tech/.github/issues/69).
+- **Push rulesets** — the reviewed schema can express their file restrictions.
+  Adoption remains issue-driven in [#69](https://github.com/devantler-tech/.github/issues/69);
+  schema support alone neither creates a policy nor proves its live coverage.
 - **Tag rulesets** — none existed; **added** here (`protect-release-tags.yaml`). Makes
   release tags immutable (block delete + force-move) and well-formed (`v<semver>`). See
   that file's header for the team-vs-enterprise tier caveat on the name-pattern rule and
   its fallback.
-- **Required-workflow source pins** — v0.19.1 exposes the source repository, path and a
+- **Required-workflow source pins** — v0.20.0 exposes the source repository, path and a
   branch/tag `ref`, but not GitHub's immutable workflow `sha` selector. The World at Ruin
   rule therefore binds the external trusted source to `devantler-tech/actions` on
   `refs/heads/main`; Actions review and merge gates own source changes until the provider
@@ -130,9 +120,9 @@ here Observe-first once expressible.
 - **Actions policies** — the 2026-06-18
   [workflow execution protections](https://github.blog/changelog/2026-06-18-control-who-and-what-triggers-github-actions-workflows/)
   (actor + event allow-lists controlling who/what triggers workflows, delivered as org
-  rulesets scoped by **custom properties**) are **not adoptable**: the new rule types
-  aren't in the provider and the feature relies on the `repository_property` scoping the
-  provider lacks. Tracked in [#69](https://github.com/devantler-tech/.github/issues/69);
+  rulesets scoped by **custom properties**) have no generated provider resource.
+  Custom-property scoping is supported; the execution-policy resource remains the
+  distinct gap. Tracked in [#69](https://github.com/devantler-tech/.github/issues/69);
   revisit when the provider catches up. Until then they are declared in
   [`workflow-execution-policies/`](../../workflow-execution-policies/) and applied by a workflow;
   moving them here is [#226](https://github.com/devantler-tech/.github/issues/226).

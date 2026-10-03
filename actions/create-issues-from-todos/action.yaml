@@ -22,6 +22,10 @@ inputs:
     description: Regular expression matching repository-relative paths to ignore
     required: false
     default: ""
+  exclude-vendored:
+    description: Opt in to excluding root vendor/ and third_party/ paths when no explicit ignore is configured; rollout retirement is tracked in devantler-tech/.github#394
+    required: false
+    default: 'false'
 runs:
   using: composite
   steps:
@@ -75,6 +79,12 @@ runs:
     # local instead of wrapping a docker action with another marketplace action:
     # some consumers reject the wrapper's unpinned nested implementation ref at
     # job setup under full-SHA policies.
+    - name: Select conventional vendor exclusion
+      id: vendored-ignore
+      if: ${{ inputs.exclude-vendored == 'true' && inputs.ignore == '' }}
+      shell: bash
+      run: |
+        printf 'ignore=^(vendor|third_party)/\n' >>"$GITHUB_OUTPUT"
     - name: 📝 Create issues from TODOs
       shell: bash
       env:
@@ -95,7 +105,7 @@ runs:
         INPUT_ESCAPE: "true"
         INPUT_NO_STANDARD: "false"
         INPUT_INSERT_ISSUE_URLS: "false"
-        INPUT_IGNORE: ${{ inputs.ignore }}
+        INPUT_IGNORE: ${{ inputs.ignore || steps.vendored-ignore.outputs.ignore }}
         # Pinned by DIGEST, not by tag: this image runs with `github.token` and the
         # App `PROJECTS_SECRET`, so a retag of `:v5.1.15` upstream would otherwise
         # execute unreviewed code with those credentials. The tag is kept in front of

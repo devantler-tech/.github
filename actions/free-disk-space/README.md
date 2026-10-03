@@ -39,10 +39,10 @@ Each toolchain is removed by default and can be kept by setting its input to
 ```yaml
 steps:
   - name: Free disk space
-    uses: devantler-tech/.github/actions/free-disk-space@main
+    uses: devantler-tech/.github/actions/free-disk-space@<full-commit-sha> # vX.Y.Z
 
   - name: Setup Go
-    uses: devantler-tech/.github/actions/setup-go-toolchain@main
+    uses: devantler-tech/.github/actions/setup-go-toolchain@<full-commit-sha> # vX.Y.Z
 
   - name: Test
     shell: bash
@@ -54,7 +54,7 @@ steps:
 ```yaml
 steps:
   - name: Free disk space
-    uses: devantler-tech/.github/actions/free-disk-space@main
+    uses: devantler-tech/.github/actions/free-disk-space@<full-commit-sha> # vX.Y.Z
     with:
       dotnet: "false" # job runs .NET — keep /usr/share/dotnet
 ```
@@ -65,7 +65,7 @@ steps:
 steps:
   - name: Free disk space
     id: disk
-    uses: devantler-tech/.github/actions/free-disk-space@main
+    uses: devantler-tech/.github/actions/free-disk-space@<full-commit-sha> # vX.Y.Z
 
   - name: Report
     shell: bash

@@ -36,10 +36,11 @@ type exchange struct {
 }
 
 type scenario struct {
-	Name        string
-	Exchanges   []exchange
-	WantFailure bool
-	Output      []string
+	Name            string
+	Exchanges       []exchange
+	WantFailure     bool
+	Output          []string
+	ForbiddenOutput []string
 }
 
 type replay struct {
@@ -71,7 +72,7 @@ func (f *replay) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if f.next >= len(f.exchanges) {
-		f.reject(w, "unexpected additional request")
+		f.reject(w, fmt.Sprintf("unexpected additional request (%s %s)", r.Method, r.URL.RequestURI()))
 		return
 	}
 	want := f.exchanges[f.next]
@@ -271,18 +272,30 @@ func run() error {
 			return scannerErr
 		}
 	}
-	if err := fixture.verify(); err != nil {
+	if err := fixture.verifyScannerResult(test, scannerErr, output.String()); err != nil {
+		return err
+	}
+	fmt.Printf("PASS: real pinned scanner — %s (%d requests)\n", test.Name, len(test.Exchanges))
+	return nil
+}
+
+func (f *replay) verifyScannerResult(test scenario, scannerErr error, output string) error {
+	if err := f.verify(); err != nil {
 		return err
 	}
 	if (scannerErr != nil) != test.WantFailure {
 		return fmt.Errorf("unexpected scanner exit: %v", scannerErr)
 	}
 	for _, message := range test.Output {
-		if !strings.Contains(output.String(), message) {
+		if !strings.Contains(output, message) {
 			return fmt.Errorf("missing scanner result: %q", message)
 		}
 	}
-	fmt.Printf("PASS: real pinned scanner — %s (%d requests)\n", test.Name, len(test.Exchanges))
+	for _, message := range test.ForbiddenOutput {
+		if strings.Contains(output, message) {
+			return fmt.Errorf("forbidden scanner result: %q", message)
+		}
+	}
 	return nil
 }
 

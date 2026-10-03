@@ -6,11 +6,21 @@ work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
 fixture="$root/.github/tests/todo-scanner"
 cases="$fixture/cases.json"
+check_only=false
 if (( $# > 0 )); then
-  [[ "$1" == --check-fixtures && $# == 2 ]] || { echo 'usage: test-todo-scanner.sh [--check-fixtures file]' >&2; exit 2; }
+  [[ $# == 2 && ( "$1" == --check-fixtures || "$1" == --cases ) ]] || {
+    echo 'usage: test-todo-scanner.sh [--check-fixtures file | --cases file]' >&2; exit 2;
+  }
+  [[ "$1" != --check-fixtures ]] || check_only=true
   cases="$2"
 fi
 jq -e '
+  def valid_exchange:
+    type == "object" and (.Method | IN("GET", "POST", "PATCH")) and
+    (.Path | type == "string" and startswith("/")) and
+    (.Status | type == "number" and floor == . and . >= 100 and . <= 599) and
+    (.Response | type == "string") and
+    (if has("Body") then .Body | type == "string" else true end);
   type == "array" and length > 0 and ([.[].Name]|unique|length) == length and
   all(.[];
     (.Name|type == "string" and length > 0) and
@@ -18,9 +28,15 @@ jq -e '
     (.Files|keys|all(test("^[A-Za-z0-9._/-]+$") and (startswith("/")|not) and
       (split("/")|all(. != ".." and . != "." and . != "")))) and
     all(.Files[]; (.Before|type == "string") and (.After|type == "string")) and
-    (.Operations|type == "array") and (.Output|type == "array" and all(type == "string")))
+    (.Operations|type == "array" and all(valid_exchange)) and
+    (.Output|type == "array" and all(type == "string" and length > 0)) and
+    (if has("Ignore") then .Ignore|type == "string" else true end) and
+    (if has("ExcludeVendored") then .ExcludeVendored|IN("true","false") else true end) and
+    (if has("WantFailure") then .WantFailure|type == "boolean" else true end) and
+    (if has("ForbiddenOutput") then .ForbiddenOutput|type == "array" and all(type == "string" and length > 0) else true end) and
+    (if has("InitialReads") then .InitialReads|type == "array" and length > 0 and all(valid_exchange and .Method == "GET") else true end))
   ' "$cases" >/dev/null || { echo 'Invalid scanner scenarios' >&2; exit 1; }
-(( $# == 0 )) || exit 0
+[[ "$check_only" == false ]] || exit 0
 export TODO_REAL_DOCKER
 TODO_REAL_DOCKER="$(command -v docker)"
 [[ "$TODO_REAL_DOCKER" == /* ]] || { echo 'FAIL: real Docker is required' >&2; exit 1; }
@@ -70,21 +86,8 @@ for ((i=0; i<count; i++)); do
     jq -jr --arg file "$file" '.Files[$file].After' "$TODO_CASE_DIR/source.json" >"$GITHUB_WORKSPACE/$file"
   done <"$TODO_CASE_DIR/files"
   git -C "$GITHUB_WORKSPACE" diff --no-ext-diff --no-color >"$TODO_CASE_DIR/diff"
-  jq --rawfile diff "$TODO_CASE_DIR/diff" '
-    . as $case |
-    {Name,WantFailure:(.WantFailure // false),Output,
-     Exchanges:([
-       {Method:"GET",Path:"/github/linguist/master/lib/linguist/languages.yml",Raw:true,Status:200,Response:"Shell:\n  extensions: [\".sh\"]\n  ace_mode: sh\nGo:\n  extensions: [\".go\"]\n  ace_mode: golang\n"},
-       {Method:"GET",Path:"/alstr/todo-to-issue-action/master/syntax.json",Raw:true,Status:200,Response:"[{\"language\":\"Shell\",\"markers\":[{\"type\":\"line\",\"pattern\":\"#\"}]},{\"language\":\"Go\",\"markers\":[{\"type\":\"line\",\"pattern\":\"//\"}]}]"},
-       {Method:"GET",Path:"/repos/offline/fixture/issues?per_page=100&page=1&state=open",Status:200,Response:($case.Existing // [] | tojson)},
-       {Method:"GET",Path:"/repos/offline/fixture/milestones?per_page=100&page=1&state=open",Status:200,Response:"[]"}]
-       + (if .DiffError then [
-         {Method:"GET",Path:"/repos/offline/fixture/compare/fixture-base...1111111111111111111111111111111111111111",Status:503,Response:"{\"message\":\"Offline diff failure\"}"},
-         {Method:"GET",Path:"/repos/offline/fixture/commits/1111111111111111111111111111111111111111",Status:503,Response:"{\"message\":\"Offline fallback failure\"}"}]
-       else [
-         {Method:"GET",Path:"/repos/offline/fixture/compare/fixture-base...1111111111111111111111111111111111111111",Status:200,Response:$diff}]
-       end) + .Operations)}' "$TODO_CASE_DIR/source.json" >"$TODO_CASE_DIR/case.json"
-  ignore="$(jq -r '.Ignore // ""' "$TODO_CASE_DIR/source.json")"
+  jq --rawfile diff "$TODO_CASE_DIR/diff" -f "$fixture/plan.jq" "$TODO_CASE_DIR/source.json" >"$TODO_CASE_DIR/case.json"
+  ignore="$(bash "$root/.github/tests/todo-ignore-resolution.sh" "$work/action.json" "$TODO_CASE_DIR/source.json")"
   jq -n --arg ignore "$ignore" '{
     "${{ github.repository }}":"offline/fixture",
     "${{ github.event.before || github.base_ref }}":"fixture-base",
@@ -97,7 +100,7 @@ for ((i=0; i<count; i++)); do
     "${{ github.actor }}":"offline-actor",
     "${{ github.api_url }}":"https://api.example.invalid",
     "${{ github.server_url }}":"https://example.invalid",
-    "${{ inputs.ignore }}":$ignore}' >"$TODO_CASE_DIR/context.json"
+    "${{ inputs.ignore || steps.vendored-ignore.outputs.ignore }}":$ignore}' >"$TODO_CASE_DIR/context.json"
   jq -e --slurpfile context "$TODO_CASE_DIR/context.json" '
     .runs.steps[] | select(.name == "📝 Create issues from TODOs") | .env |
     with_entries(.value = (.value | tostring | . as $value |

@@ -1,9 +1,9 @@
 # Validate shell pipelines
 
 Find shell assertions that can lose a producer's exit status when `grep` stops
-reading a pipe early. This action is being delivered behind a temporary opt-in;
-consumer validation and retirement of that input are tracked in
-[devantler-tech/actions#1357](https://github.com/devantler-tech/actions/issues/1357).
+reading a pipe early. Validation runs by default; callers can temporarily opt out
+with `enabled: "false"`. Consumer adoption and removal of that input are tracked in
+[devantler-tech/.github#268](https://github.com/devantler-tech/.github/issues/268).
 
 Actions opts its own required CI into this guard for `.scripts`, `.github/scripts`,
 `.github/tests`, `guard-installed-skill-edits`, and `update-agent-skills`. This
@@ -16,7 +16,7 @@ a disposable copy from each selected directory; it never executes those scripts.
 
 | Name | Description | Required | Default |
 |------|-------------|----------|---------|
-| `enabled` | Opt in to validation; accepts exactly `true` or `false`. | No | `false` |
+| `enabled` | Run validation; set `false` to opt out. Accepts exactly `true` or `false`. | No | `true` |
 | `working-directory` | Git checkout directory, relative to `GITHUB_WORKSPACE` or absolute. | No | `.` |
 | `paths` | Newline-separated relative files or directories; each must include at least one tracked shell file. | No | `.` |
 
@@ -33,12 +33,11 @@ permissions:
   contents: read
 
 steps:
-  - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+  - uses: actions/checkout@<full-commit-sha> # vX.Y.Z
     with:
       persist-credentials: false
-  - uses: devantler-tech/.github/actions/validate-shell-pipelines@<full-commit-sha>
+  - uses: devantler-tech/.github/actions/validate-shell-pipelines@<full-commit-sha> # vX.Y.Z
     with:
-      enabled: "true"
       paths: |
         scripts
         .github/tests
@@ -61,7 +60,7 @@ Enabled runs install the Go version in this action's `go.mod` and download its
 checksum-pinned shell parser with bounded retries. These build steps need network
 access to the Go distribution and module services. Subsequent validation is
 offline; it neither modifies nor executes the scanned scripts. Linux and macOS
-runners are supported. Omitted or false enablement skips all setup and discovery.
+runners are supported. Only explicit `enabled: "false"` skips all setup and discovery.
 
 ## What it catches
 
@@ -149,6 +148,6 @@ file. Diagnostics identify the path, line, option, and repair without printing
 the source text. Exceptions must be actual shell comments with a reason.
 
 The action builds its own Go module independently of the caller's module. Its
-default-disabled path does not discover files, install Go, or download modules.
+explicitly disabled path does not discover files, install Go, or download modules.
 The CLI always performs validation and uses exit codes 0 (clean), 1 (findings),
 and 2 (incomplete or invalid scan).
