@@ -5675,6 +5675,12 @@ jobs:
       - name: 🔒 Test live admin-audit credential boundary
         run: bash tests/repository-admin-audit-boundary.sh
 
+      - name: 🔎 Test organization-settings observations
+        run: bash tests/organization-settings.sh
+
+      - name: 🔒 Test organization-settings audit boundary
+        run: bash tests/organization-settings-boundary.sh
+
       - name: 🧪 Test declarative coverage
         run: bash tests/declarative-coverage.sh
 

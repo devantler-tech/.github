@@ -1,0 +1,52 @@
+name: 🔎 Organization settings audit
+
+on:
+  workflow_dispatch:
+    inputs:
+      run-audit:
+        description: "Opt in to the read-only audit; scheduling and flag retirement are tracked in #404"
+        type: boolean
+        required: false
+        default: false
+
+permissions: {}
+
+concurrency:
+  group: organization-settings-audit-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  audit:
+    if: >-
+      github.event_name == 'workflow_dispatch'
+      && github.repository == 'devantler-tech/.github'
+      && github.ref == 'refs/heads/main'
+      && (inputs.run-audit == true || inputs.run-audit == 'true')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - name: Harden runner
+        uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
+        with:
+          egress-policy: audit
+      - name: Checkout reviewed workflow source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.workflow_sha }}
+          persist-credentials: false
+      - name: Get read-only organization audit token
+        id: audit-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          client-id: ${{ vars.APP_CLIENT_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+          owner: devantler-tech
+          repositories: .github
+          permission-metadata: read
+          permission-organization-administration: read
+      - name: Audit organization settings
+        env:
+          GH_TOKEN: ${{ steps.audit-token.outputs.token }}
+        run: bash scripts/check-organization-settings.sh

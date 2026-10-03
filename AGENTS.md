@@ -101,6 +101,14 @@ The **roadmap of record** is GitHub Issues — epic [#56](https://github.com/dev
 ("declarative GitHub-org-as-code") with `roadmap`-labelled children. Triage incoming issues into that
 structure; implementing PRs use `Fixes #N`.
 
+Organization settings not represented by the provider are audited against
+[`organization-settings/expected.json`](organization-settings/README.md). The check is read-only:
+0 means all declared settings match, 1 means measured drift, and 2 means invalid or incomplete
+evidence. Its manual workflow runs only on reviewed main after explicit opt-in, requests read
+authority and never changes settings. Keep both observation/failure controls and the workflow
+credential-boundary mutations in CI. Provider adoption remains in #85; scheduling and flag
+retirement remain in #404.
+
 **Validate before every PR** (the sole required check, `CI - Required Checks`, gates on this):
 
 ```sh
