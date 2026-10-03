@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Execute the shipped release command/config against local Git remotes, without auth.
+# Execute shipped release decisions against local Git remotes, without auth.
 set -euo pipefail
 root="$(CDPATH='' cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd -P)"
 workflow="${1:-$root/.github/workflows/create-release.yaml}"
@@ -11,6 +11,22 @@ disabled="${DISABLE_ISSUE_SIDE_EFFECTS:-false}"
 }
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
+# GitHub publication requires live authentication, even during dry-run. Keep
+# its production declaration required, but omit only that publisher from these
+# offline decision fixtures. Native release/readback proves publication.
+jq -e '
+  def name: if type == "array" then .[0] else . end;
+  [.plugins[] | name] as $names |
+  ($names | index("@semantic-release/github")) != null and
+  ($names | index("@semantic-release/release-notes-generator")) != null and
+  all($names[]; . == "@semantic-release/commit-analyzer" or
+    . == "@semantic-release/release-notes-generator" or . == "@semantic-release/github")
+' "$config" >/dev/null || {
+  echo 'FAIL: production release requires notes and GitHub publishing; unknown fixture plugins are unsupported' >&2
+  exit 1
+}
+jq '.plugins |= map(select((if type == "array" then .[0] else . end) != "@semantic-release/github"))' \
+  "$config" >"$work/decisions.json"
 run="$(yq -r '.jobs.release.steps[] | select(.name == "🎉 Release") | .run' "$workflow")"
 hooks="\${{ inputs.disable-issue-side-effects && '--success false --fail false' || '' }}"
 dry="\${{ inputs.dry-run && '--dry-run' || '' }}"
@@ -40,7 +56,7 @@ while IFS=$'\t' read -r name message expected; do
   fixture_git -c init.defaultBranch=main init --quiet "$repo"
   fixture_git -C "$repo" config user.name 'Release fixture'
   fixture_git -C "$repo" config user.email 'fixture@example.invalid'
-  cp "$config" "$repo/.releaserc"
+  cp "$work/decisions.json" "$repo/.releaserc"
   fixture_git -C "$repo" add .releaserc
   fixture_git -C "$repo" -c commit.gpgsign=false commit --quiet -m 'chore: baseline'
   fixture_git -C "$repo" -c tag.gpgsign=false tag v1.2.3

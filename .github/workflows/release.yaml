@@ -13,5 +13,6 @@ jobs:
     uses: ./.github/workflows/create-release.yaml
     with:
       disable-issue-side-effects: true
+      warn-missing-breaking-bang: true
     secrets:
       APP_PRIVATE_KEY: ${{ secrets.APP_PRIVATE_KEY }}
