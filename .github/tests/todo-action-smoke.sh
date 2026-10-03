@@ -7,6 +7,7 @@ case "${1:-}" in
   prepare)
     mkdir -p "$fixture/bin"
     : >"$fixture/calls.jsonl"
+    rm -f "$fixture/credential-mismatch"
     [[ -n "${TODO_EXPECTED_TOKEN:-}" ]] || { echo 'Missing expected read-only fixture token' >&2; exit 1; }
     jq -n --arg token "$TODO_EXPECTED_TOKEN" --arg secret "${TODO_EXPECTED_PROJECT_SECRET:-}" \
       '{INPUT_TOKEN:$token,INPUT_PROJECTS_SECRET:$secret}' >"$fixture/credentials.json"
@@ -48,7 +49,15 @@ while (( $# )); do
     fi
     if [[ "$key" == INPUT_TOKEN || "$key" == INPUT_PROJECTS_SECRET ]]; then
       expected="$(jq -r --arg key "$key" '.[$key]' "$fixture/credentials.json")"
-      [[ "$value" == "$expected" ]] || { echo 'Offline credential forwarding differs' >&2; exit 74; }
+      if [[ "$value" != "$expected" ]]; then
+        if [[ "$key" == INPUT_PROJECTS_SECRET && -z "$value" && -n "$expected" ]]; then
+          printf 'empty-project-secret\n' >"$fixture/credential-mismatch"
+        else
+          printf 'credential-forwarding-differs\n' >"$fixture/credential-mismatch"
+        fi
+        echo 'Offline credential forwarding differs' >&2
+        exit 74
+      fi
       [[ -z "$value" ]] || value="<present>"
     fi
     pairs+=("$key" "$value")
