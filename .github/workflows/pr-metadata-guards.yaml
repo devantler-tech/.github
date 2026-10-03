@@ -64,14 +64,18 @@ jobs:
           }
           jq -r '"head=" + .head.sha, "base=" + .base.sha, "commits=" + (.commits | tostring), "title=" + (.title | tojson)' "$RUNNER_TEMP/pr.json" >> "$GITHUB_OUTPUT"
           jq -r '.body // ""' "$RUNNER_TEMP/pr.json" > "$RUNNER_TEMP/pr-body.txt"
-      - name: 📥 Check out the candidate as data
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          repository: devantler-tech/.github
-          ref: ${{ steps.pr.outputs.head }}
-          path: candidate
-          fetch-depth: 0
-          persist-credentials: false
+      - name: 📥 Read candidate Git objects and manifests
+        shell: bash
+        env:
+          BASE_SHA: ${{ steps.pr.outputs.base }}
+          HEAD_SHA: ${{ steps.pr.outputs.head }}
+        run: |
+          set -euo pipefail
+          # Fetch public objects into the reviewed repository, without checking
+          # out candidate code, actions, hooks, credentials or Git configuration.
+          git -C trusted fetch --no-tags https://github.com/devantler-tech/.github.git "$BASE_SHA" "$HEAD_SHA"
+          mkdir candidate
+          git -C trusted archive "$HEAD_SHA" deploy | tar --extract --directory=candidate
       - name: 🚦 Validate release contract
         shell: bash
         env:
@@ -81,15 +85,15 @@ jobs:
           COMMIT_COUNT: ${{ steps.pr.outputs.commits }}
         run: |
           PR_TITLE="$(jq -r . <<<"$PR_TITLE_JSON")"
-          first_subject="$(git -C candidate log --format=%s "$BASE_SHA..$HEAD_SHA" | tail -1)"
-          git -C candidate diff --name-only -z "$BASE_SHA" "$HEAD_SHA" |
+          first_subject="$(git -C trusted log --format=%s "$BASE_SHA..$HEAD_SHA" | tail -1)"
+          git -C trusted diff --name-only -z "$BASE_SHA" "$HEAD_SHA" |
             bash trusted/scripts/validate-release-contract.sh "$PR_TITLE" "$COMMIT_COUNT" "$first_subject"
       - name: 🗑️ Validate deploy/ deletions are acknowledged
         shell: bash
         env:
           BASE_SHA: ${{ steps.pr.outputs.base }}
         run: |
-          git -C candidate worktree add --detach "$RUNNER_TEMP/base" "$BASE_SHA"
+          git -C trusted worktree add --detach "$RUNNER_TEMP/base" "$BASE_SHA"
           kubectl kustomize "$RUNNER_TEMP/base/deploy" > "$RUNNER_TEMP/base-render.yaml" ||
             { echo "deploy-deletions: UNKNOWN — the base deploy/ tree does not render; repair main first" >&2; exit 2; }
           kubectl kustomize candidate/deploy > "$RUNNER_TEMP/head-render.yaml" ||
