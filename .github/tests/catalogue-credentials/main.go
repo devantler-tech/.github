@@ -4,6 +4,7 @@ import (
 	"bytes"
 	stdctx "context"
 	"crypto/sha1"
+	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -26,6 +27,7 @@ type auditor struct {
 	sources         map[string]object
 	active          map[string]bool
 	leaves, skipped int
+	scope           int
 }
 
 var fullSHA = regexp.MustCompile("^[0-9a-f]{40}$")
@@ -440,6 +442,8 @@ func (a *auditor) workflow(path, revision string, c context, provided, secrets, 
 			delete(c, k)
 		}
 	}
+	a.scope++
+	c["__catalogue_guard_scope"] = a.scope
 	wp := ceiling
 	if p, ok := w["permissions"]; ok {
 		wp, err = permissions(p)
@@ -583,6 +587,16 @@ func (a *auditor) workflow(path, revision string, c context, provided, secrets, 
 
 // steps recursively checks executed composite actions with their actual input defaults.
 func (a *auditor) steps(steps []any, revision string, c context, bindings map[string]binding) error {
+	ids := map[string]bool{}
+	for _, v := range steps {
+		id := text(asObject(v)["id"])
+		if id != "" {
+			if ids[strings.ToLower(id)] {
+				return fmt.Errorf("UNKNOWN duplicate step outcome identity")
+			}
+			ids[strings.ToLower(id)] = true
+		}
+	}
 	for _, v := range steps {
 		s := asObject(v)
 		if s == nil {
@@ -601,7 +615,7 @@ func (a *auditor) steps(steps []any, revision string, c context, bindings map[st
 		if strings.HasPrefix(ref, "actions/checkout@") {
 			bindCheckout(s, revision, c, bindings)
 		}
-		p, r, owned, e := actionReference(ref, revision, s, bindings)
+		p, r, owned, e := actionReference(ref, revision, s, c, bindings)
 		if e != nil {
 			return e
 		}
@@ -634,6 +648,8 @@ func (a *auditor) steps(steps []any, revision string, c context, bindings map[st
 			return fmt.Errorf("UNKNOWN empty composite implementation")
 		}
 		ac := inputs(asObject(m["inputs"]), asObject(s["with"]), c)
+		a.scope++
+		ac["__catalogue_guard_scope"] = a.scope
 		for k := range ac {
 			if strings.HasPrefix(k, "needs.") || strings.HasPrefix(k, "steps.") {
 				delete(ac, k)
@@ -677,7 +693,7 @@ func audit(root string, requireWiring bool) error {
 				refs = nil
 				for _, branch := range branches {
 					s, ok := branch.(string)
-					if !ok || strings.ContainsAny(s, "*?[!\\") {
+					if !ok || strings.ContainsAny(s, "*?+[!\\") {
 						refs = append(refs, uncertain)
 					} else {
 						refs = append(refs, "refs/heads/"+s)
@@ -764,6 +780,9 @@ type binding struct {
 	revision string
 	valid    bool
 	guard    string
+	scope    any
+	id       string
+	ignored  bool
 }
 
 // bindCheckout records the source that actually occupies each runner checkout directory.
@@ -807,19 +826,25 @@ func bindCheckout(step object, revision string, c context, bindings map[string]b
 			}
 		}
 	}
+	b.id = text(step["id"])
+	b.scope = c["__catalogue_guard_scope"]
+	b.ignored = step["continue-on-error"] != nil && step["continue-on-error"] != false
 	if condition(step["if"], c) != true {
 		b.guard = text(step["if"])
+		b.scope = c["__catalogue_guard_scope"]
 	}
-	if path == "." && condition(step["if"], c) == true && w["clean"] != false {
+	{
 		for k := range bindings {
-			delete(bindings, k)
+			if path == "." || k == path || strings.HasPrefix(k, path+"/") {
+				delete(bindings, k)
+			}
 		}
 	}
 	bindings[path] = b
 }
 
 // actionReference resolves local actions from measured checkout provenance, never a path alias.
-func actionReference(ref, revision string, step object, bindings map[string]binding) (string, string, bool, error) {
+func actionReference(ref, revision string, step object, c context, bindings map[string]binding) (string, string, bool, error) {
 	if !strings.HasPrefix(ref, "./") {
 		return reference(ref, revision, true)
 	}
@@ -838,10 +863,19 @@ func actionReference(ref, revision string, step object, bindings map[string]bind
 	if prefix == "" || !bindings[prefix].valid {
 		return "", "", false, fmt.Errorf("UNKNOWN local action checkout provenance")
 	}
-	if bindings[prefix].guard != "" && bindings[prefix].guard != text(step["if"]) {
+	b := bindings[prefix]
+	requiresOutcome := b.ignored || statusOverride.MatchString(text(step["if"])) || (b.guard != "" && !stableGuard(b.guard))
+	if requiresOutcome {
+		if b.scope != c["__catalogue_guard_scope"] || !checkoutSucceeded(b.id, step["if"], c) {
+			return "", "", false, fmt.Errorf("UNKNOWN successful local action checkout provenance")
+		}
+	} else if b.guard != "" && (b.guard != text(step["if"]) || b.scope != c["__catalogue_guard_scope"]) {
 		return "", "", false, fmt.Errorf("UNKNOWN conditional local action checkout provenance")
 	}
 	if prefix != "." {
+		if p == prefix {
+			return "action.yaml", bindings[prefix].revision, true, nil
+		}
 		p = strings.TrimPrefix(p, prefix+"/")
 	}
 	return p + "/action.yaml", bindings[prefix].revision, true, nil
@@ -878,6 +912,9 @@ func checkWiring(w object) error {
 		}
 	}
 	required := asObject(jobs["ci-required-checks"])
+	if text(required["if"]) != "$"+"{{ always() }}" || (required["continue-on-error"] != nil && required["continue-on-error"] != false) {
+		return fail()
+	}
 	needs, e := names(required["needs"])
 	if e != nil {
 		return fail()
@@ -896,6 +933,13 @@ func checkWiring(w object) error {
 		s := asObject(v)
 		env := asObject(s["env"])
 		if strings.Contains(text(env["JOB_RESULTS"]), "needs.lint-ci-coverage-parity.result") && strings.Contains(text(s["run"]), "$JOB_RESULTS") {
+			if s["if"] != nil || (s["continue-on-error"] != nil && s["continue-on-error"] != false) || text(s["shell"]) != "bash" {
+				return fail()
+			}
+			// Pin the reviewed failure reducer; arbitrary Bash mentions are not result admission.
+			if fmt.Sprintf("%x", sha256.Sum256([]byte(text(s["run"])))) != "243b869868468d895f48d6d4021091c35cf407dc2f4f3430455d980db12fabef" {
+				return fail()
+			}
 			results = true
 		}
 	}
@@ -907,3 +951,45 @@ func checkWiring(w object) error {
 
 // slice returns a sequence without accepting scalar substitutes.
 func slice(v any) []any { s, _ := v.([]any); return s }
+
+// stableGuard limits implication proofs to immutable call inputs and job/event facts.
+func stableGuard(s string) bool {
+	s = strings.TrimSpace(s)
+	if strings.HasPrefix(s, "$"+"{{") && strings.HasSuffix(s, "}}") {
+		s = strings.TrimSpace(s[3 : len(s)-2])
+	}
+	tokens, err := lex(s)
+	if err != nil || len(tokens) == 0 {
+		return false
+	}
+	for _, t := range tokens {
+		if t.literal {
+			continue
+		}
+		name := strings.ToLower(t.text)
+		switch name {
+		case "!", "&&", "||", "==", "!=", "(", ")", "[", "]", ",", "true", "false", "null", "format", "contains", "startswith", "tojson", "fromjson":
+			continue
+		}
+		if strings.HasPrefix(name, "inputs.") || name == "inputs" || strings.HasPrefix(name, "needs.") || (strings.HasPrefix(name, "github.") && name != "github.action_status") {
+			continue
+		}
+		return false
+	}
+	return true
+}
+
+// checkoutSucceeded proves admission false for every native non-success checkout outcome.
+func checkoutSucceeded(id string, gate any, c context) bool {
+	if id == "" {
+		return false
+	}
+	for _, outcome := range []string{"failure", "cancelled", "skipped"} {
+		probe := clone(c)
+		probe["steps."+strings.ToLower(id)+".outcome"] = outcome
+		if condition(gate, probe) != false {
+			return false
+		}
+	}
+	return true
+}

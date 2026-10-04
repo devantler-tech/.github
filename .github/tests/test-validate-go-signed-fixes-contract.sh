@@ -66,7 +66,7 @@ for job in tidy golangci-lint lint; do
   esac
   prepare="$(yq -r ".jobs.\"${job}\".steps[] | select(.id == \"fixes\")" "$workflow")"
   expected_prepare_if=""
-  [[ "$job" != lint ]] || expected_prepare_if="\${{ ${recovery} }}"
+  [[ "$job" != lint ]] || expected_prepare_if="\${{ steps.fix-exporter.outcome == 'success' && ${recovery} }}"
   [[ "$(yq -r '.if // ""' <<<"$prepare")" == "$expected_prepare_if" ]] ||
     fail "${job}'s fix detector must run in read-only mode too"
 

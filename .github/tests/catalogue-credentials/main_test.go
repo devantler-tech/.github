@@ -222,3 +222,89 @@ func TestMalformedMetadataCannotFallback(t *testing.T) {
 		t.Fatalf("malformed chosen metadata ignored: %v", err)
 	}
 }
+
+// TestNativeScalarComparisons covers numeric identities and unsupported coercion.
+func TestNativeScalarComparisons(t *testing.T) {
+	if truth(evaluate("fromJSON('-0') == 0", context{})) == false {
+		t.Fatal("negative zero acquired a different numeric identity")
+	}
+	if truth(evaluate("'01' != 1", context{})) == false {
+		t.Fatal("non-JSON numeric string falsely compares equal")
+	}
+	if truth(evaluate("format('{0}{1}', '{1}', 'x') != 'xx'", context{})) == false {
+		t.Fatal("format replacement reprocessed as a placeholder")
+	}
+}
+
+// TestAncestorCheckoutReplacesBindings rejects stale child provenance after replacement.
+func TestAncestorCheckoutReplacesBindings(t *testing.T) {
+	bindings := map[string]binding{"helper/nested": {valid: true}}
+	bindCheckout(object{"with": object{"repository": "fixture/other", "path": "helper", "ref": "1111111111111111111111111111111111111111"}}, "", context{}, bindings)
+	if bindings["helper/nested"].valid {
+		t.Fatal("ancestor replacement preserved stale child checkout")
+	}
+}
+
+// TestPlusBranchPattern retains uncertainty for GitHub's repetition operator.
+func TestPlusBranchPattern(t *testing.T) {
+	root := fixture(t, map[string]string{".github/workflows/ci.yaml": "on: {push: {branches: ['main+']}}\npermissions: {}\njobs:\n  writer:\n    if: ${{ github.ref != 'refs/heads/main+' }}\n    permissions: {contents: write}\n    steps: [{run: echo fixture}]\n"})
+	if err := Audit(root); err == nil {
+		t.Fatal("branch pattern became an exact-ref proof")
+	}
+}
+
+// TestCheckoutRootAction binds metadata to the root of the repository checked out there.
+func TestCheckoutRootAction(t *testing.T) {
+	p, _, _, err := actionReference("./helper", "", object{}, context{}, map[string]binding{"helper": {valid: true}})
+	if err != nil || p != "action.yaml" {
+		t.Fatalf("incorrect repository-root metadata: %q %v", p, err)
+	}
+}
+
+// TestConditionalCheckoutScopes rejects coincidentally identical expressions in different calls.
+func TestConditionalCheckoutScopes(t *testing.T) {
+	bindings := map[string]binding{}
+	step := object{"if": "${{ inputs.enabled }}", "with": object{"path": "helper"}}
+	bindCheckout(step, "", context{"__catalogue_guard_scope": 1}, bindings)
+	_, _, _, err := actionReference("./helper/actions/fixture", "", step, context{"__catalogue_guard_scope": 2}, bindings)
+	if err == nil {
+		t.Fatal("identical condition text crossed call scopes")
+	}
+	if stableGuard("${{ steps.changed.outputs.enabled }}") || stableGuard("${{ success() }}") || stableGuard("${{ hashFiles('fixture') }}") {
+		t.Fatal("mutable guard granted checkout implication")
+	}
+}
+
+// TestSuccessfulCheckoutAdmission rejects attempted installation as proof of success.
+func TestSuccessfulCheckoutAdmission(t *testing.T) {
+	recovery := "${{ !cancelled() && (success() || inputs.manual-workflow-fixes == true || inputs.manual-workflow-fixes == 'true') }}"
+	c := context{"__catalogue_guard_scope": 1, "inputs.manual-workflow-fixes": true}
+	bindings := map[string]binding{}
+	checkout := object{"id": "helper", "if": recovery, "with": object{"path": "helper"}}
+	bindCheckout(checkout, "", c, bindings)
+	if _, _, _, err := actionReference("./helper/actions/fixture", "", object{"if": recovery}, c, bindings); err == nil {
+		t.Fatal("failed checkout could execute pre-existing helper metadata")
+	}
+	guarded := "${{ steps.helper.outcome == 'success' && !cancelled() && (success() || inputs.manual-workflow-fixes == true || inputs.manual-workflow-fixes == 'true') }}"
+	if _, _, _, err := actionReference("./helper/actions/fixture", "", object{"if": guarded}, c, bindings); err != nil {
+		t.Fatalf("successful-outcome prerequisite rejected: %v", err)
+	}
+	if checkoutSucceeded("helper", "${{ steps.helper.outcome == 'success' || true }}", c) {
+		t.Fatal("disjunctive outcome bypass accepted")
+	}
+	if checkoutSucceeded("helper", nil, c) {
+		t.Fatal("implicit success hid ignored checkout failure")
+	}
+}
+
+// TestUnmeasuredRendering avoids platform-specific number formatting and Unicode folding proofs.
+func TestUnmeasuredRendering(t *testing.T) {
+	for _, expression := range []string{"toJSON(fromJSON('1e30'))", "format('{0}', fromJSON('1e30'))", "'I' == 'ı'", "contains('I', 'ı')", "startsWith('I', 'ı')"} {
+		if known(evaluate(expression, context{})) {
+			t.Fatalf("unmeasured rendering acquired an identity: %s", expression)
+		}
+	}
+	if known(evaluate("NaN", context{})) {
+		t.Fatal("invalid native numeric literal was accepted")
+	}
+}

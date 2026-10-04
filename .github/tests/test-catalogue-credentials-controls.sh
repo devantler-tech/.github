@@ -22,6 +22,10 @@ while IFS=$'\t' read -r label path mutation expected_status diagnostic; do
   [[ -n "$label" ]] || continue
   yq -o=json '.' "$root/$path" > "$tmp/source.json"
   jq "$mutation" "$tmp/source.json" > "$tmp/catalogue/$path"
+  jq -e --slurp '.[0] != .[1]' "$tmp/source.json" "$tmp/catalogue/$path" >/dev/null || {
+    echo "FAIL: $label did not change its parsed source" >&2
+    exit 1
+  }
   status=0
   "$tmp/guard" "$tmp/catalogue" > "$tmp/result" 2>&1 || status=$?
   if [[ "$status" != "$expected_status" ]]; then
@@ -70,6 +74,16 @@ guard job dependency	.github/workflows/ci.yaml	.jobs["lint-ci-coverage-parity"].
 ignored guard job failure	.github/workflows/ci.yaml	.jobs["lint-ci-coverage-parity"]["continue-on-error"]=true	1	required guard wiring
 missing required guard result	.github/workflows/ci.yaml	.jobs["ci-required-checks"].needs |= map(select(. != "lint-ci-coverage-parity"))	1	required guard wiring
 unconsumed required guard result	.github/workflows/ci.yaml	(.jobs["ci-required-checks"].steps[]|select(.env.JOB_RESULTS != null)).run="echo fixture"	1	required guard wiring
+ignored required summary	.github/workflows/ci.yaml	(.jobs["ci-required-checks"].steps[]|select(.env.JOB_RESULTS != null))["continue-on-error"]=true	1	required guard wiring
+conditional required summary	.github/workflows/ci.yaml	(.jobs["ci-required-checks"].steps[]|select(.env.JOB_RESULTS != null)).if="false"	1	required guard wiring
+ignored required gate	.github/workflows/ci.yaml	.jobs["ci-required-checks"]["continue-on-error"]="${{ true }}"	1	required guard wiring
+conditional required gate	.github/workflows/ci.yaml	.jobs["ci-required-checks"].if="false"	1	required guard wiring
+unexamined guard result	.github/workflows/ci.yaml	(.jobs["ci-required-checks"].steps[]|select(.env.JOB_RESULTS != null)).run="echo \"$JOB_RESULTS\""	1	required guard wiring
+branch repetition pattern	.github/workflows/ci.yaml	.on.push.branches=["main+"]|.jobs.new={"if":"${{ github.ref != 'refs/heads/main+' }}",permissions:{contents:"write"},steps:[{run:"echo fixture"}]}	1	write authority
+negative zero identity	.github/workflows/ci.yaml	.jobs.new={"if":"${{ fromJSON('-0') == 0 }}",permissions:{contents:"write"},steps:[{run:"echo fixture"}]}	1	write authority
+format replacement identity	.github/workflows/ci.yaml	.jobs.new={"if":"${{ format('{0}{1}', '{1}', 'x') != 'xx' }}",permissions:{contents:"write"},steps:[{run:"echo fixture"}]}	1	write authority
+unverified recovery helper	.github/workflows/validate-go-project-readonly.yaml	(.jobs.lint.steps[]|select(.id == "fixes")).if |= sub("steps.fix-exporter.outcome == 'success' && ";"")	2	UNKNOWN successful local action checkout
+unverified best-effort helper	.github/workflows/validate-go-project-readonly.yaml	del(.jobs.coverage.steps[]|select((.uses // "")|endswith("/actions/upload-coverage"))|.if)	2	UNKNOWN successful local action checkout
 CASES
-[[ "$controls" == 33 ]] || { echo 'FAIL: incomplete control set' >&2; exit 1; }
+[[ "$controls" == 43 ]] || { echo 'FAIL: incomplete control set' >&2; exit 1; }
 echo "PASS: complete source graph rejects $controls real-source credential regressions"

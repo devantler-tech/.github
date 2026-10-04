@@ -3,7 +3,6 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"strconv"
 	"strings"
 	"unicode"
 )
@@ -250,41 +249,29 @@ func (p *parser) equal() any {
 			a = uncertain
 			continue
 		}
-		if fmt.Sprintf("%T", a) == fmt.Sprintf("%T", b) {
-			same = strings.EqualFold(fmt.Sprint(a), fmt.Sprint(b))
-		} else {
-			same = number(a) == number(b) && number(a) != "NaN"
+		if fmt.Sprintf("%T", a) != fmt.Sprintf("%T", b) {
+			a = uncertain
+			continue
+		}
+		switch v := a.(type) {
+		case string:
+			if v != b.(string) && (!ascii(v) || !ascii(b.(string))) {
+				a = uncertain
+				continue
+			}
+			same = strings.EqualFold(v, b.(string))
+		case float64:
+			same = v == b.(float64)
+		case int:
+			same = v == b.(int)
+		case bool:
+			same = v == b.(bool)
+		case nil:
+			same = true
 		}
 		a = same != neg
 	}
 	return a
-}
-
-// number handles the limited loose scalar coercion required by Actions comparisons.
-func number(v any) string {
-	switch x := v.(type) {
-	case nil:
-		return "0"
-	case bool:
-		if x {
-			return "1"
-		}
-		return "0"
-	case string:
-		if x == "" {
-			return "0"
-		}
-		f, e := strconv.ParseFloat(x, 64)
-		if e != nil {
-			return "NaN"
-		}
-		return strconv.FormatFloat(f, 'g', -1, 64)
-	case float64:
-		return strconv.FormatFloat(x, 'g', -1, 64)
-	case int:
-		return strconv.Itoa(x)
-	}
-	return "NaN"
 }
 
 // unary negates only a measured truth value.
@@ -353,8 +340,14 @@ func (p *parser) value() any {
 	case "null":
 		return nil
 	}
-	if f, e := strconv.ParseFloat(key, 64); e == nil {
-		return f
+	var numeric any
+	if json.Unmarshal([]byte(key), &numeric) == nil {
+		if f, ok := numeric.(float64); ok {
+			return f
+		}
+	}
+	if key == "__catalogue_guard_scope" {
+		return uncertain
 	}
 	if v, ok := p.ctx[strings.ToLower(key)]; ok {
 		return v
@@ -379,6 +372,9 @@ func call(name string, args []any) any {
 			a, ok := args[0].(string)
 			b, ok2 := args[1].(string)
 			if ok && ok2 {
+				if !ascii(a) || !ascii(b) {
+					return uncertain
+				}
 				return strings.HasPrefix(strings.ToLower(a), strings.ToLower(b))
 			}
 		}
@@ -394,6 +390,9 @@ func call(name string, args []any) any {
 					if !ok {
 						return uncertain
 					}
+					if !ascii(s) || !ascii(needle) {
+						return uncertain
+					}
 					if strings.EqualFold(s, needle) {
 						return true
 					}
@@ -402,6 +401,9 @@ func call(name string, args []any) any {
 			}
 			haystack, ok := stringValue(args[0])
 			if !ok {
+				return uncertain
+			}
+			if !ascii(haystack) || !ascii(needle) {
 				return uncertain
 			}
 			return strings.Contains(strings.ToLower(haystack), strings.ToLower(needle))
@@ -418,6 +420,9 @@ func call(name string, args []any) any {
 					if !valid {
 						return uncertain
 					}
+					if strings.ContainsAny(replacement, "{}") {
+						return uncertain
+					}
 					s = strings.ReplaceAll(s, fmt.Sprintf("{%d}", i), replacement)
 				}
 				if strings.ContainsAny(s, "{}") {
@@ -429,6 +434,12 @@ func call(name string, args []any) any {
 	case "tojson":
 		if len(args) == 1 {
 			switch v := args[0].(type) {
+			case float64:
+				return uncertain
+			case int:
+				if v != 0 {
+					return uncertain
+				}
 			case object:
 				if len(v) != 0 {
 					return uncertain
@@ -482,10 +493,16 @@ func stringValue(v any) (string, bool) {
 			return "true", true
 		}
 		return "false", true
-	case int:
-		return strconv.Itoa(x), true
-	case float64:
-		return strconv.FormatFloat(x, 'g', -1, 64), true
 	}
 	return "", false
+}
+
+// ascii excludes unmeasured cross-runtime Unicode case folding from skip proofs.
+func ascii(s string) bool {
+	for _, r := range s {
+		if r > 127 {
+			return false
+		}
+	}
+	return true
 }
