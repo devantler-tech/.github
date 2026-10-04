@@ -1,9 +1,7 @@
 # Validate shell pipelines
 
 Find shell assertions that can lose a producer's exit status when `grep` stops
-reading a pipe early. Validation runs by default; callers can temporarily opt out
-with `enabled: "false"`. Consumer adoption and removal of that input are tracked in
-[devantler-tech/.github#268](https://github.com/devantler-tech/.github/issues/268).
+reading a pipe early. Every call performs validation.
 
 Actions opts its own required CI into this guard for `.scripts`, `.github/scripts`,
 `.github/tests`, `guard-installed-skill-edits`, and `update-agent-skills`. This
@@ -16,7 +14,6 @@ a disposable copy from each selected directory; it never executes those scripts.
 
 | Name | Description | Required | Default |
 |------|-------------|----------|---------|
-| `enabled` | Run validation; set `false` to opt out. Accepts exactly `true` or `false`. | No | `true` |
 | `working-directory` | Git checkout directory, relative to `GITHUB_WORKSPACE` or absolute. | No | `.` |
 | `paths` | Newline-separated relative files or directories; each must include at least one tracked shell file. | No | `.` |
 
@@ -24,7 +21,7 @@ a disposable copy from each selected directory; it never executes those scripts.
 
 | Name | Description |
 |------|-------------|
-| `validated` | `true` after a complete successful scan; empty when disabled or unsuccessful. |
+| `validated` | `true` after a complete successful scan; empty when unsuccessful. |
 
 ## Usage
 
@@ -56,11 +53,11 @@ index entries, and unreadable paths fail the scan. Each shell file is limited to
 16 MiB. A scope containing no tracked shell files fails, including a misspelled
 path or a scope containing only submodules.
 
-Enabled runs install the Go version in this action's `go.mod` and download its
+Calls install the Go version in this action's `go.mod` and download its
 checksum-pinned shell parser with bounded retries. These build steps need network
 access to the Go distribution and module services. Subsequent validation is
 offline; it neither modifies nor executes the scanned scripts. Linux and macOS
-runners are supported. Only explicit `enabled: "false"` skips all setup and discovery.
+runners are supported.
 
 ## What it catches
 
@@ -147,7 +144,6 @@ of whether `pipefail` is set locally: a caller may enable it before sourcing the
 file. Diagnostics identify the path, line, option, and repair without printing
 the source text. Exceptions must be actual shell comments with a reason.
 
-The action builds its own Go module independently of the caller's module. Its
-explicitly disabled path does not discover files, install Go, or download modules.
+The action builds its own Go module independently of the caller's module.
 The CLI always performs validation and uses exit codes 0 (clean), 1 (findings),
 and 2 (incomplete or invalid scan).

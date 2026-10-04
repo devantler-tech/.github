@@ -475,23 +475,21 @@ required; this fixture never proves live token generation or project association
 
 **Verified publication:** Opted-in publishers authenticate and establish normalized version absence before staging and again before promotion. Preserve structured missing-version evidence, fail-closed authentication/read errors, both application targets, immutable helper checkout and removal before the image build. Serialize opted-in publishers for the same target within a caller repository with a shared concurrency group, queue:max and no cancellation. Keep `.github/tests/test-unpublished-version.sh`, promotion controls and the native disposable-registry proof in required CI. Other writers can race the final check; registry tag writes are not atomic across repositories. #371 owns default-path and consumer rollout.
 
-**Manifest naming:** `validate-naming` runs by default using the caller's versioned
-configuration. An explicit `enabled: "false"` skips configuration reads and setup.
-Keep the omitted-input Linux/macOS fixtures, seeded-violation failure and opt-out
-boundaries required in CI. .github#274 owns consumer cleanup and input retirement.
+**Manifest naming:** Every `validate-naming` call validates the caller's versioned
+configuration. Keep the Linux/macOS clean fixtures, seeded naming violations and
+missing-configuration failures required in CI. Failed calls never report a
+`validated` output.
 
-**Shell pipeline assertions:** `lint-shell-pipelines` invokes the shared guard with
-`enabled: true` over the real script directories declared in that CI job's
+**Shell pipeline assertions:** `lint-shell-pipelines` invokes the shared guard over
+the real script directories declared in that CI job's
 `SCAN_PATHS`. Keep new script-owning directories in this scope and extend
 `.github/tests/test-shell-pipeline-adoption.sh` with a representative script.
 The test proves each scope rejects a deliberate regression without executing the
 scanned scripts. Intentionally invalid product fixtures stay in `.github/fixtures`
 and are exercised separately. Repair findings by checking producer completion
 before searching captured output; do not blanket-exempt the repository's scripts.
-The shared action validates by default, including when callers omit `enabled`.
-An explicit `enabled: "false"` skips setup and discovery. Linux/macOS fixtures cover
-omitted-input clean, unsafe and malformed scans; .github#268 owns consumer adoption
-and the later removal of the temporary opt-out input.
+Every shared-action call validates. Linux/macOS fixtures cover clean, unsafe and
+malformed scans. An invalid scope must fail without a `validated` output.
 
 **Retired repository links:** `validate-retired-repo-links` is a default-off,
 read-only Go validator with no module dependencies. Keep both flag states, real
