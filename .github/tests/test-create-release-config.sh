@@ -55,12 +55,12 @@ align_if="$(
   yq -r '.jobs.release.steps[] | select(.name == "📦 Align npm with consumer contract") | .if' \
     "$workflow"
 )"
-align_off="$(yq -r '.jobs."test-create-release".with."align-npm-with-consumer-contract" // "unset"' "$ci")"
+align_omitted="$(yq -r '.jobs."test-create-release".with | has("align-npm-with-consumer-contract")' "$ci")"
 align_on="$(yq -r '.jobs."test-create-release-no-issue-side-effects".with."align-npm-with-consumer-contract"' "$ci")"
-if [[ "$align_default" != "false" || "$align_type" != "boolean" \
-   || "$align_if" != '${{ inputs.align-npm-with-consumer-contract }}' \
-   || "$align_off" != "unset" || "$align_on" != "true" ]]; then
-  echo "create-release must keep npm alignment opt-in and exercise both rollout states" >&2
+if [[ "$align_default" != "true" || "$align_type" != "boolean" \
+   || "$align_if" != "\${{ inputs.align-npm-with-consumer-contract }}" \
+   || "$align_omitted" != "false" || "$align_on" != "false" ]]; then
+  echo "create-release must align omitted npm inputs and preserve the explicit false compatibility path" >&2
   exit 1
 fi
 
@@ -76,8 +76,8 @@ setup_node_cache="$(
   yq -r '.jobs.release.steps[] | select(.name == "📦 Setup Node.js") | .with."package-manager-cache"' \
     "$workflow"
 )"
-if [[ "$setup_node_cache" != '${{ !inputs.align-npm-with-consumer-contract }}' ]]; then
-  echo "create-release must disable setup-node automatic npm probing until an opted-in consumer contract has been aligned" >&2
+if [[ "$setup_node_cache" != "\${{ !inputs.align-npm-with-consumer-contract }}" ]]; then
+  echo "create-release must disable setup-node automatic npm probing until an enabled consumer contract has been aligned" >&2
   exit 1
 fi
 

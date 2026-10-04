@@ -3877,7 +3877,7 @@ jobs:
     permissions: {}
     with:
       disable-issue-side-effects: true
-      align-npm-with-consumer-contract: true
+      align-npm-with-consumer-contract: false # Explicit compatibility path; omitted uses alignment.
       warn-missing-breaking-bang: true
       dry-run: true
       offline-test: true
@@ -3901,6 +3901,13 @@ jobs:
 
       - name: 🧪 Verify issue side effects stay disabled
         run: bash .github/tests/test-create-release-config.sh
+      - name: Setup production Node version for native npm replay
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          package-manager-cache: false
+      - name: Replay actual npm default and compatibility paths
+        run: bash .github/tests/test-create-release-npm-native.sh
 
       - name: 🧪 Verify release runs serialize without dropping queued runs
         run: bash .github/tests/test-create-release-concurrency.sh
