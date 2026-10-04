@@ -662,6 +662,7 @@ jobs:
       # apply-signed-fixes.yaml applies against.
       - name: "\U0001F4E5 Checkout fix exporter"
         if: ${{ !cancelled() && (success() || inputs.manual-workflow-fixes == true || inputs.manual-workflow-fixes == 'true') }}
+        id: fix-exporter
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: ${{ job.workflow_repository }}
@@ -670,7 +671,7 @@ jobs:
           persist-credentials: false
           sparse-checkout: .github/actions/prepare-fixes
       - name: "\U0001F4E6 Prepare and upload applied fixes"
-        if: ${{ !cancelled() && (success() || inputs.manual-workflow-fixes == true || inputs.manual-workflow-fixes == 'true') }}
+        if: ${{ steps.fix-exporter.outcome == 'success' && !cancelled() && (success() || inputs.manual-workflow-fixes == true || inputs.manual-workflow-fixes == 'true') }}
         id: fixes
         uses: ./.devantler-tech-actions/.github/actions/prepare-fixes
         with:
@@ -940,6 +941,7 @@ jobs:
       # policies see only the pinned actions/checkout plus a local `./` path. Placed AFTER
       # `go test ./...` so the extra tree never enters the caller's test scope.
       - name: "\U0001F4E5 Checkout devantler-tech/.github (this workflow's commit)"
+        id: coverage-helper
         continue-on-error: true
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -949,6 +951,7 @@ jobs:
           persist-credentials: false
       # Uploads coverage to GitHub Code Quality (native PR coverage). best-effort: never blocks CI.
       - name: "\U0001F4CA Upload coverage"
+        if: ${{ steps.coverage-helper.outcome == 'success' }}
         continue-on-error: true
         uses: ./.devantler-tech-actions/actions/upload-coverage
         with:

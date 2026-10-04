@@ -154,9 +154,16 @@ function verify(name, prepareGate, uploadGate, composite) {
       'github.event.pull_request.user.login': author,
       'inputs.pr-owner': owner,
       'steps.fixes.outputs.changed': '',
+      'steps.fix-exporter.outcome': 'success',
     };
     const prepare = evaluate(prepareGate, values, status);
     assert.equal(prepare, expectedPrepare, `${name}/prepare: ${JSON.stringify(fixture)}`);
+    if (composite) {
+      for (const outcome of ['failure', 'cancelled', 'skipped']) {
+        assert.equal(evaluate(prepareGate, {...values, 'steps.fix-exporter.outcome': outcome}, status), false,
+          `${name}/prepare requires successful helper checkout: ${outcome}`);
+      }
+    }
     // Check the upload boundary independently: an exporter can emit changed=true
     // before a later Git command fails, so outputs do not imply step success.
     values['steps.fixes.outputs.changed'] = String(changed);
@@ -243,7 +250,11 @@ for (const lane of ['tidy', 'golangci-lint', 'lint']) {
     path: '.devantler-tech-actions', 'persist-credentials': false,
     'sparse-checkout': '.github/actions/prepare-fixes',
   }, `${lane}: exporter must come from the workflow's exact commit without credentials`);
-  assert.equal(checkout.if, call.if, `${lane}: checkout and exporter admission differ`);
+  if (lane === 'lint') {
+    assert.equal(checkout.id, 'fix-exporter', 'lint: helper checkout requires an outcome identity');
+    assert.equal(normalizePredicate(call.if), `steps.fix-exporter.outcome == 'success' && ${normalizePredicate(checkout.if)}`,
+      'lint: exporter requires successful exact-source installation before recovery');
+  } else assert.equal(checkout.if, call.if, `${lane}: checkout and exporter admission differ`);
   assert.equal(call.with.mode ?? exporter.inputs.mode.default, lane === 'lint' ? 'workflow' : 'ordinary');
   assert.equal(steps.filter(step => (step.uses || '').startsWith('actions/upload-artifact@')).length, 0,
     `${lane}: duplicate patch uploader`);
@@ -257,6 +268,7 @@ for (const lane of ['tidy', 'golangci-lint', 'lint']) {
       'needs.changes.outputs.signed-fixes': String(apply), 'github.event_name': event,
       'github.event.pull_request.head.repo.fork': fork,
       'github.event.pull_request.user.login': author, 'inputs.pr-owner': owner,
+      'steps.fix-exporter.outcome': 'success',
     };
     // with values are expressions, not steps: they have no implicit status gate.
     const decision = evaluate(call.with['upload-enabled'], values, 'success');
