@@ -2,8 +2,10 @@ package main
 
 import (
 	"errors"
+	guard "github.com/devantler-tech/dotgithub/scripts/todo-guard"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 )
@@ -126,5 +128,18 @@ func TestReplayTransportSupportsBodylessLanguageGet(t *testing.T) {
 	defer response.Body.Close()
 	if response.StatusCode != 200 || fixture.verify() != nil {
 		t.Fatalf("bodyless transport failed: status=%d verdict=%v", response.StatusCode, fixture.verify())
+	}
+}
+
+func TestProductionSupervisorListUsesReplayTransport(t *testing.T) {
+	fixture := newReplay([]exchange{{Method: "GET", Path: "/repos/offline/fixture/issues?per_page=100&page=1&state=open", Status: 200, Response: "[]"}})
+	api, _ := url.Parse("http://127.0.0.1")
+	supervisor := guard.New(guard.Config{API: api, Repository: "offline/fixture", Server: "https://example.invalid", Token: "offline-token"}, &http.Client{Transport: replayTransport{fixture}})
+	r := httptest.NewRequest("GET", "http://127.0.0.1/repos/offline/fixture/issues?per_page=100&page=1&state=open", nil)
+	r.Header.Set("Authorization", "token offline-token")
+	w := httptest.NewRecorder()
+	supervisor.ServeHTTP(w, r)
+	if w.Code != 200 || supervisor.Verdict() != nil || fixture.verify() != nil {
+		t.Fatalf("production request failed replay: code=%d guard=%v replay=%v", w.Code, supervisor.Verdict(), fixture.verify())
 	}
 }

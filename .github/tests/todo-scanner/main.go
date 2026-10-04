@@ -130,6 +130,9 @@ type replayTransport struct{ fixture *replay }
 func (t replayTransport) RoundTrip(r *http.Request) (*http.Response, error) {
 	w := httptest.NewRecorder()
 	serverRequest := r.Clone(r.Context())
+	if serverRequest.Host == "" {
+		serverRequest.Host = serverRequest.URL.Host
+	}
 	if serverRequest.Body == nil {
 		serverRequest.Body = http.NoBody
 	}
