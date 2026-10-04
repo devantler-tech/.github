@@ -418,3 +418,34 @@ func TestSearchExpressionsCannotAuthorizeLiteralTitles(t *testing.T) {
 		})
 	}
 }
+
+func TestStaleSearchCannotOverwriteVerifiedRename(t *testing.T) {
+	writes := 0
+	g := fixtureGuard(t, func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == "PATCH":
+			writes++
+			io.WriteString(w, `{"number":7}`)
+		case r.Method == "POST":
+			writes++
+			w.WriteHeader(201)
+			io.WriteString(w, `{"number":8}`)
+		case r.URL.Path == "/repos/offline/fixture/issues":
+			io.WriteString(w, `[{"number":7,"title":"Old","state":"open","html_url":"https://example.invalid/offline/fixture/issues/7"}]`)
+		case strings.HasSuffix(r.URL.Query().Get("q"), "Old"):
+			io.WriteString(w, `{"total_count":1,"incomplete_results":false,"items":[{"number":7,"title":"Old","state":"open","html_url":"https://example.invalid/offline/fixture/issues/7"}]}`)
+		default:
+			io.WriteString(w, `{"total_count":0,"incomplete_results":false,"items":[]}`)
+		}
+	})
+	request(t, g, "GET", "/repos/offline/fixture/issues?state=open&per_page=100&page=1", "")
+	if request(t, g, "PATCH", "/repos/offline/fixture/issues/7", `{"title":"New","body":"source","labels":[],"assignees":[]}`).Code != 200 {
+		t.Fatal("healthy rename failed")
+	}
+	stale := request(t, g, "GET", "/search/issues?q=repo%3Aoffline%2Ffixture+is%3Aissue+in%3Atitle+Old&per_page=30", "")
+	request(t, g, "GET", "/search/issues?q=repo%3Aoffline%2Ffixture+is%3Aissue+in%3Atitle+New&per_page=30", "")
+	request(t, g, "POST", "/repos/offline/fixture/issues", `{"title":"New","body":"source","labels":[],"assignees":[]}`)
+	if stale.Code != 502 || writes != 1 || g.titles[7] != "New" || g.Verdict() == nil {
+		t.Fatalf("stale search erased verified rename: status=%d writes=%d title=%s verdict=%v", stale.Code, writes, g.titles[7], g.Verdict())
+	}
+}

@@ -307,6 +307,10 @@ func (g *guard) list(w http.ResponseWriter, r *http.Request, search bool, title 
 					g.fail(w, "unbound issue identity")
 					return
 				}
+				if known, exists := g.titles[n]; exists && known != name {
+					g.fail(w, "list contradicts verified issue identity")
+					return
+				}
 			}
 			items = append(items, row)
 		}
