@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -31,8 +32,9 @@ func TestReviewCompositeWorkflowIdentity(t *testing.T) {
 		t.Fatal(err)
 	}
 	a := auditor{root: root, active: map[string]bool{}, sources: map[string]object{"1111111111111111111111111111111111111111:actions/wrapper/action.yaml": oldWrapper, "1111111111111111111111111111111111111111:actions/inner/action.yaml": oldInner}}
+	a.trees = map[string]map[string]sourceEntry{"1111111111111111111111111111111111111111": {"actions/wrapper/action.yaml": {Mode: "100644", Type: "blob", SHA: "1111111111111111111111111111111111111111"}, "actions/inner/action.yaml": {Mode: "100644", Type: "blob", SHA: "1111111111111111111111111111111111111111"}, "actions/fixture/action.yaml": {Mode: "100644", Type: "blob", SHA: "1111111111111111111111111111111111111111"}, "action.yaml": {Mode: "100644", Type: "blob", SHA: "1111111111111111111111111111111111111111"}}}
 	c := context{"github.repository": "devantler-tech/.github", "github.event_name": "pull_request", "github.token": builtinToken{}, "secrets.github_token": builtinToken{}}
-	if err := a.workflow(".github/workflows/ci.yaml", "", c, nil, nil, nil); err == nil {
+	if err := a.workflow(".github/workflows/ci.yaml", "", c, nil, nil, nil); err == nil || !strings.Contains(err.Error(), "external secret") {
 		t.Fatal("false-clean: job.workflow_sha read old composite leaf instead of current defining workflow leaf")
 	}
 }
@@ -55,8 +57,9 @@ func TestReviewOwnedActionClassification(t *testing.T) {
 				t.Fatal(err)
 			}
 			a := auditor{root: root, active: map[string]bool{}, sources: map[string]object{"1111111111111111111111111111111111111111:actions/fixture/action.yaml": metadata, "1111111111111111111111111111111111111111:action.yaml": metadata}}
+			a.trees = map[string]map[string]sourceEntry{"1111111111111111111111111111111111111111": {"actions/wrapper/action.yaml": {Mode: "100644", Type: "blob", SHA: "1111111111111111111111111111111111111111"}, "actions/inner/action.yaml": {Mode: "100644", Type: "blob", SHA: "1111111111111111111111111111111111111111"}, "actions/fixture/action.yaml": {Mode: "100644", Type: "blob", SHA: "1111111111111111111111111111111111111111"}, "action.yaml": {Mode: "100644", Type: "blob", SHA: "1111111111111111111111111111111111111111"}}}
 			c := context{"github.repository": "devantler-tech/.github", "github.event_name": "pull_request", "github.token": builtinToken{}, "secrets.github_token": builtinToken{}}
-			if err := a.workflow(".github/workflows/ci.yaml", "", c, nil, nil, nil); err == nil {
+			if err := a.workflow(".github/workflows/ci.yaml", "", c, nil, nil, nil); err == nil || !strings.Contains(err.Error(), "external secret") {
 				t.Fatal("false-clean: owned action metadata classified as opaque external action")
 			}
 		})

@@ -211,7 +211,7 @@ func TestUnknownCheckoutPath(t *testing.T) {
 	}
 }
 
-// TestMalformedMetadataCannotFallback preserves the runner's chosen action.yaml failure.
+// TestMalformedMetadataCannotFallback rejects ambiguous metadata even when one file is valid.
 func TestMalformedMetadataCannotFallback(t *testing.T) {
 	root := fixture(t, map[string]string{
 		".github/workflows/ci.yaml":   "permissions: {}\njobs:\n  read:\n    permissions: {contents: read}\n    steps:\n      - uses: actions/checkout@1111111111111111111111111111111111111111\n      - uses: ./actions/fixture\n",

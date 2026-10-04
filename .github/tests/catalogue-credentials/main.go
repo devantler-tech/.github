@@ -25,6 +25,7 @@ type object map[string]any
 type auditor struct {
 	root            string
 	sources         map[string]object
+	trees           map[string]map[string]sourceEntry
 	active          map[string]bool
 	leaves, skipped int
 	scope           int
@@ -176,34 +177,38 @@ func (a *auditor) readSource(path, revision string) (object, error) {
 		if !fullSHA.MatchString(revision) {
 			return nil, fmt.Errorf("UNKNOWN mutable first-party source")
 		}
+		entry, e := a.immutableEntry(path, revision)
+		if e != nil {
+			return nil, fmt.Errorf("UNKNOWN immutable metadata entry: %w", e)
+		}
+		if entry.Type != "blob" || (entry.Mode != "100644" && entry.Mode != "100755") {
+			return nil, fmt.Errorf("UNKNOWN non-regular immutable metadata")
+		}
 		cmd := exec.Command("git", "-C", a.root, "show", revision+":"+path)
 		b, err = cmd.Output()
 		if err != nil {
 			if os.Getenv("CATALOGUE_CREDENTIALS_OFFLINE") == "1" {
 				return nil, fmt.Errorf("UNKNOWN unavailable immutable source")
 			}
-			ctx, cancel := stdctx.WithTimeout(stdctx.Background(), 30*time.Second)
-			defer cancel()
-			cmd = exec.CommandContext(ctx, "gh", "api", "repos/devantler-tech/.github/contents/"+path+"?ref="+revision)
 			var raw []byte
-			raw, err = cmd.Output()
+			raw, err = ownedAPI("contents/" + path + "?ref=" + revision)
 			if err == nil {
-				var answer struct{ Path, SHA, Encoding, Content string }
+				var answer struct{ Path, SHA, Type, Encoding, Content string }
 				err = json.Unmarshal(raw, &answer)
 				if err == nil {
-					if answer.Path != path || answer.Encoding != "base64" || !fullSHA.MatchString(answer.SHA) {
+					if answer.Path != path || answer.Type != "file" || answer.Encoding != "base64" || answer.SHA != entry.SHA {
 						err = fmt.Errorf("immutable source identity mismatch")
 					} else {
 						b, err = base64.StdEncoding.DecodeString(strings.ReplaceAll(answer.Content, "\n", ""))
-						if err == nil {
-							blob := append([]byte(fmt.Sprintf("blob %d%c", len(b), 0)), b...)
-							sum := sha1.Sum(blob)
-							if fmt.Sprintf("%x", sum) != answer.SHA {
-								err = fmt.Errorf("immutable blob hash mismatch")
-							}
-						}
 					}
 				}
+			}
+		}
+		if err == nil {
+			blob := append([]byte(fmt.Sprintf("blob %d%c", len(b), 0)), b...)
+			sum := sha1.Sum(blob)
+			if fmt.Sprintf("%x", sum) != entry.SHA {
+				err = fmt.Errorf("immutable blob hash mismatch")
 			}
 		}
 	}
@@ -216,6 +221,105 @@ func (a *auditor) readSource(path, revision string) (object, error) {
 	}
 	a.sources[key] = m
 	return m, nil
+}
+
+// sourceEntry binds metadata bytes to an immutable native Git tree entry.
+type sourceEntry struct{ Path, Mode, Type, SHA string }
+
+// ownedAPI bounds read-only public catalogue resolution to one declared repository.
+func ownedAPI(endpoint string) ([]byte, error) {
+	ctx, cancel := stdctx.WithTimeout(stdctx.Background(), 30*time.Second)
+	defer cancel()
+	return exec.CommandContext(ctx, "gh", "api", "repos/devantler-tech/.github/"+endpoint).Output()
+}
+
+// decodeSourceTree requires a complete exact-root observation before caching file identities.
+func decodeSourceTree(raw []byte, expected string) (map[string]sourceEntry, error) {
+	var answer struct {
+		SHA       string
+		Truncated *bool
+		Tree      []sourceEntry
+	}
+	if e := json.Unmarshal(raw, &answer); e != nil {
+		return nil, e
+	}
+	if answer.SHA != expected || answer.Truncated == nil || *answer.Truncated || answer.Tree == nil {
+		return nil, fmt.Errorf("UNKNOWN incomplete immutable tree identity")
+	}
+	entries := map[string]sourceEntry{}
+	for _, entry := range answer.Tree {
+		if entry.Path == "" || entry.Mode == "" || entry.Type == "" || !fullSHA.MatchString(entry.SHA) {
+			return nil, fmt.Errorf("UNKNOWN malformed immutable tree entry")
+		}
+		if _, exists := entries[entry.Path]; exists {
+			return nil, fmt.Errorf("UNKNOWN duplicate immutable tree entry")
+		}
+		entries[entry.Path] = entry
+	}
+	return entries, nil
+}
+
+// immutableEntry verifies Git modes locally or joins the exact commit, complete tree and blob remotely.
+func (a *auditor) immutableEntry(path, revision string) (sourceEntry, error) {
+	if entries, complete := a.trees[revision]; complete {
+		entry, exists := entries[path]
+		if !exists {
+			return sourceEntry{}, os.ErrNotExist
+		}
+		return entry, nil
+	}
+	raw, e := exec.Command("git", "-C", a.root, "ls-tree", "-z", revision, "--", path).Output()
+	if e == nil {
+		if len(raw) == 0 {
+			return sourceEntry{}, os.ErrNotExist
+		}
+		parts := strings.SplitN(strings.TrimSuffix(string(raw), "\x00"), "\t", 2)
+		if len(parts) != 2 || parts[1] != path {
+			return sourceEntry{}, fmt.Errorf("UNKNOWN ambiguous immutable tree path")
+		}
+		fields := strings.Fields(parts[0])
+		if len(fields) != 3 || !fullSHA.MatchString(fields[2]) {
+			return sourceEntry{}, fmt.Errorf("UNKNOWN malformed immutable Git entry")
+		}
+		return sourceEntry{Path: path, Mode: fields[0], Type: fields[1], SHA: fields[2]}, nil
+	}
+	if os.Getenv("CATALOGUE_CREDENTIALS_OFFLINE") == "1" {
+		return sourceEntry{}, fmt.Errorf("UNKNOWN unavailable immutable tree")
+	}
+	if a.trees == nil {
+		a.trees = map[string]map[string]sourceEntry{}
+	}
+	entries, exists := a.trees[revision]
+	if !exists {
+		raw, e = ownedAPI("git/commits/" + revision)
+		if e != nil {
+			return sourceEntry{}, e
+		}
+		var commit struct {
+			SHA  string
+			Tree struct{ SHA string }
+		}
+		if e = json.Unmarshal(raw, &commit); e != nil {
+			return sourceEntry{}, e
+		}
+		if commit.SHA != revision || !fullSHA.MatchString(commit.Tree.SHA) {
+			return sourceEntry{}, fmt.Errorf("UNKNOWN immutable commit identity mismatch")
+		}
+		raw, e = ownedAPI("git/trees/" + commit.Tree.SHA + "?recursive=1")
+		if e != nil {
+			return sourceEntry{}, e
+		}
+		entries, e = decodeSourceTree(raw, commit.Tree.SHA)
+		if e != nil {
+			return sourceEntry{}, e
+		}
+		a.trees[revision] = entries
+	}
+	entry, exists := entries[path]
+	if !exists {
+		return sourceEntry{}, os.ErrNotExist
+	}
+	return entry, nil
 }
 
 // reference binds first-party sources to local same-commit bytes or an exact owned SHA.
@@ -604,6 +708,22 @@ func (a *auditor) workflow(path, revision string, c context, provided, secrets, 
 	return nil
 }
 
+// readActionSource admits a single metadata implementation and refuses ambiguous layouts.
+func (a *auditor) readActionSource(yaml, revision string) (object, error) {
+	yml := strings.TrimSuffix(yaml, "action.yaml") + "action.yml"
+	m, e := a.readSource(yml, revision)
+	if errors.Is(e, os.ErrNotExist) {
+		return a.readSource(yaml, revision)
+	}
+	if e != nil {
+		return nil, e
+	}
+	if _, other := a.readSource(yaml, revision); !errors.Is(other, os.ErrNotExist) {
+		return nil, fmt.Errorf("UNKNOWN ambiguous action metadata")
+	}
+	return m, nil
+}
+
 // steps recursively checks executed composite actions with their actual input defaults.
 func (a *auditor) steps(steps []any, revision string, c context, bindings map[string]binding) error {
 	ids := map[string]bool{}
@@ -645,15 +765,9 @@ func (a *auditor) steps(steps []any, revision string, c context, bindings map[st
 		if a.active[key] {
 			return fmt.Errorf("UNKNOWN recursive composite graph")
 		}
-		m, e := a.readSource(p, r)
+		m, e := a.readActionSource(p, r)
 		if e != nil {
-			if (p == "action.yaml" || strings.HasSuffix(p, "/action.yaml")) && errors.Is(e, os.ErrNotExist) {
-				p = strings.TrimSuffix(p, "action.yaml") + "action.yml"
-				m, e = a.readSource(p, r)
-			}
-			if e != nil {
-				return e
-			}
+			return e
 		}
 		runs := asObject(m["runs"])
 		if runs == nil {

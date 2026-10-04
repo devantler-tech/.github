@@ -434,6 +434,12 @@ func call(name string, args []any) any {
 	case "tojson":
 		if len(args) == 1 {
 			switch v := args[0].(type) {
+			case string:
+				for _, r := range v {
+					if r < 0x20 || r > 0x7e || r == '<' || r == '>' || r == '&' {
+						return uncertain
+					}
+				}
 			case float64:
 				return uncertain
 			case int:
