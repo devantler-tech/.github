@@ -5,7 +5,11 @@ The CLI reads only the action's existing inputs, starts a scoped loopback API/TL
 proxy, invokes the scanner once, and independently judges the operations it observed.
 
 REST routes are bound to the configured repository. List/search pages are buffered
-until complete; partial, inconsistent, malformed or over-limit evidence fails.
+until complete; earlier last-page commitments remain binding across the chain.
+Partial, inconsistent, malformed or over-limit evidence fails. Search absence cannot
+contradict verified inventory or mutations. Because the pinned scanner submits titles
+as unescaped search syntax, titles containing qualifiers, Boolean operators, quoted
+expressions, wildcards or negated terms fail before searching or writing.
 Linked issue targets receive an independent scoped read when absent from the open
 inventory. Project discovery resolves numbers directly and titles across complete
 cursor pages; only verified project/issue IDs may be added.

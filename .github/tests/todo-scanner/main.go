@@ -3,21 +3,13 @@
 package main
 
 import (
-	"bufio"
 	"bytes"
 	"context"
-	"crypto/rand"
-	"crypto/rsa"
-	"crypto/tls"
-	"crypto/x509"
-	"crypto/x509/pkix"
 	"encoding/json"
-	"encoding/pem"
 	"errors"
 	"fmt"
 	guard "github.com/devantler-tech/dotgithub/scripts/todo-guard"
 	"io"
-	"math/big"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -45,11 +37,10 @@ type scenario struct {
 }
 
 type replay struct {
-	mu          sync.Mutex
-	exchanges   []exchange
-	next        int
-	failures    []string
-	certificate tls.Certificate
+	mu        sync.Mutex
+	exchanges []exchange
+	next      int
+	failures  []string
 }
 
 func newReplay(exchanges []exchange) *replay { return &replay{exchanges: exchanges} }
@@ -60,16 +51,6 @@ func (f *replay) reject(w http.ResponseWriter, reason string) {
 }
 
 func (f *replay) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	if r.Method == http.MethodConnect {
-		if r.Host != "raw.githubusercontent.com:443" {
-			f.mu.Lock()
-			defer f.mu.Unlock()
-			f.reject(w, "unexpected proxy destination")
-			return
-		}
-		f.connect(w, r)
-		return
-	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if f.next >= len(f.exchanges) {
@@ -144,90 +125,15 @@ func (f *replay) verify() error {
 	return nil
 }
 
-type bufferedConn struct {
-	net.Conn
-	reader *bufio.Reader
-}
-
-func (c bufferedConn) Read(p []byte) (int, error) { return c.reader.Read(p) }
-
-func (f *replay) connect(w http.ResponseWriter, _ *http.Request) {
-	conn, buffer, err := w.(http.Hijacker).Hijack()
-	if err != nil {
-		return
-	}
-	defer conn.Close()
-	_, _ = buffer.WriteString("HTTP/1.1 200 Connection Established\r\n\r\n")
-	if err := buffer.Flush(); err != nil {
-		return
-	}
-	secured := tls.Server(bufferedConn{conn, buffer.Reader}, &tls.Config{Certificates: []tls.Certificate{f.certificate}, MinVersion: tls.VersionTLS12})
-	_ = secured.SetDeadline(time.Now().Add(60 * time.Second))
-	if err := secured.Handshake(); err != nil {
-		return
-	}
-	reader := bufio.NewReader(secured)
-	for {
-		r, err := http.ReadRequest(reader)
-		if err != nil {
-			return
-		}
-		response := httptest.NewRecorder()
-		f.ServeHTTP(response, r)
-		_ = r.Body.Close()
-		result := response.Result()
-		// Rejections also need a length: an EOF-delimited error would otherwise
-		// hang Requests while this tunnel waits for the next keep-alive request.
-		result.ContentLength = int64(response.Body.Len())
-		err = result.Write(secured)
-		_ = result.Body.Close()
-		if err != nil || r.Close {
-			return
-		}
-	}
-}
-
-func certificate() (tls.Certificate, []byte, error) {
-	key, err := rsa.GenerateKey(rand.Reader, 2048)
-	if err != nil {
-		return tls.Certificate{}, nil, err
-	}
-	serial, err := rand.Int(rand.Reader, new(big.Int).Lsh(big.NewInt(1), 128))
-	if err != nil {
-		return tls.Certificate{}, nil, err
-	}
-	cert := &x509.Certificate{SerialNumber: serial, Subject: pkix.Name{CommonName: "offline scanner fixture"},
-		DNSNames: []string{"raw.githubusercontent.com"}, NotBefore: time.Now().Add(-time.Minute), NotAfter: time.Now().Add(time.Hour),
-		IsCA: true, BasicConstraintsValid: true, KeyUsage: x509.KeyUsageCertSign | x509.KeyUsageDigitalSignature,
-		ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth}}
-	der, err := x509.CreateCertificate(rand.Reader, cert, cert, &key.PublicKey, key)
-	if err != nil {
-		return tls.Certificate{}, nil, err
-	}
-	ca := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der})
-	private := pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(key)})
-	pair, err := tls.X509KeyPair(ca, private)
-	return pair, ca, err
-}
-
-func scannerEnvironment(inherited []string, api, ca string) []string {
-	var env []string
-	for _, entry := range inherited {
-		key, _, _ := strings.Cut(entry, "=")
-		switch strings.ToUpper(key) {
-		case "HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "NO_PROXY", "INPUT_GITHUB_URL", "REQUESTS_CA_BUNDLE":
-		default:
-			env = append(env, entry)
-		}
-	}
-	return append(env, "INPUT_GITHUB_URL="+api, "HTTPS_PROXY="+api, "REQUESTS_CA_BUNDLE="+ca, "NO_PROXY=127.0.0.1")
-}
-
 type replayTransport struct{ fixture *replay }
 
 func (t replayTransport) RoundTrip(r *http.Request) (*http.Response, error) {
 	w := httptest.NewRecorder()
-	t.fixture.ServeHTTP(w, r)
+	serverRequest := r.Clone(r.Context())
+	if serverRequest.Body == nil {
+		serverRequest.Body = http.NoBody
+	}
+	t.fixture.ServeHTTP(w, serverRequest)
 	return w.Result(), nil
 }
 func run() error {

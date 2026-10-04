@@ -29,6 +29,7 @@ type guard struct {
 	mutationStarted bool
 	closed          map[int]bool
 	issues          map[int]bool
+	titles          map[int]string
 	searches        map[string]bool
 	issueIDs        map[string]bool
 	projectIDs      map[string]bool
@@ -45,7 +46,7 @@ func newGuard(c Config, client *http.Client) *guard {
 	}
 	copyClient := *client
 	copyClient.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
-	return &guard{cfg: c, client: &copyClient, closed: map[int]bool{}, issues: map[int]bool{}, searches: map[string]bool{}, issueIDs: map[string]bool{}, projectIDs: map[string]bool{}}
+	return &guard{cfg: c, client: &copyClient, closed: map[int]bool{}, issues: map[int]bool{}, titles: map[int]string{}, searches: map[string]bool{}, issueIDs: map[string]bool{}, projectIDs: map[string]bool{}}
 }
 func (g *guard) verdict() error { return g.Verdict() }
 func (g *guard) Verdict() error {
@@ -113,7 +114,7 @@ func (g *guard) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	switch {
 	case r.Method == "GET" && r.URL.Path == "/search/issues":
 		title, ok := strings.CutPrefix(q.Get("q"), "repo:"+g.cfg.Repository+" is:issue in:title ")
-		if !ok || title == "" || !onlyQuery(q, "q", "per_page", "page") {
+		if !ok || !literalSearchTitle(title) || !onlyQuery(q, "q", "per_page", "page") {
 			g.fail(w, "unbound search route")
 			return
 		}
@@ -151,6 +152,20 @@ func (g *guard) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	default:
 		g.fail(w, "unexpected REST operation")
 	}
+}
+
+// The pinned scanner forwards the title as unescaped GitHub search syntax.
+// Unsupported expressions cannot certify the absence of a literal issue title.
+func literalSearchTitle(title string) bool {
+	if title == "" || strings.ContainsAny(title, ":\"\\()\r\n*") {
+		return false
+	}
+	for _, word := range strings.Fields(title) {
+		if strings.HasPrefix(word, "-") || word == "OR" || word == "AND" || word == "NOT" {
+			return false
+		}
+	}
+	return true
 }
 func onlyQuery(q url.Values, keys ...string) bool {
 	for k := range q {
@@ -223,6 +238,7 @@ func (g *guard) list(w http.ResponseWriter, r *http.Request, search bool, title 
 	items := []any{}
 	seen := map[int]bool{}
 	total := -1
+	lastDeclared := 0
 	var first response
 	for page := 1; page <= 100; page++ {
 		p, e := g.fetch(r, target, nil)
@@ -294,7 +310,8 @@ func (g *guard) list(w http.ResponseWriter, r *http.Request, search bool, title 
 			}
 			items = append(items, row)
 		}
-		next, e := nextPage(p.header.Values("Link"), target, g.cfg.API, page)
+		next, last, e := nextPage(p.header.Values("Link"), target, g.cfg.API, page, lastDeclared)
+		lastDeclared = last
 		if e != nil {
 			g.fail(w, "ambiguous page evidence")
 			return
@@ -307,6 +324,21 @@ func (g *guard) list(w http.ResponseWriter, r *http.Request, search bool, title 
 			first.body, _ = json.Marshal(items)
 			if search {
 				first.body, _ = json.Marshal(map[string]any{"total_count": total, "incomplete_results": false, "items": items})
+				for _, knownTitle := range g.titles {
+					if knownTitle != title {
+						continue
+					}
+					found := false
+					for _, x := range items {
+						if x.(map[string]any)["title"] == title {
+							found = true
+						}
+					}
+					if !found {
+						g.fail(w, "search contradicts verified issue identity")
+						return
+					}
+				}
 				g.searches[title] = true
 				for _, x := range items {
 					m := x.(map[string]any)
@@ -315,11 +347,12 @@ func (g *guard) list(w http.ResponseWriter, r *http.Request, search bool, title 
 					}
 				}
 			}
-			if strings.HasSuffix(r.URL.Path, "/issues") {
+			if search || strings.HasSuffix(r.URL.Path, "/issues") {
 				for _, x := range items {
 					m := x.(map[string]any)
 					n, _ := integer(m["number"])
 					g.issues[n] = m["state"] == "open"
+					g.titles[n] = m["title"].(string)
 				}
 			}
 			writeResponse(w, first)
@@ -333,10 +366,10 @@ func (g *guard) list(w http.ResponseWriter, r *http.Request, search bool, title 
 	}
 	g.fail(w, "page ceiling exceeded")
 }
-func nextPage(headers []string, current, base *url.URL, page int) (*url.URL, error) {
+func nextPage(headers []string, current, base *url.URL, page, declaredLast int) (*url.URL, int, error) {
 	var next *url.URL
 	seen := map[string]bool{}
-	last := 0
+	last := declaredLast
 	for _, header := range headers {
 		for _, part := range strings.Split(header, ",") {
 			part = strings.TrimSpace(part)
@@ -345,66 +378,66 @@ func nextPage(headers []string, current, base *url.URL, page int) (*url.URL, err
 			}
 			end := strings.Index(part, ">")
 			if !strings.HasPrefix(part, "<") || end < 1 {
-				return nil, errors.New("malformed link")
+				return nil, last, errors.New("malformed link")
 			}
 			attrs := strings.Fields(strings.TrimSpace(part[end+1:]))
 			if len(attrs) != 2 || attrs[0] != ";" || !strings.HasPrefix(attrs[1], "rel=\"") || !strings.HasSuffix(attrs[1], "\"") {
-				return nil, errors.New("malformed link relation")
+				return nil, last, errors.New("malformed link relation")
 			}
 			rel := strings.TrimSuffix(strings.TrimPrefix(attrs[1], "rel=\""), "\"")
 			if seen[rel] {
-				return nil, errors.New("duplicate link relation")
+				return nil, last, errors.New("duplicate link relation")
 			}
 			seen[rel] = true
 			if rel != "next" && rel != "last" && rel != "first" && rel != "prev" {
-				return nil, errors.New("unknown link relation")
+				return nil, last, errors.New("unknown link relation")
 			}
 			u, e := url.Parse(part[1:end])
 			if e != nil || u.User != nil || u.Fragment != "" || u.RawPath != "" || u.Scheme != base.Scheme || u.Host != base.Host || u.Path != strings.TrimSuffix(base.Path, "/")+currentPath(current, base) {
-				return nil, errors.New("page origin differs")
+				return nil, last, errors.New("page origin differs")
 			}
 			q, e := url.ParseQuery(u.RawQuery)
 			old, e2 := url.ParseQuery(current.RawQuery)
 			n, e3 := strconv.Atoi(q.Get("page"))
 			if e != nil || e2 != nil || e3 != nil || n < 1 || n > 100 || len(q["page"]) != 1 {
-				return nil, errors.New("page identity differs")
+				return nil, last, errors.New("page identity differs")
 			}
 			for _, values := range q {
 				if len(values) != 1 {
-					return nil, errors.New("duplicate page query")
+					return nil, last, errors.New("duplicate page query")
 				}
 			}
 			q.Del("page")
 			old.Del("page")
 			if q.Encode() != old.Encode() {
-				return nil, errors.New("page query differs")
+				return nil, last, errors.New("page query differs")
 			}
 			switch rel {
 			case "next":
 				if n != page+1 {
-					return nil, errors.New("page progression differs")
+					return nil, last, errors.New("page progression differs")
 				}
 				next = u
 			case "last":
-				if n < page {
-					return nil, errors.New("last page differs")
+				if n < page || (declaredLast != 0 && n != declaredLast) {
+					return nil, last, errors.New("last page differs")
 				}
 				last = n
 			case "first":
 				if n != 1 {
-					return nil, errors.New("first page differs")
+					return nil, last, errors.New("first page differs")
 				}
 			case "prev":
 				if n != page-1 {
-					return nil, errors.New("previous page differs")
+					return nil, last, errors.New("previous page differs")
 				}
 			}
 		}
 	}
 	if (last > page && next == nil) || (last == page && next != nil) {
-		return nil, errors.New("incomplete page chain")
+		return nil, last, errors.New("incomplete page chain")
 	}
-	return next, nil
+	return next, last, nil
 }
 func currentPath(u, base *url.URL) string {
 	if u.IsAbs() {
@@ -559,6 +592,7 @@ func (g *guard) mutate(w http.ResponseWriter, r *http.Request, prefix string) {
 	}
 	if kind == "create" || kind == "update" {
 		g.issues[n] = true
+		g.titles[n] = m["title"].(string)
 	}
 	writeResponse(w, p)
 }

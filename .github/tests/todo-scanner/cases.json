@@ -1217,5 +1217,97 @@
     ],
     "Output": [],
     "Project": "organization/offline/5"
+  },
+  {
+    "Name": "earlier last page commitment prevents partial inventory closure",
+    "Files": {
+      "removed.sh": {
+        "Before": "# TODO: Completed task\n",
+        "After": ""
+      }
+    },
+    "Existing": [
+      {
+        "number": 11,
+        "title": "Completed task",
+        "state": "open",
+        "html_url": "https://example.invalid/offline/fixture/issues/11"
+      }
+    ],
+    "Operations": [],
+    "Output": [
+      "scanner incomplete: ambiguous page evidence"
+    ],
+    "InitialReads": [
+      {
+        "Method": "GET",
+        "Path": "/repos/offline/fixture/issues?per_page=100&page=1&state=open",
+        "Status": 200,
+        "Response": "[{\"number\":11,\"title\":\"Completed task\",\"state\":\"open\",\"html_url\":\"https://example.invalid/offline/fixture/issues/11\"}]",
+        "Headers": {
+          "Link": "<http://127.0.0.1/repos/offline/fixture/issues?per_page=100&page=2&state=open>; rel=\"next\", <http://127.0.0.1/repos/offline/fixture/issues?per_page=100&page=3&state=open>; rel=\"last\""
+        }
+      },
+      {
+        "Method": "GET",
+        "Path": "/repos/offline/fixture/issues?per_page=100&page=2&state=open",
+        "Status": 200,
+        "Response": "[{\"number\":12,\"title\":\"Other\",\"state\":\"open\",\"html_url\":\"https://example.invalid/offline/fixture/issues/12\"}]"
+      }
+    ],
+    "StopAfterInitialFailure": true,
+    "WantFailure": true,
+    "ForbiddenOutput": [
+      "Issue closed"
+    ]
+  },
+  {
+    "Name": "search lag cannot hide the verified open inventory",
+    "Files": {
+      "lag.sh": {
+        "Before": "",
+        "After": "# TODO: Already tracked\n"
+      }
+    },
+    "Existing": [
+      {
+        "number": 10,
+        "title": "Already tracked",
+        "state": "open",
+        "html_url": "https://example.invalid/offline/fixture/issues/10"
+      }
+    ],
+    "Operations": [
+      {
+        "Method": "GET",
+        "Path": "/search/issues?q=repo%3Aoffline%2Ffixture+is%3Aissue+in%3Atitle+Already+tracked&per_page=30",
+        "Status": 200,
+        "Response": "{\"total_count\":0,\"incomplete_results\":false,\"items\":[]}"
+      }
+    ],
+    "WantFailure": true,
+    "Output": [
+      "scanner incomplete: search contradicts verified issue identity"
+    ],
+    "ForbiddenOutput": [
+      "Issue created:"
+    ]
+  },
+  {
+    "Name": "search qualifier is not literal absence evidence",
+    "Files": {
+      "literal.sh": {
+        "Before": "",
+        "After": "# TODO: Task state:closed\n"
+      }
+    },
+    "Operations": [],
+    "WantFailure": true,
+    "Output": [
+      "scanner incomplete: unbound search route"
+    ],
+    "ForbiddenOutput": [
+      "Issue created:"
+    ]
   }
 ]

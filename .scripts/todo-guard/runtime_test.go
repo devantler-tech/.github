@@ -2,10 +2,13 @@ package guard
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
@@ -147,5 +150,59 @@ func TestAcceptedMutationWithLostResponseDeniesQueuedWrite(t *testing.T) {
 	a, b := <-done, <-done
 	if writes != 1 || a != 502 || b != 502 || !g.MutationStarted() || g.Verdict() == nil {
 		t.Fatalf("uncertain mutation replayed: writes=%d status=%d/%d verdict=%v", writes, a, b, g.Verdict())
+	}
+}
+
+func TestProductionTLSProxyLanguageReadsAndRejections(t *testing.T) {
+	for _, path := range []string{"/github/linguist/master/lib/linguist/languages.yml", "/unexpected"} {
+		t.Run(path, func(t *testing.T) {
+			calls := 0
+			g := newGuard(Config{}, &http.Client{Transport: transportFunc(func(r *http.Request) (*http.Response, error) {
+				calls++
+				return &http.Response{StatusCode: 200, Header: make(http.Header), Body: io.NopCloser(strings.NewReader("Shell: fixture"))}, nil
+			})})
+			pair, ca, err := scopedCertificate()
+			if err != nil {
+				t.Fatal(err)
+			}
+			g.certificate = pair
+			s := httptest.NewServer(g)
+			defer s.Close()
+			proxy, _ := url.Parse(s.URL)
+			roots := x509.NewCertPool()
+			roots.AppendCertsFromPEM(ca)
+			transport := &http.Transport{Proxy: http.ProxyURL(proxy), TLSClientConfig: &tls.Config{RootCAs: roots, MinVersion: tls.VersionTLS12}}
+			defer transport.CloseIdleConnections()
+			response, err := (&http.Client{Transport: transport, Timeout: 2 * time.Second}).Get("https://raw.githubusercontent.com" + path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer response.Body.Close()
+			body, err := io.ReadAll(response.Body)
+			if path == "/unexpected" {
+				if response.StatusCode != 502 || calls != 0 || g.Verdict() == nil || err != nil {
+					t.Fatalf("rejection incomplete: status=%d calls=%d err=%v verdict=%v", response.StatusCode, calls, err, g.Verdict())
+				}
+			} else {
+				if response.StatusCode != 200 || calls != 1 || string(body) != "Shell: fixture" || err != nil || g.Verdict() != nil {
+					t.Fatalf("language TLS path failed: %d calls=%d body=%s err=%v verdict=%v", response.StatusCode, calls, body, err, g.Verdict())
+				}
+			}
+		})
+	}
+}
+func TestProductionTLSProxyRejectsUnexpectedDestination(t *testing.T) {
+	g := newGuard(Config{}, nil)
+	pair, _, err := scopedCertificate()
+	if err != nil {
+		t.Fatal(err)
+	}
+	g.certificate = pair
+	r := httptest.NewRequest("CONNECT", "http://untrusted.invalid:443", nil)
+	r.Host = "untrusted.invalid:443"
+	w := httptest.NewRecorder()
+	g.ServeHTTP(w, r)
+	if w.Code != 502 || g.Verdict() == nil {
+		t.Fatal("unexpected TLS destination accepted")
 	}
 }

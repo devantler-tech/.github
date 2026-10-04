@@ -324,3 +324,97 @@ func TestEmptyBeforeRetainsBoundCommitFallback(t *testing.T) {
 		t.Fatalf("empty event before rejected native fallback: calls=%d verdict=%v", calls, g.Verdict())
 	}
 }
+
+func TestLastPageCommitmentSurvivesIntermediateHeaders(t *testing.T) {
+	for _, terminal := range []bool{false, true} {
+		t.Run(fmt.Sprint(terminal), func(t *testing.T) {
+			reads, writes := 0, 0
+			g := fixtureGuard(t, func(w http.ResponseWriter, r *http.Request) {
+				if r.Method != "GET" {
+					writes++
+					return
+				}
+				reads++
+				page := r.URL.Query().Get("page")
+				if page == "1" {
+					w.Header().Set("Link", fmt.Sprintf("<http://%s/repos/offline/fixture/issues?state=open&per_page=100&page=2>; rel=\"next\", <http://%s/repos/offline/fixture/issues?state=open&per_page=100&page=3>; rel=\"last\"", r.Host, r.Host))
+				} else if page == "2" && terminal {
+					w.Header().Set("Link", fmt.Sprintf("<http://%s/repos/offline/fixture/issues?state=open&per_page=100&page=3>; rel=\"next\"", r.Host))
+				}
+				fmt.Fprintf(w, "[{\"number\":%d,\"title\":\"Task %d\",\"state\":\"open\",\"html_url\":\"https://example.invalid/offline/fixture/issues/%d\"}]", reads, reads, reads)
+			})
+			w := request(t, g, "GET", "/repos/offline/fixture/issues?state=open&per_page=100&page=1", "")
+			if terminal {
+				if w.Code != 200 || reads != 3 || g.Verdict() != nil {
+					t.Fatalf("healthy declared pagination failed: %d reads=%d verdict=%v", w.Code, reads, g.Verdict())
+				}
+			} else {
+				request(t, g, "PATCH", "/repos/offline/fixture/issues/1", `{"state":"closed"}`)
+				if w.Code != 502 || reads != 2 || writes != 0 || g.Verdict() == nil {
+					t.Fatalf("forgotten page authorized closure: %d reads=%d writes=%d verdict=%v", w.Code, reads, writes, g.Verdict())
+				}
+			}
+		})
+	}
+}
+func TestKnownIssueCannotBeHiddenBySearchIndexLag(t *testing.T) {
+	for _, inventory := range []bool{true, false} {
+		t.Run(fmt.Sprint(inventory), func(t *testing.T) {
+			writes := 0
+			g := fixtureGuard(t, func(w http.ResponseWriter, r *http.Request) {
+				if r.Method == "POST" {
+					writes++
+					w.WriteHeader(201)
+					io.WriteString(w, `{"number":8}`)
+					return
+				}
+				if r.URL.Path == "/repos/offline/fixture/issues" {
+					io.WriteString(w, `[{"number":7,"title":"Task","state":"open","html_url":"https://example.invalid/offline/fixture/issues/7"}]`)
+					return
+				}
+				io.WriteString(w, `{"total_count":0,"incomplete_results":false,"items":[]}`)
+			})
+			search := "/search/issues?q=repo%3Aoffline%2Ffixture+is%3Aissue+in%3Atitle+Task&per_page=30"
+			body := `{"title":"Task","body":"source","labels":[],"assignees":[]}`
+			if inventory {
+				request(t, g, "GET", "/repos/offline/fixture/issues?state=open&per_page=100&page=1", "")
+			} else {
+				request(t, g, "GET", search, "")
+				if request(t, g, "POST", "/repos/offline/fixture/issues", body).Code != 201 {
+					t.Fatal("first creation failed")
+				}
+			}
+			request(t, g, "GET", search, "")
+			request(t, g, "POST", "/repos/offline/fixture/issues", body)
+			want := 0
+			if !inventory {
+				want = 1
+			}
+			if writes != want || g.Verdict() == nil {
+				t.Fatalf("search lag authorized a duplicate: writes=%d verdict=%v", writes, g.Verdict())
+			}
+		})
+	}
+}
+func TestSearchExpressionsCannotAuthorizeLiteralTitles(t *testing.T) {
+	for _, title := range []string{"Task state:closed", "Task repo:other/repo", "Task -existing", "Task OR Other", `Task "Other"`, "Task\\Other"} {
+		t.Run(title, func(t *testing.T) {
+			calls := 0
+			g := fixtureGuard(t, func(w http.ResponseWriter, r *http.Request) {
+				calls++
+				if r.Method == "GET" {
+					io.WriteString(w, `{"total_count":0,"incomplete_results":false,"items":[]}`)
+				} else {
+					w.WriteHeader(201)
+					io.WriteString(w, `{"number":8}`)
+				}
+			})
+			request(t, g, "GET", "/search/issues?q="+url.QueryEscape("repo:offline/fixture is:issue in:title "+title)+"&per_page=30", "")
+			body, _ := json.Marshal(map[string]any{"title": title, "body": "source", "labels": []string{}, "assignees": []string{}})
+			request(t, g, "POST", "/repos/offline/fixture/issues", string(body))
+			if calls != 0 || g.Verdict() == nil {
+				t.Fatalf("expression certified absence: calls=%d verdict=%v", calls, g.Verdict())
+			}
+		})
+	}
+}
