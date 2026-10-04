@@ -194,28 +194,29 @@ recovery="$root/.github/scripts/recover-manifests-version.sh"
 latest_before="$(read_digest devantler-tech/app/manifests latest)"
 [[ "$latest_before" != "$manifest_digest" ]]
 recover() { PATH="$work/bin:$PATH" bash "$recovery" >"$work/recovery.log" 2>&1; }
-writes() { grep -c '"PUT" "/v2/devantler-tech/app/manifests/manifests/1.2.4"' "$work/requests" || true; }
+# Count every manifest tag, including a changed VERSION, staging and latest.
+manifest_writes() { grep -cE '"PUT" "/v2/.+/manifests/[^\"]+"' "$work/requests" || true; }
 recover || { cat "$work/recovery.log" >&2; exit 1; }
 [[ "$(read_digest devantler-tech/app/manifests 1.2.4)" == "$manifest_digest" &&
    "$(read_digest devantler-tech/app/manifests latest)" == "$latest_before" ]]
-before="$(writes)"
+before="$(manifest_writes)"
 recover
-[[ "$(writes)" == "$before" ]] || { echo 'FAIL: matching recovery wrote again'; exit 1; }
+[[ "$(manifest_writes)" == "$before" ]] || { echo 'FAIL: matching recovery wrote again'; exit 1; }
 # Valid but wrong claims must reach actual cryptographic annotation rejection.
 for assignment in REPOSITORY=devantler-tech/wrong SHA=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa REF_NAME=v1.2.4+wrong \
   VERSION=1.2.4-rc.1 RECOVERY_RUN_ID=124 RECOVERY_RUN_ATTEMPT=3 RECOVERY_WORKFLOW_SHA=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb; do
   if (export "${assignment?}"; recover); then echo 'FAIL: wrong original claim recovered'; exit 1; fi
   grep -qi annotation "$work/recovery.log" || { cat "$work/recovery.log" >&2; echo 'FAIL: claim refused for unrelated reason'; exit 1; }
-  [[ "$(writes)" == "$before" ]]
+  [[ "$(manifest_writes)" == "$before" ]]
 done
 # Replacing the tag with contradictory bytes must never overwrite it.
 printf '{"schemaVersion":2,"mediaType":"application/vnd.oci.image.index.v1+json","manifests":[],"annotations":{"fixture":"conflicting-version"}}' >"$work/index.json"
 conflict_digest="sha256:$(sha256sum "$work/index.json" | cut -d ' ' -f1)"
 put devantler-tech/app/manifests 1.2.4
-before="$(writes)"
+before="$(manifest_writes)"
 if recover; then echo 'FAIL: conflicting version was overwritten'; exit 1; fi
 grep -q 'version has a conflicting digest' "$work/recovery.log"
-[[ "$(writes)" == "$before" &&
+[[ "$(manifest_writes)" == "$before" &&
    "$(read_digest devantler-tech/app/manifests 1.2.4)" == "$conflict_digest" &&
    "$(read_digest devantler-tech/app/manifests latest)" == "$latest_before" ]]
 if grep -Eq 'synthetic-token|synthetic-bearer' "$work/recovery.log"; then echo 'FAIL: recovery printed credentials'; exit 1; fi
@@ -235,15 +236,17 @@ image_latest_before="$(read_digest devantler-tech/app latest)"
 [[ "$image_latest_before" != "$image_digest" ]]
 sign_pair() {
   export VERSION="$1" REF_NAME="v$1+proof"
-  local target
+  local target claimed_image_digest
   for target in "devantler-tech/app@$image_digest" "devantler-tech/app/manifests@$manifest_digest"; do
+    claimed_image_digest="$image_digest"
+    if [[ "${2:-}" == wrong-manifests && "$target" == */manifests@* ]]; then claimed_image_digest="$manifest_digest"; fi
     "$real_cosign" sign --allow-http-registry --allow-insecure-registry --use-signing-config=false --tlog-upload=false --yes --key "$work/claims.key" \
       -a 'devantler.repository=devantler-tech/native-fixture' \
       -a 'devantler.source-sha=fedcba9876543210fedcba9876543210fedcba98' \
       -a "devantler.source-ref=v$1+proof" -a "devantler.version=$1" \
       -a 'devantler.run-id=123' -a 'devantler.run-attempt=2' \
       -a 'devantler.workflow-ref=devantler-tech/.github/.github/workflows/publish-app.yaml@0123456789abcdef0123456789abcdef01234567' \
-      -a "devantler.image-digest=$image_digest" -a "devantler.manifests-digest=$manifest_digest" \
+      -a "devantler.image-digest=$claimed_image_digest" -a "devantler.manifests-digest=$manifest_digest" \
       "127.0.0.1:5000/$target" >"$work/sign.log" 2>&1
   done
 }
@@ -257,15 +260,22 @@ assert_pair() {
 sign_pair 1.2.5
 recover || { cat "$work/recovery.log" >&2; exit 1; }
 assert_pair
-before="$(pair_writes)"
+before="$(manifest_writes)"
 recover
-[[ "$(pair_writes)" == "$before" ]] || { echo 'FAIL: matching paired recovery wrote again'; exit 1; }
+[[ "$(manifest_writes)" == "$before" ]] || { echo 'FAIL: matching paired recovery wrote again'; exit 1; }
 for assignment in REPOSITORY=devantler-tech/wrong SHA=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa REF_NAME=v1.2.5+wrong \
   VERSION=1.2.5-rc.1 RECOVERY_RUN_ID=124 RECOVERY_RUN_ATTEMPT=3 RECOVERY_WORKFLOW_SHA=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb; do
   if (export "${assignment?}"; recover); then echo 'FAIL: wrong paired claim recovered'; exit 1; fi
   grep -qi annotation "$work/recovery.log" || { cat "$work/recovery.log" >&2; echo 'FAIL: paired claim refused for unrelated reason'; exit 1; }
-  [[ "$(pair_writes)" == "$before" ]]
+  [[ "$(manifest_writes)" == "$before" ]]
 done
+# This fresh version has a healthy image signature but only a contradictory
+# manifests pair claim. The second cryptographic verification must refuse it.
+sign_pair 1.2.10 wrong-manifests
+before="$(manifest_writes)"
+if recover; then echo 'FAIL: wrong second paired signature recovered'; exit 1; fi
+grep -qi annotation "$work/recovery.log" || { cat "$work/recovery.log" >&2; echo 'FAIL: second signature refused for unrelated reason'; exit 1; }
+[[ "$(manifest_writes)" == "$before" ]]
 for partial in image manifests; do
   version=1.2.6
   [[ "$partial" != manifests ]] || version=1.2.7
@@ -275,9 +285,11 @@ for partial in image manifests; do
   cp "$work/$partial.json" "$work/index.json"
   put "$target" "$VERSION"
   before="$(pair_writes)"
+  total_before="$(manifest_writes)"
   recover || { cat "$work/recovery.log" >&2; exit 1; }
   assert_pair
   [[ "$(pair_writes)" == "$((before + 1))" ]] || { echo 'FAIL: partial recovery did not write exactly one alias'; exit 1; }
+  [[ "$(manifest_writes)" == "$((total_before + 1))" ]] || { echo 'FAIL: partial recovery wrote an unrelated alias'; exit 1; }
 done
 for conflicting in image manifests; do
   version=1.2.8
@@ -289,10 +301,10 @@ for conflicting in image manifests; do
   printf '{"schemaVersion":2,"mediaType":"application/vnd.oci.image.index.v1+json","manifests":[],"annotations":{"fixture":"conflict"}}' >"$work/index.json"
   conflict_digest="sha256:$(sha256sum "$work/index.json" | cut -d ' ' -f1)"
   put "$target" "$VERSION"
-  before="$(pair_writes)"
+  before="$(manifest_writes)"
   if recover; then echo 'FAIL: conflicting pair recovered'; exit 1; fi
   grep -q 'version has a conflicting digest' "$work/recovery.log"
-  [[ "$(pair_writes)" == "$before" && "$(read_digest "$target" "$VERSION")" == "$conflict_digest" ]]
+  [[ "$(manifest_writes)" == "$before" && "$(read_digest "$target" "$VERSION")" == "$conflict_digest" ]]
   status="$(curl -sS --max-time 10 -o "$work/response" -w '%{http_code}' -H 'Authorization: Bearer synthetic-bearer' "https://$REGISTRY/v2/$missing/manifests/$VERSION")"
   [[ "$status" == 404 ]] || { echo 'FAIL: conflict wrote the previously absent member'; exit 1; }
 done
