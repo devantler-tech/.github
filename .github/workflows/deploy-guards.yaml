@@ -42,6 +42,7 @@ jobs:
 
       - name: 🚦 Validate release contract
         if: github.event_name == 'pull_request'
+        shell: bash
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
