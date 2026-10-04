@@ -135,7 +135,7 @@ func TestProductionSupervisorListUsesReplayTransport(t *testing.T) {
 	fixture := newReplay([]exchange{{Method: "GET", Path: "/repos/offline/fixture/issues?per_page=100&page=1&state=open", Status: 200, Response: "[]"}})
 	api, _ := url.Parse("http://127.0.0.1")
 	supervisor := guard.New(guard.Config{API: api, Repository: "offline/fixture", Server: "https://example.invalid", Token: "offline-token"}, &http.Client{Transport: replayTransport{fixture}})
-	r := httptest.NewRequest("GET", "http://127.0.0.1/repos/offline/fixture/issues?per_page=100&page=1&state=open", nil)
+	r := httptest.NewRequest("GET", "/repos/offline/fixture/issues?per_page=100&page=1&state=open", nil)
 	r.Header.Set("Authorization", "token offline-token")
 	w := httptest.NewRecorder()
 	supervisor.ServeHTTP(w, r)
