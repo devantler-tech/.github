@@ -48,7 +48,8 @@ guard() {
     then error("offline-test must require dry-run before executing")
     elif $j.defaults.run != {shell:"bash","working-directory":".devantler-tech-actions"} or
       ([$j.steps[] | select(.run == "bash .github/tests/create-release-fixture.sh") |
-        select(runnable and .env.DISABLE_ISSUE_SIDE_EFFECTS == "${{ inputs.disable-issue-side-effects }}")] | length) != 1
+        select(runnable and .env.DISABLE_ISSUE_SIDE_EFFECTS == "${{ inputs.disable-issue-side-effects }}"
+          and .env.WARN_MISSING_BREAKING_BANG == "${{ inputs.warn-missing-breaking-bang }}")] | length) != 1
     then error("offline release decisions must execute with the caller hook setting")
     elif (["test-create-release","test-create-release-no-issue-side-effects"] | all(. as $name |
       $c.jobs[$name].uses == "./.github/workflows/create-release.yaml" and
@@ -106,6 +107,9 @@ missing bootstrap directory	.workflow.jobs["offline-test"].steps |= map(if .env.
 ambient curl config	.workflow.jobs["offline-test"].steps |= map(if .env.CATALOGUE_SHA then .run |= sub("curl --disable";"curl") else . end)	immutable public workflow commit
 fixture bypass	.workflow.jobs["offline-test"].steps |= map(if .run == "bash .github/tests/create-release-fixture.sh" then .run="echo PASS" else . end)	decisions must execute
 hook setting lost	.workflow.jobs["offline-test"].steps |= map(if .run then .env.DISABLE_ISSUE_SIDE_EFFECTS="true" else . end)	caller hook setting
+warning setting lost	.workflow.jobs["offline-test"].steps |= map(if .run == "bash .github/tests/create-release-fixture.sh" then del(.env.WARN_MISSING_BREAKING_BANG) else . end)	caller hook setting
+warning forced on	.workflow.jobs["offline-test"].steps |= map(if .run == "bash .github/tests/create-release-fixture.sh" then .env.WARN_MISSING_BREAKING_BANG="true" else . end)	caller hook setting
+warning forced off	.workflow.jobs["offline-test"].steps |= map(if .run == "bash .github/tests/create-release-fixture.sh" then .env.WARN_MISSING_BREAKING_BANG="false" else . end)	caller hook setting
 default App key	.ci.jobs["test-create-release"].secrets.APP_PRIVATE_KEY="key"	secret-free release calls
 inherited secrets	.ci.jobs["test-create-release-no-issue-side-effects"].secrets="inherit"	secret-free release calls
 live mode	.ci.jobs["test-create-release"].with["offline-test"]=false	secret-free release calls

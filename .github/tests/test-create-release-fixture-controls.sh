@@ -39,4 +39,30 @@ jq '.plugins[0][1].releaseRules |= map(select(.type != "revert"))' "$config" >"$
 reject 'missing revert rule' "$workflow" "$work/no-revert.json" 'FAIL: revert expected 1.2.4'
 yq '(.jobs.release.steps[] | select(.name == "🎉 Release") | .run) = "echo PASS"' "$workflow" >"$work/bypass.yaml"
 reject 'release command bypass' "$work/bypass.yaml" "$config" 'unsupported shipped release command'
-echo 'PASS: four independent behavioral regressions rejected'
+# The native warning fixture must execute the shipped guard and preserve dry-run decisions.
+if ! WARN_MISSING_BREAKING_BANG=true bash "$fixture" >"$work/output" 2>&1; then
+  cat "$work/output" >&2
+  exit 1
+fi
+grep -qF 'PASS: warning-missing -> 1.2.4; warning=1; files and refs unchanged' "$work/output" || {
+  echo 'FAIL: native offline decisions do not exercise the missing-pattern warning' >&2
+  exit 1
+}
+yq '(.jobs.release.steps[] | select(.id == "breaking-bang-guard") | .run) = "echo PASS"' "$workflow" >"$work/no-guard.yaml"
+if WARN_MISSING_BREAKING_BANG=true bash "$fixture" "$work/no-guard.yaml" "$config" >"$work/output" 2>&1; then
+  echo 'FAIL: warning guard bypass was accepted' >&2
+  exit 1
+fi
+grep -qF 'FAIL: warning-missing expected 1 warning(s)' "$work/output"
+yq '(.jobs.release.steps[] | select(.id == "breaking-bang-guard") | .run) += "\necho mutated >> .releaserc\n"' "$workflow" >"$work/guard-write.yaml"
+if WARN_MISSING_BREAKING_BANG=true bash "$fixture" "$work/guard-write.yaml" "$config" >"$work/output" 2>&1; then
+  echo 'FAIL: warning guard file mutation was accepted' >&2
+  exit 1
+fi
+grep -qF 'FAIL: fix warning guard changed consumer files' "$work/output"
+if WARN_MISSING_BREAKING_BANG=invalid bash "$fixture" >"$work/output" 2>&1; then
+  echo 'FAIL: malformed warning opt-in was accepted' >&2
+  exit 1
+fi
+grep -qF 'invalid warning setting' "$work/output"
+echo 'PASS: seven independent behavioral regressions rejected'
