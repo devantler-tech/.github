@@ -354,3 +354,13 @@ func TestNestedCompositeAdmissionCannotEscape(t *testing.T) {
 		}
 	}
 }
+
+func TestReviewRootWorkflowCallInheritsCallerEvent(t *testing.T) {
+	ci := "on: {workflow_call: {}}\npermissions: {}\njobs:\n  writer:\n    if: ${{ github.event_name == 'push' }}\n    permissions: {contents: write}\n    steps: [{run: echo fixture}]\n"
+	if condition("${{ github.event_name == 'push' }}", context{"github.event_name": "push"}) != true {
+		t.Fatal("caller push eligibility control")
+	}
+	if e := Audit(fixture(t, map[string]string{".github/workflows/ci.yaml": ci})); e == nil {
+		t.Fatal("false-clean: workflow_call uses caller event, not literal workflow_call")
+	}
+}

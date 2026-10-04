@@ -919,6 +919,9 @@ func audit(root string, requireWiring bool) error {
 		return fmt.Errorf("UNKNOWN missing CI event observation")
 	}
 	for _, event := range keys(trigger) {
+		if event == "workflow_call" {
+			return fmt.Errorf("UNKNOWN root workflow_call requires caller admission context")
+		}
 		refs := []any{uncertain}
 		if event == "push" {
 			p := asObject(trigger[event])
