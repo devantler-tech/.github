@@ -8,6 +8,11 @@ container="version-fixture-${GITHUB_RUN_ID:-local}-${GITHUB_RUN_ATTEMPT:-1}"
 proxy_pid=''
 cleanup() {
   code=$?
+  if ((code != 0)); then
+    for log in sign verify rejected; do
+      [[ ! -s "$work/$log.log" ]] || { echo "Native claim $log diagnostics:" >&2; tail -n 12 "$work/$log.log" >&2; }
+    done
+  fi
   [[ -z "$proxy_pid" ]] || kill "$proxy_pid" >/dev/null 2>&1 || true
   docker rm -f "$container" >/dev/null 2>&1 || true
   rm -rf "$work"
@@ -95,15 +100,15 @@ for family in app manifests; do
   [[ "$family" != app ]] || targets=("devantler-tech/app@$image_digest" "devantler-tech/app/manifests@$manifest_digest")
   for target in "${targets[@]}"; do
     reference="127.0.0.1:5000/$target"
-    cosign sign --allow-insecure-registry --tlog-upload=false --yes --key "$work/claims.key" "${annotations[@]}" "$reference" >"$work/sign.log" 2>&1
-    cosign verify --allow-insecure-registry --insecure-ignore-tlog --key "$work/claims.pub" "${annotations[@]}" "$reference" >"$work/verified.json" 2>"$work/verify.log"
+    cosign sign --allow-http-registry --allow-insecure-registry --use-signing-config=false --tlog-upload=false --yes --key "$work/claims.key" "${annotations[@]}" "$reference" >"$work/sign.log" 2>&1
+    cosign verify --allow-http-registry --allow-insecure-registry --insecure-ignore-tlog --key "$work/claims.pub" "${annotations[@]}" "$reference" >"$work/verified.json" 2>"$work/verify.log"
     jq -e '. | length > 0 and all(.[]; .optional["devantler.source-sha"] == "fedcba9876543210fedcba9876543210fedcba98" and .optional["devantler.run-id"] == "123" and .optional["devantler.version"] == "1.2.4")' "$work/verified.json" >/dev/null
     [[ "$family" != app ]] || jq -e --arg image "$image_digest" --arg manifests "$manifest_digest" 'all(.[]; .optional["devantler.image-digest"] == $image and .optional["devantler.manifests-digest"] == $manifests)' "$work/verified.json" >/dev/null
     for ((index=1; index<${#annotations[@]}; index+=2)); do
       wrong=("${annotations[@]}")
       key="${wrong[index]%%=*}"
       wrong[index]="$key=wrong"
-      if cosign verify --allow-insecure-registry --insecure-ignore-tlog --key "$work/claims.pub" "${wrong[@]}" "$reference" >"$work/rejected.json" 2>"$work/rejected.log"; then
+      if cosign verify --allow-http-registry --allow-insecure-registry --insecure-ignore-tlog --key "$work/claims.pub" "${wrong[@]}" "$reference" >"$work/rejected.json" 2>"$work/rejected.log"; then
         echo "FAIL: actual cosign accepted wrong signed $key" >&2
         exit 1
       fi
