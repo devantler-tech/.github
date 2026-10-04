@@ -13,6 +13,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"regexp"
 	"sort"
 	"strings"
@@ -859,6 +860,13 @@ func (a *auditor) steps(steps []any, revision string, c context, bindings map[st
 		if !ok || len(nested) == 0 {
 			return fmt.Errorf("UNKNOWN empty composite implementation")
 		}
+		var before map[string]binding
+		if condition(s["if"], c) != true || (s["continue-on-error"] != nil && s["continue-on-error"] != false) {
+			before = map[string]binding{}
+			for path, source := range bindings {
+				before[path] = source
+			}
+		}
 		ac := inputs(asObject(m["inputs"]), asObject(s["with"]), c)
 		a.scope++
 		ac["__catalogue_guard_scope"] = a.scope
@@ -872,6 +880,20 @@ func (a *auditor) steps(steps []any, revision string, c context, bindings map[st
 		delete(a.active, key)
 		if e != nil {
 			return e
+		}
+		if before != nil {
+			// A skipped or failed ignored call cannot establish provenance for its siblings.
+			for path := range before {
+				if _, exists := bindings[path]; !exists {
+					bindings[path] = binding{}
+				}
+			}
+			for path, source := range bindings {
+				previous, exists := before[path]
+				if !exists || !reflect.DeepEqual(previous, source) {
+					bindings[path] = binding{}
+				}
+			}
 		}
 	}
 	return nil

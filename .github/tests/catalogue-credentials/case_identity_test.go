@@ -264,3 +264,93 @@ func TestLexicalDotDotDoesNotHideNativeSymlinkTraversal(t *testing.T) {
 		t.Fatal("false-clean raw-path identity: lexical clean hides symlink component and audits different native bytes")
 	}
 }
+
+func TestReviewConditionalCompositeCheckoutCannotEscape(t *testing.T) {
+	root := fixture(t, map[string]string{
+		".github/workflows/ci.yaml":    "on: {pull_request: {}}\npermissions: {}\njobs:\n  read:\n    permissions: {contents: read}\n    steps:\n      - uses: actions/checkout@1111111111111111111111111111111111111111\n      - uses: actions/checkout@1111111111111111111111111111111111111111\n        with: {repository: devantler-tech/ksail, ref: 2222222222222222222222222222222222222222, path: helper}\n      - uses: ./actions/installer\n        if: ${{ vars.INSTALL == 'true' }}\n      - uses: ./helper/actions/fixture\n",
+		"actions/installer/action.yml": "runs:\n  using: composite\n  steps:\n    - uses: actions/checkout@1111111111111111111111111111111111111111\n      with: {repository: devantler-tech/.github, ref: '${{ github.sha }}', path: helper}\n",
+		"actions/fixture/action.yml":   "runs: {using: composite, steps: [{run: echo safe, shell: bash}]}\n",
+	})
+	if condition("${{ vars.INSTALL == 'true' }}", context{"vars.install": ""}) != false {
+		t.Fatal("native skipped installer condition control")
+	}
+	if condition(nil, context{}) != true {
+		t.Fatal("later unconditional action control")
+	}
+	if e := Audit(root); e == nil {
+		t.Fatal("false-clean: checkout inside possibly skipped composite escaped as unconditional source provenance")
+	}
+}
+
+// TestReviewIgnoredCompositeCheckoutCannotEscape rejects attempt-only provenance at a composite call boundary.
+func TestReviewIgnoredCompositeCheckoutCannotEscape(t *testing.T) {
+	root := fixture(t, map[string]string{
+		".github/workflows/ci.yaml":    "on: {pull_request: {}}\npermissions: {}\njobs:\n  read:\n    permissions: {contents: read}\n    steps:\n      - uses: actions/checkout@1111111111111111111111111111111111111111\n      - uses: actions/checkout@1111111111111111111111111111111111111111\n        with: {repository: devantler-tech/ksail, ref: 2222222222222222222222222222222222222222, path: helper}\n      - uses: ./actions/installer\n        continue-on-error: true\n      - uses: ./helper/actions/fixture\n",
+		"actions/installer/action.yml": "runs:\n  using: composite\n  steps:\n    - uses: actions/checkout@1111111111111111111111111111111111111111\n      with: {repository: devantler-tech/.github, ref: '${{ github.sha }}', path: helper}\n",
+		"actions/fixture/action.yml":   "runs: {using: composite, steps: [{run: echo safe, shell: bash}]}\n",
+	})
+	if condition("${{ vars.INSTALL == 'true' }}", context{"vars.install": ""}) != false {
+		t.Fatal("native skipped installer condition control")
+	}
+	if condition(nil, context{}) != true {
+		t.Fatal("later unconditional action control")
+	}
+	if e := Audit(root); e == nil {
+		t.Fatal("false-clean: checkout inside failed ignored composite escaped as unconditional source provenance")
+	}
+}
+
+// TestCompositeAdmissionScopePositives retains proved installation and within-call source use.
+func TestCompositeAdmissionScopePositives(t *testing.T) {
+	for _, test := range []struct{ name, outer, inner, after string }{
+		{"unconditional installer", "", "", "      - uses: ./helper/actions/fixture\n"},
+		{"conditional within-call use", "        if: \u0024{{ vars.INSTALL == 'true' }}\n", "    - uses: ./helper/actions/fixture\n", ""},
+		{"ignored within-call use", "        continue-on-error: true\n", "    - uses: ./helper/actions/fixture\n", ""},
+		{"untouched root sibling", "        if: \u0024{{ vars.INSTALL == 'true' }}\n", "", "      - uses: ./actions/fixture\n"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			ci := "on: {pull_request: {}}\npermissions: {}\njobs:\n  read:\n    permissions: {contents: read}\n    steps:\n      - uses: actions/checkout@1111111111111111111111111111111111111111\n      - uses: actions/checkout@1111111111111111111111111111111111111111\n        with: {repository: devantler-tech/ksail, ref: 2222222222222222222222222222222222222222, path: helper}\n      - uses: ./actions/installer\n" + test.outer + test.after
+			root := fixture(t, map[string]string{
+				".github/workflows/ci.yaml":    ci,
+				"actions/installer/action.yml": "runs:\n  using: composite\n  steps:\n    - uses: actions/checkout@1111111111111111111111111111111111111111\n      with: {repository: devantler-tech/.github, ref: '\u0024{{ github.sha }}', path: helper}\n" + test.inner,
+				"actions/fixture/action.yml":   "runs: {using: composite, steps: [{run: echo safe, shell: bash}]}\n",
+			})
+			if e := Audit(root); e != nil {
+				t.Fatalf("safe composite scope rejected: %v", e)
+			}
+		})
+	}
+}
+
+func TestReviewConditionalCompositeParentCheckoutRemovalCannotEscape(t *testing.T) {
+	root := fixture(t, map[string]string{
+		".github/workflows/ci.yaml":         "on: {pull_request: {}}\npermissions: {}\njobs:\n  read:\n    permissions: {contents: read}\n    steps:\n      - uses: actions/checkout@1111111111111111111111111111111111111111\n      - uses: actions/checkout@1111111111111111111111111111111111111111\n        with: {repository: devantler-tech/ksail, ref: 2222222222222222222222222222222222222222, path: helper}\n      - uses: ./actions/installer\n        if: ${{ vars.INSTALL == 'true' }}\n      - uses: ./helper/actions/fixture\n",
+		"actions/installer/action.yml":      "runs:\n  using: composite\n  steps:\n    - uses: actions/checkout@1111111111111111111111111111111111111111\n      with: {repository: devantler-tech/.github, ref: '${{ github.sha }}'}\n",
+		"helper/actions/fixture/action.yml": "runs: {using: composite, steps: [{run: echo safe, shell: bash}]}\n",
+	})
+	if condition("${{ vars.INSTALL == 'true' }}", context{"vars.install": ""}) != false {
+		t.Fatal("native skipped installer condition control")
+	}
+	if condition(nil, context{}) != true {
+		t.Fatal("later unconditional action control")
+	}
+	if e := Audit(root); e == nil {
+		t.Fatal("false-clean: conditionally removed foreign child binding escaped as unconditional source provenance")
+	}
+}
+
+// TestNestedCompositeAdmissionCannotEscape keeps uncertain ancestors on the whole call chain.
+func TestNestedCompositeAdmissionCannotEscape(t *testing.T) {
+	for _, outer := range []string{"        if: \u0024{{ vars.INSTALL == 'true' }}\n", "        continue-on-error: true\n"} {
+		ci := "on: {pull_request: {}}\npermissions: {}\njobs:\n  read:\n    permissions: {contents: read}\n    steps:\n      - uses: actions/checkout@1111111111111111111111111111111111111111\n      - uses: actions/checkout@1111111111111111111111111111111111111111\n        with: {repository: devantler-tech/ksail, ref: 2222222222222222222222222222222222222222, path: helper}\n      - uses: ./actions/outer\n" + outer + "      - uses: ./helper/actions/fixture\n"
+		root := fixture(t, map[string]string{
+			".github/workflows/ci.yaml":    ci,
+			"actions/outer/action.yml":     "runs: {using: composite, steps: [{uses: ./actions/installer}]}\n",
+			"actions/installer/action.yml": "runs:\n  using: composite\n  steps:\n    - uses: actions/checkout@1111111111111111111111111111111111111111\n      with: {repository: devantler-tech/.github, ref: '\u0024{{ github.sha }}', path: helper}\n",
+			"actions/fixture/action.yml":   "runs: {using: composite, steps: [{run: echo safe, shell: bash}]}\n",
+		})
+		if e := Audit(root); e == nil || !strings.Contains(e.Error(), "checkout provenance") {
+			t.Fatalf("ancestor admission escaped (%s): %v", outer, e)
+		}
+	}
+}

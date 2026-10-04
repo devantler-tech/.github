@@ -535,7 +535,8 @@ authority or external secret; reporting permissions and read-only OIDC proofs re
 separately. Dry-run and skipped-dependency proofs use call-specific inputs and complete source
 observations. Action metadata has one regular-file implementation with unambiguous path casing, bound to the
 actual immutable checkout through verified commit/tree/blob identities and exact directory spelling.
-Source and checkout paths use measured ASCII spelling, and local metadata crosses no symlink component. Missing, mutable or
+Source and checkout paths use measured ASCII spelling, and local metadata crosses no symlink component.
+A possibly skipped or ignored composite installation establishes no sibling checkout proof. Missing, mutable or
 unclassified sources and partial expression evidence fail closed as UNKNOWN. Keep both
 `test-catalogue-credentials.sh` and its real-source mutation controls unconditional within
 `lint-ci-coverage-parity`, whose result gates the required check. This admission guard does not
