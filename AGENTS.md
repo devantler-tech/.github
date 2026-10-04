@@ -535,8 +535,9 @@ The auto-merge workflow's own allow-lists (`TRUSTED_BOT_AUTHORS`, `TRUSTED_TRIGG
 reusable workflows and local composite actions. A possibly reached leaf has no repository-write
 authority or external secret; reporting permissions and read-only OIDC proofs remain classified
 separately. Dry-run and skipped-dependency proofs use call-specific inputs and complete source
-observations. Action metadata has one regular-file implementation, bound to the actual immutable
-checkout through verified commit/tree/blob identities. Missing, mutable or
+observations. Action metadata has one regular-file implementation with unambiguous path casing, bound to the
+actual immutable checkout through verified commit/tree/blob identities and exact directory spelling.
+Source and checkout paths use measured ASCII spelling, and local metadata crosses no symlink component. Missing, mutable or
 unclassified sources and partial expression evidence fail closed as UNKNOWN. Keep both
 `test-catalogue-credentials.sh` and its real-source mutation controls unconditional within
 `lint-ci-coverage-parity`, whose result gates the required check. This admission guard does not

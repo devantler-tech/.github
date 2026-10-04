@@ -140,6 +140,11 @@ func decode(b []byte) (object, error) {
 func safePath(path string) (string, error) {
 	path = strings.TrimPrefix(path, "./")
 	path = filepath.ToSlash(filepath.Clean(path))
+	for _, r := range path {
+		if r < 0x20 || r > 0x7e {
+			return "", fmt.Errorf("UNKNOWN unmeasured source path spelling")
+		}
+	}
 	if path == "." || strings.HasPrefix(path, "../") || filepath.IsAbs(path) || strings.ContainsAny(path, "\\?#%:\r\n") {
 		return "", fmt.Errorf("UNKNOWN source path outside catalogue")
 	}
@@ -158,6 +163,9 @@ func (a *auditor) readSource(path, revision string) (object, error) {
 	}
 	var b []byte
 	if revision == "" {
+		if e := a.localSourceCase(path); e != nil {
+			return nil, fmt.Errorf("UNKNOWN local source identity: %w", e)
+		}
 		var realRoot, realPath string
 		realRoot, err = filepath.EvalSymlinks(a.root)
 		if err == nil {
@@ -259,61 +267,127 @@ func decodeSourceTree(raw []byte, expected string) (map[string]sourceEntry, erro
 	return entries, nil
 }
 
-// immutableEntry verifies Git modes locally or joins the exact commit, complete tree and blob remotely.
-func (a *auditor) immutableEntry(path, revision string) (sourceEntry, error) {
-	if entries, complete := a.trees[revision]; complete {
-		entry, exists := entries[path]
-		if !exists {
-			return sourceEntry{}, os.ErrNotExist
+// sourceCase refuses path aliases that a case-folding checkout can resolve differently.
+func sourceCase(entries map[string]sourceEntry, path string) error {
+	wanted := strings.Split(path, "/")
+	for candidate := range entries {
+		parts := strings.Split(candidate, "/")
+		for i := 0; i < len(wanted) && i < len(parts); i++ {
+			if !strings.EqualFold(wanted[i], parts[i]) {
+				break
+			}
+			if wanted[i] != parts[i] {
+				return fmt.Errorf("UNKNOWN case-ambiguous source path")
+			}
 		}
-		return entry, nil
 	}
-	raw, e := exec.Command("git", "-C", a.root, "ls-tree", "-z", revision, "--", path).Output()
-	if e == nil {
-		if len(raw) == 0 {
-			return sourceEntry{}, os.ErrNotExist
+	return nil
+}
+
+// localSourceCase observes exact directory spelling before treating a metadata name as absent.
+func (a *auditor) localSourceCase(path string) error {
+	directory := a.root
+	for _, part := range strings.Split(path, "/") {
+		entries, e := os.ReadDir(directory)
+		if e != nil {
+			return e
 		}
-		parts := strings.SplitN(strings.TrimSuffix(string(raw), "\x00"), "\t", 2)
-		if len(parts) != 2 || parts[1] != path {
-			return sourceEntry{}, fmt.Errorf("UNKNOWN ambiguous immutable tree path")
+		matches := 0
+		exact := false
+		for _, entry := range entries {
+			if strings.EqualFold(entry.Name(), part) {
+				matches++
+				exact = entry.Name() == part
+			}
+		}
+		if matches == 0 {
+			return os.ErrNotExist
+		}
+		if matches != 1 || !exact {
+			return fmt.Errorf("UNKNOWN case-ambiguous local source path")
+		}
+		directory = filepath.Join(directory, part)
+		info, e := os.Lstat(directory)
+		if e != nil {
+			return e
+		}
+		if info.Mode()&os.ModeSymlink != 0 {
+			return fmt.Errorf("UNKNOWN local source symlink")
+		}
+	}
+	return nil
+}
+
+// decodeGitTree inventories the complete native checkout tree, including aliases and non-regular entries.
+func decodeGitTree(raw []byte) (map[string]sourceEntry, error) {
+	entries := map[string]sourceEntry{}
+	if len(raw) == 0 {
+		return entries, nil
+	}
+	if raw[len(raw)-1] != 0 {
+		return nil, fmt.Errorf("UNKNOWN incomplete native Git tree")
+	}
+	for _, record := range strings.Split(string(raw[:len(raw)-1]), "\x00") {
+		parts := strings.SplitN(record, "\t", 2)
+		if len(parts) != 2 || parts[1] == "" {
+			return nil, fmt.Errorf("UNKNOWN malformed native Git path")
 		}
 		fields := strings.Fields(parts[0])
 		if len(fields) != 3 || !fullSHA.MatchString(fields[2]) {
-			return sourceEntry{}, fmt.Errorf("UNKNOWN malformed immutable Git entry")
+			return nil, fmt.Errorf("UNKNOWN malformed native Git entry")
 		}
-		return sourceEntry{Path: path, Mode: fields[0], Type: fields[1], SHA: fields[2]}, nil
+		if _, exists := entries[parts[1]]; exists {
+			return nil, fmt.Errorf("UNKNOWN duplicate native Git entry")
+		}
+		entries[parts[1]] = sourceEntry{Path: parts[1], Mode: fields[0], Type: fields[1], SHA: fields[2]}
 	}
-	if os.Getenv("CATALOGUE_CREDENTIALS_OFFLINE") == "1" {
-		return sourceEntry{}, fmt.Errorf("UNKNOWN unavailable immutable tree")
-	}
+	return entries, nil
+}
+
+// immutableEntry joins a complete native or remote tree before resolving exact path and mode.
+func (a *auditor) immutableEntry(path, revision string) (sourceEntry, error) {
 	if a.trees == nil {
 		a.trees = map[string]map[string]sourceEntry{}
 	}
 	entries, exists := a.trees[revision]
 	if !exists {
-		raw, e = ownedAPI("git/commits/" + revision)
-		if e != nil {
-			return sourceEntry{}, e
-		}
-		var commit struct {
-			SHA  string
-			Tree struct{ SHA string }
-		}
-		if e = json.Unmarshal(raw, &commit); e != nil {
-			return sourceEntry{}, e
-		}
-		if commit.SHA != revision || !fullSHA.MatchString(commit.Tree.SHA) {
-			return sourceEntry{}, fmt.Errorf("UNKNOWN immutable commit identity mismatch")
-		}
-		raw, e = ownedAPI("git/trees/" + commit.Tree.SHA + "?recursive=1")
-		if e != nil {
-			return sourceEntry{}, e
-		}
-		entries, e = decodeSourceTree(raw, commit.Tree.SHA)
-		if e != nil {
-			return sourceEntry{}, e
+		raw, e := exec.Command("git", "-C", a.root, "ls-tree", "-r", "-z", "--full-tree", revision).Output()
+		if e == nil {
+			entries, e = decodeGitTree(raw)
+			if e != nil {
+				return sourceEntry{}, e
+			}
+		} else {
+			if os.Getenv("CATALOGUE_CREDENTIALS_OFFLINE") == "1" {
+				return sourceEntry{}, fmt.Errorf("UNKNOWN unavailable immutable tree")
+			}
+			raw, e = ownedAPI("git/commits/" + revision)
+			if e != nil {
+				return sourceEntry{}, e
+			}
+			var commit struct {
+				SHA  string
+				Tree struct{ SHA string }
+			}
+			if e = json.Unmarshal(raw, &commit); e != nil {
+				return sourceEntry{}, e
+			}
+			if commit.SHA != revision || !fullSHA.MatchString(commit.Tree.SHA) {
+				return sourceEntry{}, fmt.Errorf("UNKNOWN immutable commit identity mismatch")
+			}
+			raw, e = ownedAPI("git/trees/" + commit.Tree.SHA + "?recursive=1")
+			if e != nil {
+				return sourceEntry{}, e
+			}
+			entries, e = decodeSourceTree(raw, commit.Tree.SHA)
+			if e != nil {
+				return sourceEntry{}, e
+			}
 		}
 		a.trees[revision] = entries
+	}
+	if e := sourceCase(entries, path); e != nil {
+		return sourceEntry{}, e
 	}
 	entry, exists := entries[path]
 	if !exists {
@@ -751,7 +825,7 @@ func (a *auditor) steps(steps []any, revision string, c context, bindings map[st
 		if ref == "" {
 			continue
 		}
-		if strings.HasPrefix(ref, "actions/checkout@") {
+		if strings.EqualFold(strings.SplitN(ref, "@", 2)[0], "actions/checkout") {
 			bindCheckout(s, revision, c, bindings)
 		}
 		p, r, owned, e := actionReference(ref, revision, s, c, bindings)
@@ -970,7 +1044,7 @@ func bindCheckout(step object, revision string, c context, bindings map[string]b
 	}
 	{
 		for k := range bindings {
-			if path == "." || k == path || strings.HasPrefix(k, path+"/") {
+			if path == "." || strings.EqualFold(k, path) || strings.HasPrefix(strings.ToLower(k), strings.ToLower(path)+"/") {
 				delete(bindings, k)
 			}
 		}
@@ -989,7 +1063,7 @@ func actionReference(ref, revision string, step object, c context, bindings map[
 	}
 	prefix := ""
 	for dir := range bindings {
-		if dir == "." || p == dir || strings.HasPrefix(p, dir+"/") {
+		if dir == "." || strings.EqualFold(p, dir) || strings.HasPrefix(strings.ToLower(p), strings.ToLower(dir)+"/") {
 			if len(dir) > len(prefix) {
 				prefix = dir
 			}
@@ -997,6 +1071,9 @@ func actionReference(ref, revision string, step object, c context, bindings map[
 	}
 	if prefix == "" || !bindings[prefix].valid {
 		return "", "", false, fmt.Errorf("UNKNOWN local action checkout provenance")
+	}
+	if prefix != "." && p != prefix && !strings.HasPrefix(p, prefix+"/") {
+		return "", "", false, fmt.Errorf("UNKNOWN case-ambiguous checkout provenance")
 	}
 	b := bindings[prefix]
 	requiresOutcome := b.ignored || statusOverride.MatchString(text(step["if"])) || (b.guard != "" && !stableGuard(b.guard))
