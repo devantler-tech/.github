@@ -19,7 +19,7 @@ guard() {
     elif ([$job.steps[]|select((.uses // "")|startswith("actions/checkout@"))] |
       length != 1 or any(.with["persist-credentials"] != false))
     then error("scanner checkout must disable persisted credentials")
-    elif (["bash .github/tests/test-todo-scanner.sh", "bash .github/tests/test-todo-scanner-controls.sh"] |
+    elif (["bash .github/tests/test-todo-scanner.sh", "bash .github/tests/test-todo-scanner-controls.sh", "go test -C .scripts/todo-guard -race ./..."] |
       any(. as $command | [$job.steps[]|select(command == $command)] |
         length != 1 or any(.if != null or (.shell != null and .shell != "bash") or
           (."continue-on-error" // false) != false or ."working-directory" != null)))

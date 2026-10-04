@@ -77,6 +77,26 @@ bash .github/tests/test-todo-scanner-ci.sh
 bash .github/tests/test-todo-scanner.sh # requires Docker, Go, jq and yq
 ```
 
-The scanner container has networking disabled and receives only a synthetic token. A test entrypoint serves the issue API and language-rule downloads on loopback, then invokes the image's unchanged scanner. Every request, complete issue payload and expected result must match; missing or unexpected operations fail the test. Cases cover standard and mixed-case comments, ignored paths and nearby paths, no findings, duplicate detection, removed comments, ambiguous closure and API errors. The image is pulled before isolation, while all scanner execution runs offline.
+The scanner container has networking disabled and receives only a synthetic token. A test entrypoint imports the production supervisor with an independent strict replay transport, then invokes the image's unchanged scanner. Every request, complete issue payload and expected result must match; missing or unexpected operations fail the test. Cases cover standard and mixed-case comments, ignored paths and nearby paths, no findings, duplicate detection, removed comments, ambiguous closure and API errors. The image is pulled before isolation, while all scanner execution runs offline.
 
-The pinned scanner currently logs an issue-creation rejection and exits successfully. The rejection case records that behavior; it does not claim that API rejections fail the production action. Project integration and the reusable workflow's live permission boundary remain outside these scanner fixtures, tracked by #334.
+The action runs the digest-pinned scanner once under an owned API supervisor. Complete
+issue, milestone and duplicate-search reads must succeed before later writes; search
+pagination is joined before an exact-title decision. A rejected close cannot trigger
+a closure comment. API, JSON and project-operation failures fail the action even
+when the scanner exits zero. A completed close followed by a rejected comment remains
+a failed partial operation, with the completed close count in the diagnostic.
+
+Project selectors accept `organization/owner/number` or `user/owner/number`, resolved by
+the actual project number, and existing title selectors, resolved across all pages.
+Missing or ambiguous projects, incomplete GraphQL data and rejected additions fail.
+Issue writes use the workflow token; project operations use the separate App token.
+No additional permissions are requested.
+
+Image downloads may retry. The two unauthenticated language-rule downloads may retry
+before any mutation is attempted. The scanner and API writes are never retried, including
+when a write's response is lost. Rerunning a failed job is an operator decision after
+checking any completed changes.
+
+The action requires a Linux runner with Docker and network access for the pinned Go
+compiler and scanner image. It builds a static supervisor from the same action commit,
+preserves it outside the checkout, and mounts it read-only into the unchanged image.

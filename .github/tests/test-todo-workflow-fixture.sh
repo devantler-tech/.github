@@ -11,6 +11,7 @@ export TODO_EXPECTED_TOKEN=synthetic-read-only-token
 export TODO_EXPECTED_IGNORE='^\.github/tests/'
 fixture="$work/todo-action-smoke"
 bash "$root/.github/tests/todo-action-smoke.sh" prepare
+"$fixture/bin/docker" pull "$(jq -r '.args[-1]' "$fixture/expected.json")"
 jq -c '.' "$fixture/expected.json" >"$work/expected-call"
 for count in 0 1 2; do
   : >"$fixture/calls.jsonl"

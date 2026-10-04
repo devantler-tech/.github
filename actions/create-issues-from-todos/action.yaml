@@ -59,9 +59,18 @@ runs:
         # to organization projects instead of inheriting the App installation's
         # blanket permissions (zizmor github-app).
         permission-organization-projects: write
+    - name: Setup TODO supervisor compiler
+      uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      with:
+        go-version: 1.26.0
+        cache: false
     - name: 🧰 Preserve retry helper
       shell: bash
       run: |
+        set -euo pipefail
+        supervisor="${RUNNER_TEMP}/devantler-todo-guard"
+        GOWORK=off GOENV=off GOFLAGS='' GOTOOLCHAIN=local CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
+          go build -C "${GITHUB_ACTION_PATH}/../../.scripts/todo-guard" -o "$supervisor" ./cmd/todo-guard
         retry_helper="${RUNNER_TEMP}/devantler-actions-retry.sh"
         cp "${GITHUB_ACTION_PATH}/../../.scripts/retry.sh" "$retry_helper"
         chmod +x "$retry_helper"
@@ -72,13 +81,8 @@ runs:
     # `KeyError: 'web_url'` when a removed to-do marker matches multiple existing
     # issues (GitLab-only field in the ambiguous-match diagnostic). Never downgrade
     # past it. (Lowercase "to-do" avoids this action self-matching its own comment.)
-    # Wrapped in a retry: alstr/todo-to-issue-action does an UNAUTHENTICATED fetch of
-    # github/linguist's languages.yml/syntax.json from raw.githubusercontent.com on
-    # every run and aborts the whole step on any non-200 (devantler-tech/actions#483)
-    # — a transient CDN 429/5xx must not fail the job outright. Keep the retry
-    # local instead of wrapping a docker action with another marketplace action:
-    # some consumers reject the wrapper's unpinned nested implementation ref at
-    # job setup under full-SHA policies.
+    # Retry only immutable image acquisition. The owned supervisor retries initial
+    # language-rule reads before mutations and never replays the scanner.
     - name: Select conventional vendor exclusion
       id: vendored-ignore
       if: ${{ inputs.exclude-vendored == 'true' && inputs.ignore == '' }}
@@ -113,9 +117,13 @@ runs:
         # When raising the floor, update BOTH halves in the same change.
         TODO_TO_ISSUE_IMAGE: ghcr.io/alstr/todo-to-issue-action:v5.1.15@sha256:a1794cab7e7a0306d6f74dd5249734f2c0b49e47d7549c6cdca4421bced67c9d
       run: |
+        set -euo pipefail
         retry() { bash "${RUNNER_TEMP}/devantler-actions-retry.sh" "$@"; }
 
-        retry docker run --rm \
+        retry docker pull "$TODO_TO_ISSUE_IMAGE"
+        docker run --rm --pull never \
+          --entrypoint /opt/todo-guard \
+          --volume "${RUNNER_TEMP}/devantler-todo-guard:/opt/todo-guard:ro" \
           --workdir /github/workspace \
           --volume "$GITHUB_WORKSPACE:/github/workspace" \
           --env GITHUB_ACTIONS=true \

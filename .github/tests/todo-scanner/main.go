@@ -15,6 +15,7 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
+	guard "github.com/devantler-tech/dotgithub/scripts/todo-guard"
 	"io"
 	"math/big"
 	"net"
@@ -22,7 +23,6 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"os"
-	"os/exec"
 	"reflect"
 	"strings"
 	"sync"
@@ -33,6 +33,7 @@ type exchange struct {
 	Method, Path, Body, Response string
 	Status                       int
 	Raw                          bool
+	Headers                      map[string]string
 }
 
 type scenario struct {
@@ -94,6 +95,12 @@ func (f *replay) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			f.reject(w, "wrong language-rule host")
 			return
 		}
+	} else if r.URL.Path == "/graphql" {
+		token = "Bearer offline-project-token"
+		if r.Header.Get("Authorization") != token {
+			f.reject(w, "unexpected project credential")
+			return
+		}
 	} else if host, _, err := net.SplitHostPort(r.Host); (err != nil && r.Host != "127.0.0.1") || (err == nil && host != "127.0.0.1") {
 		f.reject(w, "API request must stay on loopback")
 		return
@@ -109,6 +116,9 @@ func (f *replay) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	f.next++
 	w.Header().Set("Content-Type", "application/json")
+	for key, value := range want.Headers {
+		w.Header().Set(key, value)
+	}
 	w.Header().Set("Content-Length", fmt.Sprint(len(want.Response)))
 	w.WriteHeader(want.Status)
 	_, _ = io.WriteString(w, want.Response)
@@ -213,72 +223,50 @@ func scannerEnvironment(inherited []string, api, ca string) []string {
 	return append(env, "INPUT_GITHUB_URL="+api, "HTTPS_PROXY="+api, "REQUESTS_CA_BUNDLE="+ca, "NO_PROXY=127.0.0.1")
 }
 
+type replayTransport struct{ fixture *replay }
+
+func (t replayTransport) RoundTrip(r *http.Request) (*http.Response, error) {
+	w := httptest.NewRecorder()
+	t.fixture.ServeHTTP(w, r)
+	return w.Result(), nil
+}
 func run() error {
-	if os.Getenv("INPUT_TOKEN") != "offline-token" || os.Getenv("INPUT_PROJECTS_SECRET") != "" || os.Getenv("INPUT_PROJECT") != "" {
-		return errors.New("scanner fixture requires synthetic token and no project credential")
+	if os.Getenv("INPUT_TOKEN") != "offline-token" {
+		return errors.New("scanner fixture requires synthetic issue authentication")
+	}
+	project := os.Getenv("INPUT_PROJECT")
+	projectToken := os.Getenv("INPUT_PROJECTS_SECRET")
+	if (project == "" && projectToken != "") || (project != "" && projectToken != "offline-project-token") {
+		return errors.New("scanner fixture requires synthetic project authentication")
 	}
 	data, err := os.ReadFile("/fixture/case.json")
 	if err != nil {
 		return err
 	}
 	var test scenario
-	if err := json.Unmarshal(data, &test); err != nil {
+	if err = json.Unmarshal(data, &test); err != nil {
 		return err
 	}
 	fixture := newReplay(test.Exchanges)
-	pair, ca, err := certificate()
-	if err != nil {
-		return err
-	}
-	fixture.certificate = pair
-	caFile, err := os.CreateTemp("", "scanner-ca-*.pem")
-	if err != nil {
-		return err
-	}
-	defer os.Remove(caFile.Name())
-	if _, err := caFile.Write(ca); err != nil {
-		return err
-	}
-	if err := caFile.Close(); err != nil {
-		return err
-	}
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		return err
-	}
-	server := &http.Server{Handler: fixture, ReadHeaderTimeout: 5 * time.Second}
-	defer server.Close()
-	go func() { _ = server.Serve(listener) }()
-	api := "http://" + listener.Addr().String()
+	api, _ := url.Parse("http://127.0.0.1")
+	supervisor := guard.New(guard.Config{API: api, Repository: "offline/fixture", Server: "https://example.invalid", Token: "offline-token", SHA: os.Getenv("INPUT_SHA"), Before: os.Getenv("INPUT_BEFORE"), Project: project, ProjectToken: projectToken}, &http.Client{Transport: replayTransport{fixture}})
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
-	// Keep the image's scanner and all action inputs unchanged except its network
-	// boundary. The fixture's CA is trusted only by this disposable child process.
-	cmd := exec.CommandContext(ctx, "/usr/bin/python3.11", "/app/main.py")
-	cmd.Env = scannerEnvironment(os.Environ(), api, caFile.Name())
 	var output bytes.Buffer
-	cmd.Stdout, cmd.Stderr = &output, &output
-	scannerErr := cmd.Run()
+	scannerErr := guard.RunChild(ctx, supervisor, []string{"/usr/bin/python3.11", "/app/main.py"}, os.Environ(), &output)
+	if scannerErr != nil {
+		fmt.Fprintln(&output, scannerErr)
+	}
 	fmt.Print(output.String())
 	if ctx.Err() != nil {
-		if err := fixture.verify(); err != nil {
-			return fmt.Errorf("scanner timed out: %w", err)
-		}
 		return errors.New("scanner timed out")
 	}
-	if scannerErr != nil {
-		var exit *exec.ExitError
-		if !errors.As(scannerErr, &exit) {
-			return scannerErr
-		}
-	}
-	if err := fixture.verifyScannerResult(test, scannerErr, output.String()); err != nil {
+	if err = fixture.verifyScannerResult(test, scannerErr, output.String()); err != nil {
 		return err
 	}
 	fmt.Printf("PASS: real pinned scanner — %s (%d requests)\n", test.Name, len(test.Exchanges))
 	return nil
 }
-
 func (f *replay) verifyScannerResult(test scenario, scannerErr error, output string) error {
 	if err := f.verify(); err != nil {
 		return err

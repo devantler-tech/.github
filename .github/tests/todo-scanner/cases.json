@@ -2,8 +2,14 @@
   {
     "Name": "recognized and mixed-case comments",
     "Files": {
-      "recognized.sh": { "Before": "", "After": "# TODO: Repair retries\n" },
-      "mixed.go": { "Before": "", "After": "// ToDo: Repair timeout\n" }
+      "recognized.sh": {
+        "Before": "",
+        "After": "# TODO: Repair retries\n"
+      },
+      "mixed.go": {
+        "Before": "",
+        "After": "// ToDo: Repair timeout\n"
+      }
     },
     "Operations": [
       {
@@ -33,13 +39,22 @@
         "Response": "{\"number\":8}"
       }
     ],
-    "Output": ["Issue created: #7", "Issue created: #8"]
+    "Output": [
+      "Issue created: #7",
+      "Issue created: #8"
+    ]
   },
   {
     "Name": "ignore matches only the intended path",
     "Files": {
-      "ignored/task.sh": { "Before": "", "After": "# TODO: Ignore this task\n" },
-      "ignored-near/task.sh": { "Before": "", "After": "# TODO: Keep this task\n" }
+      "ignored/task.sh": {
+        "Before": "",
+        "After": "# TODO: Ignore this task\n"
+      },
+      "ignored-near/task.sh": {
+        "Before": "",
+        "After": "# TODO: Keep this task\n"
+      }
     },
     "Ignore": "^ignored/",
     "Operations": [
@@ -47,7 +62,7 @@
         "Method": "GET",
         "Path": "/search/issues?q=repo%3Aoffline%2Ffixture+is%3Aissue+in%3Atitle+Keep+this+task&per_page=30",
         "Status": 200,
-        "Response": "{\"items\":[]}"
+        "Response": "{\"items\":[],\"total_count\":0,\"incomplete_results\":false}"
       },
       {
         "Method": "POST",
@@ -57,17 +72,29 @@
         "Response": "{\"number\":9}"
       }
     ],
-    "Output": ["Issue created: #9"]
+    "Output": [
+      "Issue created: #9"
+    ]
   },
   {
     "Name": "ordinary comments produce no issues",
-    "Files": { "ordinary.sh": { "Before": "", "After": "# Ordinary comment\nprintf hello\n" } },
+    "Files": {
+      "ordinary.sh": {
+        "Before": "",
+        "After": "# Ordinary comment\nprintf hello\n"
+      }
+    },
     "Operations": [],
     "Output": []
   },
   {
     "Name": "existing title avoids a duplicate issue",
-    "Files": { "duplicate.sh": { "Before": "", "After": "# TODO: Already tracked\n" } },
+    "Files": {
+      "duplicate.sh": {
+        "Before": "",
+        "After": "# TODO: Already tracked\n"
+      }
+    },
     "Operations": [
       {
         "Method": "GET",
@@ -76,11 +103,18 @@
         "Response": "{\"total_count\":1,\"incomplete_results\":false,\"items\":[{\"number\":10,\"title\":\"Already tracked\",\"state\":\"open\",\"html_url\":\"https://example.invalid/offline/fixture/issues/10\"}]}"
       }
     ],
-    "Output": ["Skipping issue creation (duplicate found): #10"]
+    "Output": [
+      "Skipping issue creation (duplicate found): #10"
+    ]
   },
   {
     "Name": "removed comment closes the matching issue",
-    "Files": { "removed.sh": { "Before": "# TODO: Completed task\n", "After": "" } },
+    "Files": {
+      "removed.sh": {
+        "Before": "# TODO: Completed task\n",
+        "After": ""
+      }
+    },
     "Existing": [
       {
         "number": 11,
@@ -102,38 +136,70 @@
         "Path": "/repos/offline/fixture/issues/11/comments",
         "Body": "{\"body\":\"Closed in 1111111111111111111111111111111111111111.\"}",
         "Status": 201,
-        "Response": "{\"id\":1}"
+        "Response": "{\"id\":5956146819}"
       }
     ],
-    "Output": ["Issue closed"]
+    "Output": [
+      "Issue closed"
+    ]
   },
   {
     "Name": "ambiguous removed comments close neither issue",
-    "Files": { "ambiguous.sh": { "Before": "# TODO: Ambiguous task\n", "After": "" } },
+    "Files": {
+      "ambiguous.sh": {
+        "Before": "# TODO: Ambiguous task\n",
+        "After": ""
+      }
+    },
     "Existing": [
-      { "number": 12, "title": "Ambiguous task", "html_url": "https://example.invalid/offline/fixture/issues/12" },
-      { "number": 13, "title": "Ambiguous task", "html_url": "https://example.invalid/offline/fixture/issues/13" }
+      {
+        "number": 12,
+        "title": "Ambiguous task",
+        "html_url": "https://example.invalid/offline/fixture/issues/12",
+        "state": "open"
+      },
+      {
+        "number": 13,
+        "title": "Ambiguous task",
+        "html_url": "https://example.invalid/offline/fixture/issues/13",
+        "state": "open"
+      }
     ],
     "Operations": [],
-    "Output": ["Skipping issue closure due to ambiguous match"]
+    "Output": [
+      "Skipping issue closure due to ambiguous match"
+    ]
   },
   {
     "Name": "diff and fallback API errors abort scanning",
-    "Files": { "error.sh": { "Before": "", "After": "# TODO: Do not create on diff error\n" } },
+    "Files": {
+      "error.sh": {
+        "Before": "",
+        "After": "# TODO: Do not create on diff error\n"
+      }
+    },
     "DiffError": true,
     "WantFailure": true,
     "Operations": [],
-    "Output": ["Could not retrieve diff", "Fallback URL also failed"]
+    "Output": [
+      "Could not retrieve diff",
+      "Fallback URL also failed"
+    ]
   },
   {
     "Name": "issue API rejection is reported by the pinned scanner",
-    "Files": { "rejected.sh": { "Before": "", "After": "# TODO: Rejected task\n" } },
+    "Files": {
+      "rejected.sh": {
+        "Before": "",
+        "After": "# TODO: Rejected task\n"
+      }
+    },
     "Operations": [
       {
         "Method": "GET",
         "Path": "/search/issues?q=repo%3Aoffline%2Ffixture+is%3Aissue+in%3Atitle+Rejected+task&per_page=30",
         "Status": 200,
-        "Response": "{\"items\":[]}"
+        "Response": "{\"items\":[],\"total_count\":0,\"incomplete_results\":false}"
       },
       {
         "Method": "POST",
@@ -143,7 +209,12 @@
         "Response": "{\"message\":\"Validation Failed\",\"errors\":[{\"resource\":\"Issue\",\"field\":\"title\",\"code\":\"invalid\"}]}"
       }
     ],
-    "Output": ["Issue could not be created"]
+    "Output": [
+      "Issue could not be created",
+      "scanner incomplete: create operation failed",
+      "scanner was not retried"
+    ],
+    "WantFailure": true
   },
   {
     "Name": "initial issue read rejection prevents matching a removed TODO",
@@ -159,25 +230,21 @@
         "Path": "/repos/offline/fixture/issues?per_page=100&page=1&state=open",
         "Status": 422,
         "Response": "{\"message\":\"Offline issue read rejection\"}"
-      },
-      {
-        "Method": "GET",
-        "Path": "/repos/offline/fixture/milestones?per_page=100&page=1&state=open",
-        "Status": 200,
-        "Response": "[]"
       }
     ],
     "Operations": [],
     "Output": [
-      "Issue could not be closed"
+      "scanner incomplete: complete list read failed"
     ],
     "ForbiddenOutput": [
       "Issue closed",
       "Issue created:"
-    ]
+    ],
+    "StopAfterInitialFailure": true,
+    "WantFailure": true
   },
   {
-    "Name": "milestone read rejection leaves independent closure available",
+    "Name": "milestone read rejection prevents closure",
     "Files": {
       "removed.sh": {
         "Before": "# TODO: Completed task\n",
@@ -192,24 +259,9 @@
         "html_url": "https://example.invalid/offline/fixture/issues/11"
       }
     ],
-    "Operations": [
-      {
-        "Method": "PATCH",
-        "Path": "/repos/offline/fixture/issues/11",
-        "Body": "{\"state\":\"closed\"}",
-        "Status": 200,
-        "Response": "{\"number\":11,\"state\":\"closed\"}"
-      },
-      {
-        "Method": "POST",
-        "Path": "/repos/offline/fixture/issues/11/comments",
-        "Body": "{\"body\":\"Closed in 1111111111111111111111111111111111111111.\"}",
-        "Status": 201,
-        "Response": "{\"id\":1}"
-      }
-    ],
+    "Operations": [],
     "Output": [
-      "Issue closed"
+      "scanner incomplete: complete list read failed"
     ],
     "InitialReads": [
       {
@@ -226,42 +278,39 @@
       }
     ],
     "ForbiddenOutput": [
-      "Issue could not be closed"
-    ]
+      "Issue closed",
+      "Issue created:"
+    ],
+    "StopAfterInitialFailure": true,
+    "WantFailure": true
   },
   {
-    "Name": "rejected search still attempts creation which is rejected",
+    "Name": "rejected search prevents issue creation",
     "Files": {
       "search.sh": {
         "Before": "",
         "After": "# TODO: Search task\n"
       }
     },
-    "WantFailure": false,
+    "WantFailure": true,
     "Operations": [
       {
         "Method": "GET",
         "Path": "/search/issues?q=repo%3Aoffline%2Ffixture+is%3Aissue+in%3Atitle+Search+task&per_page=30",
         "Status": 422,
         "Response": "{\"message\":\"Offline issue search failure\"}"
-      },
-      {
-        "Method": "POST",
-        "Path": "/repos/offline/fixture/issues",
-        "Body": "{\"title\":\"Search task\",\"body\":\"https://example.invalid/offline/fixture/blob/1111111111111111111111111111111111111111/search.sh#L1\\n\\n```sh\\n\\n# TODO: Search task\\n\\n```\",\"labels\":[],\"assignees\":[\"offline-actor\"]}",
-        "Status": 422,
-        "Response": "{\"message\":\"Offline creation rejection\"}"
       }
     ],
     "Output": [
-      "Issue could not be created"
+      "Issue could not be created",
+      "scanner incomplete: complete list read failed"
     ],
     "ForbiddenOutput": [
       "Issue created:"
     ]
   },
   {
-    "Name": "rejected close still attempts a comment which is rejected",
+    "Name": "rejected close prevents follow-up comment",
     "Files": {
       "removed.sh": {
         "Before": "# TODO: Completed task\n",
@@ -283,19 +332,12 @@
         "Body": "{\"state\":\"closed\"}",
         "Status": 422,
         "Response": "{\"message\":\"Offline closure failure\"}"
-      },
-      {
-        "Method": "POST",
-        "Path": "/repos/offline/fixture/issues/11/comments",
-        "Body": "{\"body\":\"Closed in 1111111111111111111111111111111111111111.\"}",
-        "Status": 422,
-        "Response": "{\"message\":\"Offline closure comment rejection\"}"
       }
     ],
     "Output": [
-      "Issue could not be closed"
+      "scanner incomplete: close operation failed"
     ],
-    "WantFailure": false,
+    "WantFailure": true,
     "ForbiddenOutput": [
       "Issue closed"
     ]
@@ -333,9 +375,11 @@
       }
     ],
     "Output": [
-      "Issue could not be closed"
+      "Issue could not be closed",
+      "1 confirmed close operation(s) completed",
+      "scanner was not retried"
     ],
-    "WantFailure": false,
+    "WantFailure": true,
     "ForbiddenOutput": [
       "Issue closed"
     ]
@@ -788,5 +832,390 @@
       "Issue created: #24",
       "Issue created: #25"
     ]
+  },
+  {
+    "Name": "duplicate on a later search page prevents creation",
+    "Files": {
+      "duplicate.sh": {
+        "Before": "",
+        "After": "# TODO: Already tracked\n"
+      }
+    },
+    "Operations": [
+      {
+        "Method": "GET",
+        "Path": "/search/issues?q=repo%3Aoffline%2Ffixture+is%3Aissue+in%3Atitle+Already+tracked&per_page=30",
+        "Status": 200,
+        "Response": "{\"total_count\":2,\"incomplete_results\":false,\"items\":[{\"number\":19,\"title\":\"Already tracked later\",\"state\":\"open\",\"html_url\":\"https://example.invalid/offline/fixture/issues/19\"}]}",
+        "Headers": {
+          "Link": "<http://127.0.0.1/search/issues?q=repo%3Aoffline%2Ffixture+is%3Aissue+in%3Atitle+Already+tracked&per_page=30&page=2>; rel=\"next\", <http://127.0.0.1/search/issues?q=repo%3Aoffline%2Ffixture+is%3Aissue+in%3Atitle+Already+tracked&per_page=30&page=2>; rel=\"last\""
+        }
+      },
+      {
+        "Method": "GET",
+        "Path": "/search/issues?q=repo%3Aoffline%2Ffixture+is%3Aissue+in%3Atitle+Already+tracked&per_page=30&page=2",
+        "Status": 200,
+        "Response": "{\"total_count\":2,\"incomplete_results\":false,\"items\":[{\"number\":10,\"title\":\"Already tracked\",\"state\":\"open\",\"html_url\":\"https://example.invalid/offline/fixture/issues/10\"}]}",
+        "Headers": {}
+      }
+    ],
+    "Output": [
+      "Skipping issue creation (duplicate found): #10"
+    ]
+  },
+  {
+    "Name": "incomplete successful search prevents creation",
+    "Files": {
+      "search.sh": {
+        "Before": "",
+        "After": "# TODO: Search task\n"
+      }
+    },
+    "WantFailure": true,
+    "Operations": [
+      {
+        "Method": "GET",
+        "Path": "/search/issues?q=repo%3Aoffline%2Ffixture+is%3Aissue+in%3Atitle+Search+task&per_page=30",
+        "Status": 200,
+        "Response": "{\"total_count\":0,\"incomplete_results\":true,\"items\":[]}"
+      }
+    ],
+    "Output": [
+      "scanner incomplete: incomplete search evidence"
+    ],
+    "ForbiddenOutput": [
+      "Issue created:"
+    ]
+  },
+  {
+    "Name": "failed later issue page prevents closure",
+    "Files": {
+      "removed.sh": {
+        "Before": "# TODO: Completed task\n",
+        "After": ""
+      }
+    },
+    "Existing": [
+      {
+        "number": 11,
+        "title": "Completed task",
+        "state": "open",
+        "html_url": "https://example.invalid/offline/fixture/issues/11"
+      }
+    ],
+    "Operations": [],
+    "Output": [
+      "scanner incomplete: complete list read failed"
+    ],
+    "InitialReads": [
+      {
+        "Method": "GET",
+        "Path": "/repos/offline/fixture/issues?per_page=100&page=1&state=open",
+        "Status": 200,
+        "Response": "[{\"number\":11,\"title\":\"Completed task\",\"state\":\"open\",\"html_url\":\"https://example.invalid/offline/fixture/issues/11\"}]",
+        "Headers": {
+          "Link": "<http://127.0.0.1/repos/offline/fixture/issues?per_page=100&page=2&state=open>; rel=\"next\""
+        }
+      },
+      {
+        "Method": "GET",
+        "Path": "/repos/offline/fixture/issues?per_page=100&page=2&state=open",
+        "Status": 503,
+        "Response": "{\"message\":\"offline later page failure\"}"
+      }
+    ],
+    "StopAfterInitialFailure": true,
+    "WantFailure": true,
+    "ForbiddenOutput": [
+      "Issue closed"
+    ]
+  },
+  {
+    "Name": "numeric project selector uses project number",
+    "Files": {
+      "ignored-near/task.sh": {
+        "Before": "",
+        "After": "# TODO: Keep this task\n"
+      }
+    },
+    "Operations": [
+      {
+        "Method": "GET",
+        "Path": "/search/issues?q=repo%3Aoffline%2Ffixture+is%3Aissue+in%3Atitle+Keep+this+task&per_page=30",
+        "Status": 200,
+        "Response": "{\"items\":[],\"total_count\":0,\"incomplete_results\":false}"
+      },
+      {
+        "Method": "POST",
+        "Path": "/repos/offline/fixture/issues",
+        "Body": "{\"title\":\"Keep this task\",\"body\":\"https://example.invalid/offline/fixture/blob/1111111111111111111111111111111111111111/ignored-near/task.sh#L1\\n\\n```sh\\n\\n# TODO: Keep this task\\n\\n```\",\"labels\":[],\"assignees\":[\"offline-actor\"]}",
+        "Status": 201,
+        "Response": "{\"number\":9}"
+      },
+      {
+        "Method": "POST",
+        "Path": "/graphql",
+        "Body": "{\"query\":\"query($owner:String!,$number:Int!){organization(login:$owner){projectV2(number:$number){id title number}}}\",\"variables\":{\"owner\":\"offline\",\"number\":5}}",
+        "Status": 200,
+        "Response": "{\"data\":{\"organization\":{\"projectV2\":{\"id\":\"PVT_fixture\",\"title\":\"Fixture Board\",\"number\":5}}}}"
+      },
+      {
+        "Method": "POST",
+        "Path": "/graphql",
+        "Body": "{\"query\":\"\\n        query($owner: String!, $repo: String!, $issue_number: Int!) {\\n            repository(owner: $owner, name: $repo) {\\n                issue(number: $issue_number) {\\n                    id\\n                }\\n            }\\n        }\\n        \",\"variables\":{\"owner\":\"offline\",\"repo\":\"fixture\",\"issue_number\":9}}",
+        "Status": 200,
+        "Response": "{\"data\":{\"repository\":{\"issue\":{\"id\":\"I_fixture\"}}}}"
+      },
+      {
+        "Method": "POST",
+        "Path": "/graphql",
+        "Body": "{\"query\":\"\\n        mutation($projectId: ID!, $contentId: ID!) {\\n            addProjectV2ItemById(input: {projectId: $projectId, contentId: $contentId}) {\\n                item {\\n                    id\\n                }\\n            }\\n        }\\n        \",\"variables\":{\"projectId\":\"PVT_fixture\",\"contentId\":\"I_fixture\"}}",
+        "Status": 200,
+        "Response": "{\"data\":{\"addProjectV2ItemById\":{\"item\":{\"id\":\"PVTI_fixture\"}}}}"
+      }
+    ],
+    "Output": [
+      "Issue created: #9"
+    ],
+    "Project": "organization/offline/5"
+  },
+  {
+    "Name": "project mutation errors fail after issue creation",
+    "Files": {
+      "ignored-near/task.sh": {
+        "Before": "",
+        "After": "# TODO: Keep this task\n"
+      }
+    },
+    "Operations": [
+      {
+        "Method": "GET",
+        "Path": "/search/issues?q=repo%3Aoffline%2Ffixture+is%3Aissue+in%3Atitle+Keep+this+task&per_page=30",
+        "Status": 200,
+        "Response": "{\"items\":[],\"total_count\":0,\"incomplete_results\":false}"
+      },
+      {
+        "Method": "POST",
+        "Path": "/repos/offline/fixture/issues",
+        "Body": "{\"title\":\"Keep this task\",\"body\":\"https://example.invalid/offline/fixture/blob/1111111111111111111111111111111111111111/ignored-near/task.sh#L1\\n\\n```sh\\n\\n# TODO: Keep this task\\n\\n```\",\"labels\":[],\"assignees\":[\"offline-actor\"]}",
+        "Status": 201,
+        "Response": "{\"number\":9}"
+      },
+      {
+        "Method": "POST",
+        "Path": "/graphql",
+        "Body": "{\"query\":\"query($owner:String!,$number:Int!){organization(login:$owner){projectV2(number:$number){id title number}}}\",\"variables\":{\"owner\":\"offline\",\"number\":5}}",
+        "Status": 200,
+        "Response": "{\"data\":{\"organization\":{\"projectV2\":{\"id\":\"PVT_fixture\",\"title\":\"Fixture Board\",\"number\":5}}}}"
+      },
+      {
+        "Method": "POST",
+        "Path": "/graphql",
+        "Body": "{\"query\":\"\\n        query($owner: String!, $repo: String!, $issue_number: Int!) {\\n            repository(owner: $owner, name: $repo) {\\n                issue(number: $issue_number) {\\n                    id\\n                }\\n            }\\n        }\\n        \",\"variables\":{\"owner\":\"offline\",\"repo\":\"fixture\",\"issue_number\":9}}",
+        "Status": 200,
+        "Response": "{\"data\":{\"repository\":{\"issue\":{\"id\":\"I_fixture\"}}}}"
+      },
+      {
+        "Method": "POST",
+        "Path": "/graphql",
+        "Body": "{\"query\":\"\\n        mutation($projectId: ID!, $contentId: ID!) {\\n            addProjectV2ItemById(input: {projectId: $projectId, contentId: $contentId}) {\\n                item {\\n                    id\\n                }\\n            }\\n        }\\n        \",\"variables\":{\"projectId\":\"PVT_fixture\",\"contentId\":\"I_fixture\"}}",
+        "Status": 200,
+        "Response": "{\"data\":{\"addProjectV2ItemById\":null},\"errors\":[{\"message\":\"offline rejection\"}]}"
+      }
+    ],
+    "Output": [
+      "scanner incomplete: project addition failed",
+      "scanner was not retried"
+    ],
+    "Project": "organization/offline/5",
+    "WantFailure": true
+  },
+  {
+    "Name": "missing numeric project data fails the action",
+    "Files": {
+      "ignored-near/task.sh": {
+        "Before": "",
+        "After": "# TODO: Keep this task\n"
+      }
+    },
+    "Operations": [
+      {
+        "Method": "GET",
+        "Path": "/search/issues?q=repo%3Aoffline%2Ffixture+is%3Aissue+in%3Atitle+Keep+this+task&per_page=30",
+        "Status": 200,
+        "Response": "{\"items\":[],\"total_count\":0,\"incomplete_results\":false}"
+      },
+      {
+        "Method": "POST",
+        "Path": "/repos/offline/fixture/issues",
+        "Body": "{\"title\":\"Keep this task\",\"body\":\"https://example.invalid/offline/fixture/blob/1111111111111111111111111111111111111111/ignored-near/task.sh#L1\\n\\n```sh\\n\\n# TODO: Keep this task\\n\\n```\",\"labels\":[],\"assignees\":[\"offline-actor\"]}",
+        "Status": 201,
+        "Response": "{\"number\":9}"
+      },
+      {
+        "Method": "POST",
+        "Path": "/graphql",
+        "Body": "{\"query\":\"query($owner:String!,$number:Int!){organization(login:$owner){projectV2(number:$number){id title number}}}\",\"variables\":{\"owner\":\"offline\",\"number\":5}}",
+        "Status": 200,
+        "Response": "{\"data\":{\"organization\":{\"projectV2\":null}}}"
+      }
+    ],
+    "Output": [
+      "scanner incomplete: numeric project identity incomplete"
+    ],
+    "Project": "organization/offline/5",
+    "WantFailure": true
+  },
+  {
+    "Name": "linked closed issue remains updatable",
+    "Files": {
+      "updated.sh": {
+        "Before": "# TODO: Original task\n# Issue URL: https://example.invalid/offline/fixture/issues/12\n",
+        "After": "# TODO: Updated task\n# Issue URL: https://example.invalid/offline/fixture/issues/12\n"
+      }
+    },
+    "Operations": [
+      {
+        "Method": "GET",
+        "Path": "/repos/offline/fixture/issues/12",
+        "Status": 200,
+        "Response": "{\"number\":12,\"title\":\"Original task\",\"state\":\"closed\",\"html_url\":\"https://example.invalid/offline/fixture/issues/12\"}"
+      },
+      {
+        "Method": "PATCH",
+        "Path": "/repos/offline/fixture/issues/12",
+        "Body": "{\"title\":\"Updated task\",\"body\":\"https://example.invalid/offline/fixture/blob/1111111111111111111111111111111111111111/updated.sh#L1-L2\\n\\n```sh\\n\\n# TODO: Updated task\\n# Issue URL: https://example.invalid/offline/fixture/issues/12\\n\\n```\",\"labels\":[],\"assignees\":[\"offline-actor\"]}",
+        "Status": 200,
+        "Response": "{\"number\":12,\"title\":\"Updated task\",\"state\":\"closed\",\"html_url\":\"https://example.invalid/offline/fixture/issues/12\"}"
+      }
+    ],
+    "Output": []
+  },
+  {
+    "Name": "referenced issue receives an ordinary comment",
+    "Files": {
+      "referenced.sh": {
+        "Before": "",
+        "After": "# TODO(#12): Add detail\n"
+      }
+    },
+    "Operations": [
+      {
+        "Method": "POST",
+        "Path": "/repos/offline/fixture/issues/12/comments",
+        "Body": "{\"body\":\"Add detail\\n\\nhttps://example.invalid/offline/fixture/blob/1111111111111111111111111111111111111111/referenced.sh#L1\\n\\n```sh\\n\\n# TODO(#12): Add detail\\n\\n```\"}",
+        "Status": 201,
+        "Response": "{\"id\":5956146819}"
+      }
+    ],
+    "Output": []
+  },
+  {
+    "Name": "removed linked closed issue retains close and comment behavior",
+    "Files": {
+      "removed-linked.sh": {
+        "Before": "# TODO: Completed task\n# Issue URL: https://example.invalid/offline/fixture/issues/12\n",
+        "After": ""
+      }
+    },
+    "Operations": [
+      {
+        "Method": "GET",
+        "Path": "/repos/offline/fixture/issues/12",
+        "Status": 200,
+        "Response": "{\"number\":12,\"title\":\"Completed task\",\"state\":\"closed\",\"html_url\":\"https://example.invalid/offline/fixture/issues/12\"}"
+      },
+      {
+        "Method": "PATCH",
+        "Path": "/repos/offline/fixture/issues/12",
+        "Body": "{\"state\":\"closed\"}",
+        "Status": 200,
+        "Response": "{\"number\":12,\"state\":\"closed\"}"
+      },
+      {
+        "Method": "POST",
+        "Path": "/repos/offline/fixture/issues/12/comments",
+        "Body": "{\"body\":\"Closed in 1111111111111111111111111111111111111111.\"}",
+        "Status": 201,
+        "Response": "{\"id\":5956146819}"
+      }
+    ],
+    "Output": [
+      "Issue closed"
+    ]
+  },
+  {
+    "Name": "scheduled event without before retains commit fallback",
+    "Files": {
+      "ordinary.sh": {
+        "Before": "",
+        "After": "# Ordinary comment\nprintf hello\n"
+      }
+    },
+    "Operations": [],
+    "Output": [],
+    "Before": "",
+    "DiffReads": [
+      {
+        "Method": "GET",
+        "Path": "/repos/offline/fixture/compare/...1111111111111111111111111111111111111111",
+        "Status": 422,
+        "Response": "{\"message\":\"no comparison base\"}"
+      },
+      {
+        "Method": "GET",
+        "Path": "/repos/offline/fixture/commits/1111111111111111111111111111111111111111",
+        "Status": 200,
+        "Diff": true,
+        "Response": ""
+      }
+    ]
+  },
+  {
+    "Name": "linked closed update remains addable to the selected project",
+    "Files": {
+      "updated.sh": {
+        "Before": "# TODO: Original task\n# Issue URL: https://example.invalid/offline/fixture/issues/12\n",
+        "After": "# TODO: Updated task\n# Issue URL: https://example.invalid/offline/fixture/issues/12\n"
+      }
+    },
+    "Operations": [
+      {
+        "Method": "GET",
+        "Path": "/repos/offline/fixture/issues/12",
+        "Status": 200,
+        "Response": "{\"number\":12,\"title\":\"Original task\",\"state\":\"closed\",\"html_url\":\"https://example.invalid/offline/fixture/issues/12\"}"
+      },
+      {
+        "Method": "PATCH",
+        "Path": "/repos/offline/fixture/issues/12",
+        "Body": "{\"title\":\"Updated task\",\"body\":\"https://example.invalid/offline/fixture/blob/1111111111111111111111111111111111111111/updated.sh#L1-L2\\n\\n```sh\\n\\n# TODO: Updated task\\n# Issue URL: https://example.invalid/offline/fixture/issues/12\\n\\n```\",\"labels\":[],\"assignees\":[\"offline-actor\"]}",
+        "Status": 200,
+        "Response": "{\"number\":12,\"title\":\"Updated task\",\"state\":\"closed\",\"html_url\":\"https://example.invalid/offline/fixture/issues/12\"}"
+      },
+      {
+        "Method": "POST",
+        "Path": "/graphql",
+        "Body": "{\"query\":\"query($owner:String!,$number:Int!){organization(login:$owner){projectV2(number:$number){id title number}}}\",\"variables\":{\"owner\":\"offline\",\"number\":5}}",
+        "Status": 200,
+        "Response": "{\"data\":{\"organization\":{\"projectV2\":{\"id\":\"PVT_fixture\",\"title\":\"Fixture Board\",\"number\":5}}}}"
+      },
+      {
+        "Method": "POST",
+        "Path": "/graphql",
+        "Body": "{\"query\":\"\\n        query($owner: String!, $repo: String!, $issue_number: Int!) {\\n            repository(owner: $owner, name: $repo) {\\n                issue(number: $issue_number) {\\n                    id\\n                }\\n            }\\n        }\\n        \",\"variables\":{\"owner\":\"offline\",\"repo\":\"fixture\",\"issue_number\":12}}",
+        "Status": 200,
+        "Response": "{\"data\":{\"repository\":{\"issue\":{\"id\":\"I_fixture\"}}}}"
+      },
+      {
+        "Method": "POST",
+        "Path": "/graphql",
+        "Body": "{\"query\":\"\\n        mutation($projectId: ID!, $contentId: ID!) {\\n            addProjectV2ItemById(input: {projectId: $projectId, contentId: $contentId}) {\\n                item {\\n                    id\\n                }\\n            }\\n        }\\n        \",\"variables\":{\"projectId\":\"PVT_fixture\",\"contentId\":\"I_fixture\"}}",
+        "Status": 200,
+        "Response": "{\"data\":{\"addProjectV2ItemById\":{\"item\":{\"id\":\"PVTI_fixture\"}}}}"
+      }
+    ],
+    "Output": [],
+    "Project": "organization/offline/5"
   }
 ]
