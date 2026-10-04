@@ -1,0 +1,49 @@
+{
+  "description": "The pull request's comments cannot be listed: the action cannot tell whether a summary exists, writes nothing, and warns that the summary was not written.",
+  "inputs": {
+    "comment-summary-in-pr": "always",
+    "warn-only": "true"
+  },
+  "routes": [
+    {
+      "method": "GET",
+      "path": "/repos/offline/fixture/dependency-graph/compare/1111111111111111111111111111111111111111...2222222222222222222222222222222222222222",
+      "status": 200,
+      "body": []
+    },
+    {
+      "method": "GET",
+      "path": "/repos/offline/fixture/issues/7/comments",
+      "status": 403,
+      "body": {
+        "message": "Resource not accessible by integration",
+        "documentation_url": "https://docs.github.com/rest/issues/comments#list-issue-comments"
+      }
+    }
+  ],
+  "expect": {
+    "outcome": "success",
+    "comment": "none",
+    "blocked-hosts": [],
+    "annotations": [
+      {
+        "level": "warning",
+        "includes": "Unable to write summary to pull-request"
+      }
+    ],
+    "requests": [
+      {
+        "method": "GET",
+        "path": "/repos/offline/fixture/dependency-graph/compare/1111111111111111111111111111111111111111...2222222222222222222222222222222222222222",
+        "query": {
+          "per_page": "5"
+        }
+      },
+      {
+        "method": "GET",
+        "path": "/repos/offline/fixture/issues/7/comments",
+        "query": {}
+      }
+    ]
+  }
+}

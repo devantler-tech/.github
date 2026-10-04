@@ -1,0 +1,30 @@
+{
+  "description": "A clean review with comments off: the action reads the dependency changes and never touches the pull request's comments.",
+  "inputs": {
+    "comment-summary-in-pr": "never",
+    "warn-only": "true"
+  },
+  "routes": [
+    {
+      "method": "GET",
+      "path": "/repos/offline/fixture/dependency-graph/compare/1111111111111111111111111111111111111111...2222222222222222222222222222222222222222",
+      "status": 200,
+      "body": []
+    }
+  ],
+  "expect": {
+    "outcome": "success",
+    "comment": "none",
+    "blocked-hosts": [],
+    "annotations": [],
+    "requests": [
+      {
+        "method": "GET",
+        "path": "/repos/offline/fixture/dependency-graph/compare/1111111111111111111111111111111111111111...2222222222222222222222222222222222222222",
+        "query": {
+          "per_page": "5"
+        }
+      }
+    ]
+  }
+}

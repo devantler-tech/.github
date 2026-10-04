@@ -1,0 +1,100 @@
+{
+  "description": "A clean review with comments always on, on a pull request whose earlier summary sits on a later page of comments: the action updates that summary instead of adding another.",
+  "inputs": {
+    "comment-summary-in-pr": "always",
+    "warn-only": "true"
+  },
+  "routes": [
+    {
+      "method": "GET",
+      "path": "/repos/offline/fixture/dependency-graph/compare/1111111111111111111111111111111111111111...2222222222222222222222222222222222222222",
+      "status": 200,
+      "body": []
+    },
+    {
+      "method": "GET",
+      "path": "/repos/offline/fixture/issues/7/comments",
+      "query": {
+        "page": "2"
+      },
+      "status": 200,
+      "body": [
+        {
+          "id": 202,
+          "body": "# Dependency Review\n\nAn earlier summary.\n\n<!-- dependency-review-pr-comment-marker -->",
+          "user": {
+            "login": "github-actions[bot]",
+            "type": "Bot"
+          },
+          "created_at": "2026-10-01T09:30:00Z",
+          "updated_at": "2026-10-01T09:30:00Z"
+        }
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/repos/offline/fixture/issues/7/comments",
+      "status": 200,
+      "headers": {
+        "Link": "<{{base_url}}/repos/offline/fixture/issues/7/comments?page=2>; rel=\"next\""
+      },
+      "body": [
+        {
+          "id": 201,
+          "body": "An unrelated comment from a reviewer.",
+          "user": {
+            "login": "reviewer",
+            "type": "User"
+          },
+          "created_at": "2026-10-01T09:00:00Z",
+          "updated_at": "2026-10-01T09:00:00Z"
+        }
+      ]
+    },
+    {
+      "method": "PATCH",
+      "path": "/repos/offline/fixture/issues/comments/202",
+      "status": 200,
+      "body": {
+        "id": 202,
+        "body": "updated",
+        "user": {
+          "login": "github-actions[bot]",
+          "type": "Bot"
+        }
+      }
+    }
+  ],
+  "expect": {
+    "outcome": "success",
+    "comment": "updated",
+    "blocked-hosts": [],
+    "annotations": [],
+    "requests": [
+      {
+        "method": "GET",
+        "path": "/repos/offline/fixture/dependency-graph/compare/1111111111111111111111111111111111111111...2222222222222222222222222222222222222222",
+        "query": {
+          "per_page": "5"
+        }
+      },
+      {
+        "method": "GET",
+        "path": "/repos/offline/fixture/issues/7/comments",
+        "query": {}
+      },
+      {
+        "method": "GET",
+        "path": "/repos/offline/fixture/issues/7/comments",
+        "query": {
+          "page": "2"
+        }
+      },
+      {
+        "method": "PATCH",
+        "path": "/repos/offline/fixture/issues/comments/202",
+        "query": {}
+      }
+    ]
+  }
+}

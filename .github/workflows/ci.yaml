@@ -613,16 +613,30 @@ jobs:
           fi
           echo "Dependency review ran; dependency-changes=${CHANGES}"
 
-  # Exercise posting with a disposable job token, never a production App secret.
-  # The reusable workflow retains contents:read; only this trusted-PR test job writes.
+  # Replay the pinned dependency-review action against an offline API stand-in.
+  # The job token stays read-only and the action receives only a fixture token, so
+  # no scenario can reach a live pull request; the stand-in records the complete
+  # conversation and the verifier compares it with the reviewed one.
   test-dependency-review-comments:
-    name: "[Test] Dependency Review - Summary Comment"
-    if: ${{ github.event_name != 'merge_group' && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.user.login == 'devantler' }}
+    name: "[Test] Dependency Review - Summary Comment (${{ matrix.scenario }})"
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        scenario:
+          - comment-created
+          - comment-never
+          - comment-rejected
+          - comment-updated
+          - comments-unreadable
+          - compare-forbidden
+          - on-failure-clean
+          - on-failure-vulnerable
+          - on-failure-warned
     permissions:
       contents: read
-      pull-requests: write
     steps:
       - name: 🔒 Harden Runner
         uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
@@ -634,39 +648,42 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: 🕒 Record review start
-        id: review-start
-        shell: bash
-        run: echo "time=$(date -u '+%Y-%m-%dT%H:%M:%SZ')" >> "$GITHUB_OUTPUT"
-
-      - name: 🧪 Post the dependency review summary
-        id: review
-        uses: ./actions/dependency-review
-        with:
-          comment-summary-in-pr: always
-          repo-token: ${{ github.token }}
-
-      - name: ✅ Read back the posted summary
-        id: readback
+      - name: 🧰 Start the offline API stand-in
+        id: offline
         shell: bash
         env:
-          GH_TOKEN: ${{ github.token }}
+          SCENARIO: ${{ matrix.scenario }}
+        run: bash .github/tests/dependency-review-offline.sh start "$SCENARIO"
+
+      # The runner re-exports its own GITHUB_* values after a step's env, so the
+      # preload replaces them inside the action's process and refuses to start it
+      # without the stand-in. A failing action is the expected result of some
+      # scenarios; the verifier compares its outcome with the scenario's.
+      - name: 🧪 Run dependency review against the stand-in
+        id: review
+        continue-on-error: true
+        uses: ./actions/dependency-review
+        env:
+          NODE_OPTIONS: --require=${{ github.workspace }}/.github/tests/fixtures/offline-github-env.cjs
+          OFFLINE_GITHUB_API_URL: ${{ steps.offline.outputs.api-url }}
+          OFFLINE_GITHUB_EVENT_NAME: pull_request
+          OFFLINE_GITHUB_EVENT_PATH: ${{ github.workspace }}/.github/tests/dependency-review-offline/event.json
+          OFFLINE_GITHUB_REPOSITORY: offline/fixture
+          OFFLINE_BLOCKED_HOSTS_FILE: ${{ steps.offline.outputs.blocked-hosts-file }}
+          OFFLINE_ACTION_LOG_FILE: ${{ steps.offline.outputs.action-log-file }}
+        with:
+          comment-summary-in-pr: ${{ steps.offline.outputs.comment-summary-in-pr }}
+          warn-only: ${{ steps.offline.outputs.warn-only }}
+          repo-token: offline-fixture-token
+
+      - name: ✅ Verify the recorded conversation and the summary
+        id: verify
+        shell: bash
+        env:
+          SCENARIO: ${{ matrix.scenario }}
+          REVIEW_OUTCOME: ${{ steps.review.outcome }}
           COMMENT_CONTENT: ${{ steps.review.outputs.comment-content }}
-          REVIEW_STARTED: ${{ steps.review-start.outputs.time }}
-          REVIEW_REPOSITORY: ${{ github.repository }}
-          REVIEW_PR: ${{ github.event.pull_request.number }}
-        run: |
-          set -euo pipefail
-          [[ -n "$COMMENT_CONTENT" ]] || { echo "::error::Dependency review produced no comment content." >&2; exit 1; }
-          comments="$(mktemp)"
-          trap 'rm -f "$comments"' EXIT
-          gh api "repos/$REVIEW_REPOSITORY/issues/$REVIEW_PR/comments" --paginate --slurp > "$comments"
-          jq -e 'any(.[][]; .user.login == "github-actions[bot]" and
-            .updated_at >= env.REVIEW_STARTED and (.body | contains(env.COMMENT_CONTENT)))' "$comments" > /dev/null || {
-            echo "::error::No dependency-review summary was posted or updated by this test." >&2
-            exit 1
-          }
-          echo "PASS: dependency-review summary posted and read back from GitHub."
+        run: bash .github/tests/dependency-review-offline.sh verify "$SCENARIO"
 
   # ── diagnose-flux ───────────────────────────────────────────
   test-diagnose-flux:
@@ -3235,6 +3252,10 @@ jobs:
       - name: 🔐 Check dependency review comment credentials and read-only defaults
         shell: bash
         run: bash .github/tests/test-dependency-review-comments.sh
+
+      - name: 🧪 Exercise the offline dependency review stand-in and conversation check
+        shell: bash
+        run: bash .github/tests/test-dependency-review-offline.sh
 
       - name: 🔒 Check publish workflows require a SHA-pinned caller
         shell: bash
