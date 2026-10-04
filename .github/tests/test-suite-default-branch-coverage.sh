@@ -291,7 +291,7 @@ default_val="$(yq -r '.on.workflow_call.inputs["'"$flag_input"'"].default' "$wor
 if [[ "$default_val" == "MISSING" || "$default_val" == "null" ]]; then
   fail "input '$flag_input' has no declared default, so what an unopted caller gets is implicit — see ksail#6373."
 elif [[ "$default_val" != "true" ]]; then
-  fail "input '$flag_input' defaults to '$default_val', so a caller that passes nothing still decides whether to run the Go suite on its default branch from the diff alone — the exact state ksail#6373 was filed against, now inherited by every new consumer instead of fixed. Flip the default to true (devantler-tech/actions#788 tracks the same flip for scan-default-branch)."
+  fail "input '$flag_input' defaults to '$default_val', so a caller that passes nothing still decides whether to run the Go suite on its default branch from the diff alone — the exact state ksail#6373 was filed against, now inherited by every new consumer instead of fixed. Keep test-default-branch enabled until its consumer rollout permits retiring that temporary input."
 fi
 
 if [[ "$status" -eq 0 ]]; then

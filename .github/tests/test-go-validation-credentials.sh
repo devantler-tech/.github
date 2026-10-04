@@ -24,7 +24,7 @@ assert.equal(interfaces[0].secrets, undefined, 'production interface forwarded c
 assert.deepEqual(production.jobs.lint.needs, ['changes'], 'production reporter lost its skipped prerequisite');
 assert.doesNotMatch(production.jobs.lint.if, /\b(always|success|failure|cancelled)\s*\(/i, 'production reporter overrides skipped prerequisite');
 const callers = Object.values(ci.jobs).filter(j => j.uses === './.github/workflows/validate-go-project-readonly.yaml');
-assert.equal(callers.length, 6, 'all six Go fixture callers must remain');
+assert.equal(callers.length, 5, 'all five Go fixture callers must remain');
 for (const j of callers) {
   assert.deepEqual(j.permissions, {contents: 'read', 'pull-requests': 'read', 'code-quality': 'write'}, 'fixture grants mutation permissions');
   assert.equal(j.secrets, undefined, 'fixture forwards a secret');
@@ -89,7 +89,7 @@ assert.ok(w.jobs.test.steps.some(s => s.run?.includes('go test')), 'real tests r
 assert.ok(w.jobs.coverage.steps.some(s => s.run?.includes('go test -race -coverprofile')), 'real coverage removed');
 assert.ok(w.jobs.coverage.steps.some(s => s.uses?.endsWith('/actions/upload-coverage')), 'coverage upload removed');
 assert.equal(w.jobs.coverage.permissions['code-quality'], 'write', 'coverage upload permission missing');
-console.log('PASS: six credential-safe callers; four lint admissions; four signed-fix denials; normal reporting and real validation retained');
+console.log('PASS: five credential-safe callers; four lint admissions; four signed-fix denials; normal reporting and real validation retained');
 JS
 # Execute the actual dirty-tree gate from the read-only job.
 yq -r '.jobs.lint.steps[] | select(.name == "❌ Fail if uncommitted changes remain (read-only mode)") | .run' "$workflow" >"$work/dirty-gate.sh"

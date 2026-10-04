@@ -10,15 +10,8 @@
 # < v1.82.1) was published 2026-07-27T15:30Z against a pinned dependency main already
 # had, and main kept reporting green.
 #
-# The proven consumer rollout defaults `scan-default-branch` to true, while explicit
-# false retains the previous coverage during the compatible transition in #285.
-# The gate remains a two-armed expression, and
-# this guard asserts the shape of BOTH arms:
-#
-#   * the flagged arm must actually be reachable — the default-branch clause OR-ed with
-#     the diff gate, not AND-ed alongside it, and no top-level predicate able to veto it;
-#   * the unflagged arm must not have grown — explicit false must preserve Go-diff
-#     pull-request coverage while disabling the default-branch and allowlist arms.
+# Default-branch invocations scan independently of changed paths.
+# Pull requests scan Go-source and allowlist changes only.
 #
 # Everything is asserted POSITIVELY — the intended property must hold — rather than by
 # rejecting one known-bad string. A test that only rejects `event_name == 'pull_request'`
@@ -35,9 +28,6 @@
 set -euo pipefail
 
 workflow="${1:-.github/workflows/validate-go-project.yaml}"
-
-flag_input="scan-default-branch"
-flag_ref="inputs.${flag_input}"
 
 status=0
 
@@ -115,24 +105,17 @@ else
   top_level="$(strip_groups "$normalized")"
 
   # ── 1. No single event may gate the whole job ───────────────────────────────────
-  # Scoped to the TOP LEVEL. An event equality inside the unflagged arm is legitimate and
-  # in fact required by check 6 — it is what keeps that arm restricted to pull requests.
-  # A top-level one is the original defect: it vetoes every arm, so no opt-in can reach
+  # Scoped to the TOP LEVEL. An event equality inside the pull-request arm is legitimate and
+  # required for non-default-branch arms — it is what keeps that arm restricted to pull requests.
+  # A top-level one is the original defect: it vetoes every arm, so no invocation can reach
   # the default-branch scan.
   if grep -qE "github\.event_name[[:space:]]*==" <<<"$top_level"; then
-    fail "govulncheck AND-s 'github.event_name ==' at the top level, so whole classes of run — including the default branch — can never scan, whatever the opt-in input says. A vulnerability scan's verdict depends on the vulnerability database, not only on the diff. An event equality belongs inside an OR-arm, not alongside it; see ksail#6373."
+    fail "govulncheck AND-s 'github.event_name ==' at the top level, so whole classes of run — including the default branch — can never scan. A vulnerability scan's verdict depends on the vulnerability database, not only on the diff. An event equality belongs inside an OR-arm, not alongside it; see ksail#6373."
   fi
 
   # ── 2. A default-branch run must be able to scan regardless of the diff ─────────
   if ! grep -qF 'default_branch' <<<"$flat"; then
     fail "govulncheck's gate has no default-branch clause, so the path filter is the only gate on the default branch and a non-Go push (e.g. a README edit) leaves it unscanned while reporting green. Add: || github.ref == format('refs/heads/{0}', github.event.repository.default_branch) — see ksail#6373."
-  fi
-
-  # ── 3. The opt-in input must gate the new capability, not the whole job ─────────
-  if ! grep -qF "$flag_ref" <<<"$flat"; then
-    fail "govulncheck's gate does not reference '$flag_ref', so the default-branch scan is not behind the opt-in input it is required to ship behind — a behaviour change landing on every consumer at once. See AGENTS.md, 'Shipping a new capability behind an opt-in flag'."
-  elif grep -qF "$flag_ref" <<<"$top_level"; then
-    fail "govulncheck AND-s '$flag_ref' at the top level, so a caller that does not opt in loses the pull-request scan it has today. The input must gate the default-branch arm only — see AGENTS.md, 'Shipping a new capability behind an opt-in flag'."
   fi
 
   # ── 4. The path filter must not be able to veto a default-branch run ───────────
@@ -174,49 +157,20 @@ else
     elif ! grep -qF '||' <<<"$group"; then
       fail "the path-filter term and the default-branch clause share a group but are not OR-ed, so the default-branch clause cannot rescue a run the path filter rejected — see ksail#6373."
     else
-      # ── 5. The default-branch clause must sit in the arm the input gates ────────
-      # Otherwise the input is referenced (check 3) but guards something else, and the new
-      # scan is reachable without opting in.
-      flagged_arm_has_default_branch=0
-      while IFS= read -r arm; do
-        if grep -qF "$flag_ref" <<<"$arm" && grep -qF 'default_branch' <<<"$arm"; then
-          flagged_arm_has_default_branch=1
-        fi
-      done < <(split_arms "$group")
-      if [[ "$flagged_arm_has_default_branch" -eq 0 ]]; then
-        fail "no OR-arm both references '$flag_ref' and carries the default-branch clause, so the default-branch scan is not the thing the opt-in input actually gates. See AGENTS.md, 'Shipping a new capability behind an opt-in flag'."
-      fi
-
-      # ── 6. Nothing new may run without opting in ────────────────────────────────
-      # This is the backward-compatibility property, asserted directly: every arm that the
-      # input does NOT gate must still be restricted to pull requests, so a caller that
-      # passes nothing gets exactly the behaviour it has today. Without this an arm could
-      # be added that fires on pushes for everyone, and checks 1-5 would all still pass.
+      # Every default-branch arm must depend only on completed change detection and ref.
+      # Additional conditions could silently leave an unchanged main unscanned.
       while IFS= read -r arm; do
         [[ -n "${arm// /}" ]] || continue
-        grep -qF "$flag_ref" <<<"$arm" && continue
-        if ! grep -qE "github\.event_name[[:space:]]*==[[:space:]]*'pull_request'" <<<"$arm"; then
-          fail "an OR-arm of govulncheck's gate is neither gated by '$flag_ref' nor restricted to pull requests, so it runs for every consumer that never opted in. Offending arm: ${arm}. See AGENTS.md, 'Shipping a new capability behind an opt-in flag'."
+        if grep -qF 'default_branch' <<<"$arm"; then
+          compact="$(tr -d '[:space:]()' <<<"$arm")"
+          expected="needs.changes.outputs.go!=''&&github.ref==format<'refs/heads/{0}',github.event.repository.default_branch>"
+          [[ "$compact" == "$expected" ]] || fail "the default-branch arm has an additional gate or omits completed change detection"
+        elif ! grep -qE "github\.event_name[[:space:]]*==[[:space:]]*'pull_request'" <<<"$arm"; then
+          fail "a non-default-branch OR-arm is not restricted to pull requests"
         fi
       done < <(split_arms "$group")
     fi
   fi
-fi
-
-# ── 7. The rollout input must exist and default to ON ────────────────────────────
-# Omission selects the proven default-branch coverage. Explicit false remains
-# supported during the compatible transition tracked by #285.
-# NB: no `// ""` fallback on these reads. yq's alternative operator treats a literal
-# `false` as absent, so `.default // ""` on the correctly-configured input returns the
-# empty string and this check would reject exactly the state it is meant to accept.
-input_type="$(yq -r ".[\"on\"].workflow_call.inputs.\"${flag_input}\".type" "$workflow")"
-input_default="$(yq -r ".[\"on\"].workflow_call.inputs.\"${flag_input}\".default" "$workflow")"
-if [[ -z "$input_type" || "$input_type" == "null" ]]; then
-  fail "workflow_call declares no '${flag_input}' input, so callers cannot opt in to the default-branch scan and the gate's reference to it is dead. See AGENTS.md, 'Shipping a new capability behind an opt-in flag'."
-elif [[ "$input_type" != "boolean" ]]; then
-  fail "the '${flag_input}' input is type '${input_type}', not boolean. See AGENTS.md, 'Shipping a new capability behind an opt-in flag'."
-elif [[ "$input_default" != "true" ]]; then
-  fail "the '${flag_input}' input defaults to '${input_default}', not true — omitted callers would silently lose the proven default-branch coverage. Explicit false remains supported while #285 retires the input."
 fi
 
 # ── 8. Editing the allowlist must re-run the scan that consumes it ────────────────
@@ -256,45 +210,6 @@ else
   fi
 fi
 
-# ── 9. The allowlist trigger must itself be behind the opt-in ─────────────────────
-# Check 8 proves the allowlist CAN trigger the scan. That is only half the contract: the
-# trigger is new behaviour, so a caller that passes nothing must not get it (AGENTS.md,
-# *Shipping a new capability behind an opt-in flag*). Check 6 cannot cover this — it skips
-# any arm mentioning the flag, and the allowlist term shares an arm with the diff gate.
-#
-# Asserted structurally rather than by token co-occurrence: the innermost parenthesised
-# group holding the allowlist term must ALSO hold the flag, AND-ed. Merely finding both
-# tokens somewhere in the gate would accept `(flag || govulncheck == 'true')`, where the
-# allowlist fires with the flag off — the exact shape this check exists to reject.
-innermost_group_with() {
-  awk -v tok="$1" '{
-    s = $0; n = length(s); best = ""
-    for (i = 1; i <= n; i++) {
-      if (substr(s, i, 1) != "(") continue
-      depth = 0
-      for (j = i; j <= n; j++) {
-        c = substr(s, j, 1)
-        if (c == "(") depth++
-        else if (c == ")") { depth--; if (depth == 0) break }
-      }
-      if (depth != 0) continue
-      g = substr(s, i, j - i + 1)
-      if (index(g, tok) > 0 && (best == "" || length(g) < length(best))) best = g
-    }
-    print best
-  }' <<<"$normalized"
-}
-
-vuln_term="needs.changes.outputs.govulncheck"
-vuln_group="$(innermost_group_with "$vuln_term")"
-if [[ -z "$vuln_group" ]]; then
-  fail "could not find a parenthesised group holding '$vuln_term'; the gate's structure is not what this guard can verify — see ksail#6373."
-elif ! grep -qF "$flag_ref" <<<"$vuln_group"; then
-  fail "the allowlist term '$vuln_term' is not gated by '$flag_ref', so a pull request that edits only .govulncheck-allow.txt schedules the vulnerability scan in every consumer that never opted in. Offending group: ${vuln_group}. See AGENTS.md, 'Shipping a new capability behind an opt-in flag'."
-elif ! grep -qF '&&' <<<"$vuln_group"; then
-  fail "'$flag_ref' and the allowlist term '$vuln_term' share a group but are not AND-ed, so the allowlist trigger still fires with the opt-in off. Offending group: ${vuln_group}. See AGENTS.md, 'Shipping a new capability behind an opt-in flag'."
-fi
-
 # ── 10. The scan must read the allowlist the trigger fired on ─────────────────────
 # Check 8's '**/.govulncheck-allow.txt' pattern lets a nested module's allowlist trigger
 # the scan. That is worth nothing unless the scanner is then pointed at THAT file.
@@ -313,20 +228,9 @@ elif ! grep -qF 'inputs.working-directory' <<<"$allow_file"; then
   fail "'allow-file' is not composed from 'inputs.working-directory' (got: ${allow_file}). With a nested module the detection step finds e.g. services/api/.govulncheck-allow.txt while the scanner is pointed at the repo root, so the nested module's risk acceptance is silently dropped and the scan blocks on an advisory that was already accepted."
 fi
 
-if [[ "$status" -eq 0 ]]; then
-  direct_default="(toJSON(inputs) == '{}' || inputs.scan-default-branch == true || inputs.scan-default-branch == 'true')"
-  direct_count="$(grep -oF "$direct_default" <<<"$flat" | wc -l | tr -d ' ' || true)"
-  if [[ "$direct_count" != 2 ]]; then
-    fail "direct required runs must inherit the enabled default in both scan arms"
-  fi
-  native_default="$(yq -r '.jobs["test-govulncheck-main-coverage"].steps[] | select(.env.DIRECT_SCAN_DEFAULT != null) | .env.DIRECT_SCAN_DEFAULT' .github/workflows/ci.yaml)"
-  # shellcheck disable=SC2016 # Fixed GitHub expression compared as data.
-  [[ "$native_default" == '${{ toJSON(inputs) == '\''{}'\'' || inputs.scan-default-branch == true || inputs.scan-default-branch == '\''true'\'' }}' ]] ||
-    fail "the native direct-input evaluation must match the production default"
-fi
 
 if [[ "$status" -eq 0 ]]; then
-  echo "govulncheck defaults to complete default-branch coverage, preserves explicit false, and scans allowlist edits with the matching allowlist ✅"
+  echo "govulncheck covers every default-branch invocation and scans pull-request allowlist edits with the matching allowlist ✅"
 fi
 
 exit "$status"

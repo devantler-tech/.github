@@ -27,11 +27,6 @@ on:
         type: string
         default: "8GiB"
         description: "Soft Go heap limit for deadcode and vulnerability analysis. Lower it for smaller runners; decimal Go units are bounded to 8GiB. It does not cap total runner memory."
-      scan-default-branch:
-        required: false
-        type: boolean
-        default: true
-        description: "Scan vulnerabilities on every default-branch invocation and on allowlist-only pull requests. On by default after consumer rollout: newly published advisories can make already-merged code fail validation. Pass false to retain pull-request Go-diff coverage only during the compatible transition; input retirement is tracked in devantler-tech/.github#285."
       test-default-branch:
         required: false
         type: boolean
@@ -63,8 +58,8 @@ on:
 #
 #   * the invocation's inputs — separates two calls from the SAME caller workflow on the
 #     same ref, which github.workflow alone cannot tell apart. The both-states self-tests
-#     for `scan-default-branch` are exactly that shape: same caller, same ref, differing
-#     only by input, so the second silently cancelled the first.
+#     for `maintenance-default-branch` have that shape: the enabled and disabled
+#     invocations must both complete.
 #
 #   * the run, on the default branch only — each default-branch run is the verification
 #     record for its commit, so no run there may cancel another. The path filter looks
@@ -77,7 +72,7 @@ on:
 # Adding a discriminator only ever splits groups further; it cannot merge two that were
 # separate, so this direction of change cannot reintroduce #587.
 concurrency:
-  group: "validate-go-project-${{ github.repository }}-${{ github.ref }}-${{ github.ref == format('refs/heads/{0}', github.event.repository.default_branch) && github.run_id || '' }}-${{ github.workflow }}-${{ inputs.pr-owner }}-${{ inputs.working-directory }}-${{ inputs.scan-default-branch }}-${{ inputs.test-default-branch }}-${{ inputs.maintenance-default-branch }}-${{ inputs.apply-signed-fixes }}-${{ inputs.manual-workflow-fixes }}-${{ inputs.go-memory-limit }}"
+  group: "validate-go-project-${{ github.repository }}-${{ github.ref }}-${{ github.ref == format('refs/heads/{0}', github.event.repository.default_branch) && github.run_id || '' }}-${{ github.workflow }}-${{ inputs.pr-owner }}-${{ inputs.working-directory }}-${{ inputs.test-default-branch }}-${{ inputs.maintenance-default-branch }}-${{ inputs.apply-signed-fixes }}-${{ inputs.manual-workflow-fixes }}-${{ inputs.go-memory-limit }}"
   cancel-in-progress: true
 
 permissions: {}
@@ -488,36 +483,21 @@ jobs:
     #
     # The two arms, and why each is shaped this way:
     #
-    #   * PULL-REQUEST ARM — unflagged, and identical to the behaviour shipped today
-    #     except that an allowlist-only change now also triggers it. A consumer that
-    #     explicitly disables the input keeps its Go-diff coverage. `govulncheck` is
-    #     its own filter output rather than an entry in `go`, so an allowlist edit
-    #     triggers this job and not tidy/lint/deadcode/tests.
+    #   * PULL-REQUEST ARM — Go-source or allowlist changes trigger the scan.
+    #     The dedicated allowlist filter leaves tidy, lint, deadcode and tests unchanged.
     #
-    #   * DEFAULT-BRANCH ARM — enabled by default; explicit false disables this arm.
-    #     It tests `go != ''` rather than being unconditional because an EMPTY output means
-    #     the `changes` job did not run at all (it is itself gated); a concrete 'true' or
-    #     'false' proves the filter ran, so the arm stays independent of how skipped-`needs`
-    #     propagate. It is deliberately NOT diff-gated beyond that: on the default branch,
-    #     scanning is the point.
-    #
-    # The input is compared against both the boolean and the string because a workflow
-    # reachable from more than one trigger receives it either way (AGENTS.md, *Gotchas*).
-    # Direct required runs have an empty input object and inherit the enabled default.
-    # Reusable calls supply their declared defaults, so explicit false remains off.
+    #   * DEFAULT-BRANCH ARM — scan after change detection, independently of its diff.
+    #     A nonempty Go output proves the filter ran; default-branch scanning covers
+    #     newly published advisories even when this invocation changes no Go files.
     if: |
       ((
         (
           needs.changes.outputs.go == 'true'
-          || (
-            (toJSON(inputs) == '{}' || inputs.scan-default-branch == true || inputs.scan-default-branch == 'true')
-            && needs.changes.outputs.govulncheck == 'true'
-          )
+          || needs.changes.outputs.govulncheck == 'true'
         )
         && github.event_name == 'pull_request'
       ) || (
-        (toJSON(inputs) == '{}' || inputs.scan-default-branch == true || inputs.scan-default-branch == 'true')
-        && needs.changes.outputs.go != ''
+        needs.changes.outputs.go != ''
         && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
       ))
     permissions:
@@ -939,7 +919,7 @@ jobs:
     # On the default branch there is no diff worth trusting for this decision: that branch's
     # green IS the branch-protection signal, so it has to mean the suite ran. Fixing it
     # changes behaviour in every consumer at once, so it ships behind the opt-in
-    # `test-default-branch` — the same shape `scan-default-branch` uses for the vuln scan.
+    # `test-default-branch` — tests use their own rollout input.
     #
     # `needs.changes.outputs.go != ''` proves the filter actually RAN: an empty string means
     # the `changes` job itself was skipped (it is gated too), so a concrete 'true'/'false' is
