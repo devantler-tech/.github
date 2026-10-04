@@ -7,11 +7,13 @@ workflow="${1:-.github/workflows/dependency-review.yaml}"
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
 
+# Report the failed credential or workflow invariant and stop.
 fail() {
   echo "FAIL: $*" >&2
   exit 1
 }
 
+# Validate production defaults, credential selection and forwarding.
 check_workflow() {
   local file="$1" cfg guard mode token expected status
   yq -o=json '.' "$file" >"$tmp/workflow.json" || return 1
@@ -110,6 +112,7 @@ jq -n '[inputs | {name: (input_filename | split("/") | last | rtrimstr(".json"))
     mode: .inputs["comment-summary-in-pr"], comment: .expect.comment, outcome: .expect.outcome}]' \
   "$scenarios"/*.json >"$tmp/scenarios.json"
 
+# Verify read-only hosted replay, every scenario and required aggregation.
 check_ci() { # <ci.json> [reviewed-scenarios.json]
   # shellcheck disable=SC2016 # These are GitHub expressions, compared literally.
   jq -e --slurpfile scenarios "${2:-$tmp/scenarios.json}" '

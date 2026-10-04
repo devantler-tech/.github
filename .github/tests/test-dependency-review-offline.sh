@@ -15,6 +15,7 @@ token=offline-fixture-token
 work="$(mktemp -d)"
 api_pid=''
 hosted_pid=''
+# Stop the local fixture and remove its temporary evidence.
 cleanup() {
   [[ -z "$api_pid" ]] || kill "$api_pid" >/dev/null 2>&1 || true
   [[ -z "$hosted_pid" ]] || kill "$hosted_pid" >/dev/null 2>&1 || true
@@ -22,6 +23,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
+# Report a violated offline replay invariant and stop.
 fail() {
   echo "FAIL: $*" >&2
   exit 1
@@ -29,6 +31,7 @@ fail() {
 
 go build -o "$work/api" "$root/.github/tests/fixtures/offline-github-api/main.go"
 
+# Start the exact scenario API and require its bounded readiness signal.
 start_api() { # <scenario-file>
   rm -f "$work/address" "$work/requests.jsonl"
   : >"$work/requests.jsonl"
@@ -43,12 +46,14 @@ start_api() { # <scenario-file>
   address="$(cat "$work/address")"
 }
 
+# Stop the API after collecting its request record.
 stop_api() {
   kill "$api_pid"
   wait "$api_pid" || fail "the stand-in did not stop cleanly: $(cat "$work/api.log")"
   api_pid=''
 }
 
+# Replay one reviewed HTTP request and retain its response status.
 request() { # <method> <url> <authorization> [json-body] -> status
   local arguments=(-sS --max-time 10 -o "$work/response" -D "$work/headers" -w '%{http_code}' -X "$1")
   [[ -z "$3" ]] || arguments+=(-H "Authorization: $3")
@@ -95,6 +100,7 @@ raised() { # <scenario-file> <output-file>
   } >"$2"
 }
 
+# Require the production verifier to accept a complete reviewed conversation.
 accept() { # <scenario-file> — uses the current record
   refused_hosts "$1" "$work/refused-hosts"
   raised "$1" "$work/raised.log"
@@ -180,6 +186,7 @@ refuse_start() { # <label> <stand-in arguments...>
   [[ ! -e "$work/bad-address" ]] || fail "the stand-in published an address with $label"
   controls=$((controls + 1))
 }
+# Require malformed scenario admission to fail for the expected reason.
 bad_scenario() { # <label> <jq-mutation>
   jq "$2" "$scenarios/comment-created.json" >"$work/bad.json"
   refuse_start "$1" -scenario "$work/bad.json" -token "$token"
@@ -368,6 +375,7 @@ reject 'a comment while comments are off' 'differ from the reviewed conversation
 export RUNNER_TEMP="$work/runner"
 mkdir "$RUNNER_TEMP"
 hosted="$RUNNER_TEMP/dependency-review-offline"
+# Exercise the production hosted-start helper with a controlled runner environment.
 hosted_start() { # <scenario>
   : >"$work/output"
   GITHUB_OUTPUT="$work/output" bash "$helper" start "$1" >"$work/start.log" 2>&1 ||
@@ -400,6 +408,7 @@ grep -qxF '  ::warning::Unable to write summary to pull-request (offline replay)
 if grep -qE '^::(error|warning)' "$work/verify.log"; then fail 'the verify step raised an annotation of its own'; fi
 hosted_pid=''
 
+# Require a deliberately unsafe CI step to fail the boundary guard.
 reject_step() { # <label> <diagnostic> <step> <scenario>
   if GITHUB_OUTPUT="$work/output" REVIEW_OUTCOME=success COMMENT_CONTENT=report \
     bash "$helper" "$3" "$4" >"$work/step.log" 2>&1; then
@@ -467,6 +476,7 @@ printf 'api.github.com\nuploads.github.com\n' >"$work/preload-blocked.expected"
 cmp -s "$work/preload-blocked" "$work/preload-blocked.expected" ||
   fail "the preload did not record the refused hosts: $(cat "$work/preload-blocked")"
 
+# Require the preload to refuse a forbidden environment or network operation.
 refuse_preload() { # <label> <diagnostic> <env assignments...>
   local label="$1" diagnostic="$2"
   shift 2
