@@ -45,7 +45,11 @@ STEP="$step" yq -o=json '.jobs[].steps[] | select(.name == strenv(STEP)) | .env'
   jq -e '
     .JOB_WORKFLOW_REF == "${{ steps.caller.outputs.ref }}" and
     .RUN_ID == "${{ github.run_id }}" and
-    .RUN_ATTEMPT == "${{ github.run_attempt }}"
+    .RUN_ATTEMPT == "${{ github.run_attempt }}" and
+    .REPOSITORY == "${{ github.repository }}" and
+    .SHA == "${{ github.sha }}" and
+    .REF_NAME == "${{ github.ref_name }}" and
+    .VERSION == "${{ steps.version.outputs.version }}"
   ' >/dev/null || {
   echo 'FAIL: signed-promotion input wiring is missing' >&2
   exit 1
@@ -75,26 +79,7 @@ case "$1 $2" in
   *) exit 67 ;;
 esac
 EOF
-cat >"$scratch/bin/cosign" <<'EOF'
-#!/usr/bin/env bash
-set -euo pipefail
-printf 'cosign %s\n' "$*" >>"$STATE/calls"
-case "$1" in
-  sign)
-    [[ "$2" == --yes && "$3" == "$EXPECTED_ARTIFACT@$EXPECTED_DIGEST" ]] || exit 68
-    [[ "$FAIL_AT" != sign ]] || exit 1
-    touch "$STATE/signed"
-    ;;
-  verify)
-    [[ "$2" == --certificate-identity && "$3" == "$EXPECTED_IDENTITY" ]] || exit 69
-    [[ "$4" == --certificate-oidc-issuer && "$5" == https://token.actions.githubusercontent.com ]] || exit 70
-    [[ "$6" == "$EXPECTED_ARTIFACT@$EXPECTED_DIGEST" ]] || exit 71
-    [[ -f "$STATE/signed" && "$FAIL_AT" != verify ]] || exit 1
-    touch "$STATE/verified"
-    ;;
-  *) exit 72 ;;
-esac
-EOF
+cp .github/tests/fixtures/publication-claims-cosign.sh "$scratch/bin/cosign"
 chmod +x "$scratch/bin/flux" "$scratch/bin/cosign"
 fail() {
   echo "FAIL: $*" >&2
@@ -114,12 +99,18 @@ run_case() {
     SIGNED_PROMOTION="$flag" ENABLE_SIGNED_PROMOTION="$flag" JOB_WORKFLOW_REF="$caller" \
     RUN_ID="$run_id" RUN_ATTEMPT=2 REGISTRY=ghcr.io OCI_NAME=devantler-tech/fixture \
     REPOSITORY=devantler-tech/fixture SERVER_URL=https://github.com VERSION="$version" \
-    REF_NAME="v$version" SHA=0123456789abcdef0123456789abcdef01234567 DEPLOY_PATH=deploy \
+    REF_NAME="v$version" SHA=fedcba9876543210fedcba9876543210fedcba98 DEPLOY_PATH=deploy \
     ACTOR=fixture GH_TOKEN=offline-fixture \
     RUNNER_TEMP="$scratch" \
     bash "$script" >"$scratch/out" 2>&1
 }
 caller="${identity#https://github.com/}"
+for key in repository source-sha source-ref version run-id run-attempt workflow-ref; do
+  if run_case "claim-manifest-devantler.$key" 1.2.3 true "$caller" 123; then fail "accepted conflicting signed $key"; fi
+  grep -q 'claims: signed payload mismatch' "$scratch/out" || fail 'claim rejection failed for an unrelated reason'
+  [[ "$(<"$state/version")" == old-version && "$(<"$state/latest")" == old-latest ]] || fail 'claim mismatch promoted release tags'
+done
+echo 'ok every conflicting signed publication claim blocks manifests promotion'
 for failure in push digest sign verify version registry-existing; do
   if run_case "$failure" 1.2.3 true "$caller" 123; then fail "succeeded after $failure failure"; fi
   [[ "$(<"$state/version")" == old-version && "$(<"$state/latest")" == old-latest ]] ||
