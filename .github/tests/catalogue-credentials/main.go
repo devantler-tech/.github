@@ -992,12 +992,24 @@ func stableGuard(s string) bool {
 		case "!", "&&", "||", "==", "!=", "(", ")", "[", "]", ",", "true", "false", "null", "format", "contains", "startswith", "tojson", "fromjson":
 			continue
 		}
-		if strings.HasPrefix(name, "inputs.") || name == "inputs" || strings.HasPrefix(name, "needs.") || (strings.HasPrefix(name, "github.") && name != "github.action_status") {
+		if strings.HasPrefix(name, "inputs.") || name == "inputs" || strings.HasPrefix(name, "needs.") || immutableGithubFact(name) {
 			continue
 		}
 		return false
 	}
 	return true
+}
+
+// immutableGithubFact admits only fields frozen for all steps in the current job.
+func immutableGithubFact(name string) bool {
+	if strings.HasPrefix(name, "github.event.") {
+		return true
+	}
+	switch name {
+	case "github.event_name", "github.repository", "github.repository_owner", "github.repository_id", "github.repository_owner_id", "github.sha", "github.ref", "github.ref_name", "github.ref_type", "github.ref_protected", "github.head_ref", "github.base_ref", "github.job", "github.actor", "github.actor_id", "github.triggering_actor", "github.run_id", "github.run_number", "github.run_attempt", "github.workflow", "github.workflow_ref", "github.workflow_sha", "github.workspace", "github.server_url", "github.api_url", "github.graphql_url":
+		return true
+	}
+	return false
 }
 
 // checkoutSucceeded proves admission false for every native non-success checkout outcome.
