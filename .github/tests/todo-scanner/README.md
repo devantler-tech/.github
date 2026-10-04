@@ -1,32 +1,30 @@
 # Offline TODO scanner fixture
 
-The catalogue runs the unchanged digest-pinned scanner with synthetic credentials,
-networking disabled and a strict ordered API replay. A passing scenario means the
-scanner consumed the complete expected request plan, returned the recorded exit
-result, emitted every required diagnostic and emitted none of its forbidden results.
-It does not mean every simulated API request succeeded.
+The catalogue runs the unchanged digest-pinned scanner under the production API
+supervisor with synthetic credentials, networking disabled and a strict ordered
+API replay. Every scenario must consume its complete request plan, return the expected
+supervised result, emit required diagnostics and avoid forbidden results.
 
-The scenarios include healthy discovery, ignore rules, duplicates and closure, plus
-diff failures and rejected issue reads, milestone reads, searches, creation, close
-requests and closure comments. `InitialReads` replaces the normal issue and milestone
-responses; `ForbiddenOutput` rejects misleading success messages in scenarios that
-report an unsuccessful operation. Fixture validation runs before image execution.
+Healthy controls cover discovery, ignore rules, mixed-case markers, duplicates,
+removed comments, ambiguous closure and numeric project selection. Failure controls
+cover initial and later-page reads, incomplete searches, rejected creation/closure,
+partial close/comment operations, missing project data and rejected GraphQL mutations.
+They require action failure and prohibit additional upstream operations after failure.
+The scanner cannot hide failure by exiting zero.
 
-Four vendor scenarios cover omitted and explicit-off inputs, opted-in exclusion
-of root `vendor/` and `third_party/`, and a custom ignore expression taking
-precedence. Their literal request plans retain nested and similarly named paths.
-The resolver checks the action's fixed output and forwarding as data; it never
-executes workflow expressions or action source.
+`InitialReads` replaces issue/milestone responses; `StopAfterInitialFailure` ends the
+upstream plan after a failed initial read. `Headers` supplies literal pagination
+metadata, and `Project` enables synthetic project authentication. Expected payloads
+are literal fixtures. Native negative controls remove source markers or corrupt
+a payload expectation; each must fail for its own reason alongside healthy runs.
 
-The pinned scanner currently continues from a rejected search to a create attempt,
-and from a rejected close request to a comment attempt. It can report unsuccessful
-creation or closure while exiting zero. The rejection scenarios record those facts;
-they do not repair or approve them. [Issue #367](https://github.com/devantler-tech/.github/issues/367)
-tracks the consumer repair separately. A successfully closed issue followed by a
-rejected closure comment is also recorded as a partial operation.
+The image is acquired before isolation. Docker disables networking for every scanner
+execution. The test entrypoint imports the production supervisor and invokes the
+image's unchanged scanner. Its replay transport terminates outbound operations locally.
+The action wrapper still supplies the reviewed read-only supervisor mount and a single
+scanner execution. Host unit tests separately cover gzip responses, wide native IDs,
+linked closed issues, uncertain mutation results and concurrent requests.
 
-Go tests reject false success messages, missing diagnostics, incorrect exits,
-incomplete request plans and unplanned writes after a failed read. The plan and input
-tests preserve healthy controls alongside the rejected and partial observations.
-Hosted CI executes the real Docker wrapper and image, and its result contributes to
-the required aggregate check.
+Four vendor cases retain omitted/explicit-off inputs, opted-in root-directory
+exclusion and explicit-ignore precedence. Permission and workflow routing fixtures
+remain separate from API behavior; no scenario writes to GitHub.

@@ -7,20 +7,21 @@ case "${1:-}" in
   prepare)
     mkdir -p "$fixture/bin"
     : >"$fixture/calls.jsonl"
+    : >"$fixture/pulls.jsonl"
     rm -f "$fixture/credential-mismatch"
     [[ -n "${TODO_EXPECTED_TOKEN:-}" ]] || { echo 'Missing expected read-only fixture token' >&2; exit 1; }
     jq -n --arg token "$TODO_EXPECTED_TOKEN" --arg secret "${TODO_EXPECTED_PROJECT_SECRET:-}" \
       '{INPUT_TOKEN:$token,INPUT_PROJECTS_SECRET:$secret}' >"$fixture/credentials.json"
     chmod 600 "$fixture/credentials.json"
     image="$(yq -r '.runs.steps[] | select(.name == "📝 Create issues from TODOs") | .env.TODO_TO_ISSUE_IMAGE' "$root/actions/create-issues-from-todos/action.yaml")"
-    jq -n --arg image "$image" --arg workspace "${GITHUB_WORKSPACE:?}" \
+    jq -n --arg temp "$RUNNER_TEMP" --arg image "$image" --arg workspace "${GITHUB_WORKSPACE:?}" \
       --arg repo "${GITHUB_REPOSITORY:?}" --arg before "${TODO_EXPECTED_BEFORE:-}" \
       --arg commits "${TODO_EXPECTED_COMMITS:-null}" --arg diff "${TODO_EXPECTED_DIFF:-}" \
       --arg sha "${GITHUB_SHA:?}" --arg actor "${GITHUB_ACTOR:?}" \
       --arg api "${GITHUB_API_URL:?}" --arg server "${GITHUB_SERVER_URL:?}" \
       --arg project "${TODO_EXPECTED_PROJECT:-}" --arg secret "${TODO_EXPECTED_PROJECT_SECRET:-}" \
       --arg ignore "${TODO_EXPECTED_IGNORE:-}" '
-      {args:(["run","--rm","--workdir","/github/workspace","--volume",($workspace+":/github/workspace"),
+      {args:(["run","--rm","--pull","never","--entrypoint","/opt/todo-guard","--volume",($temp+"/devantler-todo-guard:/opt/todo-guard:ro"),"--workdir","/github/workspace","--volume",($workspace+":/github/workspace"),
         "--env","GITHUB_ACTIONS=true","--env","GITHUB_WORKSPACE=/github/workspace","--env","CI=true"]
         + (["INPUT_REPO","INPUT_BEFORE","INPUT_COMMITS","INPUT_DIFF_URL","INPUT_SHA","INPUT_TOKEN",
           "INPUT_CLOSE_ISSUES","INPUT_AUTO_P","INPUT_PROJECT","INPUT_PROJECTS_SECRET","INPUT_AUTO_ASSIGN",
@@ -37,6 +38,14 @@ case "${1:-}" in
 #!/usr/bin/env bash
 set -euo pipefail
 fixture="${RUNNER_TEMP:?}/todo-action-smoke"
+if [[ "${1:-}" == pull ]]; then
+  [[ $# == 2 && "$2" == "$(jq -r '.args[-1]' "$fixture/expected.json")" ]] || exit 72
+  printf '%s\n' "$2" >>"$fixture/pulls.jsonl"
+  attempts="$(wc -l <"$fixture/pulls.jsonl")"
+  if (( ${TODO_FAILURES:-0} < 0 || attempts <= ${TODO_FAILURES:-0} )); then echo 'Offline image pull failed' >&2;exit 73;fi
+  exit 0
+fi
+[[ "${1:-}" == run ]] || exit 72
 args="$(jq -cn --args '$ARGS.positional' -- "$@")"
 pairs=()
 while (( $# )); do
@@ -69,7 +78,7 @@ jq -cn --argjson args "$args" --args '
     (reduce range(0; ($pairs|length); 2) as $i ({}; .[$pairs[$i]]=$pairs[$i+1]))}' \
   -- "${pairs[@]}" >>"$fixture/calls.jsonl"
 attempts="$(wc -l <"$fixture/calls.jsonl")"
-if (( ${TODO_FAILURES:-0} < 0 || attempts <= ${TODO_FAILURES:-0} )); then
+if (( ${TODO_RUN_FAILURES:-0} != 0 )); then
   echo 'Offline Docker fixture failed' >&2
   exit 73
 fi
@@ -80,8 +89,11 @@ MOCK
   verify|verify-once)
     # Reusable workflow smokes require one actual invocation even when an environment
     # override requests zero attempts; the action retry suite retains its count input.
-    count="${TODO_EXPECTED_ATTEMPTS:-1}"
-    [[ "$1" != verify-once ]] || count=1
+    pulls="${TODO_EXPECTED_ATTEMPTS:-1}"
+    count=1
+    [[ "${TODO_FAILURES:-0}" -ge 0 ]] || count=0
+    [[ "$1" != verify-once ]] || { count=1;pulls=1; }
+    [[ "$(wc -l <"$fixture/pulls.jsonl")" -eq "$pulls" ]] || { echo 'FAIL: image acquisition count differs' >&2;exit 1; }
     jq -e --slurpfile expected "$fixture/expected.json" --argjson count "$count" \
       -s 'length == $count and all(. == $expected[0])' "$fixture/calls.jsonl" >/dev/null || {
       echo 'FAIL: Docker attempts, arguments or forwarded inputs differ' >&2

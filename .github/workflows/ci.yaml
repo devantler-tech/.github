@@ -420,6 +420,9 @@ jobs:
         working-directory: .github/tests/todo-scanner
         run: go test -race ./...
 
+      - name: 🧪 Verify supervisor regressions
+        run: go test -C .scripts/todo-guard -race ./...
+
       - name: 🧪 Verify required scanner CI boundary
         run: bash .github/tests/test-todo-scanner-ci.sh
 
@@ -457,6 +460,12 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+
+      - name: Setup TODO supervisor compiler
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: .scripts/todo-guard/go.mod
+          cache: false
 
       - name: 🔒 Assert TODO action retries locally
         shell: bash

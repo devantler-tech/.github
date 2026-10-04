@@ -101,6 +101,7 @@ mkdir -p "$runtime"
 printf '{"flag":"false","project":"organization/devantler-tech/5","token":"offline-project-token"}\n' >"$runtime/app-token.json"
 printf '{"case":"default"}\n' >"$runtime/expected.json"
 cp "$runtime/expected.json" "$runtime/calls.jsonl"
+printf 'offline-image\n' >"$runtime/pulls.jsonl"
 bash "$root/.github/tests/todo-production-default-fixture.sh" verify >/dev/null
 for mutation in '.project=""' '.token=""'; do
   jq "$mutation" "$runtime/app-token.json" >"$runtime/mutated.json"

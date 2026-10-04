@@ -87,6 +87,7 @@ run_case() (
   export TODO_FAILURES="$failures" TODO_EXPECTED_ATTEMPTS="$attempts" RETRY_BASE_DELAY=0
   mkdir -p "$RUNNER_TEMP" "$GITHUB_WORKSPACE" "$GITHUB_ACTION_PATH" "$GITHUB_ACTION_PATH/../../.scripts"
   cp "$root/.scripts/retry.sh" "$GITHUB_ACTION_PATH/../../.scripts/retry.sh"
+  cp -R "$root/.scripts/todo-guard" "$GITHUB_ACTION_PATH/../../.scripts/todo-guard"
   jq -n --arg project "$project" --arg key "$key" --arg client "$client" --arg app "$app" \
     --arg ignore "$resolved_ignore" --arg commits "$TODO_EXPECTED_COMMITS" \
     --arg repo "$GITHUB_REPOSITORY" --arg sha "$GITHUB_SHA" --arg actor "$GITHUB_ACTOR" \
@@ -114,6 +115,7 @@ run_case() (
   bash "$root/.github/tests/todo-action-smoke.sh" prepare
   export PATH="$RUNNER_TEMP/todo-action-smoke/bin:$PATH"
   bash "$work/🧰 Preserve retry helper.sh"
+  [[ -x "$RUNNER_TEMP/devantler-todo-guard" ]] || fail "$label: supervisor was not preserved"
   cmp "$root/.scripts/retry.sh" "$RUNNER_TEMP/devantler-actions-retry.sh" >/dev/null ||
     fail "$label: preserved retry helper differs"
   if [[ "$erase" == true ]]; then rm -rf "$work/$label/catalogue"; fi
@@ -142,4 +144,5 @@ run_case default-auth-project organization/offline/1 offline-key offline-client 
 run_case vendor-filter-on '' '' '' '' 0 1 0 false '' true true '^(vendor|third_party)/'
 run_case vendor-filter-off '' '' '' '' 0 1 0 false '' true false ''
 run_case vendor-filter-custom '' '' '' '' 0 1 0 false '^generated/' true true '^generated/'
-echo 'PASS: 16 offline to-do wrapper scenarios preserve flag states, overrides, credentials and failures'
+TODO_RUN_FAILURES=1 run_case scanner-fails-once '' '' '' '' 0 1 73 false ''
+echo 'PASS: 17 offline to-do wrapper scenarios preserve flag states, overrides, credentials and failures'

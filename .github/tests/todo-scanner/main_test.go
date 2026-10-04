@@ -1,81 +1,14 @@
 package main
 
 import (
-	"crypto/tls"
-	"crypto/x509"
 	"errors"
-	"io"
+	guard "github.com/devantler-tech/dotgithub/scripts/todo-guard"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
-	"reflect"
 	"strings"
 	"testing"
-	"time"
 )
-
-func TestLanguageRulesTravelThroughTheIsolatedTLSProxy(t *testing.T) {
-	fixture := newReplay([]exchange{{Method: "GET", Path: "/github/linguist/master/lib/linguist/languages.yml", Raw: true, Status: 200, Response: "Shell: fixture"}})
-	pair, ca, err := certificate()
-	if err != nil {
-		t.Fatal(err)
-	}
-	fixture.certificate = pair
-	server := httptest.NewServer(fixture)
-	defer server.Close()
-	proxy, err := url.Parse(server.URL)
-	if err != nil {
-		t.Fatal(err)
-	}
-	roots := x509.NewCertPool()
-	if !roots.AppendCertsFromPEM(ca) {
-		t.Fatal("fixture CA is invalid")
-	}
-	transport := &http.Transport{Proxy: http.ProxyURL(proxy), TLSClientConfig: &tls.Config{RootCAs: roots, MinVersion: tls.VersionTLS12}}
-	defer transport.CloseIdleConnections()
-	client := &http.Client{Transport: transport}
-	response, err := client.Get("https://raw.githubusercontent.com/github/linguist/master/lib/linguist/languages.yml")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer response.Body.Close()
-	body, err := io.ReadAll(response.Body)
-	if err != nil || response.StatusCode != 200 || string(body) != "Shell: fixture" {
-		t.Fatalf("language rules differ: %d, %s, %v", response.StatusCode, body, err)
-	}
-	if err := fixture.verify(); err != nil {
-		t.Fatal(err)
-	}
-}
-
-func TestTLSProxyReturnsRejectedRequestWithoutHanging(t *testing.T) {
-	fixture := newReplay([]exchange{{Method: "GET", Path: "/expected", Raw: true, Status: 200, Response: "fixture"}})
-	pair, ca, err := certificate()
-	if err != nil {
-		t.Fatal(err)
-	}
-	fixture.certificate = pair
-	server := httptest.NewServer(fixture)
-	defer server.Close()
-	proxy, err := url.Parse(server.URL)
-	if err != nil {
-		t.Fatal(err)
-	}
-	roots := x509.NewCertPool()
-	roots.AppendCertsFromPEM(ca)
-	transport := &http.Transport{Proxy: http.ProxyURL(proxy), TLSClientConfig: &tls.Config{RootCAs: roots, MinVersion: tls.VersionTLS12}}
-	defer transport.CloseIdleConnections()
-	client := &http.Client{Transport: transport, Timeout: 2 * time.Second}
-	response, err := client.Get("https://raw.githubusercontent.com/unexpected")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer response.Body.Close()
-	_, err = io.ReadAll(response.Body)
-	if err != nil || response.StatusCode != 502 || fixture.verify() == nil {
-		t.Fatalf("rejection did not finish: %d, %v", response.StatusCode, err)
-	}
-}
 
 func TestReplayRejectsUnsafeOrIncorrectRequests(t *testing.T) {
 	for _, tc := range []struct {
@@ -102,22 +35,6 @@ func TestReplayRejectsUnsafeOrIncorrectRequests(t *testing.T) {
 	}
 }
 
-func TestScannerEnvironmentClearsConflictingProxySettings(t *testing.T) {
-	env := scannerEnvironment([]string{"https_proxy=http://external.invalid", "no_proxy=*", "ALL_PROXY=http://external.invalid", "HTTPS_PROXY=http://old.invalid", "INPUT_GITHUB_URL=https://api.github.com", "KEEP=fixture"}, "http://127.0.0.1:1234", "/tmp/fixture.pem")
-	got := map[string]string{}
-	for _, entry := range env {
-		key, value, _ := strings.Cut(entry, "=")
-		if _, found := got[key]; found {
-			t.Fatalf("duplicate environment key %s", key)
-		}
-		got[key] = value
-	}
-	want := map[string]string{"KEEP": "fixture", "INPUT_GITHUB_URL": "http://127.0.0.1:1234", "HTTPS_PROXY": "http://127.0.0.1:1234", "REQUESTS_CA_BUNDLE": "/tmp/fixture.pem", "NO_PROXY": "127.0.0.1"}
-	if !reflect.DeepEqual(got, want) {
-		t.Fatalf("conflicting scanner environment: %#v", got)
-	}
-}
-
 func TestReplayRequiresEveryOperationAndRejectsExtraOperations(t *testing.T) {
 	fixture := newReplay([]exchange{{Method: "POST", Path: "/repos/offline/fixture/issues", Body: `{"title":"Repair"}`, Status: 201, Response: `{"number":7}`}})
 	if fixture.verify() == nil {
@@ -133,17 +50,6 @@ func TestReplayRequiresEveryOperationAndRejectsExtraOperations(t *testing.T) {
 	fixture.ServeHTTP(httptest.NewRecorder(), r)
 	if fixture.verify() == nil {
 		t.Fatal("duplicate issue operation passed")
-	}
-}
-
-func TestProxyRejectsUnexpectedDestination(t *testing.T) {
-	fixture := newReplay(nil)
-	r := httptest.NewRequest("CONNECT", "http://api.github.com:443", nil)
-	r.Host = "api.github.com:443"
-	w := httptest.NewRecorder()
-	fixture.ServeHTTP(w, r)
-	if w.Code < 400 || fixture.verify() == nil {
-		t.Fatal("proxy accepted live API destination")
 	}
 }
 
@@ -206,5 +112,34 @@ func TestFailedReadResultRequiresTheWholePlanAndRejectsAWrite(t *testing.T) {
 	observe("POST", "/repos/offline/fixture/issues", 502)
 	if err := fixture.verifyScannerResult(test, errors.New("exit 1"), "Offline API failure"); err == nil {
 		t.Fatal("write after failed read was accepted")
+	}
+}
+
+func TestReplayTransportSupportsBodylessLanguageGet(t *testing.T) {
+	fixture := newReplay([]exchange{{Method: "GET", Path: "/github/linguist/master/lib/linguist/languages.yml", Raw: true, Status: 200, Response: "Shell: fixture"}})
+	req, err := http.NewRequest("GET", "https://raw.githubusercontent.com/github/linguist/master/lib/linguist/languages.yml", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response, err := (replayTransport{fixture}).RoundTrip(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer response.Body.Close()
+	if response.StatusCode != 200 || fixture.verify() != nil {
+		t.Fatalf("bodyless transport failed: status=%d verdict=%v", response.StatusCode, fixture.verify())
+	}
+}
+
+func TestProductionSupervisorListUsesReplayTransport(t *testing.T) {
+	fixture := newReplay([]exchange{{Method: "GET", Path: "/repos/offline/fixture/issues?per_page=100&page=1&state=open", Status: 200, Response: "[]"}})
+	api, _ := url.Parse("http://127.0.0.1")
+	supervisor := guard.New(guard.Config{API: api, Repository: "offline/fixture", Server: "https://example.invalid", Token: "offline-token"}, &http.Client{Transport: replayTransport{fixture}})
+	r := httptest.NewRequest("GET", "/repos/offline/fixture/issues?per_page=100&page=1&state=open", nil)
+	r.Header.Set("Authorization", "token offline-token")
+	w := httptest.NewRecorder()
+	supervisor.ServeHTTP(w, r)
+	if w.Code != 200 || supervisor.Verdict() != nil || fixture.verify() != nil {
+		t.Fatalf("production request failed replay: code=%d guard=%v replay=%v", w.Code, supervisor.Verdict(), fixture.verify())
 	}
 }

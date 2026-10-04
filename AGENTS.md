@@ -362,10 +362,13 @@ the generated workflow. `.github/tests/test-todo-workflow-readonly.sh` verifies 
 production parity, the full job permission ceiling and both executed smoke callers before
 the coverage guard accepts the production/projection pair. Existing wrapper/scanner fixtures
 remain required. The contents-read-only isolated-image job runs the immutable scanner with
-network access disabled and no App/project credentials. Its native negative controls retain
+network access disabled and synthetic issue/project credentials. The production Go supervisor
+requires complete REST/GraphQL evidence, latches failures before subsequent writes, and never
+replays the scanner after a mutation attempt. Its native negative controls retain
 literal API expectations while removing TODO markers or corrupting an expected issue payload;
-each must fail for its own reason, paired with healthy executions. Remaining project/authentication
-coverage is tracked in #340; consumer failure handling remains in #367.
+each must fail for its own reason, paired with healthy executions. Supervisor race tests cover
+concurrent authorization and lost mutation responses. Workflow authentication and consumer
+rollout coverage remain in #340.
 
 **Dependency-review comment coverage:** `test-dependency-review-comments` runs the pinned
 review action through the composite against `.github/tests/fixtures/offline-github-api/main.go`, a

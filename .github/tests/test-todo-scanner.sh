@@ -20,7 +20,8 @@ jq -e '
     (.Path | type == "string" and startswith("/")) and
     (.Status | type == "number" and floor == . and . >= 100 and . <= 599) and
     (.Response | type == "string") and
-    (if has("Body") then .Body | type == "string" else true end);
+    (if has("Body") then .Body | type == "string" else true end) and
+    (if has("Headers") then .Headers | type == "object" and all(.[];type == "string") else true end);
   type == "array" and length > 0 and ([.[].Name]|unique|length) == length and
   all(.[];
     (.Name|type == "string" and length > 0) and
@@ -31,6 +32,10 @@ jq -e '
     (.Operations|type == "array" and all(valid_exchange)) and
     (.Output|type == "array" and all(type == "string" and length > 0)) and
     (if has("Ignore") then .Ignore|type == "string" else true end) and
+    (if has("Before") then .Before|type == "string" else true end) and
+    (if has("Project") then .Project|type == "string" else true end) and
+    (if has("StopAfterInitialFailure") then .StopAfterInitialFailure|type == "boolean" else true end) and
+    (if has("DiffReads") then .DiffReads|type == "array" and length > 0 and all(valid_exchange and .Method == "GET") else true end) and
     (if has("ExcludeVendored") then .ExcludeVendored|IN("true","false") else true end) and
     (if has("WantFailure") then .WantFailure|type == "boolean" else true end) and
     (if has("ForbiddenOutput") then .ForbiddenOutput|type == "array" and all(type == "string" and length > 0) else true end) and
@@ -50,17 +55,27 @@ image="$(jq -er '.runs.steps[] | select(.name == "📝 Create issues from TODOs"
 bash "$root/.scripts/retry.sh" docker pull "$image"
 (cd "$fixture" && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o "$work/runner" .)
 mkdir -p "$work/bin" "$work/temp"
+CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -C "$root/.scripts/todo-guard" -o "$work/temp/devantler-todo-guard" ./cmd/todo-guard
 cp "$root/.scripts/retry.sh" "$work/temp/devantler-actions-retry.sh"
 cat >"$work/bin/docker" <<'SHIM'
 #!/usr/bin/env bash
 set -euo pipefail
+if [[ "${1:-}" == pull ]]; then [[ $# == 2 ]] || exit 72;exit 0;fi
 [[ "${1:-}" == run ]] || { echo 'Only scanner execution is allowed' >&2; exit 1; }
 shift
+args=();found=false
+while (( $# )); do
+  if [[ "$1" == --entrypoint ]]; then
+    [[ "${2:-}" == /opt/todo-guard && "$found" == false ]] || exit 72
+    found=true;shift 2
+  else args+=("$1");shift;fi
+done
+[[ "$found" == true ]] || exit 72
 exec "$TODO_REAL_DOCKER" run --platform linux/amd64 --pull never --network none \
   --read-only --cap-drop ALL --security-opt no-new-privileges \
   --tmpfs /tmp:rw,noexec,nosuid,size=16m \
   --mount "type=bind,src=${TODO_CASE_DIR:?},dst=/fixture,readonly" \
-  --entrypoint /fixture/runner "$@"
+  --entrypoint /fixture/runner "${args[@]}"
 SHIM
 chmod +x "$work/bin/docker"
 export PATH="$work/bin:$PATH" RUNNER_TEMP="$work/temp" RETRY_MAX_ATTEMPTS=1
@@ -88,15 +103,17 @@ for ((i=0; i<count; i++)); do
   git -C "$GITHUB_WORKSPACE" diff --no-ext-diff --no-color >"$TODO_CASE_DIR/diff"
   jq --rawfile diff "$TODO_CASE_DIR/diff" -f "$fixture/plan.jq" "$TODO_CASE_DIR/source.json" >"$TODO_CASE_DIR/case.json"
   ignore="$(bash "$root/.github/tests/todo-ignore-resolution.sh" "$work/action.json" "$TODO_CASE_DIR/source.json")"
-  jq -n --arg ignore "$ignore" '{
+  project="$(jq -r '.Project // ""' "$TODO_CASE_DIR/source.json")"
+  before="$(jq -r 'if has("Before") then .Before else "fixture-base" end' "$TODO_CASE_DIR/source.json")"
+  jq -n --arg before "$before" --arg project "$project" --arg ignore "$ignore" '{
     "${{ github.repository }}":"offline/fixture",
-    "${{ github.event.before || github.base_ref }}":"fixture-base",
+    "${{ github.event.before || github.base_ref }}":$before,
     "${{ toJSON(github.event.commits) }}":"null",
     "${{ github.event.pull_request.diff_url }}":"",
     "${{ github.sha }}":"1111111111111111111111111111111111111111",
     "${{ github.token }}":"offline-token",
-    "${{ inputs.project }}":"",
-    "${{ steps.app-token.outputs.token }}":"",
+    "${{ inputs.project }}":$project,
+    "${{ steps.app-token.outputs.token }}":(if $project == "" then "" else "offline-project-token" end),
     "${{ github.actor }}":"offline-actor",
     "${{ github.api_url }}":"https://api.example.invalid",
     "${{ github.server_url }}":"https://example.invalid",

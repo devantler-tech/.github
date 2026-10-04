@@ -6,7 +6,7 @@
    + ($case.InitialReads // [
      {Method:"GET",Path:"/repos/offline/fixture/issues?per_page=100&page=1&state=open",Status:200,Response:($case.Existing // [] | tojson)},
      {Method:"GET",Path:"/repos/offline/fixture/milestones?per_page=100&page=1&state=open",Status:200,Response:"[]"}])
-   + (if .DiffError then [
+   + (if .StopAfterInitialFailure then [] elif .DiffReads then (.DiffReads | map(if .Diff then .Response=$diff | del(.Diff) else . end)) elif .DiffError then [
      {Method:"GET",Path:"/repos/offline/fixture/compare/fixture-base...1111111111111111111111111111111111111111",Status:503,Response:"{\"message\":\"Offline diff failure\"}"},
      {Method:"GET",Path:"/repos/offline/fixture/commits/1111111111111111111111111111111111111111",Status:503,Response:"{\"message\":\"Offline fallback failure\"}"}]
    else [

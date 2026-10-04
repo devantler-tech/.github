@@ -28,4 +28,7 @@ jq -e '.Exchanges|length == 5 and .[2].Status == 200 and
 jq '. + {DiffError:true}' "$work/healthy.json" >"$work/diff-error.json"
 compile "$work/diff-error.json"
 jq -e '.Exchanges|length == 6 and .[4].Status == 503 and .[5].Status == 503' "$work/plan.json" >/dev/null
+jq '. + {StopAfterInitialFailure:true,WantFailure:true} | .InitialReads |= .[:1]' "$work/issues.json" >"$work/early.json"
+compile "$work/early.json"
+jq -e '.WantFailure == true and (.Exchanges|length == 3 and .[2].Status == 422)' "$work/plan.json" >/dev/null
 echo 'PASS: healthy, rejected-read, partial-read and diff-failure replay plans'
