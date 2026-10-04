@@ -4,8 +4,8 @@
 # test (AGENTS.md, "Failure-mode coverage for gating workflows").
 #
 # The guard it exercises is a *gate*: its job is to fail when the govulncheck trigger
-# conditions would leave a default branch unscanned, or would push the new default-branch
-# scan onto consumers that never opted in. A happy-path test alone cannot catch a guard
+# conditions would leave a default branch unscanned, or would run a scan
+# outside the default-branch or pull-request event boundaries. A happy-path test alone cannot catch a guard
 # that has silently stopped biting — and this guard is unusually easy to make vacuous,
 # because its checks are structural string analysis over an expression. A regression in
 # `defun`/`strip_groups`/`split_arms` (say, one that makes `$top_level` always empty, or
@@ -57,6 +57,17 @@ check() {
   fi
 }
 
+# The event fixture must isolate exactly the extra event constraint. A malformed
+# completion comparison could otherwise make its generic rejection false-pass.
+good_gate="$(yq -r '.jobs.govulncheck.if' "$fixtures/good.yaml")"
+event_gate="$(yq -r '.jobs.govulncheck.if' "$fixtures/default-arm-event-gated.yaml")"
+event_prefix="github.event_name == 'push' && "
+restored_good_gate="${event_gate/$event_prefix/}"
+if [[ "$event_gate" == "$restored_good_gate" || "$restored_good_gate" != "$good_gate" ]]; then
+  echo "::error::default-arm-event-gated fixture does not isolate only the additional event condition"
+  status=1
+fi
+
 # Reachability of the default-branch scan.
 check event-gated.yaml \
   "AND-s 'github.event_name ==' at the top level"
@@ -69,19 +80,11 @@ check path-filter-inside-function-call.yaml \
 check top-level-ref-predicate.yaml \
   "AND-s a top-level ref predicate"
 
-# The compatible rollout input: present, on by default, and gating the right thing.
-check flag-not-referenced.yaml \
-  "does not reference 'inputs.scan-default-branch'"
-check flag-and-ed-at-top-level.yaml \
-  "AND-s 'inputs.scan-default-branch' at the top level"
-check flag-gates-wrong-arm.yaml \
-  "no OR-arm both references 'inputs.scan-default-branch' and carries the default-branch clause"
-check flag-defaults-false.yaml \
-  "defaults to 'false', not true"
-check direct-input-default-missing.yaml \
-  "direct required runs must inherit the enabled default in both scan arms"
-check unflagged-arm-not-pr-gated.yaml \
-  "neither gated by 'inputs.scan-default-branch' nor restricted to pull requests"
+# Default-branch coverage and the pull-request-only scope of other arms.
+check default-arm-event-gated.yaml \
+  "the default-branch arm has an additional gate"
+check extra-arm-not-pr-gated.yaml \
+  "a non-default-branch OR-arm is not restricted to pull requests"
 
 # The allowlist trigger, in both directions.
 check missing-allowlist-entries.yaml \
@@ -92,10 +95,6 @@ check govulncheck-output-not-consumed.yaml \
   "is never read by the govulncheck job's gate"
 check missing-govulncheck-output.yaml \
   "does not expose a 'govulncheck' output"
-# Being reachable is only half of it: the trigger is new behaviour, so it must also be
-# behind the opt-in, and the scan it schedules must read the allowlist that fired it.
-check allowlist-trigger-not-flag-gated.yaml \
-  "is not gated by 'inputs.scan-default-branch'"
 check allow-file-not-working-dir-relative.yaml \
   "'allow-file' is not composed from 'inputs.working-directory'"
 

@@ -3622,32 +3622,6 @@ jobs:
       pull-requests: read
       code-quality: write # callers must grant this for the coverage upload (GitHub Code Quality)
 
-  # ── Explicit-OFF counterpart of the default-ON vulnerability scan ──
-  # test-validate-go-project above omits `scan-default-branch` entirely, so it exercises
-  # the default — the ON state. This job passes false to preserve OFF-path coverage.
-  # Together they cover both states of the flag, per AGENTS.md "Shipping a new capability
-  # behind an opt-in flag": a flag whose off-path is untested can regress silently, and so
-  # can an on-path that was never instantiated.
-  #
-  # What this proves is that the input is declared and accepted and that the workflow
-  # behaves correctly in both states of it — NOT that a default-branch push scans, which
-  # no pull-request-triggered job can demonstrate (`github.ref` here is a PR merge ref, so
-  # the default-branch arm is unreachable by construction). The reachability of that arm is
-  # what the structural guard in test-govulncheck-main-coverage.sh asserts instead.
-  test-validate-go-project-scan-default-branch:
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
-    name: "[Test] Validate Go Project - Default-Branch Scan Opted Out"
-    uses: ./.github/workflows/validate-go-project-readonly.yaml
-    with:
-      working-directory: .github/tests/go-valid-fixture
-      scan-default-branch: false
-      # Opted out explicitly: this self-test proves a different input and must not write to its branch.
-      apply-signed-fixes: false
-    permissions:
-      contents: read
-      pull-requests: read
-      code-quality: write # callers must grant this for the coverage upload (GitHub Code Quality)
-
   # ── Flag-OFF counterpart for `test-default-branch` (the both-states rule) ──
   # `test-default-branch` defaults to TRUE, so test-validate-go-project above — which omits
   # the input — is the ON state, and it is also what every consumer now gets. This job
@@ -3661,7 +3635,7 @@ jobs:
   # have left BOTH of them exercising ON and the off-path uninstantiated — a both-states
   # pair that silently became a one-state pair.
   #
-  # As with scan-default-branch, what this proves is that the input is declared and
+  # What this proves is that the test input is declared and
   # accepted and that the workflow still behaves correctly in both states of it — NOT that
   # a default-branch push runs the suite, which no pull-request-triggered job can
   # demonstrate (`github.ref` here is a PR merge ref, so the default-branch arm is
@@ -4937,16 +4911,6 @@ jobs:
       - name: 🧪 Assert govulncheck runs on the default branch and on allowlist edits
         run: bash .github/tests/test-govulncheck-main-coverage.sh
 
-      - name: 🧪 Evaluate the direct-run default with native GitHub inputs
-        shell: bash
-        env:
-          DIRECT_INPUTS: ${{ toJSON(inputs) }}
-          DIRECT_SCAN_DEFAULT: ${{ toJSON(inputs) == '{}' || inputs.scan-default-branch == true || inputs.scan-default-branch == 'true' }}
-        run: |
-          set -euo pipefail
-          [[ "$DIRECT_INPUTS" == '{}' && "$DIRECT_SCAN_DEFAULT" == true ]]
-          echo 'PASS: native empty inputs inherit the enabled scan default'
-
   # ── Failing-input counterpart to the job above (the both-tests convention) ──
   # The trigger guard is itself a gate, and its checks are structural string analysis over
   # a GitHub expression — unusually easy to make silently vacuous (a `strip_groups`
@@ -5370,8 +5334,8 @@ jobs:
       #     self-test, which run on the same repository + ref. A reusable workflow
       #     inherits the CALLER's github.workflow (devantler-tech/actions#587).
       #   * the invocation's inputs — two calls from the SAME caller on the same ref,
-      #     which github.workflow cannot tell apart. The `scan-default-branch`
-      #     both-states self-tests are exactly that: identical but for one input.
+      #     which github.workflow cannot tell apart. The maintenance-default-branch
+      #     both-states self-tests are identical but for one input.
       #
       # This guard goes red if either discriminator is dropped. The grep is a regex (not
       # -F) so the group's own ${{ … }} expressions are matched as literals here rather
@@ -5945,7 +5909,6 @@ jobs:
       - test-validate-go-project-interface
       - test-validate-go-project-manual-fixes
       - test-validate-go-project-apply-signed-fixes
-      - test-validate-go-project-scan-default-branch
       - test-validate-go-project-test-default-branch
       - test-validate-go-project-maintenance-default-branch
       - test-run-dotnet-tests-workflow
@@ -6076,7 +6039,6 @@ jobs:
             ${{ needs.test-validate-go-project-interface.result }}
             ${{ needs.test-validate-go-project-manual-fixes.result }}
             ${{ needs.test-validate-go-project-apply-signed-fixes.result }}
-            ${{ needs.test-validate-go-project-scan-default-branch.result }}
             ${{ needs.test-validate-go-project-test-default-branch.result }}
             ${{ needs.test-validate-go-project-maintenance-default-branch.result }}
             ${{ needs.test-run-dotnet-tests-workflow.result }}

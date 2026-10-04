@@ -4,12 +4,7 @@
 # Defect: the path filter AND-ed at the TOP level inside a function call, so it vetoes the default-branch arm while hiding from a naive paren-stripper.
 name: fixture
 on:
-  workflow_call:
-    inputs:
-      scan-default-branch:
-        required: false
-        type: boolean
-        default: true
+  workflow_call: {}
 jobs:
   changes:
     runs-on: ubuntu-latest
@@ -36,14 +31,12 @@ jobs:
         (
           needs.changes.outputs.go == 'true'
           || (
-            (toJSON(inputs) == '{}' || inputs.scan-default-branch == true || inputs.scan-default-branch == 'true')
-            && needs.changes.outputs.govulncheck == 'true'
+            needs.changes.outputs.govulncheck == 'true'
           )
         )
         && github.event_name == 'pull_request'
       ) || (
-        (toJSON(inputs) == '{}' || inputs.scan-default-branch == true || inputs.scan-default-branch == 'true')
-        && needs.changes.outputs.go != ''
+        needs.changes.outputs.go != ''
         && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
       ))
     steps:
