@@ -192,9 +192,9 @@ jobs:
           go -C actions/validate-shell-pipelines test -race -cover ./...
           go -C actions/validate-shell-pipelines vet ./...
 
-  test-validate-shell-pipelines-disabled:
+  test-validate-shell-pipelines-scope:
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
-    name: "[Test] Validate Shell Pipelines - Disabled and Invalid Input"
+    name: "[Test] Validate Shell Pipelines - Rejects Invalid Scope"
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -207,42 +207,25 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - name: Omitted enablement validates a tracked scope
-        id: omitted
-        # Local syntax remains required by actionlint; migration is tracked in #1234.
-        uses: ./actions/validate-shell-pipelines # zizmor: ignore[self-repository]
-        with:
-          paths: .github/fixtures/validate-shell-pipelines/good.sh
-      - name: Explicit false skips invalid scope
-        id: disabled
-        # Local syntax remains required by actionlint; migration is tracked in #1234.
-        uses: ./actions/validate-shell-pipelines # zizmor: ignore[self-repository]
-        with:
-          enabled: "false"
-          paths: ../invalid
-      - name: Reject invalid enablement spelling
+      - name: Reject an out-of-checkout scan scope
         id: invalid
         continue-on-error: true
         # Local syntax remains required by actionlint; migration is tracked in #1234.
         uses: ./actions/validate-shell-pipelines # zizmor: ignore[self-repository]
         with:
-          enabled: "yes"
-      - name: Assert default validation and opt-out boundaries
+          paths: ../invalid
+      - name: Assert an incomplete scan never reports validation
         shell: bash
         env:
-          OMITTED: ${{ steps.omitted.outputs.validated }}
-          DISABLED: ${{ steps.disabled.outputs.validated }}
           INVALID_VALIDATED: ${{ steps.invalid.outputs.validated }}
           INVALID: ${{ steps.invalid.outcome }}
         run: |
-          test "$OMITTED" = true
-          test -z "$DISABLED"
           test -z "$INVALID_VALIDATED"
           test "$INVALID" = failure
 
   test-validate-naming:
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
-    name: "[Test] Validate Naming - Enabled (${{ matrix.os }})"
+    name: "[Test] Validate Naming (${{ matrix.os }})"
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
@@ -276,42 +259,6 @@ jobs:
           go -C actions/validate-naming test -race -cover ./...
           go -C actions/validate-naming vet ./...
 
-  test-validate-naming-disabled:
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
-    name: "[Test] Validate Naming - Disabled"
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    steps:
-      - name: 🔒 Harden Runner
-        uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
-        with:
-          egress-policy: audit
-      - name: 📑 Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - name: Omitted enablement validates the default configuration
-        id: omitted
-        uses: ./actions/validate-naming
-        with:
-          working-directory: .github/fixtures/validate-naming
-      - name: Explicit false skips a seeded naming violation
-        id: disabled
-        uses: ./actions/validate-naming
-        with:
-          enabled: "false"
-          config-file: invalid.yaml
-          working-directory: .github/fixtures/validate-naming
-      - name: Assert default validation and opt-out boundaries
-        shell: bash
-        env:
-          OMITTED: ${{ steps.omitted.outputs.validated }}
-          DISABLED: ${{ steps.disabled.outputs.validated }}
-        run: |
-          test "$OMITTED" = true
-          test -z "$DISABLED"
-
   test-validate-naming-rejects:
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
     name: "[Test] Validate Naming - Rejects Violations"
@@ -334,22 +281,25 @@ jobs:
         with:
           working-directory: .github/fixtures/validate-naming
           config-file: invalid.yaml
-      - name: Reject invalid enablement spelling
+      - name: Reject missing configuration
         id: invalid
         continue-on-error: true
         uses: ./actions/validate-naming
         with:
-          enabled: "yes"
+          working-directory: .github/fixtures/validate-naming
+          config-file: missing.yaml
       - name: Assert both action failures propagate
         shell: bash
         env:
           VIOLATION: ${{ steps.violation.outcome }}
           INVALID: ${{ steps.invalid.outcome }}
           VALIDATED: ${{ steps.violation.outputs.validated }}
+          INVALID_VALIDATED: ${{ steps.invalid.outputs.validated }}
         run: |
           test "$VIOLATION" = failure
           test "$INVALID" = failure
           test -z "$VALIDATED"
+          test -z "$INVALID_VALIDATED"
       - name: Assert the seeded fixture reports its naming rule
         shell: bash
         env:
@@ -3078,7 +3028,6 @@ jobs:
         id: pipelines
         uses: ./actions/validate-shell-pipelines # zizmor: ignore[self-repository]
         with:
-          enabled: 'true'
           paths: ${{ env.SCAN_PATHS }}
 
       - name: ✅ Require completed validation
@@ -5852,8 +5801,7 @@ jobs:
       - test-validate-retired-repo-links
       - test-validate-retired-repo-links-disabled
       - test-validate-shell-pipelines
-      - test-validate-shell-pipelines-disabled
-      - test-validate-naming-disabled
+      - test-validate-shell-pipelines-scope
       - test-validate-naming-rejects
       - test-approve-pr
       - test-approve-pr-credential-boundary
@@ -5982,8 +5930,7 @@ jobs:
             ${{ needs.test-validate-retired-repo-links.result }}
             ${{ needs.test-validate-retired-repo-links-disabled.result }}
             ${{ needs.test-validate-shell-pipelines.result }}
-            ${{ needs.test-validate-shell-pipelines-disabled.result }}
-            ${{ needs.test-validate-naming-disabled.result }}
+            ${{ needs.test-validate-shell-pipelines-scope.result }}
             ${{ needs.test-validate-naming-rejects.result }}
             ${{ needs.test-approve-pr.result }}
             ${{ needs.test-approve-pr-credential-boundary.result }}

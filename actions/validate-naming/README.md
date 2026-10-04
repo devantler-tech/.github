@@ -8,7 +8,6 @@ Validation reads files without modifying them or contacting a cluster.
 
 | Name | Description | Required | Default |
 |------|-------------|----------|---------|
-| `enabled` | Run validation; set `false` to opt out. Accepts exactly `true` or `false`. | No | `true` |
 | `config-file` | Configuration path, relative to `working-directory` or absolute. | No | `.github/manifest-naming.yaml` |
 | `working-directory` | Repository directory, relative to `GITHUB_WORKSPACE` or absolute. | No | `.` |
 
@@ -16,7 +15,7 @@ Validation reads files without modifying them or contacting a cluster.
 
 | Name | Description |
 |------|-------------|
-| `validated` | `true` after successful validation; empty when disabled or unsuccessful. |
+| `validated` | `true` after successful validation; empty when unsuccessful. |
 
 ## Usage
 
@@ -31,12 +30,9 @@ steps:
   - uses: devantler-tech/.github/actions/validate-naming@<full-commit-sha> # vX.Y.Z
 ```
 
-Validation runs by default and requires the repository's own configuration.
-An explicit `enabled: "false"` skips configuration reads, Go setup and file scanning.
-Consumer cleanup and input retirement are tracked in
-[devantler-tech/.github#274](https://github.com/devantler-tech/.github/issues/274).
+Every call performs validation and requires the repository's own configuration.
 
-Enabled runs install the Go version declared in this action's `go.mod`, download
+Calls install the Go version declared in this action's `go.mod`, download
 its checksum-pinned YAML dependency with bounded retries, and build from the
 action's own module. The caller's Go module and workspace files are not used.
 The build needs network access to the Go distribution/module services; subsequent
@@ -123,7 +119,7 @@ GOWORK=off go -C /path/to/actions/validate-naming run -mod=readonly . \
   --root /path/to/consumer --config .github/manifest-naming.yaml
 ```
 
-The CLI always validates; the rollout gate belongs to the composite action.
+The action and CLI always validate.
 Exit codes are `0` for success, `1` for naming violations, and `2` for invalid
 configuration, YAML, arguments, or filesystem errors.
 
