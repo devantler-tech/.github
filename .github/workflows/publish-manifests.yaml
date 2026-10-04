@@ -253,9 +253,19 @@ jobs:
           if ! printf '%s' "$DIGEST" | grep -Eq '^sha256:[0-9a-f]{64}$'; then
             echo "::error::flux push did not report the pushed artifact digest"; exit 1
           fi
-          cosign sign --yes "${ARTIFACT}@${DIGEST}"
+          # Claims authenticate the original publication context for recovery.
+          annotations=(
+            -a "devantler.repository=$REPOSITORY"
+            -a "devantler.source-sha=$SHA"
+            -a "devantler.source-ref=$REF_NAME"
+            -a "devantler.version=$VERSION"
+            -a "devantler.run-id=$RUN_ID"
+            -a "devantler.run-attempt=$RUN_ATTEMPT"
+            -a "devantler.workflow-ref=$JOB_WORKFLOW_REF"
+          )
+          cosign sign --yes "${annotations[@]}" "${ARTIFACT}@${DIGEST}"
           cosign verify --certificate-identity "${SERVER_URL}/${JOB_WORKFLOW_REF}" \
-            --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com "${annotations[@]}" \
             "${ARTIFACT}@${DIGEST}"
           # Promotions read the verified digest, never a mutable staging alias.
           OCI_REPOSITORIES="$NAME/manifests" bash "$RUNNER_TEMP/require-unpublished-version.sh"

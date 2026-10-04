@@ -3251,6 +3251,9 @@ jobs:
         shell: bash
         run: bash .github/tests/test-unpublished-version.sh
 
+      - name: ✍️ Install Cosign for disposable cryptographic publication tests
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+
       - name: 🔒 Exercise existing-version refusal against a disposable OCI registry
         shell: bash
         run: bash .github/tests/test-unpublished-version-native.sh

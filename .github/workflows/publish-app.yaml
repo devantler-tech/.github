@@ -322,12 +322,24 @@ jobs:
           # Both artifacts must verify against this immutable producer before
           # any selectable tag is exposed. Registry tag writes are sequential,
           # not a cross-repository transaction.
-          cosign sign --yes "${IMAGE}@${DIGEST}"
-          cosign sign --yes "${ARTIFACT}@${ARTIFACT_DIGEST}"
+          # Claims authenticate the original publication context for recovery.
+          annotations=(
+            -a "devantler.repository=$REPOSITORY"
+            -a "devantler.source-sha=$SHA"
+            -a "devantler.source-ref=$REF_NAME"
+            -a "devantler.version=$VERSION"
+            -a "devantler.run-id=$RUN_ID"
+            -a "devantler.run-attempt=$RUN_ATTEMPT"
+            -a "devantler.workflow-ref=$JOB_WORKFLOW_REF"
+            -a "devantler.image-digest=$DIGEST"
+            -a "devantler.manifests-digest=$ARTIFACT_DIGEST"
+          )
+          cosign sign --yes "${annotations[@]}" "${IMAGE}@${DIGEST}"
+          cosign sign --yes "${annotations[@]}" "${ARTIFACT}@${ARTIFACT_DIGEST}"
           cosign verify --certificate-identity "${SERVER_URL}/${JOB_WORKFLOW_REF}" \
-            --certificate-oidc-issuer https://token.actions.githubusercontent.com "${IMAGE}@${DIGEST}"
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com "${annotations[@]}" "${IMAGE}@${DIGEST}"
           cosign verify --certificate-identity "${SERVER_URL}/${JOB_WORKFLOW_REF}" \
-            --certificate-oidc-issuer https://token.actions.githubusercontent.com "${ARTIFACT}@${ARTIFACT_DIGEST}"
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com "${annotations[@]}" "${ARTIFACT}@${ARTIFACT_DIGEST}"
           # Confirm the copy preserves the signed manifest format on an
           # unselectable staging tag before exposing the release version.
           docker buildx imagetools create --prefer-index=false --tag "${IMAGE}:verified-${RUN_ID}-${RUN_ATTEMPT}" \
