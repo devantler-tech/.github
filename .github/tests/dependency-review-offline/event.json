@@ -1,0 +1,22 @@
+{
+  "action": "synchronize",
+  "number": 7,
+  "pull_request": {
+    "number": 7,
+    "base": {
+      "ref": "main",
+      "sha": "1111111111111111111111111111111111111111"
+    },
+    "head": {
+      "ref": "offline-fixture",
+      "sha": "2222222222222222222222222222222222222222"
+    }
+  },
+  "repository": {
+    "name": "fixture",
+    "full_name": "offline/fixture",
+    "owner": {
+      "login": "offline"
+    }
+  }
+}

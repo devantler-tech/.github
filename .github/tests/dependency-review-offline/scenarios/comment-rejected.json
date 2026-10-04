@@ -1,0 +1,60 @@
+{
+  "description": "The token cannot write to the pull request: the action attempts the summary once, the rejected write is the last request, and the action warns that the summary was not written.",
+  "inputs": {
+    "comment-summary-in-pr": "always",
+    "warn-only": "true"
+  },
+  "routes": [
+    {
+      "method": "GET",
+      "path": "/repos/offline/fixture/dependency-graph/compare/1111111111111111111111111111111111111111...2222222222222222222222222222222222222222",
+      "status": 200,
+      "body": []
+    },
+    {
+      "method": "GET",
+      "path": "/repos/offline/fixture/issues/7/comments",
+      "status": 200,
+      "body": []
+    },
+    {
+      "method": "POST",
+      "path": "/repos/offline/fixture/issues/7/comments",
+      "status": 403,
+      "body": {
+        "message": "Resource not accessible by integration",
+        "documentation_url": "https://docs.github.com/rest/issues/comments#create-an-issue-comment"
+      }
+    }
+  ],
+  "expect": {
+    "outcome": "success",
+    "comment": "rejected",
+    "blocked-hosts": [],
+    "annotations": [
+      {
+        "level": "warning",
+        "includes": "Unable to write summary to pull-request"
+      }
+    ],
+    "requests": [
+      {
+        "method": "GET",
+        "path": "/repos/offline/fixture/dependency-graph/compare/1111111111111111111111111111111111111111...2222222222222222222222222222222222222222",
+        "query": {
+          "per_page": "5"
+        }
+      },
+      {
+        "method": "GET",
+        "path": "/repos/offline/fixture/issues/7/comments",
+        "query": {}
+      },
+      {
+        "method": "POST",
+        "path": "/repos/offline/fixture/issues/7/comments",
+        "query": {}
+      }
+    ]
+  }
+}

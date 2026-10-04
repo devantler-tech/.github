@@ -1,0 +1,120 @@
+{
+  "description": "An enforcing review with comments on failure only, on a pull request whose critically vulnerable runtime dependency sits on a later page of changes: the action fails and creates the summary naming the advisory. Its scorecard lookup is outside the stand-in and refused.",
+  "inputs": {
+    "comment-summary-in-pr": "on-failure",
+    "warn-only": "false"
+  },
+  "routes": [
+    {
+      "method": "GET",
+      "path": "/repos/offline/fixture/dependency-graph/compare/1111111111111111111111111111111111111111...2222222222222222222222222222222222222222",
+      "query": {
+        "page": "2"
+      },
+      "status": 200,
+      "body": [
+        {
+          "change_type": "added",
+          "manifest": "package-lock.json",
+          "ecosystem": "npm",
+          "name": "offline-fixture-package",
+          "version": "1.0.0",
+          "package_url": "pkg:npm/offline-fixture-package@1.0.0",
+          "license": "MIT",
+          "source_repository_url": "https://github.com/offline/fixture-package",
+          "scope": "runtime",
+          "vulnerabilities": [
+            {
+              "severity": "critical",
+              "advisory_ghsa_id": "GHSA-ffff-gggg-hhhh",
+              "advisory_summary": "Offline fixture advisory",
+              "advisory_url": "https://github.com/advisories/GHSA-ffff-gggg-hhhh"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/repos/offline/fixture/dependency-graph/compare/1111111111111111111111111111111111111111...2222222222222222222222222222222222222222",
+      "status": 200,
+      "headers": {
+        "Link": "<{{base_url}}/repos/offline/fixture/dependency-graph/compare/1111111111111111111111111111111111111111...2222222222222222222222222222222222222222?per_page=5&page=2>; rel=\"next\""
+      },
+      "body": [
+        {
+          "change_type": "added",
+          "manifest": "package-lock.json",
+          "ecosystem": "npm",
+          "name": "offline-fixture-dependency",
+          "version": "2.0.0",
+          "package_url": "pkg:npm/offline-fixture-dependency@2.0.0",
+          "license": "MIT",
+          "source_repository_url": "https://github.com/offline/fixture-dependency",
+          "scope": "runtime",
+          "vulnerabilities": []
+        }
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/repos/offline/fixture/issues/7/comments",
+      "status": 200,
+      "body": []
+    },
+    {
+      "method": "POST",
+      "path": "/repos/offline/fixture/issues/7/comments",
+      "status": 201,
+      "body": {
+        "id": 501,
+        "body": "created",
+        "user": {
+          "login": "github-actions[bot]",
+          "type": "Bot"
+        }
+      }
+    }
+  ],
+  "expect": {
+    "outcome": "failure",
+    "comment": "created",
+    "comment-includes": "GHSA-ffff-gggg-hhhh",
+    "blocked-hosts": [
+      "api.securityscorecards.dev"
+    ],
+    "annotations": [
+      {
+        "level": "error",
+        "includes": "Dependency review detected vulnerable packages"
+      }
+    ],
+    "requests": [
+      {
+        "method": "GET",
+        "path": "/repos/offline/fixture/dependency-graph/compare/1111111111111111111111111111111111111111...2222222222222222222222222222222222222222",
+        "query": {
+          "per_page": "5"
+        }
+      },
+      {
+        "method": "GET",
+        "path": "/repos/offline/fixture/dependency-graph/compare/1111111111111111111111111111111111111111...2222222222222222222222222222222222222222",
+        "query": {
+          "page": "2",
+          "per_page": "5"
+        }
+      },
+      {
+        "method": "GET",
+        "path": "/repos/offline/fixture/issues/7/comments",
+        "query": {}
+      },
+      {
+        "method": "POST",
+        "path": "/repos/offline/fixture/issues/7/comments",
+        "query": {}
+      }
+    ]
+  }
+}
