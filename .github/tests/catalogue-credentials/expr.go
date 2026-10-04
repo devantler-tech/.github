@@ -380,24 +380,29 @@ func call(name string, args []any) any {
 		}
 	case "contains":
 		if len(args) == 2 {
+			if items, ok := args[0].([]any); ok {
+				if len(items) == 0 {
+					return false
+				}
+				// Array membership uses native equality, not scalar string
+				// conversion. Only measured ASCII string pairs prove a result.
+				needle, ok := args[1].(string)
+				if !ok || !ascii(needle) {
+					return uncertain
+				}
+				found := false
+				for _, item := range items {
+					s, ok := item.(string)
+					if !ok || !ascii(s) {
+						return uncertain
+					}
+					found = found || strings.EqualFold(s, needle)
+				}
+				return found
+			}
 			needle, ok := stringValue(args[1])
 			if !ok {
 				return uncertain
-			}
-			if items, ok := args[0].([]any); ok {
-				for _, item := range items {
-					s, ok := stringValue(item)
-					if !ok {
-						return uncertain
-					}
-					if !ascii(s) || !ascii(needle) {
-						return uncertain
-					}
-					if strings.EqualFold(s, needle) {
-						return true
-					}
-				}
-				return false
 			}
 			haystack, ok := stringValue(args[0])
 			if !ok {

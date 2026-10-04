@@ -37,3 +37,54 @@ func TestUnmeasuredJSONStringRendering(t *testing.T) {
 		t.Fatalf("measured ASCII string rejected: %v", value)
 	}
 }
+
+// TestArrayContainsRequiresMeasuredStringEquality refuses mixed native coercion
+// rather than manufacturing a proof that a privileged job will not execute.
+func TestArrayContainsRequiresMeasuredStringEquality(t *testing.T) {
+	for _, expression := range []string{
+		"contains(fromJSON('[false]'), '')",
+		"contains(fromJSON('[\"true\"]'), true)",
+		"contains(fromJSON('[null]'), '')",
+		"contains(fromJSON('[0]'), '')",
+		"contains(fromJSON('[1]'), true)",
+		"contains(fromJSON('[\"safe\", false]'), 'safe')",
+		"contains(fromJSON('[false, \"safe\"]'), 'safe')",
+	} {
+		t.Run(expression, func(t *testing.T) {
+			if value := evaluate(expression, context{}); known(value) {
+				t.Fatalf("mixed-type array membership became a skip proof: %v", value)
+			}
+		})
+	}
+}
+
+func TestArrayContainsCannotHideWriter(t *testing.T) {
+	for _, condition := range []string{
+		"contains(fromJSON('[false]'), '')",
+		"!contains(fromJSON('[\"true\"]'), true)",
+	} {
+		t.Run(condition, func(t *testing.T) {
+			ci := "permissions: {}\njobs:\n  writer:\n    if: \u0024{{ " + condition + " }}\n    permissions: {contents: write}\n    steps: [{run: echo fixture}]\n"
+			if err := Audit(fixture(t, map[string]string{".github/workflows/ci.yaml": ci})); err == nil || !strings.Contains(err.Error(), "write authority") {
+				t.Fatalf("mixed-type condition hid live writer: %v", err)
+			}
+		})
+	}
+}
+
+func TestMeasuredArrayContainsIsPreserved(t *testing.T) {
+	for _, sample := range []struct {
+		expression string
+		want       bool
+	}{
+		{"contains(fromJSON('[\"push\", \"pull_request\"]'), 'PUSH')", true},
+		{"contains(fromJSON('[\"push\", \"pull_request\"]'), 'merge_group')", false},
+		{"contains(fromJSON('[]'), false)", false},
+		{"contains(fromJSON('[]'), '')", false},
+		{"contains('true', true)", true},
+	} {
+		if got := evaluate(sample.expression, context{}); got != sample.want {
+			t.Errorf("%s: got %v, want %v", sample.expression, got, sample.want)
+		}
+	}
+}
