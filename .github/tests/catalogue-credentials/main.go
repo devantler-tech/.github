@@ -157,7 +157,21 @@ func (a *auditor) readSource(path, revision string) (object, error) {
 	}
 	var b []byte
 	if revision == "" {
-		b, err = os.ReadFile(filepath.Join(a.root, path))
+		var realRoot, realPath string
+		realRoot, err = filepath.EvalSymlinks(a.root)
+		if err == nil {
+			realPath, err = filepath.EvalSymlinks(filepath.Join(a.root, path))
+		}
+		if err == nil {
+			var relative string
+			relative, err = filepath.Rel(realRoot, realPath)
+			if err == nil && (relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) || filepath.IsAbs(relative)) {
+				err = fmt.Errorf("source symlink outside catalogue")
+			}
+		}
+		if err == nil {
+			b, err = os.ReadFile(realPath)
+		}
 	} else {
 		if !fullSHA.MatchString(revision) {
 			return nil, fmt.Errorf("UNKNOWN mutable first-party source")
@@ -213,22 +227,26 @@ func reference(ref string, revision string, action bool) (string, string, bool, 
 		}
 		return p, revision, true, e
 	}
-	prefix := "devantler-tech/.github/"
-	if strings.HasPrefix(ref, prefix) {
-		tail := strings.TrimPrefix(ref, prefix)
-		parts := strings.Split(tail, "@")
-		if len(parts) != 2 || !fullSHA.MatchString(parts[1]) {
-			return "", "", false, fmt.Errorf("UNKNOWN mutable first-party source")
+	parts := strings.Split(ref, "@")
+	if len(parts) != 2 || !fullSHA.MatchString(parts[1]) {
+		return "", "", false, fmt.Errorf("UNKNOWN unresolved or mutable source")
+	}
+	segments := strings.Split(parts[0], "/")
+	if len(segments) < 2 {
+		return "", "", false, fmt.Errorf("UNKNOWN invalid source repository")
+	}
+	if strings.EqualFold(strings.Join(segments[:2], "/"), "devantler-tech/.github") {
+		if len(segments) == 2 {
+			if action {
+				return "action.yaml", parts[1], true, nil
+			}
+			return "", "", false, fmt.Errorf("UNKNOWN missing reusable workflow path")
 		}
-		p, e := safePath(parts[0])
+		p, e := safePath(strings.Join(segments[2:], "/"))
 		if action {
 			p += "/action.yaml"
 		}
 		return p, parts[1], true, e
-	}
-	parts := strings.Split(ref, "@")
-	if len(parts) != 2 || !fullSHA.MatchString(parts[1]) || len(strings.Split(parts[0], "/")) < 2 {
-		return "", "", false, fmt.Errorf("UNKNOWN unresolved or mutable external source")
 	}
 	if !action {
 		return "", "", false, fmt.Errorf("UNKNOWN external reusable workflow source")
@@ -444,6 +462,7 @@ func (a *auditor) workflow(path, revision string, c context, provided, secrets, 
 	}
 	a.scope++
 	c["__catalogue_guard_scope"] = a.scope
+	c["__workflow_revision"] = revision
 	wp := ceiling
 	if p, ok := w["permissions"]; ok {
 		wp, err = permissions(p)
@@ -628,7 +647,7 @@ func (a *auditor) steps(steps []any, revision string, c context, bindings map[st
 		}
 		m, e := a.readSource(p, r)
 		if e != nil {
-			if strings.HasSuffix(p, "/action.yaml") && errors.Is(e, os.ErrNotExist) {
+			if (p == "action.yaml" || strings.HasSuffix(p, "/action.yaml")) && errors.Is(e, os.ErrNotExist) {
 				p = strings.TrimSuffix(p, "action.yaml") + "action.yml"
 				m, e = a.readSource(p, r)
 			}
@@ -810,7 +829,7 @@ func bindCheckout(step object, revision string, c context, bindings map[string]b
 	}
 	b := binding{}
 	repo := text(w["repository"])
-	owned := repo == "" || repo == "devantler-tech/.github" || repo == "$"+"{{ job.workflow_repository }}" || repo == "$"+"{{ github.repository }}"
+	owned := repo == "" || strings.EqualFold(repo, "devantler-tech/.github") || repo == "$"+"{{ job.workflow_repository }}" || repo == "$"+"{{ github.repository }}"
 	if owned && condition(step["if"], c) != false {
 		ref, declared := w["ref"]
 		raw := text(ref)
@@ -818,7 +837,9 @@ func bindCheckout(step object, revision string, c context, bindings map[string]b
 		case !declared || raw == "$"+"{{ github.sha }}":
 			b = binding{revision: "", valid: true}
 		case raw == "$"+"{{ job.workflow_sha }}":
-			b = binding{revision: revision, valid: true}
+			if workflowRevision, ok := c["__workflow_revision"].(string); ok {
+				b = binding{revision: workflowRevision, valid: true}
+			}
 		default:
 			resolved := resolveScalar(ref, c)
 			if s, ok := resolved.(string); ok && fullSHA.MatchString(s) {

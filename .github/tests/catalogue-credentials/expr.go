@@ -346,7 +346,7 @@ func (p *parser) value() any {
 			return f
 		}
 	}
-	if key == "__catalogue_guard_scope" {
+	if strings.HasPrefix(key, "__") {
 		return uncertain
 	}
 	if v, ok := p.ctx[strings.ToLower(key)]; ok {
