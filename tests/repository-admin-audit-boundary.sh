@@ -8,11 +8,10 @@ yq -o=json '.' "$root/.github/workflows/repository-admin-team-audit.yaml" >"$wor
 verify() {
   jq -e '
     (.on | keys == ["workflow_dispatch"]) and .permissions == {} and
-    .on.workflow_dispatch.inputs["run-audit"].type == "boolean" and
-    .on.workflow_dispatch.inputs["run-audit"].default == false and
+    .on.workflow_dispatch == {} and
     (.jobs | keys == ["audit"]) and
     (.jobs.audit.if | gsub("\\s+";" ") | sub(" $";"")) ==
-      "github.event_name == '\''workflow_dispatch'\'' && github.repository == '\''devantler-tech/.github'\'' && github.ref == '\''refs/heads/main'\'' && (inputs.run-audit == true || inputs.run-audit == '\''true'\'')" and
+      "github.event_name == '\''workflow_dispatch'\'' && github.repository == '\''devantler-tech/.github'\'' && github.ref == '\''refs/heads/main'\''" and
     .jobs.audit.permissions == {contents:"read"} and
     (.jobs.audit.steps | length == 4) and
     (.jobs.audit.steps[0].uses | startswith("step-security/harden-runner@")) and
@@ -32,13 +31,13 @@ verify() {
       GH_APP_PRIVATE_KEY:"${{ secrets.APP_PRIVATE_KEY }}"}
   ' "$1" >/dev/null 2>&1
 }
-verify "$work/source.json" || { echo 'FAIL: live audit must retain its default-off main-only read-only boundary' >&2; exit 1; }
+verify "$work/source.json" || { echo 'FAIL: live audit must retain its main-only read-only boundary' >&2; exit 1; }
 while IFS=$'\t' read -r label mutation; do
   jq "$mutation" "$work/source.json" >"$work/mutated.json"
   if verify "$work/mutated.json"; then echo "FAIL: $label accepted" >&2; exit 1; fi
   echo "PASS: rejects $label"
 done <<'CASES'
-default activation	.on.workflow_dispatch.inputs["run-audit"].default=true
+retired rollout input	.on.workflow_dispatch.inputs["run-audit"]={type:"boolean",default:false}
 PR trigger	.on.pull_request={}
 unguarded credentials	.jobs.audit.if="true"
 write-scoped workflow token	.jobs.audit.permissions.contents="write"
