@@ -48,6 +48,7 @@ run_case() {
     ) >"$work/$name.log" 2>&1; then
       if [[ "$expected" == rejected ]] && grep -F 'Unsupported packageManager npm descriptor' "$work/$name.log" >/dev/null; then
         [[ ! -e "$prefix/lib/node_modules/npm" ]] || fail 'malformed contract installed npm'
+        [[ "$(cat "$workspace/package.json")" == "$contract" ]] || fail "$name changed the consumer contract"
         echo "PASS: actual npm rejects $name before installation"
         return 0
       fi

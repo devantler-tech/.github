@@ -204,7 +204,7 @@ jobs:
 | `APP_CLIENT_ID`              | Variable        | -       | Yes      | GitHub App client ID used to mint the release token                       |
 | `APP_PRIVATE_KEY`            | Secret          | -       | No       | GitHub App private key; required for consumer releases and previews, omitted for offline tests |
 | `disable-issue-side-effects` | Input (boolean) | `false` | No       | Disable success/fail hooks and omit issue/pull-request token permissions  |
-| `align-npm-with-consumer-contract` | Input (boolean) | `true` | No | Temporarily opt in to npm contract alignment; [#392](https://github.com/devantler-tech/.github/issues/392) tracks retirement |
+| `align-npm-with-consumer-contract` | Input (boolean) | `true` | No | Align with the consumer npm contract by default; explicit `false` preserves bundled npm during [#392](https://github.com/devantler-tech/.github/issues/392) retirement |
 | `warn-missing-breaking-bang` | Input (boolean) | `false` | No       | Warn about missing explicit breaking-header handling in supported JSON configurations |
 | `dry-run`                    | Input (boolean) | `false` | No       | Run semantic-release in dry-run mode (no tags or publishes)               |
 | `offline-test`               | Input (boolean) | `false` | No       | Run secret-free catalogue release-decision fixtures; requires dry-run     |
