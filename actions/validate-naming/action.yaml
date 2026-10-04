@@ -2,10 +2,6 @@ name: Validate manifest naming
 description: Validate configurable Kubernetes manifest and machine patch naming conventions.
 author: devantler-tech
 inputs:
-  enabled:
-    description: Run the shared naming gate; set false to opt out. Input retirement is tracked in .github issue 274.
-    required: false
-    default: "true"
   config-file:
     description: Configuration file, relative to working-directory or absolute.
     required: false
@@ -16,31 +12,18 @@ inputs:
     default: .
 outputs:
   validated:
-    description: The string true after successful validation; empty when disabled or unsuccessful.
+    description: The string true after successful validation; empty when unsuccessful.
     value: ${{ steps.validate.outputs.validated }}
 runs:
   using: composite
   steps:
-    - name: Check enablement input
-      shell: bash
-      env:
-        ENABLED: ${{ inputs.enabled }}
-      run: |
-        case "$ENABLED" in
-          true) ;;
-          false) echo "Manifest naming validation is explicitly disabled." ;;
-          *) echo "::error::enabled must be exactly true or false"; exit 1 ;;
-        esac
-
     - name: Set up Go for the validator
-      if: ${{ inputs.enabled == 'true' }}
       uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
       with:
         go-version-file: ${{ github.action_path }}/go.mod
         cache: false
 
     - name: Validate naming conventions
-      if: ${{ inputs.enabled == 'true' }}
       id: validate
       shell: bash
       env:
