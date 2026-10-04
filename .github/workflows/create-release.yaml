@@ -152,7 +152,8 @@ jobs:
           dev_engine_records="$(
             jq -c '.devEngines[]' <<<"$npm_contract"
           )"
-          if [[ -z "$package_manager_requirement" && -z "$dev_engine_records" ]]; then
+          if [[ -z "$package_manager_requirement" ]] \
+            && ! jq -e 'any(.devEngines[]; .name == "npm")' <<<"$npm_contract" >/dev/null; then
             exit 0
           fi
 

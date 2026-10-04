@@ -71,6 +71,8 @@ run_case omitted '' "$contract" aligned
 run_case explicit-true true "$contract" aligned
 run_case explicit-false false "$contract" unchanged
 run_case no-contract '' '{"name":"fixture"}' unchanged
+run_case non-npm-object '' '{"devEngines":{"packageManager":{"name":"pnpm"}}}' unchanged
+run_case non-npm-alternatives '' '{"devEngines":{"packageManager":[{"name":"pnpm"},{"name":"yarn","version":"4.x"}]}}' unchanged
 run_case malformed '' '{"packageManager":"npm@11.2.0+unverified-integrity"}' rejected
 [[ "$(npm --version)" == "$base_version" ]] || fail 'native replay modified the bundled npm'
 echo 'PASS: real npm default and compatibility paths preserve bundled tooling and consumer files'
