@@ -11,6 +11,53 @@ fail() {
   return 1
 }
 
+# A draft promotion carries the same source and metadata already checked. Keep
+# source/edit triggers and the separate draft-sensitive auto-merge evaluation.
+check_promotion_events() {
+  local catalogue="$1" auto_merge="$2"
+  yq -o=json '.' "$catalogue" | jq -e '
+    (.on.pull_request.types | index("ready_for_review") == null) and
+    (.on.pull_request.types as $events |
+      all(["opened", "synchronize", "reopened", "edited"][];
+        . as $event | $events | index($event) != null)) and
+    .on.push.branches == ["main"] and (.on | has("merge_group")) and
+    ([.jobs[] | .if // empty, .steps[]?.if // empty] |
+      all(.[]; test("pull_request\\.draft|event\\.action|ready_for_review") | not))
+  ' >/dev/null || {
+    fail 'catalogue must check source and edits independently of draft promotion'
+    return 1
+  }
+  yq -o=json '.' "$auto_merge" | jq -e '
+    .on.pull_request.types | index("ready_for_review") != null
+  ' >/dev/null || {
+    fail 'draft-sensitive auto-merge must still evaluate promotion'
+    return 1
+  }
+}
+
+catalogue="$repo_root/.github/workflows/ci.yaml"
+auto_merge="$repo_root/.github/workflows/enable-auto-merge.yaml"
+check_promotion_events "$catalogue" "$auto_merge"
+echo 'ok: catalogue keeps source and edit coverage without a duplicate promotion run'
+for mutation in duplicate-promotion no-opened no-synchronize no-reopened no-edited draft-sensitive; do
+  case "$mutation" in
+    duplicate-promotion) expression='.on.pull_request.types += ["ready_for_review"]' ;;
+    no-*) event="${mutation#no-}"; expression=".on.pull_request.types -= [\"$event\"]" ;;
+    draft-sensitive) expression='.jobs.test-validate-retired-repo-links.if = "github.event.pull_request.draft == false"' ;;
+  esac
+  yq "$expression" "$catalogue" >"$work/catalogue-mutated.yaml"
+  if check_promotion_events "$work/catalogue-mutated.yaml" "$auto_merge" >"$work/promotion.log" 2>&1; then
+    fail "accepted a promotion coverage regression: $mutation"
+    exit 1
+  fi
+done
+yq '.on.pull_request.types -= ["ready_for_review"]' "$auto_merge" >"$work/auto-merge-mutated.yaml"
+if check_promotion_events "$catalogue" "$work/auto-merge-mutated.yaml" >"$work/promotion.log" 2>&1; then
+  fail 'accepted disabled auto-merge promotion evaluation'
+  exit 1
+fi
+echo 'ok: duplicate promotion, missing source/edit coverage, draft-sensitive catalogue and absent auto-merge promotion fail'
+
 check_metadata() {
   local workflow="$1" render="$2" metadata
   [[ -f "$workflow" ]] || {
