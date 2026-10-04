@@ -45,6 +45,7 @@ flag_ref="inputs.${flag_input}"
 
 status=0
 
+# Report a violated coverage invariant and retain the failing exit status.
 fail() {
   echo "::error file=$workflow::$1"
   status=1
@@ -59,6 +60,7 @@ flat="$(tr '\n' ' ' <<<"$gate" | tr -s ' ')"
 # preserving their contents. Without this the call's parens are indistinguishable from
 # grouping parens, which both hides the real group and makes `default_branch` (an argument
 # to such a call) impossible to attribute to the group it actually guards.
+# Separate function-call parentheses from boolean grouping without changing arguments.
 defun() {
   local s="$1" prev=""
   while [[ "$s" != "$prev" ]]; do
@@ -71,6 +73,7 @@ defun() {
 # Repeatedly delete innermost parenthesised groups, leaving only the top-level conjuncts. A
 # term that survives this is AND-ed at the top level and can therefore veto the job on its
 # own, whatever else the gate says.
+# Remove nested boolean groups to expose conditions that gate every arm.
 strip_groups() {
   local s="$1" prev=""
   while [[ "$s" != "$prev" ]]; do
@@ -82,6 +85,7 @@ strip_groups() {
 
 # Split a parenthesised group into its top-level `||` arms, one per line. Balance-scanned
 # rather than split on `||`, because an arm may itself contain a parenthesised `||`.
+# Emit only top-level OR arms while preserving nested expressions.
 split_arms() {
   awk '
     {
@@ -115,6 +119,7 @@ split_arms() {
 # balance-scanning rather than by regex. A regex bounded with `[^()]*` can only match a
 # group with no nesting, so it silently returns the INNERMOST group — and the flagged arm
 # of this gate legitimately nests.
+# Find the enclosing boolean group that contains the requested term.
 outer_group_with() {
   awk -v needle="$2" '
     { s = $0; depth = 0; start = 0
@@ -138,6 +143,7 @@ outer_group_with() {
 # PARENTHESISED top-level conjunct — `&& (inputs.f == true || inputs.f == 'true') &&` — as
 # absent. That shape ANDs the flag at the top level while satisfying a strip_groups-based
 # check, so a caller that never opted in would silently lose the job entirely.
+# Return conditions outside the selected group that could veto it.
 outside_group() {
   local whole="$1" grp="$2"
   local prefix="${whole%%"$grp"*}"

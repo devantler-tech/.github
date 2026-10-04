@@ -31,6 +31,7 @@ workflow="${1:-.github/workflows/validate-go-project.yaml}"
 
 status=0
 
+# Report a violated coverage invariant and retain the failing exit status.
 fail() {
   echo "::error file=$workflow::$1"
   status=1
@@ -45,6 +46,7 @@ flat="$(tr '\n' ' ' <<<"$gate" | tr -s ' ')"
 # preserving their contents. Without this the call's parens are indistinguishable from
 # grouping parens, which both hides the real group and makes `default_branch` (an argument
 # to such a call) impossible to attribute to the group it actually guards.
+# Separate function-call parentheses from boolean grouping without changing arguments.
 defun() {
   local s="$1" prev=""
   while [[ "$s" != "$prev" ]]; do
@@ -57,6 +59,7 @@ defun() {
 # Repeatedly delete innermost parenthesised groups, leaving only the top-level conjuncts.
 # A term that survives this is AND-ed at the top level and can therefore veto the job on
 # its own, whatever else the gate says.
+# Remove nested boolean groups to expose conditions that gate every arm.
 strip_groups() {
   local s="$1" prev=""
   while [[ "$s" != "$prev" ]]; do
@@ -69,6 +72,7 @@ strip_groups() {
 # Split a parenthesised group into its top-level `||` arms, one per line. Balance-scanned
 # rather than split on `||`, because an arm may itself contain a parenthesised `||` (both
 # arms of this gate do).
+# Emit only top-level OR arms while preserving nested expressions.
 split_arms() {
   awk '
     {
@@ -185,6 +189,7 @@ else
   filter_body="$(grep -v '^[[:space:]]*#' <<<"$filters" || true)"
   # Take one filter's entries only — up to the next top-level filter key — so a match
   # under a different filter cannot false-pass.
+  # Read one complete named path-filter section from the extracted filter body.
   section() { awk -v key="$1" '$0 ~ "^" key ":" {f=1;next} /^[a-zA-Z_-]+:/{f=0} f' <<<"$filter_body"; }
   go_filter="$(section go)"
   vuln_filter="$(section govulncheck)"

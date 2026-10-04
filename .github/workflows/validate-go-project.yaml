@@ -477,10 +477,6 @@ jobs:
     # alone means a push touching no Go path (a README edit) skips the scan, so the branch
     # keeps reporting green while a newly-published advisory already applies to it.
     #
-    # Default-branch coverage is enabled for omitted reusable inputs after consumer
-    # rollout. Explicit false preserves the earlier pull-request coverage during the
-    # compatible transition; the remaining input retirement is tracked in #285.
-    #
     # The two arms, and why each is shaped this way:
     #
     #   * PULL-REQUEST ARM — Go-source or allowlist changes trigger the scan.

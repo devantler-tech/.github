@@ -46,6 +46,7 @@ GOOD_ALLOW_FILE="\${{ steps.govulncheck-allow.outputs.present == 'true' && forma
 ROOT_ONLY_ALLOW_FILE="\${{ steps.govulncheck-allow.outputs.present == 'true' && '.govulncheck-allow.txt' || '' }}"
 
 # emit <file> <defect-description> <go-filter> <vuln-filter> <outputs> <gate> [allow-file]
+# Generate one complete workflow fixture with the specified scan admission expression.
 emit() {
   local name="$1" defect="$2" go_filter="$3" vuln_filter="$4" outputs="$5" gate="$6"
   local allow_file="${7:-$GOOD_ALLOW_FILE}"
