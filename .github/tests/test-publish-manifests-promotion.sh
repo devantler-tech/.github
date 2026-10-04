@@ -34,7 +34,7 @@ STEP='📦 Push & sign manifests artifact' yq -r '.jobs[].steps[] | select(.name
 STEP="$step" yq -r '.jobs[].steps[] | select(.name == strenv(STEP)) | .if' "$workflow" >"$scratch/signed.if"
 STEP='📦 Push & sign manifests artifact' yq -r '.jobs[].steps[] | select(.name == strenv(STEP)) | .if' "$workflow" >"$scratch/legacy.if"
 # shellcheck disable=SC2016 # literal GitHub expressions, never shell expansion
-[[ "$(cat "$scratch/signed.if")" == '${{ inputs.enable-signed-promotion == true || inputs.enable-signed-promotion == '\''true'\'' }}' ]]
+[[ "$(cat "$scratch/signed.if")" == '${{ !inputs.enable-signed-recovery && (inputs.enable-signed-promotion == true || inputs.enable-signed-promotion == '\''true'\'') }}' ]]
 # shellcheck disable=SC2016 # literal GitHub expressions, never shell expansion
 [[ "$(cat "$scratch/legacy.if")" == '${{ !(inputs.enable-signed-promotion == true || inputs.enable-signed-promotion == '\''true'\'') }}' ]]
 digest='sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'

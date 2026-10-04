@@ -33,6 +33,31 @@ on:
         required: false
         default: false
         type: boolean
+      enable-signed-recovery:
+        description: "Recover only a missing manifests version from its original signed digest; latest is preserved. Requires signed promotion and caller pinning; default-off (#425)."
+        required: false
+        default: false
+        type: boolean
+      recovery-digest:
+        description: "Original signed manifests sha256 digest. Used only for explicit recovery."
+        required: false
+        default: ""
+        type: string
+      recovery-run-id:
+        description: "Original publication run ID recorded in the signature."
+        required: false
+        default: ""
+        type: string
+      recovery-run-attempt:
+        description: "Original publication run attempt recorded in the signature."
+        required: false
+        default: ""
+        type: string
+      recovery-workflow-sha:
+        description: "Original immutable publish-manifests workflow commit in this catalogue repository."
+        required: false
+        default: ""
+        type: string
 
 permissions: {}
 
@@ -56,6 +81,17 @@ jobs:
         uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
         with:
           egress-policy: audit
+
+      - name: 🔒 Admit explicit recovery
+        if: ${{ inputs.enable-signed-recovery }}
+        env:
+          ENABLE_SIGNED_PROMOTION: ${{ inputs.enable-signed-promotion }}
+          ENABLE_CALLER_PIN: ${{ inputs.enable-caller-pin }}
+        run: |
+          [[ "$ENABLE_SIGNED_PROMOTION" == true && "$ENABLE_CALLER_PIN" == true ]] || {
+            echo '::error::recovery requires signed promotion and caller pinning'
+            exit 1
+          }
 
       - name: 🔒 Require a semantic-version tag
         id: version
@@ -168,6 +204,7 @@ jobs:
         if: ${{ inputs.enable-signed-promotion == true || inputs.enable-signed-promotion == 'true' }}
         run: |
           cp .devantler-tech-publisher/.github/scripts/require-unpublished-version.sh "$RUNNER_TEMP/require-unpublished-version.sh"
+          cp .devantler-tech-publisher/.github/scripts/recover-manifests-version.sh "$RUNNER_TEMP/recover-manifests-version.sh"
           rm -rf -- .devantler-tech-publisher
 
       - name: 📦 Push & sign manifests artifact
@@ -212,7 +249,7 @@ jobs:
           cosign sign --yes "${ARTIFACT}@${DIGEST}"
 
       - name: 📦 Sign & promote manifests artifact
-        if: ${{ inputs.enable-signed-promotion == true || inputs.enable-signed-promotion == 'true' }}
+        if: ${{ !inputs.enable-signed-recovery && (inputs.enable-signed-promotion == true || inputs.enable-signed-promotion == 'true') }}
         env:
           REGISTRY: ${{ env.REGISTRY }}
           OCI_NAME: ${{ inputs.oci-name }}
@@ -274,3 +311,25 @@ jobs:
             *-*) ;; # A prerelease is selectable by version but never becomes latest.
             *) flux tag artifact "oci://${ARTIFACT}@${DIGEST}" --tag latest --creds "${ACTOR}:${GH_TOKEN}" ;;
           esac
+
+      - name: 🔏 Recover original manifests version
+        if: ${{ inputs.enable-signed-recovery }}
+        env:
+          REGISTRY: ${{ env.REGISTRY }}
+          OCI_NAME: ${{ inputs.oci-name }}
+          VERSION: ${{ steps.version.outputs.version }}
+          REF_NAME: ${{ github.ref_name }}
+          SHA: ${{ github.sha }}
+          SERVER_URL: ${{ github.server_url }}
+          REPOSITORY: ${{ github.repository }}
+          ACTOR: ${{ github.actor }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          JOB_WORKFLOW_REF: ${{ steps.caller.outputs.ref }}
+          WORKFLOW_REPOSITORY: ${{ job.workflow_repository }}
+          ENABLE_SIGNED_PROMOTION: ${{ inputs.enable-signed-promotion }}
+          ENABLE_CALLER_PIN: ${{ inputs.enable-caller-pin }}
+          RECOVERY_DIGEST: ${{ inputs.recovery-digest }}
+          RECOVERY_RUN_ID: ${{ inputs.recovery-run-id }}
+          RECOVERY_RUN_ATTEMPT: ${{ inputs.recovery-run-attempt }}
+          RECOVERY_WORKFLOW_SHA: ${{ inputs.recovery-workflow-sha }}
+        run: bash "$RUNNER_TEMP/recover-manifests-version.sh"

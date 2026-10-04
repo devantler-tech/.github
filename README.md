@@ -676,6 +676,13 @@ jobs:
 | `dry-run` | Input (boolean) | `false` | No | Skip publication and validate only the workflow interface |
 | `enable-caller-pin` | Input (boolean) | `true` | No | Require a 40-character commit-SHA caller before signing. The authenticated OIDC calling ref is the certificate identity. Explicit false remains supported during caller cleanup in #284 |
 | `enable-signed-promotion` | Input (boolean) | `false` | No | Stage, sign and verify the digest before publishing version and stable latest tags. Requires `enable-caller-pin`; rollout and retirement are tracked in #371 |
+| `enable-signed-recovery` | Input (boolean) | `false` | No | Request restoration of only the original signed version tag; requires signed promotion and caller pinning. Never moves `latest`; rollout is tracked in #425 |
+| `recovery-digest` | Input (string) | empty | No | Original signed `sha256` manifests digest; required for recovery |
+| `recovery-run-id` | Input (string) | empty | No | Original publication run ID; required for recovery |
+| `recovery-run-attempt` | Input (string) | empty | No | Original publication attempt; required for recovery |
+| `recovery-workflow-sha` | Input (string) | empty | No | Original publisher's full commit SHA in this catalogue repository; required for recovery |
+
+Explicit recovery runs on the original semantic-version tag and source revision. Enable `enable-signed-recovery`, `enable-signed-promotion` and `enable-caller-pin`, and supply the original digest, run ID, attempt and publisher SHA. The workflow verifies the original signature identity and signed repository, source, version and run claims before reading the registry. A matching version succeeds without writing; only an authenticated, unambiguous missing version is restored from that digest. Contradictory versions and failed or partial reads stop recovery. Recovery never rebuilds or re-signs an artifact and always preserves `latest`, including for stable versions and prereleases. Original publishers from another repository identity are not accepted; that consumer migration remains in #242. The shared publisher queue serializes cooperating callers within a repository. Registry V2 has no compare-and-set operation, so readback detects a conflicting external writer but cannot prevent its race.
 
 </details>
 

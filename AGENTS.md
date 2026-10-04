@@ -478,6 +478,8 @@ required; this fixture never proves live token generation or project association
 
 **Verified publication:** Opted-in publishers authenticate and establish normalized version absence before staging and again before promotion. Preserve structured missing-version evidence, fail-closed authentication/read errors, both application targets, immutable helper checkout and removal before the image build. Serialize opted-in publishers for the same target within a caller repository with a shared concurrency group, queue:max and no cancellation. Keep `.github/tests/test-unpublished-version.sh`, promotion controls and the native disposable-registry proof in required CI. Other writers can race the final check; registry tag writes are not atomic across repositories. #371 owns default-path and consumer rollout.
 
+**Explicit manifests recovery:** Default-off `enable-signed-recovery` requests only the original version alias, with signed promotion and caller pinning required before any legacy write. Verify the original catalogue identity and all original source/version/run claims, restore only authenticated missing versions, treat matching versions as no-ops, refuse contradictory or ambiguous reads, and always preserve `latest`. Keep recovery boundary, interruption/readback controls and native Flux/registry/cryptographic tests in required CI. The native key fixture proves signed claims and registry bytes, not production OIDC. Cross-repository publisher identity migration remains #242; complete recovery rollout remains #425.
+
 **Manifest naming:** Every `validate-naming` call validates the caller's versioned
 configuration. Keep the Linux/macOS clean fixtures, seeded naming violations and
 missing-configuration failures required in CI. Failed calls never report a
