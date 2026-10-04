@@ -8,7 +8,6 @@ import (
 	"net/http/httputil"
 	"net/url"
 	"os"
-	"strings"
 )
 
 func main() {
@@ -37,9 +36,13 @@ func main() {
 			http.NotFound(w, r)
 			return
 		}
-		if r.Method == http.MethodGet && strings.Contains(r.URL.Path, "/manifests/") &&
-			r.Header.Get("Authorization") != "Bearer synthetic-bearer" {
+		user, password, basic := r.BasicAuth()
+		validBasic := basic && user == "fixture" && password == "synthetic-token"
+		validBearer := r.Header.Get("Authorization") == "Bearer synthetic-bearer" &&
+			(r.Method == http.MethodGet || r.Method == http.MethodHead)
+		if !validBasic && !validBearer {
 			w.Header().Set("Content-Type", "application/json")
+			w.Header().Set("WWW-Authenticate", `Basic realm="native-fixture"`)
 			w.WriteHeader(http.StatusUnauthorized)
 			_, _ = w.Write([]byte(`{"errors":[{"code":"DENIED"}]}`))
 			return

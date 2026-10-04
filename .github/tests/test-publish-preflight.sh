@@ -165,6 +165,9 @@ lookup_expr() { # <expression> — the value GitHub would substitute for ${{ <ex
     "!(inputs.enable-signed-promotion == true || inputs.enable-signed-promotion == 'true')")
       [[ "$(lookup_expr inputs.enable-signed-promotion)" != true ]] && printf true || printf false
       ;;
+    "!inputs.enable-signed-recovery && (inputs.enable-signed-promotion == true || inputs.enable-signed-promotion == 'true')")
+      [[ "$(lookup_expr inputs.enable-signed-recovery)" != true && "$(lookup_expr inputs.enable-signed-promotion)" == true ]] && printf true || printf false
+      ;;
     "(inputs.enable-signed-promotion == true || inputs.enable-signed-promotion == 'true') && steps.staging.outputs.tag || steps.meta.outputs.tags")
       if [[ "$(lookup_expr inputs.enable-signed-promotion)" == true ]]; then
         lookup_expr steps.staging.outputs.tag
@@ -498,6 +501,20 @@ for workflow in "$app" "$manifests"; do
   done
 done
 echo 'ok   both publishers enforce omitted/true pin inputs before checkout and preserve explicit false'
+
+# Explicit recovery must never fall through to a legacy writer when either
+# admission prerequisite is disabled. Execute the shipped guard in job order.
+for prerequisites in 'enable-signed-promotion=false enable-caller-pin=true' 'enable-signed-promotion=true enable-caller-pin=false' 'enable-signed-promotion=false enable-caller-pin=false'; do
+  wd="$scratch/recovery-refused"
+  mkdir -p "$wd"
+  # shellcheck disable=SC2086 # fixed input pairs, not content from a repository
+  if run_job "$manifests" publish-manifests "$wd" tag v1.2.3 enable-signed-recovery=true $prerequisites; then
+    fail 'recovery bypassed signed-promotion/caller admission'
+  fi
+  nothing_pushed 'recovery without its prerequisites'
+  refused_with 'recovery without its prerequisites' 'recovery requires signed promotion and caller pinning'
+done
+echo 'ok   explicit recovery cannot fall through to legacy publication'
 
 # A repository name with uppercase letters: docker/metadata-action lowercases the image it pushes,
 # so the pinned reference and the manifests path must be lowercase too, or the push after the
