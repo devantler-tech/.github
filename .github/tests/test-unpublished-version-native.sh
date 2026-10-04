@@ -8,6 +8,11 @@ container="version-fixture-${GITHUB_RUN_ID:-local}-${GITHUB_RUN_ATTEMPT:-1}"
 proxy_pid=''
 cleanup() {
   code=$?
+  if ((code != 0)); then
+    for log in sign verify rejected; do
+      [[ ! -s "$work/$log.log" ]] || { echo "Native claim $log diagnostics:" >&2; tail -n 12 "$work/$log.log" >&2; }
+    done
+  fi
   [[ -z "$proxy_pid" ]] || kill "$proxy_pid" >/dev/null 2>&1 || true
   docker rm -f "$container" >/dev/null 2>&1 || true
   rm -rf "$work"
@@ -64,3 +69,60 @@ done
 VERSION=1.2.4 bash "$guard"
 VERSION=1.2.4-rc.1 bash "$guard"
 echo 'PASS: native new/partial/paired versions and normalized aliases; version/latest bytes retained'
+
+# Actual cryptographic verification of claims from the shipped production body.
+# The ephemeral local key isolates this payload test from OIDC availability;
+# production identity/issuer enforcement remains covered by the publisher steps.
+export COSIGN_PASSWORD=''
+cosign generate-key-pair --output-key-prefix "$work/claims" >/dev/null
+image_digest="$digest"
+put devantler-tech/app claims-staging
+printf '{"schemaVersion":2,"mediaType":"application/vnd.oci.image.index.v1+json","manifests":[],"annotations":{"fixture":"manifests"}}' >"$work/index.json"
+digest="sha256:$(sha256sum "$work/index.json" | cut -d ' ' -f1)"
+manifest_digest="$digest"
+put devantler-tech/app/manifests claims-staging
+export REPOSITORY=devantler-tech/native-fixture SHA=fedcba9876543210fedcba9876543210fedcba98
+export REF_NAME=v1.2.4+proof VERSION=1.2.4 RUN_ID=123 RUN_ATTEMPT=2
+for family in app manifests; do
+  export JOB_WORKFLOW_REF="devantler-tech/.github/.github/workflows/publish-$family.yaml@0123456789abcdef0123456789abcdef01234567"
+  workflow="$root/.github/workflows/publish-$family.yaml"
+  step='📦 Sign & promote manifests artifact'
+  [[ "$family" != app ]] || step='📦 Sign & promote image and manifests'
+  STEP="$step" yq -r '.jobs[].steps[] | select(.name == strenv(STEP)) | .run' "$workflow" >"$work/production.sh"
+  awk '/^annotations=\(/ {copy=1} copy {print} copy && /^\)/ {exit}' "$work/production.sh" >"$work/annotations.sh"
+  [[ -s "$work/annotations.sh" ]] || { echo 'FAIL: production has no signed publication claims'; exit 1; }
+  export DIGEST="$image_digest" ARTIFACT_DIGEST="$manifest_digest"
+  [[ "$family" != manifests ]] || DIGEST="$manifest_digest"
+  annotations=()
+  # shellcheck source=/dev/null # Extracted from our trusted production workflow.
+  source "$work/annotations.sh"
+  targets=("devantler-tech/app/manifests@$manifest_digest")
+  [[ "$family" != app ]] || targets=("devantler-tech/app@$image_digest" "devantler-tech/app/manifests@$manifest_digest")
+  for target in "${targets[@]}"; do
+    reference="127.0.0.1:5000/$target"
+    cosign sign --allow-http-registry --allow-insecure-registry --use-signing-config=false --tlog-upload=false --yes --key "$work/claims.key" "${annotations[@]}" "$reference" >"$work/sign.log" 2>&1
+    cosign verify --allow-http-registry --allow-insecure-registry --insecure-ignore-tlog --key "$work/claims.pub" "${annotations[@]}" "$reference" >"$work/verified.json" 2>"$work/verify.log"
+    jq -e --arg workflow "$JOB_WORKFLOW_REF" '
+      length > 0 and all(.[];
+        .optional["devantler.repository"] == "devantler-tech/native-fixture" and
+        .optional["devantler.source-sha"] == "fedcba9876543210fedcba9876543210fedcba98" and
+        .optional["devantler.source-ref"] == "v1.2.4+proof" and
+        .optional["devantler.version"] == "1.2.4" and
+        .optional["devantler.run-id"] == "123" and
+        .optional["devantler.run-attempt"] == "2" and
+        .optional["devantler.workflow-ref"] == $workflow)
+    ' "$work/verified.json" >/dev/null
+    [[ "$family" != app ]] || jq -e --arg image "$image_digest" --arg manifests "$manifest_digest" 'all(.[]; .optional["devantler.image-digest"] == $image and .optional["devantler.manifests-digest"] == $manifests)' "$work/verified.json" >/dev/null
+    for ((index=1; index<${#annotations[@]}; index+=2)); do
+      wrong=("${annotations[@]}")
+      key="${wrong[index]%%=*}"
+      wrong[index]="$key=wrong"
+      if cosign verify --allow-http-registry --allow-insecure-registry --insecure-ignore-tlog --key "$work/claims.pub" "${wrong[@]}" "$reference" >"$work/rejected.json" 2>"$work/rejected.log"; then
+        echo "FAIL: actual cosign accepted wrong signed $key" >&2
+        exit 1
+      fi
+      grep -qi 'annotation' "$work/rejected.log" || { echo 'FAIL: claim rejection was an operational error'; exit 1; }
+    done
+  done
+done
+echo 'PASS: actual cosign validates all publication claims and rejects every wrong source/run/version/pair claim'

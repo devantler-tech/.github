@@ -38,18 +38,7 @@ else
   [[ -e "$STATE/image-verified" && -e "$STATE/manifest-verified" ]] || exit 24
 fi
 FLUX
-cat >"$work/bin/cosign" <<'COSIGN'
-#!/usr/bin/env bash
-set -euo pipefail
-printf 'cosign %s\n' "$*" >>"$TRACE"
-kind=image
-[[ "$*" != *'/manifests@'* ]] || kind=manifest
-[[ "$FAULT" != "$kind-$1" ]] || exit 23
-if [[ "$1" == verify ]]; then
-  [[ "$*" == *'--certificate-identity https://github.com/devantler-tech/.github/.github/workflows/publish-app.yaml@0123456789abcdef0123456789abcdef01234567'* ]] || exit 25
-  touch "$STATE/$kind-verified"
-fi
-COSIGN
+cp "$root/.github/tests/fixtures/publication-claims-cosign.sh" "$work/bin/cosign"
 cat >"$work/bin/docker" <<'DOCKER'
 #!/usr/bin/env bash
 set -euo pipefail
@@ -70,7 +59,7 @@ run_step() {
   env PATH="$work/bin:$PATH" TRACE="$work/trace" STATE="$work/state" FAULT="$1" \
     IMAGE_DIGEST="$image_digest" MANIFEST_DIGEST="$manifest_digest" DIGEST="${5:-$image_digest}" \
     REGISTRY=ghcr.io IMAGE_NAME=devantler-tech/app DEPLOY_PATH=./deploy \
-    VERSION="$2" REF_NAME="v$2" SHA=0123456789abcdef0123456789abcdef01234567 \
+    VERSION="$2" REF_NAME="v$2" SHA=fedcba9876543210fedcba9876543210fedcba98 \
     SERVER_URL=https://github.com REPOSITORY=devantler-tech/app ACTOR=fixture GH_TOKEN=fixture \
     JOB_WORKFLOW_REF="$3" RUN_ID=123 RUN_ATTEMPT=2 RUNNER_TEMP="$work" \
     GITHUB_OUTPUT="$work/output" bash --noprofile --norc -eo pipefail "$4"
@@ -95,6 +84,15 @@ for fault in manifest-push image-sign manifest-sign image-verify manifest-verify
   if grep -q 'latest' "$work/trace"; then fail "advanced latest after failed $fault"; fi
   if grep -qE '(--tag 1.2.3|--tag ghcr.io/devantler-tech/app:1.2.3)' "$work/trace"; then fail "exposed version after failed staging or verification: $fault"; fi
 done
+for kind in image manifest; do
+  for key in repository source-sha source-ref version run-id run-attempt workflow-ref image-digest manifests-digest; do
+    rm -f "$work/state/"* "$work/trace"
+    if run_step "claim-$kind-devantler.$key" 1.2.3 "$identity" "$work/promote.sh" >"$work/log" 2>&1; then fail "accepted conflicting $kind $key"; fi
+    grep -q 'claims: signed payload mismatch' "$work/log" || fail 'claim rejection failed for an unrelated reason'
+    if grep -qE '(latest|--tag 1.2.3|--tag ghcr.io/devantler-tech/app:1.2.3)' "$work/trace"; then fail 'conflicting claim exposed a release tag'; fi
+  done
+done
+echo 'app-promotion: every source/run claim and both paired digests block promotion on either signature'
 for version in 1.2.3 1.2.3-rc.1; do
   rm -f "$work/state/"* "$work/trace"
   run_step none "$version" "$identity" "$work/promote.sh" >"$work/log" 2>&1 || fail "healthy $version failed: $(cat "$work/log")"
