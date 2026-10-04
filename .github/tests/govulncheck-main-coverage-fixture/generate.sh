@@ -255,7 +255,7 @@ event_constraint="github.event_name == 'push' && needs.changes.outputs.go != ''"
 emit default-arm-event-gated.yaml \
   "an additional event gate skips default-branch dispatches and schedules." \
   "$GOOD_GO_FILTER" "$GOOD_VULN_FILTER" "$GOOD_OUTPUTS" \
-  "${GOOD_GATE/"$ran_proof"/"$event_constraint"}"
+  "${GOOD_GATE/$ran_proof/$event_constraint}"
 
 # Remove only retired input fixtures; all behavior controls remain generated.
 rm -f -- flag-not-referenced.yaml flag-and-ed-at-top-level.yaml flag-gates-wrong-arm.yaml flag-defaults-false.yaml direct-input-default-missing.yaml allowlist-trigger-not-flag-gated.yaml unflagged-arm-not-pr-gated.yaml

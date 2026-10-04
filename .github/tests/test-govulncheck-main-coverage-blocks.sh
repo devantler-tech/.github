@@ -61,10 +61,9 @@ check() {
 # completion comparison could otherwise make its generic rejection false-pass.
 good_gate="$(yq -r '.jobs.govulncheck.if' "$fixtures/good.yaml")"
 event_gate="$(yq -r '.jobs.govulncheck.if' "$fixtures/default-arm-event-gated.yaml")"
-ran_proof="needs.changes.outputs.go != ''"
-event_constraint="github.event_name == 'push' && needs.changes.outputs.go != ''"
-expected_event_gate="${good_gate/"$ran_proof"/"$event_constraint"}"
-if [[ "$event_gate" != "$expected_event_gate" ]]; then
+event_prefix="github.event_name == 'push' && "
+restored_good_gate="${event_gate/$event_prefix/}"
+if [[ "$event_gate" == "$restored_good_gate" || "$restored_good_gate" != "$good_gate" ]]; then
   echo "::error::default-arm-event-gated fixture does not isolate only the additional event condition"
   status=1
 fi
