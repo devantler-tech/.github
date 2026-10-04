@@ -83,8 +83,8 @@ manifest_digest="$digest"
 put devantler-tech/app/manifests claims-staging
 export REPOSITORY=devantler-tech/native-fixture SHA=fedcba9876543210fedcba9876543210fedcba98
 export REF_NAME=v1.2.4+proof VERSION=1.2.4 RUN_ID=123 RUN_ATTEMPT=2
-export JOB_WORKFLOW_REF=devantler-tech/.github/.github/workflows/publish-app.yaml@0123456789abcdef0123456789abcdef01234567
 for family in app manifests; do
+  export JOB_WORKFLOW_REF="devantler-tech/.github/.github/workflows/publish-$family.yaml@0123456789abcdef0123456789abcdef01234567"
   workflow="$root/.github/workflows/publish-$family.yaml"
   step='📦 Sign & promote manifests artifact'
   [[ "$family" != app ]] || step='📦 Sign & promote image and manifests'
@@ -102,7 +102,16 @@ for family in app manifests; do
     reference="127.0.0.1:5000/$target"
     cosign sign --allow-http-registry --allow-insecure-registry --use-signing-config=false --tlog-upload=false --yes --key "$work/claims.key" "${annotations[@]}" "$reference" >"$work/sign.log" 2>&1
     cosign verify --allow-http-registry --allow-insecure-registry --insecure-ignore-tlog --key "$work/claims.pub" "${annotations[@]}" "$reference" >"$work/verified.json" 2>"$work/verify.log"
-    jq -e '. | length > 0 and all(.[]; .optional["devantler.source-sha"] == "fedcba9876543210fedcba9876543210fedcba98" and .optional["devantler.run-id"] == "123" and .optional["devantler.version"] == "1.2.4")' "$work/verified.json" >/dev/null
+    jq -e --arg workflow "$JOB_WORKFLOW_REF" '
+      length > 0 and all(.[];
+        .optional["devantler.repository"] == "devantler-tech/native-fixture" and
+        .optional["devantler.source-sha"] == "fedcba9876543210fedcba9876543210fedcba98" and
+        .optional["devantler.source-ref"] == "v1.2.4+proof" and
+        .optional["devantler.version"] == "1.2.4" and
+        .optional["devantler.run-id"] == "123" and
+        .optional["devantler.run-attempt"] == "2" and
+        .optional["devantler.workflow-ref"] == $workflow)
+    ' "$work/verified.json" >/dev/null
     [[ "$family" != app ]] || jq -e --arg image "$image_digest" --arg manifests "$manifest_digest" 'all(.[]; .optional["devantler.image-digest"] == $image and .optional["devantler.manifests-digest"] == $manifests)' "$work/verified.json" >/dev/null
     for ((index=1; index<${#annotations[@]}; index+=2)); do
       wrong=("${annotations[@]}")
