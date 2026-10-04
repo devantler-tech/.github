@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Admit only the reviewed main workflow; scheduled rollout starts disabled.
+# Admit routine audits only from the reviewed main workflow.
 set -euo pipefail
 finished=false
 on_exit() {
@@ -21,19 +21,6 @@ unknown() {
   "${GITHUB_WORKFLOW_REF:-}" == devantler-tech/.github/.github/workflows/governance-audits.yaml@refs/heads/main &&
   "${GITHUB_WORKFLOW_SHA:-}" =~ ^[0-9a-f]{40}$ && -n "${GITHUB_OUTPUT:-}" ]] || unknown
 case "${GITHUB_EVENT_NAME:-}" in schedule | workflow_dispatch) ;; *) unknown ;; esac
-policy="$(cd "$(dirname "$0")/.." && pwd)/.github/governance-audits.json"
-if (($# > 0)); then
-  [[ $# == 2 && "$1" == --policy ]] || unknown
-  policy="$2"
-fi
-jq -es 'length == 1 and (.[0] | type == "object" and keys == ["scheduled"] and
-  (.scheduled | type == "boolean"))' "$policy" >/dev/null 2>&1 || unknown
-enabled=false
-if [[ "$GITHUB_EVENT_NAME" == schedule ]]; then
-  [[ "${REQUESTED:-}" == '' ]] || unknown
-  enabled="$(jq -r .scheduled "$policy")"
-else
-  case "${REQUESTED:-}" in true) enabled=true ;; false | '') ;; *) unknown ;; esac
-fi
-printf 'enabled=%s\n' "$enabled" >>"$GITHUB_OUTPUT"
+(($# == 0)) || unknown
+printf 'enabled=true\n' >>"$GITHUB_OUTPUT"
 finished=true

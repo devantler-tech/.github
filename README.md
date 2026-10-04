@@ -1162,8 +1162,7 @@ roles when returned by the API. Unknown custom rights, malformed metadata and
 conflicting built-in rights remain UNKNOWN. Both forms use the same canonical
 permission join for policy evaluation and repeated-read stability checks.
 
-The workflow is default off and runs only from reviewed `main`. Enable its
-`run-audit` dispatch input for an evaluation. Its App token requests repository
+The input-free manual workflow runs only from reviewed `main`. Its App token requests repository
 Metadata and Administration read permissions; missing grants fail token creation.
 A short-lived App JWT separately reads the authenticated installation's identity,
 all-repository selection and suspension state, binds it to that token's installation
@@ -1173,8 +1172,8 @@ GitHub's [installation read](https://docs.github.com/en/rest/apps/apps#get-an-in
 provides this proof; its [repository-list response](https://docs.github.com/en/rest/apps/installations#list-repositories-accessible-to-the-app-installation)
 provides the independent pagination totals. Installation mode requires this reviewed
 main workflow context and its unrestricted token mint.
-A skipped run is not evidence of compliance. Live grant verification, activation
-and flag retirement remain tracked in #395, as part of maintenance retirement #84.
+A skipped run is not evidence of compliance. The routine combined workflow also runs
+daily and reports only complete outcomes. Legacy maintenance retirement remains #84.
 
 An operator with organization-admin visibility can evaluate the shared checker
 with `bash scripts/check-repository-admin-teams.sh --organization-admin`.

@@ -1,13 +1,7 @@
 name: 🔎 Repository admin-team audit
 
 on:
-  workflow_dispatch:
-    inputs:
-      run-audit:
-        description: "Opt in to the read-only live audit; activation and flag retirement are tracked in #395"
-        type: boolean
-        required: false
-        default: false
+  workflow_dispatch: {}
 
 permissions: {}
 
@@ -21,7 +15,6 @@ jobs:
       github.event_name == 'workflow_dispatch'
       && github.repository == 'devantler-tech/.github'
       && github.ref == 'refs/heads/main'
-      && (inputs.run-audit == true || inputs.run-audit == 'true')
     runs-on: ubuntu-latest
     timeout-minutes: 12
     permissions:

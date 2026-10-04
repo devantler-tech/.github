@@ -3,13 +3,7 @@ name: 🔎 Routine governance audits
 on:
   schedule:
     - cron: "17 6 * * *"
-  workflow_dispatch:
-    inputs:
-      run-audit:
-        description: "Run the read-only audit; scheduled rollout and flag retirement are tracked in issue 395"
-        type: boolean
-        required: false
-        default: false
+  workflow_dispatch: {}
 
 permissions: {}
 
@@ -41,8 +35,6 @@ jobs:
           persist-credentials: false
       - name: Decide audit admission
         id: admission
-        env:
-          REQUESTED: ${{ inputs.run-audit }}
         run: bash scripts/governance-audit-admission.sh
 
   audit:

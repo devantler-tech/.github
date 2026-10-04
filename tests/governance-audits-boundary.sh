@@ -14,8 +14,7 @@ verify() {
     def normalized: gsub("\\s+";" ") | sub(" $";"");
     (.on | keys == ["schedule","workflow_dispatch"]) and
     .on.schedule == [{cron:"17 6 * * *"}] and
-    .on.workflow_dispatch.inputs["run-audit"].type == "boolean" and
-    .on.workflow_dispatch.inputs["run-audit"].default == false and
+    .on.workflow_dispatch == {} and
     .permissions == {} and .env == null and .defaults == null and
     (.jobs | keys == ["admit","audit","report"]) and
     .jobs.admit.permissions == {contents:"read"} and
@@ -25,7 +24,7 @@ verify() {
     .jobs.admit.steps[1].with["persist-credentials"] == false and
     .jobs.admit.steps[2].run == "bash scripts/governance-audit-admission.sh" and
     .jobs.admit.outputs.enabled == "${{ steps.admission.outputs.enabled }}" and
-    .jobs.admit.steps[2].env == {REQUESTED:"${{ inputs.run-audit }}"} and
+    .jobs.admit.steps[2].env == null and
     .jobs.audit.needs == ["admit"] and
     (.jobs.audit.if | normalized) == "needs.admit.outputs.enabled == '\''true'\''" and
     .jobs.audit.permissions == {contents:"read"} and
@@ -73,7 +72,7 @@ while IFS=$'\t' read -r name mutation; do
   echo "PASS: rejects $name"
 done <<'CASES'
 PR admission	.on.pull_request={}
-default manual activation	.on.workflow_dispatch.inputs["run-audit"].default=true
+retired rollout input	.on.workflow_dispatch.inputs["run-audit"]={type:"boolean",default:false}
 untrusted admission	.jobs.admit.if="true"
 mutable admission source	.jobs.admit.steps[1].with.ref="main"
 skipped admission	.jobs.admit.steps[2].if="false"
