@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -447,5 +448,25 @@ func TestStaleSearchCannotOverwriteVerifiedRename(t *testing.T) {
 	request(t, g, "POST", "/repos/offline/fixture/issues", `{"title":"New","body":"source","labels":[],"assignees":[]}`)
 	if stale.Code != 502 || writes != 1 || g.titles[7] != "New" || g.Verdict() == nil {
 		t.Fatalf("stale search erased verified rename: status=%d writes=%d title=%s verdict=%v", stale.Code, writes, g.titles[7], g.Verdict())
+	}
+}
+
+func TestIntegerRequiresRepresentableIdentity(t *testing.T) {
+	max, overflow := "9223372036854775807", "9223372036854775808"
+	if strconv.IntSize == 32 {
+		max, overflow = "2147483647", "2147483648"
+	}
+	if n, ok := integer(json.Number(max)); !ok || strconv.Itoa(n) != max {
+		t.Fatalf("largest identity lost: %d, %v", n, ok)
+	}
+	for _, input := range []string{overflow, "-" + overflow + "0", "1.5", "1e3"} {
+		if _, ok := integer(json.Number(input)); ok {
+			t.Fatalf("accepted unrepresentable identity %s", input)
+		}
+	}
+	if strconv.IntSize == 64 {
+		if n, ok := integer(json.Number("5956146819")); !ok || strconv.Itoa(n) != "5956146819" {
+			t.Fatal("large native comment identity was rejected")
+		}
 	}
 }

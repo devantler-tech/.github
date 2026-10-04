@@ -630,8 +630,8 @@ func integer(x any) (int, bool) {
 	if !ok {
 		return 0, false
 	}
-	i, e := strconv.ParseInt(string(n), 10, 64)
-	return int(i), e == nil
+	i, e := strconv.Atoi(string(n))
+	return i, e == nil
 }
 func decode(b []byte) (any, error) {
 	// Reject duplicate keys before normal unmarshalling, including nested documents.
