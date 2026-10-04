@@ -232,3 +232,35 @@ func TestLocalDirectorySymlinkRejectsCrossCheckoutMetadata(t *testing.T) {
 		t.Fatal("local parent symlink admitted unchecked checkout source")
 	}
 }
+
+func TestLexicalDotDotDoesNotHideNativeSymlinkTraversal(t *testing.T) {
+	root := t.TempDir()
+	safe := []byte("runs: {using: composite, steps: [{run: echo safe, shell: bash}]}\n")
+	unsafe := []byte("runs: {using: composite, steps: [{uses: devantler-tech/.github/actions/fixture@main}]}\n")
+	for _, d := range []string{"actions/fixture", "imported/actions/fixture", "imported/link-target", ".github/workflows"} {
+		if e := os.MkdirAll(filepath.Join(root, d), 0700); e != nil {
+			t.Fatal(e)
+		}
+	}
+	if e := os.WriteFile(filepath.Join(root, "actions/fixture/action.yml"), safe, 0600); e != nil {
+		t.Fatal(e)
+	}
+	if e := os.WriteFile(filepath.Join(root, "imported/actions/fixture/action.yml"), unsafe, 0600); e != nil {
+		t.Fatal(e)
+	}
+	if e := os.Symlink("imported/link-target", filepath.Join(root, "link")); e != nil {
+		t.Fatal(e)
+	}
+	rawNative := root + "/link/../actions/fixture/action.yml"
+	actual, e := os.ReadFile(rawNative)
+	if e != nil || string(actual) != string(unsafe) {
+		t.Fatalf("native raw traversal control %q %v", actual, e)
+	}
+	ci := "on: {pull_request: {}}\npermissions: {}\njobs:\n  read:\n    permissions: {contents: read}\n    steps:\n      - uses: actions/checkout@1111111111111111111111111111111111111111\n      - uses: ./link/../actions/fixture\n"
+	if e := os.WriteFile(filepath.Join(root, ".github/workflows/ci.yaml"), []byte(ci), 0600); e != nil {
+		t.Fatal(e)
+	}
+	if e := Audit(root); e == nil {
+		t.Fatal("false-clean raw-path identity: lexical clean hides symlink component and audits different native bytes")
+	}
+}

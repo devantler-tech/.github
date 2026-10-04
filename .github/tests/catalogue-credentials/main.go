@@ -139,12 +139,17 @@ func decode(b []byte) (object, error) {
 // safePath normalizes local catalogue references without permitting a checkout escape.
 func safePath(path string) (string, error) {
 	path = strings.TrimPrefix(path, "./")
-	path = filepath.ToSlash(filepath.Clean(path))
 	for _, r := range path {
 		if r < 0x20 || r > 0x7e {
 			return "", fmt.Errorf("UNKNOWN unmeasured source path spelling")
 		}
 	}
+	for _, part := range strings.Split(filepath.ToSlash(path), "/") {
+		if part == "." || part == ".." {
+			return "", fmt.Errorf("UNKNOWN noncanonical source path components")
+		}
+	}
+	path = filepath.ToSlash(filepath.Clean(path))
 	if path == "." || strings.HasPrefix(path, "../") || filepath.IsAbs(path) || strings.ContainsAny(path, "\\?#%:\r\n") {
 		return "", fmt.Errorf("UNKNOWN source path outside catalogue")
 	}
