@@ -38,18 +38,34 @@ if [ "$#" -eq 0 ]; then
   exit 2
 fi
 
-umask 077
-attempt_stdout=$(mktemp "${TMPDIR:-/tmp}/retry-stdout.XXXXXX") || exit 2
+attempt_stdout=$(umask 077; mktemp "${TMPDIR:-/tmp}/retry-stdout.XXXXXX") || exit 2
 trap 'rm -f "$attempt_stdout"' EXIT
-trap 'exit 129' HUP
-trap 'exit 130' INT
-trap 'exit 143' TERM
+command_pid=''
+interrupted() {
+  trap '' HUP INT TERM
+  if [ -n "$command_pid" ]; then
+    # Only this helper's unreaped child is targeted. Stop it before removing
+    # its partial result; an interrupted attempt can never become a success.
+    kill -TERM "$command_pid" 2>/dev/null || true
+    kill -KILL "$command_pid" 2>/dev/null || true
+    wait "$command_pid" 2>/dev/null || true
+  fi
+  exit "$1"
+}
+trap 'interrupted 129' HUP
+trap 'interrupted 130' INT
+trap 'interrupted 143' TERM
 
 attempt=1
 delay="$base_delay"
 while true; do
-  "$@" >"$attempt_stdout"
+  # An asynchronous wait lets Bash run signal traps while the command is
+  # still alive. Explicit stdin preserves the wrapped command's input.
+  "$@" <&0 >"$attempt_stdout" &
+  command_pid=$!
+  wait "$command_pid"
   status=$?
+  command_pid=''
   if [ "$status" -eq 0 ]; then
     cat "$attempt_stdout"
     exit $?
@@ -59,7 +75,12 @@ while true; do
     exit "$status"
   fi
   echo "::warning::'$*' failed (exit ${status}); attempt ${attempt}/${max_attempts}, retrying in ${delay}s" >&2
-  sleep "$delay"
+  sleep "$delay" &
+  command_pid=$!
+  wait "$command_pid"
+  sleep_status=$?
+  command_pid=''
+  [ "$sleep_status" -eq 0 ] || exit "$sleep_status"
   attempt=$((attempt + 1))
   delay=$((delay * 2))
   if [ "$delay" -gt "$max_delay" ]; then
