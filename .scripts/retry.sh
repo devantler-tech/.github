@@ -21,6 +21,9 @@
 #   RETRY_BASE_DELAY     seconds to wait before the first retry  (default 5)
 #   RETRY_MAX_DELAY      cap on the backoff delay in seconds     (default 60)
 #
+# Stdout contains only the successful attempt, with its bytes preserved. Each
+# attempt is buffered so a partial failed response cannot contaminate a later
+# successful JSON or state read. Command stderr remains visible immediately.
 # Exit status: 0 on the first success; otherwise the failing command's last exit
 # status after RETRY_MAX_ATTEMPTS attempts, so a genuine failure still reds the
 # check. (No `set -e`: command failure is handled explicitly, not fatally.)
@@ -35,11 +38,22 @@ if [ "$#" -eq 0 ]; then
   exit 2
 fi
 
+umask 077
+attempt_stdout=$(mktemp "${TMPDIR:-/tmp}/retry-stdout.XXXXXX") || exit 2
+trap 'rm -f "$attempt_stdout"' EXIT
+trap 'exit 129' HUP
+trap 'exit 130' INT
+trap 'exit 143' TERM
+
 attempt=1
 delay="$base_delay"
 while true; do
-  "$@" && exit 0
+  "$@" >"$attempt_stdout"
   status=$?
+  if [ "$status" -eq 0 ]; then
+    cat "$attempt_stdout"
+    exit $?
+  fi
   if [ "$attempt" -ge "$max_attempts" ]; then
     echo "::error::'$*' failed after ${max_attempts} attempt(s) (last exit ${status})" >&2
     exit "$status"
