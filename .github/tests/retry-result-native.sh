@@ -122,4 +122,42 @@ if kill -0 "$nested_pid" 2>/dev/null; then
 fi
 nested_pid=''
 
+# A successful command can finish while its caller has stopped consuming
+# stdout. Cancellation must also stop the real, blocked result-forwarder.
+mkdir "$work/forwarding" "$work/forwarding-bin"
+native_cat="$(command -v cat)"
+cat >"$work/forwarding-bin/cat" <<'FORWARDER'
+#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\n' "$$" >"$CASE_DIR/forwarder-pid"
+printf '%s\n' "$PPID" >"$CASE_DIR/helper-pid"
+exec "$NATIVE_CAT" "$@"
+FORWARDER
+chmod +x "$work/forwarding-bin/cat"
+mkfifo "$work/forwarding/result"
+# Hold both ends open without reading so opening the pipe cannot be the
+# failure; a multi-megabyte successful result blocks inside the real cat.
+exec 8<>"$work/forwarding/result"
+CASE_DIR="$work/forwarding" NATIVE_CAT="$native_cat" PATH="$work/forwarding-bin:$PATH" TMPDIR="$work/temp" \
+  "$timeout_cmd" 4 bash "$root/.scripts/retry.sh" \
+    dd if=/dev/zero bs=1048576 count=4 \
+  >"$work/forwarding/result" 2>"$work/forwarding/stderr" &
+supervisor=$!
+for ((i=0; i<100; i++)); do
+  [[ ! -s "$work/forwarding/helper-pid" ]] || break
+  sleep 0.01
+done
+[[ -s "$work/forwarding/helper-pid" ]] || { echo 'FAIL: result forwarder did not start' >&2; exit 1; }
+nested_pid="$(cat "$work/forwarding/forwarder-pid")"
+kill -TERM "$(cat "$work/forwarding/helper-pid")"
+status=0
+wait "$supervisor" || status=$?
+exec 8>&-
+[[ "$status" == 143 && -z "$(ls -A "$work/temp")" ]] || { echo "FAIL: blocked result forwarding cancellation status $status" >&2; exit 1; }
+if kill -0 "$nested_pid" 2>/dev/null; then
+  state="$(ps -o stat= -p "$nested_pid" 2>/dev/null || true)"
+  [[ "$state" == Z* ]] || { echo 'FAIL: cancelled result forwarder remained running' >&2; exit 1; }
+fi
+nested_pid=''
+
 echo 'PASS: retry output preserves binary bytes, last status, stderr and buffer cleanup'

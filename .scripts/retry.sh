@@ -44,6 +44,8 @@ command_pid=''
 launching=false
 pending_interrupt=''
 launch_owned() {
+  local capture="$1"
+  shift
   local restore_monitor=false
   [[ "$-" == *m* ]] || restore_monitor=true
   launching=true
@@ -51,7 +53,11 @@ launch_owned() {
   # Linux. Nested installers inherit that group; no process-name search or
   # signal to the caller's group is needed when cancellation arrives.
   set -m
-  "$@" <&0 >"$attempt_stdout" &
+  if [[ "$capture" == true ]]; then
+    "$@" <&0 >"$attempt_stdout" &
+  else
+    "$@" <&0 &
+  fi
   command_pid=$!
   [[ "$restore_monitor" == false ]] || set +m
   launching=false
@@ -83,20 +89,25 @@ delay="$base_delay"
 while true; do
   # An asynchronous wait lets Bash run signal traps while the command is
   # still alive. Explicit stdin preserves the wrapped command's input.
-  launch_owned "$@"
+  launch_owned true "$@"
   wait "$command_pid"
   status=$?
   command_pid=''
   if [ "$status" -eq 0 ]; then
-    cat "$attempt_stdout"
-    exit $?
+    # The caller can stop reading a successful result. Keep its forwarder
+    # owned and interruptible just like the producer and backoff process.
+    launch_owned false cat "$attempt_stdout"
+    wait "$command_pid"
+    status=$?
+    command_pid=''
+    exit "$status"
   fi
   if [ "$attempt" -ge "$max_attempts" ]; then
     echo "::error::'$*' failed after ${max_attempts} attempt(s) (last exit ${status})" >&2
     exit "$status"
   fi
   echo "::warning::'$*' failed (exit ${status}); attempt ${attempt}/${max_attempts}, retrying in ${delay}s" >&2
-  launch_owned sleep "$delay"
+  launch_owned true sleep "$delay"
   wait "$command_pid"
   sleep_status=$?
   command_pid=''
