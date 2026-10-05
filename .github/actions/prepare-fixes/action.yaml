@@ -54,7 +54,7 @@ runs:
         if [ "$PREPARE_MODE" = ordinary ] && git diff --no-ext-diff --no-textconv --quiet HEAD; then
           echo 'changed=false' >> "$GITHUB_OUTPUT"
         else
-          git diff --no-ext-diff --no-textconv --src-prefix=a/ --dst-prefix=b/ --binary --full-index HEAD > "${RUNNER_TEMP}/${FIXES_ARTIFACT}.patch"
+          git diff --no-color --no-ext-diff --no-textconv --src-prefix=a/ --dst-prefix=b/ --binary --full-index HEAD > "${RUNNER_TEMP}/${FIXES_ARTIFACT}.patch"
           if [ -s "${RUNNER_TEMP}/${FIXES_ARTIFACT}.patch" ]; then
             echo 'changed=true' >> "$GITHUB_OUTPUT"
           else

@@ -132,7 +132,7 @@ jobs:
           set -euo pipefail
           echo "artifact-name=${FIXES_ARTIFACT}" >> "$GITHUB_OUTPUT"
           git add --intent-to-add .
-          git diff --no-ext-diff --no-textconv --src-prefix=a/ --dst-prefix=b/ --binary --full-index HEAD > "${RUNNER_TEMP}/${FIXES_ARTIFACT}.patch"
+          git diff --no-color --no-ext-diff --no-textconv --src-prefix=a/ --dst-prefix=b/ --binary --full-index HEAD > "${RUNNER_TEMP}/${FIXES_ARTIFACT}.patch"
           if [ -s "${RUNNER_TEMP}/${FIXES_ARTIFACT}.patch" ]; then
             echo "changed=true" >> "$GITHUB_OUTPUT"
           else

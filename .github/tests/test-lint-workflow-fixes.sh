@@ -28,7 +28,7 @@ for workflow in lint:lint validate-go-project:tidy validate-go-project:golangci-
     jq -er '.run' <<< "$prepare" >"$work/export.sh"
   fi
   for enabled in false true; do
-  for scenario in workflow clean ordinary untracked new-workflow deleted-workflow mixed rename-in rename-out similar-directory nested-workflow binary-only binary-mixed mode-only mode-mixed diff-noprefix diff-prefix diff-textconv diff-external; do
+  for scenario in workflow clean ordinary untracked new-workflow deleted-workflow mixed rename-in rename-out similar-directory nested-workflow binary-only binary-mixed mode-only mode-mixed diff-noprefix diff-prefix diff-textconv diff-external diff-color; do
     fixture="$work/$workflow-$enabled-$scenario"
     mkdir -p "$fixture/.github/workflows" "$fixture/.github/workflows-extra" "$fixture/nested/.github/workflows" "$fixture/nested/module" "$fixture/../artifacts-$workflow-$enabled-$scenario"
     git -C "$fixture" init -q
@@ -96,6 +96,10 @@ for workflow in lint:lint validate-go-project:tidy validate-go-project:golangci-
             printf '#!/bin/sh\nexit 0\n' >"$fixture/.git/display"
             chmod +x "$fixture/.git/display"
             git -C "$fixture" config diff.external "$fixture/.git/display"
+            ;;
+          diff-color)
+            git -C "$fixture" config color.ui always
+            git -C "$fixture" config color.diff always
             ;;
         esac
         ;;
@@ -199,7 +203,7 @@ rc=0
 (
   cd "$fixture"
   RUNNER_TEMP="$work/hosted-temp" PATH="$work/hosted-temp/git-wrapper:$PATH" \
-    git diff --no-ext-diff --no-textconv --src-prefix=a/ --dst-prefix=b/ --binary --full-index HEAD
+    git diff --no-color --no-ext-diff --no-textconv --src-prefix=a/ --dst-prefix=b/ --binary --full-index HEAD
 ) >"$work/hosted-patch"
 [[ -s "$work/hosted-patch" ]] || fail 'hosted wrapper refused raw patch export'
 
