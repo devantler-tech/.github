@@ -114,10 +114,18 @@ while IFS= read -r number; do
   jq -n --arg body "$note" '{body:$body}' |
     gh api -X POST "repos/${GITHUB_REPOSITORY}/issues/${number}/comments" --input - >/dev/null ||
     fail "could not explain the closure on pull request #$number"
-  closed="$(jq -n '{state:"closed"}' |
-    gh api -X PATCH "repos/${GITHUB_REPOSITORY}/pulls/${number}" --input -)" ||
-    fail "could not close pull request #$number"
-  [[ "$(jq -r '.state // ""' <<<"$closed")" == "closed" ]] ||
+  # GitHub closes a pull request by itself once its branch has no commits left, and refuses to
+  # close it again (422, measured on wedding-app#378). Close it only while it is still open.
+  pull="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${number}")" ||
+    fail "could not read pull request #$number after moving its branch"
+  state="$(jq -r '.state // ""' <<<"$pull")"
+  if [[ "$state" == "open" ]]; then
+    pull="$(jq -n '{state:"closed"}' |
+      gh api -X PATCH "repos/${GITHUB_REPOSITORY}/pulls/${number}" --input -)" ||
+      fail "could not close pull request #$number"
+    state="$(jq -r '.state // ""' <<<"$pull")"
+  fi
+  [[ "$state" == "closed" ]] ||
     fail "pull request #$number did not report closed"
   echo "::notice::Template sync would change no files; closed pull request #$number and kept $branch as its marker." >&2
 done <<<"$numbers"

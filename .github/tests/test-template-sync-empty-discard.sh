@@ -99,9 +99,22 @@ case "$method $endpoint" in
     [[ "$FAKE_GH_MODE" != "comment-fails" ]] || exit 1
     echo '{}'
     ;;
+  "GET repos/example/consumer/pulls/41")
+    # GitHub closes the pull request by itself once its branch is back on the base (measured
+    # on wedding-app#378); the other modes model a pull request that is still open.
+    [[ "$FAKE_GH_MODE" != "read-fails" ]] || exit 1
+    case "$FAKE_GH_MODE" in
+      still-open | close-fails | stays-open) echo '{"state":"open"}' ;;
+      *) echo '{"state":"closed"}' ;;
+    esac
+    ;;
   "PATCH repos/example/consumer/pulls/41")
     jq -e '. == {state:"closed"}' >/dev/null || exit 95
-    [[ "$FAKE_GH_MODE" != "close-fails" ]] || exit 1
+    # Closing a closed pull request is a 422.
+    case "$FAKE_GH_MODE" in
+      still-open | stays-open) ;;
+      *) exit 1 ;;
+    esac
     if [[ "$FAKE_GH_MODE" == "stays-open" ]]; then
       echo '{"state":"open"}'
       exit 0
@@ -216,8 +229,7 @@ prepare() {
 }
 
 discard_writes="PATCH-REF base
-POST repos/example/consumer/issues/41/comments
-PATCH repos/example/consumer/pulls/41"
+POST repos/example/consumer/issues/41/comments"
 
 export FAKE_GH_MODE=success
 
@@ -228,7 +240,7 @@ run_signer "$fixture" "$base"
 [[ "$(cat "$fixture/output")" == "discarded" ]] ||
   fail "downgrade — expected 'discarded', got '$(cat "$fixture/output")'"
 [[ "$(writes "$fixture")" == "$discard_writes" ]] ||
-  fail "downgrade — expected branch back on base, comment, close and nothing signed, got: $(writes "$fixture")"
+  fail "downgrade — expected branch back on base, a comment and nothing signed, got: $(writes "$fixture")"
 grep -q '^::warning file=\.github/workflows/release\.yaml' "$fixture/error" ||
   fail "downgrade — the omitted pin was not reported"
 
@@ -333,10 +345,22 @@ proposal_gone() {
   fi
 }
 
-# 12–14. The comment fails, the close request fails, or GitHub still reports the pull request open.
+# 12–15. The comment fails, the state read fails, the close request fails, or GitHub still
+# reports the pull request open.
 proposal_gone "comment fails" comment-fails
+proposal_gone "read fails" read-fails
 proposal_gone "close fails" close-fails
 proposal_gone "stays open" stays-open
+
+# A pull request GitHub left open is closed explicitly.
+prepare still-open downgrade
+FAKE_GH_MODE=still-open
+run_signer "$fixture" "$base"
+FAKE_GH_MODE=success
+[[ "$rc" -eq 0 && "$(cat "$fixture/output")" == "discarded" ]] ||
+  fail "still open — expected 'discarded': $(cat "$fixture/error")"
+[[ "$(writes "$fixture")" == "$discard_writes
+PATCH repos/example/consumer/pulls/41" ]] || fail "still open — the pull request was not closed: $(writes "$fixture")"
 
 # 15. A branch update GitHub answers with another commit stops before the pull request is touched.
 prepare ref-elsewhere downgrade
