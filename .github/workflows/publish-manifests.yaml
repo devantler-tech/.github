@@ -29,7 +29,7 @@ on:
         default: true
         type: boolean
       enable-signed-promotion:
-        description: "Stage, sign and verify before exposing release tags. Requires enable-caller-pin; default-off during rollout (#371)."
+        description: "Verify signature identity and publication claims before exposing release tags. Requires enable-caller-pin; default-off during rollout (#371)."
         required: false
         default: false
         type: boolean
@@ -67,7 +67,7 @@ jobs:
     if: ${{ !inputs.dry-run }}
     runs-on: ubuntu-latest
     concurrency:
-      group: ${{ (inputs.enable-signed-promotion == true || inputs.enable-signed-promotion == 'true') && format('publish-verified-{0}', inputs.oci-name || github.repository) || format('publish-legacy-manifests-{0}-{1}', github.run_id, github.run_attempt) }}
+      group: ${{ format('publish-verified-{0}', inputs.oci-name || github.repository) }}
       queue: max
       cancel-in-progress: false
     permissions:
@@ -188,12 +188,10 @@ jobs:
         uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
 
       - name: 🔒 Reserve publisher helper checkout
-        if: ${{ inputs.enable-signed-promotion == true || inputs.enable-signed-promotion == 'true' }}
         run: |
           { test ! -e .devantler-tech-publisher && test ! -L .devantler-tech-publisher; } || { echo '::error::reserved publisher helper path already exists'; exit 1; }
 
       - name: 📑 Checkout immutable publisher helpers
-        if: ${{ inputs.enable-signed-promotion == true || inputs.enable-signed-promotion == 'true' }}
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: ${{ job.workflow_repository }}
@@ -202,11 +200,23 @@ jobs:
           persist-credentials: false
 
       - name: 🔒 Prepare immutable publication guard
-        if: ${{ inputs.enable-signed-promotion == true || inputs.enable-signed-promotion == 'true' }}
         run: |
           cp .devantler-tech-publisher/.github/scripts/require-unpublished-version.sh "$RUNNER_TEMP/require-unpublished-version.sh"
           cp .devantler-tech-publisher/.github/scripts/recover-manifests-version.sh "$RUNNER_TEMP/recover-manifests-version.sh"
           rm -rf -- .devantler-tech-publisher
+
+      - name: 🔒 Refuse an occupied release version
+        if: ${{ !inputs.enable-signed-recovery }}
+        env:
+          OCI_NAME: ${{ inputs.oci-name }}
+          VERSION: ${{ steps.version.outputs.version }}
+          REPOSITORY: ${{ github.repository }}
+          ACTOR: ${{ github.actor }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          name="$(printf '%s' "${OCI_NAME:-$REPOSITORY}" | tr '[:upper:]' '[:lower:]')"
+          OCI_REPOSITORIES="$name/manifests" bash "$RUNNER_TEMP/require-unpublished-version.sh"
 
       - name: 📦 Push & sign manifests artifact
         if: ${{ !(inputs.enable-signed-promotion == true || inputs.enable-signed-promotion == 'true') }}
@@ -232,7 +242,11 @@ jobs:
           # reference must be lowercase.
           NAME="$(printf '%s' "${OCI_NAME:-$REPOSITORY}" | tr '[:upper:]' '[:lower:]')"
           ARTIFACT="${REGISTRY}/${NAME}/manifests"
-          PUSH_TAG="$VERSION"
+          if ! [[ "${RUN_ID:-}" =~ ^[0-9]+$ && "${RUN_ATTEMPT:-}" =~ ^[0-9]+$ ]]; then
+            echo '::error::publication requires a numeric workflow run ID and attempt' >&2
+            exit 1
+          fi
+          PUSH_TAG="default-staging-${RUN_ID}-${RUN_ATTEMPT}"
           # Sign the digest this push produced (keyless via OIDC), never the tag re-resolved
           # later: two releases of one version (a re-run, or tags differing only in build
           # metadata) would otherwise let this run sign bytes it did not publish.
@@ -246,8 +260,13 @@ jobs:
           if ! printf '%s' "$DIGEST" | grep -Eq '^sha256:[0-9a-f]{64}$'; then
             echo "::error::flux push did not report the pushed artifact digest"; exit 1
           fi
-          flux tag artifact "oci://${ARTIFACT}:${VERSION}" --tag latest --creds "${ACTOR}:${GH_TOKEN}"
           cosign sign --yes "${ARTIFACT}@${DIGEST}"
+          OCI_REPOSITORIES="$NAME/manifests" bash "$RUNNER_TEMP/require-unpublished-version.sh"
+          flux tag artifact "oci://${ARTIFACT}@${DIGEST}" --tag "$VERSION" --creds "${ACTOR}:${GH_TOKEN}"
+          case "$VERSION" in
+            *-*) ;; # Prereleases keep the stable latest pointer.
+            *) flux tag artifact "oci://${ARTIFACT}@${DIGEST}" --tag latest --creds "${ACTOR}:${GH_TOKEN}" ;;
+          esac
 
       - name: 📦 Sign & promote manifests artifact
         if: ${{ !inputs.enable-signed-recovery && (inputs.enable-signed-promotion == true || inputs.enable-signed-promotion == 'true') }}

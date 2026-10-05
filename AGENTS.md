@@ -389,7 +389,10 @@ that the job holds `contents: read` and the action receives only a fixture token
 `.github/tests/dependency-review-offline/scenarios/` is one matrix leg and states the action
 inputs, the responses, and what the action must produce: the complete conversation, the
 outcome, the summary, and every error and warning it raises, so a failed read or write is
-never silent. `dependency-review-offline.sh` starts the stand-in and checks the record. To
+never silent. Scenario admission rejects duplicate keys and constraints HTTP cannot serve;
+malformed request queries never receive a reviewed response. Recording failures stop the server.
+`dependency-review-offline.sh` requires a clean completion receipt bound to the start identity
+and complete scenario/record bytes, and validates integral route indices and declared statuses. To
 add a scenario, add its file and its matrix entry. `test-dependency-review-comments.sh`
 rejects a matrix that differs from the scenario files, a restored write permission or
 credential, and a scenario set that no longer covers every comment mode and result;
@@ -482,7 +485,7 @@ fixture retains the production defaults and native conditional routing, with onl
 offline dependencies. Keep both its compatibility caller and missing-token control
 required; this fixture never proves live token generation or project association.
 
-**Verified publication:** Opted-in publishers authenticate and establish normalized version absence before staging and again before promotion. Preserve structured missing-version evidence, fail-closed authentication/read errors, both application targets, immutable helper checkout and removal before the image build. Serialize opted-in publishers for the same target within a caller repository with a shared concurrency group, queue:max and no cancellation. Keep `.github/tests/test-unpublished-version.sh`, promotion controls and the native disposable-registry proof in required CI. Other writers can race the final check; registry tag writes are not atomic across repositories. #371 owns default-path and consumer rollout.
+**Verified publication:** Every normal publisher authenticates and establishes normalized version absence before its first write and again before promotion. Preserve structured missing-version evidence, fail-closed authentication/read errors, both application targets, immutable helper checkout and removal before the image build. Default publication stages and signs produced digests before exposing version and source-SHA image tags or moving stable `latest`, preserves `latest` for prereleases, and never exposes release tags through builder metadata. Opt-in verified publication additionally checks exact signature identities and signed claims. Serialize default, opted-in and recovery publishers for the same target within a caller repository with a shared concurrency group, queue:max and no cancellation. Keep `.github/tests/test-unpublished-version.sh`, promotion controls and the native disposable-registry proof in required CI. Other writers can race the final check; registry tag writes are not atomic across repositories. #371 owns consumer rollout of verified publication.
 
 **Explicit manifests recovery:** Default-off `enable-signed-recovery` requests only the original version alias, with signed promotion and caller pinning required before any legacy write. Verify the original catalogue identity and all original source/version/run claims, restore only authenticated missing versions, treat matching versions as no-ops, refuse contradictory or ambiguous reads, and always preserve `latest`. Keep recovery boundary, interruption/readback controls and native Flux/registry/cryptographic tests in required CI. The native key fixture proves signed claims and registry bytes, not production OIDC. Cross-repository publisher identity migration remains #242; complete recovery rollout remains #425.
 
