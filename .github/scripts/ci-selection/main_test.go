@@ -144,6 +144,18 @@ func TestJobInventoryFailsClosed(t *testing.T) {
 	if _, err := validateInventory(i, w); err == nil {
 		t.Fatal("accepted a conditional job bypass")
 	}
+	w.Jobs["test-one"] = job{If: selectionGuard("test-one"), Needs: []any{"select-ci-tests"}}
+	for _, optional := range [][]string{{"missing-job"}, {"lint-ci-coverage-parity"}, {"test-one", "test-one"}} {
+		i.CatalogueOptional = optional
+		if _, err := validateInventory(i, w); err == nil {
+			t.Fatalf("accepted invalid optional smoke inventory %v", optional)
+		}
+	}
+	i.CatalogueOptional = []string{"test-one"}
+	i.Preserved = map[string]job{"test-one": w.Jobs["test-one"]}
+	if _, err := validateInventory(i, w); err == nil {
+		t.Fatal("accepted omission of an event-specific preserved job")
+	}
 }
 
 func TestEntrypointBindsGitEvidenceAndSelectedOutput(t *testing.T) {
@@ -190,8 +202,83 @@ func TestEntrypointBindsGitEvidenceAndSelectedOutput(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Setenv("EVENT_NAME", tc.event)
 			t.Setenv("RUN_CATALOGUE", tc.eligible)
+			t.Setenv("CATALOGUE_SCOPE", "true")
 			t.Setenv("BASE_SHA", base)
 			t.Setenv("HEAD_SHA", tc.head)
+			t.Setenv("GITHUB_OUTPUT", output)
+			if err := os.WriteFile(output, nil, 0600); err != nil {
+				t.Fatal(err)
+			}
+			if err := run(); (err != nil) != tc.fails {
+				t.Fatalf("entrypoint error %v; expected failure %v", err, tc.fails)
+			}
+			data, err := os.ReadFile(output)
+			if err != nil || string(data) != tc.want {
+				t.Fatalf("output %q, error %v; want %q", data, err, tc.want)
+			}
+		})
+	}
+}
+
+// A trusted deployment-only decision may omit only the optional smoke jobs,
+// never the independent tests. Missing evidence must not become permission.
+func TestDeploymentCatalogueScopeComposesWithSelection(t *testing.T) {
+	dir, _, git := gitFixture(t)
+	path := filepath.Join(dir, "deploy/example.yaml")
+	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte("base\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	git("add", "deploy/example.yaml")
+	git("commit", "-qm", "deployment base")
+	base := git("rev-parse", "HEAD")
+	if err := os.WriteFile(path, []byte("changed\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	git("add", "deploy/example.yaml")
+	git("commit", "-qm", "deployment change")
+	head := git("rev-parse", "HEAD")
+	i := fixtureInventory()
+	w := workflow{Jobs: map[string]job{"select-ci-tests": {}, "ci-required-checks": {}, "lint-ci-coverage-parity": {}}}
+	for id := range i.Jobs {
+		w.Jobs[id] = job{If: selectionGuard(id), Needs: []any{"select-ci-tests"}}
+	}
+	writeJSON := func(name string, value any) string {
+		t.Helper()
+		data, err := json.Marshal(value)
+		if err != nil {
+			t.Fatal(err)
+		}
+		file := filepath.Join(dir, name)
+		if err := os.WriteFile(file, data, 0600); err != nil {
+			t.Fatal(err)
+		}
+		return file
+	}
+	inventoryJSON := map[string]any{"always": i.Always, "jobs": i.Jobs, "catalogue_optional": []string{"test-one", "test-two"}}
+	args := os.Args
+	os.Args = []string{"ci-selection", dir, writeJSON("inventory.json", inventoryJSON), writeJSON("workflow.json", w)}
+	t.Cleanup(func() { os.Args = args })
+	output := filepath.Join(dir, "output")
+	for _, tc := range []struct {
+		name, event, eligible, scope, want string
+		fails                              bool
+	}{
+		{"deployment smoke omission only", "pull_request", "true", "false", "selected=[\"test-one-wrapper\",\"test-workflow\"]\n", false},
+		{"full scope", "pull_request", "true", "true", "selected=[\"test-one\",\"test-one-wrapper\",\"test-two\",\"test-workflow\"]\n", false},
+		{"missing scope", "pull_request", "true", "", "", true},
+		{"malformed scope", "pull_request", "true", "unknown", "", true},
+		{"push cannot omit smoke", "push", "true", "false", "", true},
+		{"excluded event with skipped scope", "merge_group", "false", "", "selected=[]\n", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("EVENT_NAME", tc.event)
+			t.Setenv("RUN_CATALOGUE", tc.eligible)
+			t.Setenv("CATALOGUE_SCOPE", tc.scope)
+			t.Setenv("BASE_SHA", base)
+			t.Setenv("HEAD_SHA", head)
 			t.Setenv("GITHUB_OUTPUT", output)
 			if err := os.WriteFile(output, nil, 0600); err != nil {
 				t.Fatal(err)

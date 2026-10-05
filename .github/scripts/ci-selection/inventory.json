@@ -1,5 +1,22 @@
 {
-  "always": ["lint-shell-pipelines", "lint-readme-parity", "lint-ci-coverage-parity", "validate-manifests"],
+  "always": ["catalogue-scope", "lint-shell-pipelines", "lint-readme-parity", "lint-ci-coverage-parity", "validate-manifests"],
+  "catalogue_optional": [
+    "test-agent-skills-retry-env", "test-aggregate-job-checks-empty", "test-aggregate-job-checks-failure",
+    "test-aggregate-job-checks-success", "test-approve-pr", "test-cleanup-ghcr-packages", "test-diagnose-flux",
+    "test-enable-auto-merge-queue", "test-free-disk-space", "test-free-disk-space-keep", "test-gh-skill-install-script",
+    "test-govulncheck-allowlist-honored", "test-govulncheck-strict-blocks", "test-govulncheck-timeout-retry-live",
+    "test-guard-installed-skill-edits", "test-lint-blocks", "test-login-to-ghcr", "test-login-to-ghcr-empty-token",
+    "test-prepare-fixes", "test-retry-script", "test-run-dotnet-tests", "test-run-dotnet-tests-blocks",
+    "test-run-dotnet-tests-coverage-inline-lockstep", "test-run-dotnet-tests-gate-lockstep",
+    "test-run-dotnet-tests-missing-working-directory", "test-run-dotnet-tests-preserves-source-mapping",
+    "test-setup-agent-skills-inline", "test-setup-agent-skills-malformed-line", "test-setup-agent-skills-missing-input",
+    "test-setup-agent-skills-multi-agent", "test-setup-agent-skills-pinned", "test-setup-go-toolchain",
+    "test-setup-go-toolchain-invalid-version", "test-setup-go-toolchain-private-modules", "test-update-agent-skills-dry-run",
+    "test-update-agent-skills-missing-dir", "test-update-agent-skills-noop", "test-upload-coverage",
+    "test-validate-go-project-concurrency-key", "test-validate-go-test-blocks", "test-validate-naming",
+    "test-validate-naming-rejects", "test-validate-retired-repo-links", "test-validate-retired-repo-links-disabled",
+    "test-validate-shell-pipelines", "test-validate-shell-pipelines-scope", "test-zizmor-action-lockstep", "test-zizmor-blocks"
+  ],
   "preserved": {
     "test-delete-workflow-runs-all": {"if": "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"},
     "test-delete-workflow-runs-specific": {"if": "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"},
@@ -18,7 +35,7 @@
     "test-todo-scanner": {"if": "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"},
     "test-create-issues-from-todos": {"if": "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"},
     "test-upsert-issue": {"if": "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"},
-    "test-dependency-review": {"if": "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && startsWith(github.event_name, 'pull_request') }}"},
+    "test-dependency-review": {"if": "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && startsWith(github.event_name, 'pull_request') && needs.catalogue-scope.outputs.catalogue == 'true' }}", "needs": "catalogue-scope"},
     "test-enable-auto-merge-on-pr": {"if": "github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && startsWith(github.event_name, 'pull_request') && (\n  github.event.pull_request.user.login == 'dependabot[bot]' ||\n  github.event.pull_request.user.login == 'renovate[bot]' ||\n  github.event.pull_request.user.login == 'botantler[bot]' ||\n  github.event.pull_request.user.login == 'devantler'\n)"},
     "test-zizmor": {"if": "${{ github.event_name == 'push' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"},
     "test-run-dotnet-tests-workflow-authenticated": {"if": "${{\n  github.event_name != 'merge_group' &&\n  !startsWith(github.event.head_commit.message, 'chore(main): release ') &&\n  github.event_name == 'pull_request' &&\n  github.event.pull_request.head.repo.full_name == github.repository &&\n  github.event.pull_request.user.login == 'devantler'\n}}"},

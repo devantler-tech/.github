@@ -16,8 +16,52 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  catalogue-scope:
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      catalogue: ${{ steps.scope.outputs.catalogue }}
+    steps:
+      - name: 🔒 Harden Runner
+        uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
+        with:
+          egress-policy: audit
+      - name: Checkout trusted base scope reader
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.base.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Classify exact PR scope
+        id: scope
+        shell: bash
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          # Only this repository's PRs may use the optimization. The first
+          # rollout, main pushes and uncertain reads run the whole catalogue.
+          if [[ "${GITHUB_EVENT_NAME}" != pull_request || "${GITHUB_REPOSITORY}" != devantler-tech/.github ]] ||
+            [[ ! "${PR_NUMBER}" =~ ^[1-9][0-9]*$ || ! "${BASE_SHA}" =~ ^[0-9a-f]{40}$ || ! "${HEAD_SHA}" =~ ^[0-9a-f]{40}$ ]] ||
+            [[ ! -f .github/scripts/classify-ci-catalogue.sh ]]; then
+            printf 'catalogue=true\n' >>"${GITHUB_OUTPUT}"
+            exit 0
+          fi
+          if ! git fetch --no-tags origin "+refs/pull/${PR_NUMBER}/head:refs/remotes/origin/ci-scope-head" ||
+            [[ "$(git rev-parse refs/remotes/origin/ci-scope-head)" != "${HEAD_SHA}" ]]; then
+            printf 'catalogue=true\n' >>"${GITHUB_OUTPUT}"
+            exit 0
+          fi
+          bash .github/scripts/classify-ci-catalogue.sh "${BASE_SHA}" "${HEAD_SHA}" >>"${GITHUB_OUTPUT}"
+
   select-ci-tests:
     name: Select affected catalogue tests
+    needs: catalogue-scope
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
     runs-on: ubuntu-latest
     permissions:
@@ -42,6 +86,7 @@ jobs:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           RUN_CATALOGUE: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+          CATALOGUE_SCOPE: ${{ needs.catalogue-scope.outputs.catalogue }}
           GOWORK: "off"
           GOFLAGS: ""
           GOTOOLCHAIN: local
@@ -584,7 +629,8 @@ jobs:
     # merge_group there is no PR to review, so the test is PR-gated (skipped
     # otherwise, which the inline required-check collector tolerates — like
     # test-approve-pr).
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && startsWith(github.event_name, 'pull_request') }}"
+    needs: catalogue-scope
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && startsWith(github.event_name, 'pull_request') && needs.catalogue-scope.outputs.catalogue == 'true' }}"
     permissions:
       contents: read
     steps:
@@ -3263,6 +3309,10 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: bash .github/tests/test-catalogue-credentials.sh
+
+      - name: 🧪 Check deployment scope and full catalogue fallback
+        shell: bash
+        run: bash .github/tests/test-ci-catalogue-scope.sh
 
       - name: 🔐 Reject catalogue credential boundary regressions
         shell: bash
@@ -5971,6 +6021,7 @@ jobs:
     name: CI - Required Checks
     if: ${{ always() }}
     needs:
+      - catalogue-scope
       - select-ci-tests
       - test-validate-naming
       - test-validate-retired-repo-links
@@ -6105,6 +6156,7 @@ jobs:
           SELECTED_JOBS: ${{ needs.select-ci-tests.outputs.selected }}
           NEEDS_JSON: ${{ toJSON(needs) }}
           JOB_RESULTS: >-
+            ${{ needs.catalogue-scope.result }}
             ${{ needs.select-ci-tests.result }}
             ${{ needs.test-validate-naming.result }}
             ${{ needs.test-validate-retired-repo-links.result }}

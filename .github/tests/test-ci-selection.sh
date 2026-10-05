@@ -9,7 +9,7 @@ yq -o=json . "$ci" > "$work/workflow.json"
 jq -e '
   .jobs["select-ci-tests"] as $s |
   ($s.if == "${{ github.event_name != '\''merge_group'\'' && !startsWith(github.event.head_commit.message, '\''chore(main): release '\'') }}") and
-  ($s | has("needs") | not) and
+  ($s.needs == "catalogue-scope") and
   ($s | has("continue-on-error") | not) and
   ($s.permissions == {"contents":"read"}) and
   ($s.outputs.selected == "${{ steps.select.outputs.selected }}") and
@@ -17,12 +17,13 @@ jq -e '
   ([$s.steps[] | select(.id == "select") | .env.GOWORK] == ["off"]) and
   ([$s.steps[] | select(.id == "select") | .env.GOFLAGS] == [""]) and
   ([$s.steps[] | select(.id == "select") | .env.GOTOOLCHAIN] == ["local"]) and
+  ([$s.steps[] | select(.id == "select") | .env.CATALOGUE_SCOPE] == ["${{ needs.catalogue-scope.outputs.catalogue }}"]) and
   (.jobs["ci-required-checks"].needs | index("select-ci-tests") != null)
 ' "$work/workflow.json" > /dev/null
 go -C "$root/.github/scripts/ci-selection" test -race -count=3 ./...
 go -C "$root/.github/scripts/ci-selection" vet ./...
 touch "$work/output"
-EVENT_NAME=push RUN_CATALOGUE=true GITHUB_OUTPUT="$work/output" \
+EVENT_NAME=push RUN_CATALOGUE=true CATALOGUE_SCOPE=true GITHUB_OUTPUT="$work/output" \
   go -C "$root/.github/scripts/ci-selection" run . "$root" "$root/.github/scripts/ci-selection/inventory.json" "$work/workflow.json"
 selected="$(sed -n 's/^selected=//p' "$work/output")"
 [[ "$(jq 'length' <<< "$selected")" == 89 ]]

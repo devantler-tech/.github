@@ -17,9 +17,10 @@ import (
 const scheduling = "github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ')"
 
 type inventory struct {
-	Always    []string            `json:"always"`
-	Jobs      map[string][]string `json:"jobs"`
-	Preserved map[string]job      `json:"preserved"`
+	Always            []string            `json:"always"`
+	Jobs              map[string][]string `json:"jobs"`
+	Preserved         map[string]job      `json:"preserved"`
+	CatalogueOptional []string            `json:"catalogue_optional"`
 }
 type job struct {
 	If    string `json:"if"`
@@ -76,6 +77,16 @@ func validateInventory(i inventory, w workflow) ([]string, error) {
 		if _, ok := i.Jobs[id]; !ok {
 			return nil, fmt.Errorf("unknown preserved job %s", id)
 		}
+	}
+	optional := map[string]bool{}
+	for _, id := range i.CatalogueOptional {
+		if optional[id] || !seen[id] || i.Jobs[id] == nil {
+			return nil, fmt.Errorf("missing or duplicate optional smoke job %s", id)
+		}
+		if _, preserved := i.Preserved[id]; preserved {
+			return nil, fmt.Errorf("optional smoke job %s has preserved scheduling", id)
+		}
+		optional[id] = true
 	}
 	if len(seen) != len(w.Jobs) {
 		return nil, fmt.Errorf("CI job inventory is incomplete")
@@ -211,10 +222,19 @@ func run() error {
 	if eligible != "true" && eligible != "false" {
 		return fmt.Errorf("unknown catalogue scheduling eligibility")
 	}
+	scope := os.Getenv("CATALOGUE_SCOPE")
+	if eligible == "true" && (scope != "true" && scope != "false" || scope == "false" && event != "pull_request") {
+		return fmt.Errorf("unknown or inapplicable trusted catalogue scope")
+	}
 	selected := selectJobs(i, event, paths)
 	chosen := map[string]bool{}
 	for _, id := range selected {
 		chosen[id] = true
+	}
+	if eligible == "true" && scope == "false" {
+		for _, id := range i.CatalogueOptional {
+			delete(chosen, id)
+		}
 	}
 	result := []string{}
 	if eligible == "true" {
