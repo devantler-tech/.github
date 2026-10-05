@@ -5799,6 +5799,9 @@ jobs:
       - name: 🧪 Test independent Monorepo CI aggregate ruleset
         run: bash tests/ci-aggregate-ruleset.sh
 
+      - name: 🧪 Test Go template validation ruleset
+        run: bash tests/go-template-validation-ruleset.sh
+
       - name: 🧪 Test trusted deploy/ guards ruleset
         run: bash tests/deploy-guards-ruleset.sh
 

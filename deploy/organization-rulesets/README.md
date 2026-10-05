@@ -43,6 +43,7 @@ verb — e.g. `require-pull-request.yaml`). Repo-scoped rulesets live next door 
 | `require-world-at-ruin-trusted-regressions.yaml` | **Require workflow - World at Ruin trusted regressions** (net-new) | Managed (Create) — target only World at Ruin and require the canonical catalogue's trusted regression workflow |
 | `require-monorepo-ci-aggregate-contract.yaml` | **Require workflow - Monorepo CI aggregate contract** (net-new) | Managed (Create) — target only monorepo and require the aggregate-execution control from its reviewed `main` |
 | `require-dotgithub-deploy-guards.yaml` | **Require workflow - .github deploy guards** (net-new) | Managed (Create) — target only this repository and run the `deploy/` release-contract and deletion validators from its reviewed `main` |
+| `require-go-template-validation.yaml` | **Require workflow - Go template validation** (net-new) | Managed (Create) — target only go-template and require the canonical Go validation workflow from this repository's reviewed `main`, restoring the gate the property-conditioned UI ruleset stopped applying there |
 | (in `../repository-rulesets/`) `require-merge-queue-on-platform.yaml` | `platform` "Require merge queue" | Observe + Update (managed import, full ruleset backfilled) |
 
 The 10 imported org rulesets: Block force pushes · Require a pull request before
