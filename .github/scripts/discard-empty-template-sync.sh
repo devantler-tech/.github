@@ -1,33 +1,36 @@
 #!/usr/bin/env bash
 
-# Discard a template-sync pull request that changes nothing (#467).
+# Discard a template-sync pull request that would change nothing (#467).
 #
-# Every consumer squash-merges its sync pull request, so the template commit never enters the
-# consumer's history and the sync action cannot tell that it was already applied. Its next run
-# pulls the same template commit again, ends with the base tree, and still commits, pushes and
-# opens a pull request with no changed files (wedding-app#377, ascoachingogvaner#280).
+# The sync action pushes its commit and opens the pull request before the signing helper runs.
+# When the template lags this repository on a catalogue pin, the signing helper puts this
+# repository's newer line back, and the result can equal the base: the pull request then has no
+# changed files (wedding-app#377, ascoachingogvaner#280). The signing helper calls this instead of
+# signing such a commit.
 #
-# This helper runs right after the sync action. When the generated commit's tree equals the base
-# tree, it closes the pull request the run opened and deletes the generated branch. It touches
-# only the branch this run generated, at the commit this run pushed.
+# It closes the pull request this run opened and moves the generated branch back onto the base
+# commit. The branch is kept on purpose: the sync action skips a template commit whose branch
+# already exists, so the same empty pull request is not reopened on every scheduled run. A new
+# template commit gets a new branch name and syncs normally.
 #
-# stdout is one word the workflow reads: `none` (no sync commit), `changed` (a real sync, left
-# alone) or `discarded` (the empty pull request and its branch are gone).
+# It touches only the branch this run generated, at the commit this run pushed. stdout is the one
+# word `discarded`.
 
 set -euo pipefail
 
 fail() {
-  echo "template-sync empty check: $*" >&2
+  echo "template-sync empty discard: $*" >&2
   exit 1
 }
 
 usage() {
-  echo "usage: $0 --base-sha <sha> --branch-prefix <prefix>" >&2
+  echo "usage: $0 --base-sha <sha> --branch-prefix <prefix> --tree <tree-sha>" >&2
   exit 2
 }
 
 base_sha=""
 branch_prefix=""
+tree_sha=""
 while (($#)); do
   case "$1" in
     --base-sha)
@@ -40,6 +43,11 @@ while (($#)); do
       branch_prefix="$2"
       shift 2
       ;;
+    --tree)
+      [[ $# -ge 2 ]] || usage
+      tree_sha="$2"
+      shift 2
+      ;;
     *)
       usage
       ;;
@@ -47,27 +55,17 @@ while (($#)); do
 done
 
 [[ "$base_sha" =~ ^[0-9a-f]{40}$ ]] || fail "base sha is not a full commit oid"
+[[ "$tree_sha" =~ ^[0-9a-f]{40}$ ]] || fail "tree sha is not a full tree oid"
 [[ "$branch_prefix" =~ ^[A-Za-z0-9][A-Za-z0-9._/-]*$ ]] || fail "branch prefix is unsafe"
 [[ "${GITHUB_REPOSITORY:-}" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] || fail "GITHUB_REPOSITORY is unsafe"
 command -v gh >/dev/null || fail "gh is unavailable"
 command -v jq >/dev/null || fail "jq is unavailable"
 
-current_sha="$(git rev-parse HEAD)" || fail "could not read the caller checkout head"
-if [[ "$current_sha" == "$base_sha" ]]; then
-  echo "No template-sync commit was created; nothing to discard." >&2
-  echo none
-  exit 0
-fi
-
+# Everything named below must be what this run generated, and the proposal must really be empty.
 base_tree="$(git rev-parse "${base_sha}^{tree}")" || fail "could not read the base tree"
-current_tree="$(git rev-parse 'HEAD^{tree}')" || fail "could not read the sync commit tree"
-if [[ "$current_tree" != "$base_tree" ]]; then
-  echo "The sync commit changes files; the pull request is kept." >&2
-  echo changed
-  exit 0
-fi
-
-# From here on the run deletes things, so everything it names must be what this run generated.
+[[ "$tree_sha" == "$base_tree" ]] || fail "the proposed tree differs from the base; refusing to discard a real sync"
+current_sha="$(git rev-parse HEAD)" || fail "could not read the caller checkout head"
+[[ "$current_sha" != "$base_sha" ]] || fail "no sync commit was created; nothing to discard"
 branch="$(git branch --show-current)" || fail "could not read the generated branch"
 [[ "$branch" == "${branch_prefix}_"* ]] ||
   fail "refusing to discard unexpected branch '$branch' (expected '${branch_prefix}_*')"
@@ -100,7 +98,7 @@ numbers="$(jq -er --arg sha "$current_sha" --arg branch "$branch" '
   numbers=""
 }
 
-note="This template sync changes no files: the template commit it proposes is already applied here, so the pull request was closed and its branch deleted automatically."
+note="This template sync would change no files: what the template proposes is already here, or is older than what this repository uses. The pull request was closed automatically. Its branch is kept so the same template commit is not proposed again."
 while IFS= read -r number; do
   [[ -n "$number" ]] || continue
   [[ "$number" =~ ^[0-9]+$ ]] || fail "pull request number '$number' is not numeric"
@@ -115,7 +113,11 @@ while IFS= read -r number; do
   echo "Closed empty template-sync pull request #$number." >&2
 done <<<"$numbers"
 
-gh api -X DELETE "repos/${GITHUB_REPOSITORY}/git/refs/heads/${branch}" >/dev/null ||
-  fail "could not delete the generated branch $branch"
-echo "Deleted empty template-sync branch $branch." >&2
+# Keep the branch as the marker, but without the unsigned sync commit on it.
+moved="$(jq -n --arg sha "$base_sha" '{sha:$sha,force:true}' |
+  gh api -X PATCH "repos/${GITHUB_REPOSITORY}/git/refs/heads/${branch}" --input -)" ||
+  fail "could not move the generated branch $branch back onto the base"
+[[ "$(jq -r '.object.sha // ""' <<<"$moved")" == "$base_sha" ]] ||
+  fail "the generated branch $branch did not report the base commit"
+echo "Moved $branch back onto the base; it stays as the marker for this template commit." >&2
 echo discarded

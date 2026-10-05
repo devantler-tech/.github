@@ -3196,7 +3196,7 @@ jobs:
         shell: bash
         run: bash .github/tests/test-template-sync-signed-commit.sh
 
-      # A sync that changes nothing must leave no pull request or branch behind (#467).
+      # A sync that would change nothing must be closed, never signed (#467).
       - name: 🗑️ Check Template Sync discards an empty sync
         shell: bash
         run: bash .github/tests/test-template-sync-empty-discard.sh

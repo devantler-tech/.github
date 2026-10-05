@@ -342,6 +342,17 @@ fi
 # files whose replacement version is older even though their catalogue did not change.
 guard_cross_file_pins "$candidate_tree"
 
+# A proposal that equals the base would be a pull request with no changed files: the template
+# lagged this repository and every pin it touched was restored, or the commit was empty. Close
+# that pull request instead of signing it (#467).
+base_tree="$(git rev-parse "${base_sha}^{tree}")" || fail "could not read the base tree"
+if [[ "$candidate_tree" == "$base_tree" ]]; then
+  bash "$(dirname "${BASH_SOURCE[0]}")/discard-empty-template-sync.sh" \
+    --base-sha "$base_sha" --branch-prefix "$branch_prefix" --tree "$candidate_tree" ||
+    fail "could not discard the empty sync"
+  exit 0
+fi
+
 if ((${#corrected[@]} > 0)); then
   tree_payload="$(jq -n --arg base "$tree_sha" --argjson tree "$entries" '{base_tree:$base,tree:$tree}')" ||
     fail "could not build the corrected tree payload"

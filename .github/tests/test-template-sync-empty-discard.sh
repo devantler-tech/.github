@@ -1,85 +1,54 @@
 #!/usr/bin/env bash
 
-# A template sync that changes nothing must leave no pull request and no branch behind (#467).
+# A template sync that would change nothing must not leave an open pull request (#467).
 #
-# Every consumer squash-merges its sync pull request, so an already delivered template commit is
-# proposed again with no changed files (wedding-app#377, ascoachingogvaner#280). This drives the
-# real helper against git fixtures and an offline `gh`, and checks the workflow runs it between
-# the sync action and the signing step.
+# The sync action opens its pull request before the signing helper runs. When the template lags
+# the consumer on a catalogue pin, the signing helper restores the consumer's line and the result
+# can equal the base (wedding-app#377, ascoachingogvaner#280: one pin, template behind). This
+# drives the real signing helper and the real discard helper against git fixtures and an offline
+# `gh`: the measured case must be closed and never signed, and a real sync must still be signed.
 
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+signer="$repo_root/.github/scripts/replace-template-sync-commit.sh"
 helper="$repo_root/.github/scripts/discard-empty-template-sync.sh"
-workflow="$repo_root/.github/workflows/template-sync.yaml"
 
 fail() {
   echo "FAIL: $*" >&2
   exit 1
 }
 
+[[ -x "$signer" ]] || fail "template-sync signing helper is missing or not executable"
 [[ -x "$helper" ]] || fail "empty-sync helper is missing or not executable"
-command -v yq >/dev/null || fail "yq is unavailable"
-
-# --- workflow wiring -------------------------------------------------------------------------
-
-step_index() {
-  yq -r ".jobs.template-sync.steps | to_entries[] | select(.value | $1) | .key" "$workflow"
-}
-
-sync_at="$(step_index '((.uses // "") | contains("AndreasAugustin/actions-template-sync@"))')"
-checkout_at="$(step_index '(.name == "📑 Checkout shared post-sync helpers")')"
-discard_at="$(step_index '(.id == "discard-empty")')"
-sign_at="$(step_index '(.name == "✍️ Replace sync commit with a verified App commit")')"
-cleanup_at="$(step_index '(.name == "🧹 Remove shared post-sync helpers")')"
-for index in "$sync_at" "$checkout_at" "$discard_at" "$sign_at" "$cleanup_at"; do
-  [[ "$index" =~ ^[0-9]+$ ]] || fail "a post-sync step is missing or duplicated (got '$index')"
-done
-((sync_at < checkout_at && checkout_at < discard_at && discard_at < sign_at && sign_at < cleanup_at)) ||
-  fail "the empty-sync check must run after the sync action and before the signing step"
-
-step_field() {
-  yq -r ".jobs.template-sync.steps[$1].$2 // \"\"" "$workflow"
-}
-
-[[ -z "$(step_field "$checkout_at" if)" ]] ||
-  fail "the post-sync helper checkout must run on both token paths"
-[[ -z "$(step_field "$discard_at" if)" ]] ||
-  fail "the empty-sync check must run on both token paths"
-# GitHub evaluates these expressions; the shell compares them as literal contracts.
-# shellcheck disable=SC2016
-[[ "$(step_field "$discard_at" env.GH_TOKEN)" == '${{ steps.app-token.outputs.token || github.token }}' ]] ||
-  fail "the empty-sync check must use the same token that opened the pull request"
-# shellcheck disable=SC2016
-[[ "$(step_field "$sign_at" if)" == '${{ inputs.use-app-token && steps.discard-empty.outputs.result != '"'discarded'"' }}' ]] ||
-  fail "the signing step must be skipped once the empty pull request is discarded"
-# shellcheck disable=SC2016
-[[ "$(step_field "$cleanup_at" if)" == '${{ always() }}' ]] ||
-  fail "the post-sync helpers must be removed even when a step fails"
-grep -q 'discard-empty-template-sync.sh' <<<"$(step_field "$discard_at" run)" ||
-  fail "the empty-sync step does not call the helper"
-# shellcheck disable=SC2016
-grep -q 'result=\$result" >> "\$GITHUB_OUTPUT"' <<<"$(step_field "$discard_at" run)" ||
-  fail "the empty-sync step does not publish its result for the signing step"
-
-# --- helper behaviour ------------------------------------------------------------------------
 
 test_root="$(mktemp -d)"
 trap 'rm -rf "$test_root"' EXIT
 
 branch="chore/template-sync_deadbee"
+newer="1111111111111111111111111111111111111111"
+older="2222222222222222222222222222222222222222"
+export SIGNED_SHA="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 
+# caller <file> <sha>: a workflow that calls one catalogue workflow at that pin.
+caller() {
+  mkdir -p "$(dirname "$1")"
+  printf 'name: fixture\non: push\njobs:\n  call:\n    uses: devantler-tech/.github/.github/workflows/publish-app.yaml@%s # pin\n' \
+    "$2" >"$1"
+}
+
+# make_fixture <name>: a consumer repository whose base pins the newer commit; prints its path.
 make_fixture() {
-  local name="$1"
-  local fixture="$test_root/$name"
+  local fixture="$test_root/$1"
   mkdir -p "$fixture/bin" "$fixture/repo"
 
   git -C "$fixture/repo" init -q -b main
   git -C "$fixture/repo" config user.name "Test User"
   git -C "$fixture/repo" config user.email "test@example.com"
   git -C "$fixture/repo" config commit.gpgsign false
+  caller "$fixture/repo/.github/workflows/release.yaml" "$newer"
   printf 'base\n' >"$fixture/repo/file.txt"
-  git -C "$fixture/repo" add file.txt
+  git -C "$fixture/repo" add -A
   git -C "$fixture/repo" commit -q -m "base"
 
   cat >"$fixture/bin/gh" <<'FAKE_GH'
@@ -112,14 +81,21 @@ done
 printf '%s %s\n' "$method" "$endpoint" >>"$FAKE_GH_LOG"
 
 case "$method $endpoint" in
+  "GET repos/devantler-tech/.github/compare/1111111111111111111111111111111111111111...2222222222222222222222222222222222222222")
+    echo '{"status":"behind"}'
+    ;;
   "GET repos/example/consumer/git/ref/heads/chore/template-sync_deadbee")
-    jq -n --arg sha "$REMOTE_SHA" '{object:{sha:$sha}}'
+    if [[ -f "$FAKE_GH_UPDATED" ]]; then
+      jq -n --arg sha "$SIGNED_SHA" '{object:{sha:$sha}}'
+    else
+      jq -n --arg sha "$REMOTE_SHA" '{object:{sha:$sha}}'
+    fi
     ;;
   "GET repos/example/consumer/pulls?state=open&head=example:chore/template-sync_deadbee&per_page=100")
     printf '%s\n' "$FAKE_PULLS"
     ;;
   "POST repos/example/consumer/issues/41/comments")
-    jq -e '.body | test("changes no files")' >/dev/null || exit 94
+    jq -e '.body | test("would change no files")' >/dev/null || exit 94
     echo '{}'
     ;;
   "PATCH repos/example/consumer/pulls/41")
@@ -131,7 +107,47 @@ case "$method $endpoint" in
     fi
     echo '{"state":"closed"}'
     ;;
-  "DELETE repos/example/consumer/git/refs/heads/chore/template-sync_deadbee")
+  "PATCH repos/example/consumer/git/refs/heads/chore/template-sync_deadbee")
+    payload="$(cat)"
+    if jq -e --arg sha "$BASE_SHA" '. == {sha:$sha,force:true}' <<<"$payload" >/dev/null; then
+      printf 'PATCH-REF base\n' >>"$FAKE_GH_LOG"
+      if [[ "$FAKE_GH_MODE" == "ref-elsewhere" ]]; then
+        echo '{"object":{"sha":"dddddddddddddddddddddddddddddddddddddddd"}}'
+        exit 0
+      fi
+      jq -n --arg sha "$BASE_SHA" '{object:{sha:$sha}}'
+    else
+      # The signing helper publishing a verified commit: only a real sync may get here.
+      jq -e --arg sha "$SIGNED_SHA" '. == {sha:$sha,force:true}' <<<"$payload" >/dev/null || exit 97
+      printf 'PATCH-REF signed\n' >>"$FAKE_GH_LOG"
+      : >"$FAKE_GH_UPDATED"
+      jq -n --arg sha "$SIGNED_SHA" '{object:{sha:$sha}}'
+    fi
+    ;;
+  "POST repos/example/consumer/git/trees")
+    # Build the tree the way GitHub does: the base tree with each posted blob written over it.
+    payload="$(cat)"
+    index="$(mktemp)"
+    GIT_INDEX_FILE="$index" git read-tree "$(jq -er '.base_tree' <<<"$payload")"
+    count="$(jq '.tree | length' <<<"$payload")"
+    for ((i = 0; i < count; i++)); do
+      entry="$(jq -c ".tree[$i]" <<<"$payload")"
+      blob="$(jq -j '.content' <<<"$entry" | git hash-object -w --stdin)"
+      GIT_INDEX_FILE="$index" git update-index --add \
+        --cacheinfo "$(jq -r '.mode' <<<"$entry"),$blob,$(jq -r '.path' <<<"$entry")"
+    done
+    jq -n --arg sha "$(GIT_INDEX_FILE="$index" git write-tree)" '{sha:$sha}'
+    rm -f "$index"
+    ;;
+  "POST repos/example/consumer/git/commits")
+    payload="$(cat)"
+    jq -n --arg sha "$SIGNED_SHA" '{sha:$sha,verification:{verified:true,reason:"valid"}}'
+    printf '%s\n' "$payload" >"$FAKE_GH_COMMIT"
+    ;;
+  "GET repos/example/consumer/commits/$SIGNED_SHA")
+    jq --arg sha "$SIGNED_SHA" \
+      '{sha:$sha,commit:{message:.message,tree:{sha:.tree},verification:{verified:true}},parents:[{sha:.parents[0]}]}' \
+      "$FAKE_GH_COMMIT"
     ;;
   *)
     exit 96
@@ -142,158 +158,188 @@ FAKE_GH
   printf '%s\n' "$fixture"
 }
 
-# sync_commit <fixture> <branch> [content]: the action's commit; without content it is empty.
+# sync_commit <fixture> <branch> <kind>: what the sync action pushed.
+#   downgrade  only the pin moves back to the older commit (the measured case)
+#   mixed      the pin moves back and another file changes
+#   empty      no change at all
 sync_commit() {
   git -C "$1/repo" switch -q -c "$2"
-  if [[ $# -ge 3 ]]; then
-    printf '%s\n' "$3" >"$1/repo/file.txt"
-    git -C "$1/repo" add file.txt
-  fi
+  case "$3" in
+    downgrade) caller "$1/repo/.github/workflows/release.yaml" "$older" ;;
+    mixed)
+      caller "$1/repo/.github/workflows/release.yaml" "$older"
+      printf 'synced\n' >"$1/repo/file.txt"
+      ;;
+    empty) ;;
+    *) fail "unknown sync kind $3" ;;
+  esac
+  git -C "$1/repo" add -A
   git -C "$1/repo" commit -q --allow-empty -m "chore: sync changes from the upstream template"
 }
 
-# run_helper <fixture> <base-sha>: status in $rc, stdout in output, stderr in error, calls in gh.log.
-run_helper() {
+# run <fixture> <script> [args...]: status in $rc, stdout in output, stderr in error, calls in gh.log.
+run() {
+  local fixture="$1"
+  shift
   rc=0
   (
-    cd "$1/repo"
-    PATH="$1/bin:$PATH" GITHUB_REPOSITORY=example/consumer FAKE_GH_LOG="$1/gh.log" \
-      "$helper" --base-sha "$2" --branch-prefix chore/template-sync
-  ) >"$1/output" 2>"$1/error" || rc=$?
+    cd "$fixture/repo"
+    PATH="$fixture/bin:$PATH" GITHUB_REPOSITORY=example/consumer FAKE_GH_LOG="$fixture/gh.log" \
+      FAKE_GH_UPDATED="$fixture/updated" FAKE_GH_COMMIT="$fixture/commit.json" "$@"
+  ) >"$fixture/output" 2>"$fixture/error" || rc=$?
 }
 
+run_signer() {
+  run "$1" "$signer" --base-sha "$2" --branch-prefix chore/template-sync
+}
+
+# The writes a run made, in order; the ref update is named by what it published.
 writes() {
   [[ -e "$1/gh.log" ]] || return 0
-  grep -vE '^GET ' "$1/gh.log" || true
+  grep -vE '^(GET |PATCH repos/example/consumer/git/refs/)' "$1/gh.log" || true
 }
 
 pull_list() {
   jq -cn --arg ref "$1" --arg sha "$2" '[{number:41,head:{ref:$ref,sha:$sha}}]'
 }
 
-export FAKE_GH_MODE=success
-
-# 1. The measured case: an empty sync commit with its pull request open.
-fixture="$(make_fixture empty)"
-base="$(git -C "$fixture/repo" rev-parse HEAD)"
-sync_commit "$fixture" "$branch"
-REMOTE_SHA="$(git -C "$fixture/repo" rev-parse HEAD)"
-FAKE_PULLS="$(pull_list "$branch" "$REMOTE_SHA")"
-export REMOTE_SHA FAKE_PULLS
-run_helper "$fixture" "$base"
-[[ "$rc" -eq 0 ]] || fail "empty — the helper failed: $(cat "$fixture/error")"
-[[ "$(cat "$fixture/output")" == "discarded" ]] || fail "empty — expected 'discarded', got '$(cat "$fixture/output")'"
-expected_writes="POST repos/example/consumer/issues/41/comments
-PATCH repos/example/consumer/pulls/41
-DELETE repos/example/consumer/git/refs/heads/$branch"
-[[ "$(writes "$fixture")" == "$expected_writes" ]] ||
-  fail "empty — expected comment, close, delete in that order, got: $(writes "$fixture")"
-
-# 2. An empty sync whose pull request is already gone still loses its branch.
-fixture="$(make_fixture empty-no-pr)"
-base="$(git -C "$fixture/repo" rev-parse HEAD)"
-sync_commit "$fixture" "$branch"
-REMOTE_SHA="$(git -C "$fixture/repo" rev-parse HEAD)"
-FAKE_PULLS='[]'
-run_helper "$fixture" "$base"
-[[ "$rc" -eq 0 && "$(cat "$fixture/output")" == "discarded" ]] ||
-  fail "empty without a pull request — expected 'discarded': $(cat "$fixture/error")"
-[[ "$(writes "$fixture")" == "DELETE repos/example/consumer/git/refs/heads/$branch" ]] ||
-  fail "empty without a pull request — expected only the branch deletion, got: $(writes "$fixture")"
-
-# 3. A real sync is left alone and costs no API call.
-fixture="$(make_fixture changed)"
-base="$(git -C "$fixture/repo" rev-parse HEAD)"
-sync_commit "$fixture" "$branch" synced
-run_helper "$fixture" "$base"
-[[ "$rc" -eq 0 && "$(cat "$fixture/output")" == "changed" ]] ||
-  fail "changed — expected 'changed', got '$(cat "$fixture/output")': $(cat "$fixture/error")"
-[[ ! -e "$fixture/gh.log" ]] || fail "changed — a real sync called the GitHub API"
-
-# 4. No sync commit at all.
-fixture="$(make_fixture none)"
-base="$(git -C "$fixture/repo" rev-parse HEAD)"
-run_helper "$fixture" "$base"
-[[ "$rc" -eq 0 && "$(cat "$fixture/output")" == "none" ]] ||
-  fail "none — expected 'none', got '$(cat "$fixture/output")': $(cat "$fixture/error")"
-[[ ! -e "$fixture/gh.log" ]] || fail "none — the no-commit path called the GitHub API"
-
-# refused <case> <fixture> <base> <error pattern>: the helper fails, writes nothing, names the reason.
-refused() {
-  run_helper "$2" "$3"
-  [[ "$rc" -ne 0 ]] || fail "$1 — the helper discarded anyway"
-  [[ -z "$(cat "$2/output")" ]] || fail "$1 — a refusal still printed a result: $(cat "$2/output")"
-  [[ -z "$(writes "$2")" ]] || fail "$1 — a refusal still wrote: $(writes "$2")"
-  grep -q "$4" "$2/error" || fail "$1 — the refusal did not name its reason: $(cat "$2/error")"
+# prepare <name> <kind> [branch]: fixture, base and remote state for one sync; sets fixture, base.
+prepare() {
+  fixture="$(make_fixture "$1")"
+  base="$(git -C "$fixture/repo" rev-parse HEAD)"
+  sync_commit "$fixture" "${3:-$branch}" "$2"
+  REMOTE_SHA="$(git -C "$fixture/repo" rev-parse HEAD)"
+  FAKE_PULLS="$(pull_list "$branch" "$REMOTE_SHA")"
+  BASE_SHA="$base"
+  export REMOTE_SHA FAKE_PULLS BASE_SHA
 }
 
-# 5. An empty commit on a branch this workflow did not generate.
-fixture="$(make_fixture foreign-branch)"
-base="$(git -C "$fixture/repo" rev-parse HEAD)"
-sync_commit "$fixture" "feature/unrelated"
-refused "foreign branch" "$fixture" "$base" "refusing to discard unexpected branch"
+discard_writes="POST repos/example/consumer/issues/41/comments
+PATCH repos/example/consumer/pulls/41
+PATCH-REF base"
 
-# 6. The remote branch moved after the action pushed.
-fixture="$(make_fixture remote-moved)"
-base="$(git -C "$fixture/repo" rev-parse HEAD)"
-sync_commit "$fixture" "$branch"
+export FAKE_GH_MODE=success
+
+# 1. The measured case: the template lags on one pin, so the corrected result equals the base.
+prepare downgrade downgrade
+run_signer "$fixture" "$base"
+[[ "$rc" -eq 0 ]] || fail "downgrade — the signing helper failed: $(cat "$fixture/error")"
+[[ "$(cat "$fixture/output")" == "discarded" ]] ||
+  fail "downgrade — expected 'discarded', got '$(cat "$fixture/output")'"
+[[ "$(writes "$fixture")" == "$discard_writes" ]] ||
+  fail "downgrade — expected comment, close, branch back on base and nothing signed, got: $(writes "$fixture")"
+grep -q '^::warning file=\.github/workflows/release\.yaml' "$fixture/error" ||
+  fail "downgrade — the omitted pin was not reported"
+
+# 2. A sync commit with no change at all is discarded the same way.
+prepare empty empty
+run_signer "$fixture" "$base"
+[[ "$rc" -eq 0 && "$(cat "$fixture/output")" == "discarded" ]] ||
+  fail "empty — expected 'discarded': $(cat "$fixture/error")"
+[[ "$(writes "$fixture")" == "$discard_writes" ]] || fail "empty — unexpected writes: $(writes "$fixture")"
+
+# 3. A real sync that also carries a lagging pin is still signed, and nothing is closed.
+prepare mixed mixed
+run_signer "$fixture" "$base"
+[[ "$rc" -eq 0 ]] || fail "mixed — the signing helper failed: $(cat "$fixture/error")"
+[[ "$(cat "$fixture/output")" == "$SIGNED_SHA" ]] ||
+  fail "mixed — expected the signed sha, got '$(cat "$fixture/output")'"
+expected_real="POST repos/example/consumer/git/trees
+POST repos/example/consumer/git/commits
+PATCH-REF signed"
+[[ "$(writes "$fixture")" == "$expected_real" ]] || fail "mixed — a real sync was not signed as before: $(writes "$fixture")"
+
+# 4. An empty sync whose pull request is already gone still gets its branch moved.
+prepare empty-no-pr downgrade
+FAKE_PULLS='[]'
+run_signer "$fixture" "$base"
+[[ "$rc" -eq 0 && "$(cat "$fixture/output")" == "discarded" ]] ||
+  fail "no pull request — expected 'discarded': $(cat "$fixture/error")"
+[[ "$(writes "$fixture")" == "PATCH-REF base" ]] ||
+  fail "no pull request — expected only the branch move, got: $(writes "$fixture")"
+
+# refused <case> <error pattern>: the last run failed, wrote nothing and named its reason.
+refused() {
+  [[ "$rc" -ne 0 ]] || fail "$1 — the helper discarded anyway"
+  [[ -z "$(cat "$fixture/output")" ]] || fail "$1 — a refusal still printed a result: $(cat "$fixture/output")"
+  [[ -z "$(writes "$fixture")" ]] || fail "$1 — a refusal still wrote: $(writes "$fixture")"
+  grep -q "$2" "$fixture/error" || fail "$1 — the refusal did not name its reason: $(cat "$fixture/error")"
+}
+
+run_helper() {
+  run "$1" "$helper" --base-sha "$2" --branch-prefix chore/template-sync --tree "$3"
+}
+
+# 5. The discard helper refuses a proposal that is not empty.
+prepare not-empty mixed
+run_helper "$fixture" "$base" "$(git -C "$fixture/repo" rev-parse 'HEAD^{tree}')"
+refused "real sync" "refusing to discard a real sync"
+
+# 6. An empty proposal on a branch this workflow did not generate.
+prepare foreign-branch empty feature/unrelated
+run_helper "$fixture" "$base" "$(git -C "$fixture/repo" rev-parse "$base^{tree}")"
+refused "foreign branch" "refusing to discard unexpected branch"
+
+# 7. The remote branch moved after the action pushed.
+prepare remote-moved downgrade
 REMOTE_SHA="bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
-refused "remote moved" "$fixture" "$base" "generated remote branch moved"
+run_helper "$fixture" "$base" "$(git -C "$fixture/repo" rev-parse "$base^{tree}")"
+refused "remote moved" "generated remote branch moved"
 
-# 7. The open pull request is at another commit than the one this run pushed.
-fixture="$(make_fixture pr-mismatch)"
-base="$(git -C "$fixture/repo" rev-parse HEAD)"
-sync_commit "$fixture" "$branch"
-REMOTE_SHA="$(git -C "$fixture/repo" rev-parse HEAD)"
+# 8. The open pull request is at another commit than the one this run pushed.
+prepare pr-mismatch downgrade
 FAKE_PULLS="$(pull_list "$branch" cccccccccccccccccccccccccccccccccccccccc)"
-refused "pull request mismatch" "$fixture" "$base" "does not match the commit this run pushed"
+run_signer "$fixture" "$base"
+refused "pull request mismatch" "does not match the commit this run pushed"
 
-# 8. The pull-request listing is not a list.
-fixture="$(make_fixture pr-invalid)"
-base="$(git -C "$fixture/repo" rev-parse HEAD)"
-sync_commit "$fixture" "$branch"
-REMOTE_SHA="$(git -C "$fixture/repo" rev-parse HEAD)"
+# 9. The pull-request listing is not a list.
+prepare pr-invalid downgrade
 FAKE_PULLS='{"message":"Not Found"}'
-refused "invalid listing" "$fixture" "$base" "does not match the commit this run pushed"
+run_signer "$fixture" "$base"
+refused "invalid listing" "does not match the commit this run pushed"
 
-# 9. The base is not an ancestor of the commit being discarded.
+# 10. The base is not an ancestor of the commit being discarded.
 fixture="$(make_fixture unrelated-base)"
 git -C "$fixture/repo" switch -q --orphan other
+caller "$fixture/repo/.github/workflows/release.yaml" "$newer"
 printf 'base\n' >"$fixture/repo/file.txt"
-git -C "$fixture/repo" add file.txt
+git -C "$fixture/repo" add -A
 git -C "$fixture/repo" commit -q -m "same tree, unrelated history"
 other="$(git -C "$fixture/repo" rev-parse HEAD)"
 git -C "$fixture/repo" switch -q main
-sync_commit "$fixture" "$branch"
-refused "unrelated base" "$fixture" "$other" "does not descend from the workflow base sha"
+sync_commit "$fixture" "$branch" empty
+run_helper "$fixture" "$other" "$(git -C "$fixture/repo" rev-parse 'HEAD^{tree}')"
+refused "unrelated base" "does not descend from the workflow base sha"
 
-# 10. A pull request that will not close keeps its branch.
-fixture="$(make_fixture close-fails)"
+# 11. No sync commit exists.
+fixture="$(make_fixture no-commit)"
 base="$(git -C "$fixture/repo" rev-parse HEAD)"
-sync_commit "$fixture" "$branch"
-REMOTE_SHA="$(git -C "$fixture/repo" rev-parse HEAD)"
-FAKE_PULLS="$(pull_list "$branch" "$REMOTE_SHA")"
-FAKE_GH_MODE=close-fails
-run_helper "$fixture" "$base"
-FAKE_GH_MODE=success
-[[ "$rc" -ne 0 ]] || fail "close fails — the helper reported success"
-[[ -z "$(cat "$fixture/output")" ]] || fail "close fails — the helper still printed a result"
-if grep -q '^DELETE ' "$fixture/gh.log"; then
-  fail "close fails — the branch was deleted although its pull request stayed open"
-fi
+run_helper "$fixture" "$base" "$(git -C "$fixture/repo" rev-parse 'HEAD^{tree}')"
+refused "no commit" "no sync commit was created"
 
-# 11. A pull request GitHub still reports open keeps its branch too.
-fixture="$(make_fixture stays-open)"
-base="$(git -C "$fixture/repo" rev-parse HEAD)"
-sync_commit "$fixture" "$branch"
-REMOTE_SHA="$(git -C "$fixture/repo" rev-parse HEAD)"
-FAKE_PULLS="$(pull_list "$branch" "$REMOTE_SHA")"
-FAKE_GH_MODE=stays-open
-run_helper "$fixture" "$base"
-FAKE_GH_MODE=success
-[[ "$rc" -ne 0 ]] || fail "stays open — the helper reported success"
-if grep -q '^DELETE ' "$fixture/gh.log"; then
-  fail "stays open — the branch was deleted although its pull request stayed open"
-fi
+# kept_branch <case> <mode>: a pull request that does not close keeps its branch where it was.
+kept_branch() {
+  prepare "$2" downgrade
+  FAKE_GH_MODE="$2"
+  run_signer "$fixture" "$base"
+  FAKE_GH_MODE=success
+  [[ "$rc" -ne 0 ]] || fail "$1 — the helper reported success"
+  [[ -z "$(cat "$fixture/output")" ]] || fail "$1 — the helper still printed a result"
+  if grep -q '^PATCH-REF ' "$fixture/gh.log"; then
+    fail "$1 — the branch was moved although its pull request stayed open"
+  fi
+}
 
-echo "PASS: an empty template sync loses its pull request and branch, and a real one is left alone"
+# 12–13. The close request fails, or GitHub still reports the pull request open.
+kept_branch "close fails" close-fails
+kept_branch "stays open" stays-open
+
+# 14. A branch update GitHub answers with another commit is not reported as done.
+prepare ref-elsewhere downgrade
+FAKE_GH_MODE=ref-elsewhere
+run_signer "$fixture" "$base"
+FAKE_GH_MODE=success
+[[ "$rc" -ne 0 ]] || fail "branch elsewhere — the helper reported success"
+[[ -z "$(cat "$fixture/output")" ]] || fail "branch elsewhere — the helper still printed a result"
+
+echo "PASS: a template sync that would change nothing is closed and never signed, and a real one is signed as before"

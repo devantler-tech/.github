@@ -196,32 +196,14 @@ jobs:
           pr_branch_name_prefix: ${{ inputs.pr-branch-name-prefix }}
           template_sync_ignore_file_path: ${{ inputs.template-sync-ignore-file-path }}
 
-      # The post-sync helpers serve both token paths: the empty-sync check always runs, the
-      # signing helper only on the App-token path.
-      - name: 📑 Checkout shared post-sync helpers
+      - name: 📑 Checkout shared signing helper
+        if: ${{ inputs.use-app-token }}
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: ${{ job.workflow_repository }}
           ref: ${{ job.workflow_sha }}
           path: .devantler-tech-actions
           persist-credentials: false
-
-      # Every consumer squash-merges, so a template commit that was already delivered is not in
-      # the caller's history and the action proposes it again with no changed files. Such a
-      # pull request is closed and its branch deleted here, before anything is signed (#467).
-      - name: 🗑️ Discard a sync that changes nothing
-        id: discard-empty
-        shell: bash
-        env:
-          BASE_SHA: ${{ github.sha }}
-          BRANCH_PREFIX: ${{ inputs.pr-branch-name-prefix }}
-          GH_TOKEN: ${{ steps.app-token.outputs.token || github.token }}
-        run: |
-          result="$(bash .devantler-tech-actions/.github/scripts/discard-empty-template-sync.sh \
-            --base-sha "$BASE_SHA" \
-            --branch-prefix "$BRANCH_PREFIX")"
-          echo "Template-sync empty check: $result"
-          echo "result=$result" >> "$GITHUB_OUTPUT"
 
       # Before signing, the helper keeps the target's devantler-tech/.github pin wherever the
       # template's pin for the same path is older (ordered by commit ancestry through the compare
@@ -230,7 +212,7 @@ jobs:
       # non-workflow file (such as a local composite action) synced without the App token is not
       # checked.
       - name: ✍️ Replace sync commit with a verified App commit
-        if: ${{ inputs.use-app-token && steps.discard-empty.outputs.result != 'discarded' }}
+        if: ${{ inputs.use-app-token }}
         shell: bash
         env:
           BASE_SHA: ${{ github.sha }}
@@ -249,7 +231,7 @@ jobs:
             "${pre_sync[@]}")"
           echo "Template-sync signing result: $result"
 
-      - name: 🧹 Remove shared post-sync helpers
-        if: ${{ always() }}
+      - name: 🧹 Remove shared signing helper
+        if: ${{ always() && inputs.use-app-token }}
         shell: bash
         run: rm -rf -- .devantler-tech-actions
