@@ -1,0 +1,36 @@
+# Restore the Go validation gate on go-template (devantler-tech/go-template#295).
+# The UI-managed "Require workflows … for Go" ruleset conditions on a repository
+# property and stopped targeting the template on 2026-06-10; its pull requests
+# have since had no lint, dead-code or vulnerability check. That ruleset stays
+# UI-managed and untouched: this rule targets only go-template, by id, and
+# requires the same canonical workflow from this repository's reviewed main
+# branch, so a candidate cannot edit or remove the gate it is judged by.
+# No bypass or Delete policy is declared.
+apiVersion: enterprise.github.m.upbound.io/v1alpha1
+kind: OrganizationRuleset
+metadata:
+  name: require-go-template-validation
+spec:
+  managementPolicies:
+    - Observe
+    - Create
+    - Update
+    - LateInitialize
+  forProvider:
+    name: Require workflow - Go template validation
+    target: branch
+    enforcement: active
+    conditions:
+      - refName:
+          - include: ["~DEFAULT_BRANCH"]
+            exclude: []
+        repositoryId: [1065308377]
+    rules:
+      - requiredWorkflows:
+          - requiredWorkflow:
+              - repositoryId: 948529001
+                path: .github/workflows/validate-go-project.yaml
+                ref: refs/heads/main
+  providerConfigRef:
+    kind: ProviderConfig
+    name: default

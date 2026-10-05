@@ -282,10 +282,16 @@ One component may reference another **in this repository**. GitHub resolves thes
 - **Reusable workflow → co-located reusable workflow:** normally
   `uses: ./.github/workflows/<x>.yaml` (same repository, same commit). An organization-required
   workflow is injected into a consumer repository, where that path resolves against the consumer
-  instead; it must call a sibling workflow through a full remote reference pinned to an audited
-  immutable commit, and every caller job is covered by a regression test. `validate-go-project.yaml`
-  pins `apply-signed-fixes.yaml` in this repository that way, and
-  `test-required-workflow-no-local-calls.sh` pins the reference.
+  instead; it must call a sibling workflow through a full remote reference pinned to an immutable
+  commit whose workflow content has been reviewed, and every caller job is covered by a regression
+  test. `validate-go-project.yaml` pins `apply-signed-fixes.yaml` in this repository that way.
+  `test-required-workflow-no-local-calls.sh` requires its three callers to name one full commit of
+  this repository and pins the **content**: the Git blob id of the reviewed `apply-signed-fixes.yaml`,
+  which the referenced commit must carry. A release that leaves that workflow untouched therefore
+  needs no edit when Dependabot bumps the callers; a release that changes it fails until the new
+  workflow has been reviewed and its blob id (`git rev-parse <commit>:.github/workflows/apply-signed-fixes.yaml`)
+  is recorded in the test. `test-required-workflow-no-local-calls-blocks.sh` proves each unsafe
+  reference is rejected (#484).
 - **Composite action → shared script:** invoke via `${{ github.action_path }}/../../.scripts/…` (resolves at the calling ref, no pin). See `setup-agent-skills` / `update-agent-skills`.
 - **Reusable workflow → a sibling action:** a bare `./actions/<action>` does **NOT** work (a reusable workflow resolves `./` against the *caller's* checkout). Use the **same-commit self-checkout pattern**: a step checks out `${{ job.workflow_repository }}` at `${{ job.workflow_sha }}` (the reusable workflow file's own repository + exact commit) into `path: .devantler-tech-actions`, and the next step calls `uses: ./.devantler-tech-actions/actions/<action>`. This is **zero-lag by construction** (the action always runs from the same commit as the workflow calling it) and satisfies consumer `sha_pinning_required` policies (they see only the pinned `actions/checkout` plus a local `./` path). Place the self-checkout immediately before the step that needs it, and remove it (`rm -rf .devantler-tech-actions`) before any later step that commits or scans the whole workspace (see `update-agent-skills.yaml`). **Never** use a remote self-reference — a tag pin is rejected by consumer `sha_pinning_required` policies (proven live 2026-07-03: platform's `Update Agent Skills`/`TODOs` scheduled runs failed on `devantler-tech/actions/<x>@v8.0.0`; org direction is SHA-pinning everywhere, #67), and a SHA self-pin can only ever name a *prior* release (a commit cannot embed its own SHA — an unacceptable one-release lag).
 - **Composite action → a sibling composite action:** no zero-lag self-reference exists (`uses:` takes no expressions; `github.action_*` is unreliable when the action is invoked via a local path). **Inline the underlying pinned step(s)** instead of referencing the sibling wrapper — see `actions/run-dotnet-tests/action.yaml`, which inlines `upload-coverage`'s single `actions/upload-code-coverage` step — and keep the inlined inputs in sync with the wrapper.

@@ -15,6 +15,7 @@ signing_workflows=(
   ".github/workflows/publish-app.yaml"
   ".github/workflows/publish-manifests.yaml"
 )
+if [[ "$#" -gt 0 ]]; then signing_workflows=("$@"); fi
 
 fail() {
   echo "FAIL: $*" >&2
@@ -154,6 +155,15 @@ for workflow in "${signing_workflows[@]}"; do
   resolve_script="$(yq -r \
     '.jobs[].steps[] | select(.id == "caller") | .run' "$workflow")"
   [[ -n "$resolve_script" ]] || fail "$workflow resolve step has an empty run: body"
+  resolve_shell="$(JOB="$job" yq -r '
+    (.jobs[strenv(JOB)].steps[] | select(.id == "caller") | .shell) //
+    .jobs[strenv(JOB)].defaults.run.shell // .defaults.run.shell // ""' "$workflow")"
+  resolve_command=(bash -e)
+  case "$resolve_shell" in
+    bash) resolve_command=(bash --noprofile --norc -eo pipefail) ;;
+    '') ;; # GitHub's implicit Bash shell does not enable pipefail.
+    *) fail "$workflow resolver declares an unsupported shell: $resolve_shell" ;;
+  esac
 
   # base64url, as a JWT carries it: standard base64 with +/ swapped for -_ and padding stripped.
   b64url() { base64 | tr -d '\n' | tr '+/' '-_' | tr -d '='; }
@@ -161,20 +171,25 @@ for workflow in "${signing_workflows[@]}"; do
   # Runs the shipped decoder over a JWT built from $1 and echoes the ref it resolved.
   # Returns non-zero only if the decoder itself failed.
   run_resolve() {
-    local payload_json="$1" dir status
+    local payload_json="$1" failure="${2:-none}" dir status
     dir="$(mktemp -d)"
     printf '{"value":"header.%s.signature"}' "$(printf '%s' "$payload_json" | b64url)" \
       >"$dir/token.json"
     # The decoder reaches the token endpoint through curl; stub it rather than the decoder.
     # shellcheck disable=SC2016 # the stub must carry the literal $TOKEN_FIXTURE, not its value here.
-    printf '#!/usr/bin/env bash\ncat "$TOKEN_FIXTURE"\n' >"$dir/curl"
+    cat >"$dir/curl" <<'EOF'
+#!/usr/bin/env bash
+[[ "$TOKEN_FAILURE" != empty ]] || exit 7
+cat "$TOKEN_FIXTURE"
+[[ "$TOKEN_FAILURE" != transfer ]] || exit 7
+EOF
     chmod +x "$dir/curl"
     : >"$dir/github_output"
     set +e
-    PATH="$dir:$PATH" TOKEN_FIXTURE="$dir/token.json" GITHUB_OUTPUT="$dir/github_output" \
+    PATH="$dir:$PATH" TOKEN_FIXTURE="$dir/token.json" TOKEN_FAILURE="$failure" GITHUB_OUTPUT="$dir/github_output" \
       ACTIONS_ID_TOKEN_REQUEST_TOKEN="stub-token" \
       ACTIONS_ID_TOKEN_REQUEST_URL="https://stub.invalid/token?api-version=2.0" \
-      bash -euo pipefail -c "$resolve_script" >/dev/null 2>&1
+      "${resolve_command[@]}" -c "$resolve_script" >/dev/null 2>&1
     status=$?
     set -e
     sed -n 's/^ref=//p' "$dir/github_output"
@@ -183,6 +198,13 @@ for workflow in "${signing_workflows[@]}"; do
   }
 
   expected_ref="devantler-tech/actions/${workflow}@${sha40}"
+  for failure in transfer empty; do
+    if got="$(run_resolve "{\"job_workflow_ref\":\"$expected_ref\"}" "$failure")"; then
+      fail "$workflow accepted the failed $failure OIDC read"
+    fi
+    [[ -z "$got" ]] || fail "$workflow emitted a caller ref after the failed $failure OIDC read"
+  done
+  echo "$workflow: failed OIDC reads emit no caller ref"
 
   # A JWT payload is arbitrary-length JSON, so the decoder's base64 padding arithmetic has to hold
   # for every length class. Trailing spaces are insignificant to JSON and shift the byte length by
@@ -234,4 +256,20 @@ for workflow in "${signing_workflows[@]}"; do
     fail "$workflow resolve step invented a ref from a claimless token: '$got'"
 
   echo "$workflow: caller pin enforced ✅"
+  if [[ "$#" == 0 ]]; then
+    control="$(mktemp)"
+    JOB="$job" yq 'del(.jobs[strenv(JOB)].steps[] | select(.id == "caller") | .shell)' "$workflow" >"$control"
+    control_log="$(mktemp)"
+    if bash "$0" "$control" >"$control_log" 2>&1; then
+      rm -f "$control" "$control_log"
+      fail "$workflow accepted removal of resolver failure propagation"
+    fi
+    if ! grep -q 'accepted the failed transfer OIDC read' "$control_log"; then
+      cat "$control_log" >&2
+      rm -f "$control" "$control_log"
+      fail "$workflow resolver mutation failed for an unrelated reason"
+    fi
+    rm -f "$control" "$control_log"
+    echo "$workflow: removing resolver pipefail fails the transfer regression"
+  fi
 done
