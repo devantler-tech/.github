@@ -71,6 +71,15 @@ func TestRunProcessHelper(t *testing.T) {
 }
 
 func TestReceiptBindsAdmittedScenario(t *testing.T) {
+	completionConversation(t, false)
+}
+
+func TestReceiptRejectsRecordChangedDuringServing(t *testing.T) {
+	completionConversation(t, true)
+}
+
+func completionConversation(t *testing.T, tamperRecord bool) {
+	t.Helper()
 	work := t.TempDir()
 	scenario, record, address, completion := filepath.Join(work, "scenario"), filepath.Join(work, "record"), filepath.Join(work, "address"), filepath.Join(work, "completion")
 	original := []byte(`{"routes":[{"method":"GET","path":"/ok","status":200,"body":[]}]}`)
@@ -120,10 +129,25 @@ func TestReceiptBindsAdmittedScenario(t *testing.T) {
 	if err := os.WriteFile(scenario, replacement, 0600); err != nil {
 		t.Fatal(err)
 	}
+	if tamperRecord {
+		if err := os.WriteFile(record, []byte("{}\n"), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
 	if err := cmd.Process.Signal(syscall.SIGTERM); err != nil {
 		t.Fatal(err)
 	}
-	if err := cmd.Wait(); err != nil {
+	shutdownError := cmd.Wait()
+	if tamperRecord {
+		if shutdownError == nil {
+			t.Fatal("server certified record bytes it did not write")
+		}
+		if _, err := os.Stat(completion); !os.IsNotExist(err) {
+			t.Fatal("tampered record received a completion receipt")
+		}
+		return
+	}
+	if err := shutdownError; err != nil {
 		t.Fatalf("shutdown: %v: %s", err, diagnostic.String())
 	}
 	raw, err = os.ReadFile(completion)
@@ -136,6 +160,35 @@ func TestReceiptBindsAdmittedScenario(t *testing.T) {
 	}
 	if receipt["scenario_sha256"] != fmt.Sprintf("%x", sha256.Sum256(original)) {
 		t.Fatal("receipt certified scenario bytes the server never served")
+	}
+}
+
+func TestCompletionRequiresFreshRecord(t *testing.T) {
+	work := t.TempDir()
+	scenario, record, address, completion := filepath.Join(work, "scenario"), filepath.Join(work, "record"), filepath.Join(work, "address"), filepath.Join(work, "completion")
+	if err := os.WriteFile(scenario, []byte(`{"routes":[{"method":"GET","path":"/ok","status":200}]}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(record, []byte(`{"method":"GET","path":"/ok","query":{},"authorized":true,"body":null,"route":0,"status":200}`+"\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	executable, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, executable, "-test.run=^TestRunProcessHelper$", "--", "-scenario", scenario, "-record", record, "-address-file", address, "-token", "fixture", "-completion-file", completion, "-nonce", "current")
+	cmd.Env = append(os.Environ(), "OFFLINE_RUN_PROCESS_TEST=1")
+	output, err := cmd.CombinedOutput()
+	if err == nil || !bytes.Contains(output, []byte("completion requires an empty record")) {
+		t.Fatal("preexisting request evidence was not refused before serving")
+	}
+	if _, err := os.Stat(address); !os.IsNotExist(err) {
+		t.Fatal("server accepted stale evidence")
+	}
+	if _, err := os.Stat(completion); !os.IsNotExist(err) {
+		t.Fatal("stale evidence received a receipt")
 	}
 }
 
@@ -191,7 +244,9 @@ func TestRecordFailureStopsServer(t *testing.T) {
 	}
 	address := filepath.Join(work, "address")
 	done := make(chan error, 1)
-	go func() { done <- serve([]route{{Method: "GET", Path: "/ok", Status: 200}}, "fixture", address, record) }()
+	go func() {
+		done <- serve([]route{{Method: "GET", Path: "/ok", Status: 200}}, "fixture", address, record, nil)
+	}()
 	var raw []byte
 	for until := time.Now().Add(5 * time.Second); time.Now().Before(until); {
 		raw, _ = os.ReadFile(address)

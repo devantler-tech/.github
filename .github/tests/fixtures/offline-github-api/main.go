@@ -16,6 +16,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"hash"
 	"io"
 	"net"
 	"net/http"
@@ -254,12 +255,13 @@ func recordedBody(raw []byte) json.RawMessage {
 
 // server answers requests from the reviewed routes and records each one.
 type server struct {
-	routes  []route
-	token   string
-	baseURL string
-	mutex   sync.Mutex
-	record  *os.File
-	failure chan error
+	routes     []route
+	token      string
+	baseURL    string
+	mutex      sync.Mutex
+	record     *os.File
+	recordHash hash.Hash
+	failure    chan error
 }
 
 // ServeHTTP records a request and then answers it: 401 without the fixture token, 413 for a
@@ -312,7 +314,11 @@ func (s *server) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
 	line, err := json.Marshal(recorded)
 	if err == nil {
 		s.mutex.Lock()
-		_, err = s.record.Write(append(line, '\n'))
+		line = append(line, '\n')
+		_, err = s.record.Write(line)
+		if err == nil && s.recordHash != nil {
+			_, _ = s.recordHash.Write(line)
+		}
 		s.mutex.Unlock()
 	}
 	if err != nil {
@@ -370,8 +376,18 @@ func run() error {
 	if err != nil {
 		return err
 	}
+	if *completionPath != "" {
+		info, statError := record.Stat()
+		if statError != nil {
+			return errors.Join(statError, record.Close())
+		}
+		if info.Size() != 0 {
+			return errors.Join(errors.New("completion requires an empty record"), record.Close())
+		}
+	}
+	recordHash := sha256.New()
 	// The record is the test's evidence, so a close that fails is the stand-in's failure.
-	err = errors.Join(serve(routes, *token, *addressPath, record), record.Sync(), record.Close())
+	err = errors.Join(serve(routes, *token, *addressPath, record, recordHash), record.Sync(), record.Close())
 	if err != nil || *completionPath == "" {
 		return err
 	}
@@ -379,7 +395,11 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	receipt, err := json.Marshal(map[string]string{"nonce": *nonce, "record_sha256": fmt.Sprintf("%x", sha256.Sum256(raw)), "scenario_sha256": fmt.Sprintf("%x", sha256.Sum256(scenario))})
+	storedHash := sha256.Sum256(raw)
+	if !bytes.Equal(recordHash.Sum(nil), storedHash[:]) {
+		return errors.New("record changed outside the server's request writes")
+	}
+	receipt, err := json.Marshal(map[string]string{"nonce": *nonce, "record_sha256": fmt.Sprintf("%x", recordHash.Sum(nil)), "scenario_sha256": fmt.Sprintf("%x", sha256.Sum256(scenario))})
 	if err != nil {
 		return err
 	}
@@ -391,14 +411,14 @@ func run() error {
 }
 
 // serve answers requests until the process is asked to stop.
-func serve(routes []route, token, addressPath string, record *os.File) error {
+func serve(routes []route, token, addressPath string, record *os.File, recordHash hash.Hash) error {
 	listener, err := net.Listen("tcp4", "127.0.0.1:0")
 	if err != nil {
 		return err
 	}
 	baseURL := "http://" + listener.Addr().String()
 	recordFailure := make(chan error, 1)
-	handler := &server{routes: routes, token: token, baseURL: baseURL, record: record, failure: recordFailure}
+	handler := &server{routes: routes, token: token, baseURL: baseURL, record: record, recordHash: recordHash, failure: recordFailure}
 	httpServer := &http.Server{Handler: handler, ReadHeaderTimeout: 10 * time.Second}
 
 	// Publish the address only once the listener exists, and atomically, so a caller
