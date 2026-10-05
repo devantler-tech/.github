@@ -49,18 +49,11 @@ if [[ "$off_state" != "unset" || "$on_state" != "true" ]]; then
   exit 1
 fi
 
-align_default="$(yq -r '.on.workflow_call.inputs."align-npm-with-consumer-contract".default' "$workflow")"
-align_type="$(yq -r '.on.workflow_call.inputs."align-npm-with-consumer-contract".type' "$workflow")"
-align_if="$(
-  yq -r '.jobs.release.steps[] | select(.name == "📦 Align npm with consumer contract") | .if' \
-    "$workflow"
-)"
-align_omitted="$(yq -r '.jobs."test-create-release".with | has("align-npm-with-consumer-contract")' "$ci")"
-align_on="$(yq -r '.jobs."test-create-release-no-issue-side-effects".with."align-npm-with-consumer-contract"' "$ci")"
-if [[ "$align_default" != "true" || "$align_type" != "boolean" \
-   || "$align_if" != "\${{ inputs.align-npm-with-consumer-contract }}" \
-   || "$align_omitted" != "false" || "$align_on" != "false" ]]; then
-  echo "create-release must align omitted npm inputs and preserve the explicit false compatibility path" >&2
+align_input="$(yq -r '.on.workflow_call.inputs | has("align-npm-with-consumer-contract")' "$workflow")"
+align_conditional="$(yq -r '.jobs.release.steps[] | select(.name == "📦 Align npm with consumer contract") | has("if")' "$workflow")"
+align_fixture_inputs="$(yq -r '[.jobs."test-create-release".with, .jobs."test-create-release-no-issue-side-effects".with] | map(has("align-npm-with-consumer-contract")) | any' "$ci")"
+if [[ "$align_input" != "false" || "$align_conditional" != "false" || "$align_fixture_inputs" != "false" ]]; then
+  echo "create-release must align npm unconditionally without the retired compatibility input" >&2
   exit 1
 fi
 
@@ -76,8 +69,8 @@ setup_node_cache="$(
   yq -r '.jobs.release.steps[] | select(.name == "📦 Setup Node.js") | .with."package-manager-cache"' \
     "$workflow"
 )"
-if [[ "$setup_node_cache" != "\${{ !inputs.align-npm-with-consumer-contract }}" ]]; then
-  echo "create-release must disable setup-node automatic npm probing until an enabled consumer contract has been aligned" >&2
+if [[ "$setup_node_cache" != "false" ]]; then
+  echo "create-release must disable setup-node automatic npm probing before consumer alignment" >&2
   exit 1
 fi
 

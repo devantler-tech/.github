@@ -7,11 +7,6 @@ on:
         required: false
         default: false
         type: boolean
-      align-npm-with-consumer-contract:
-        description: "Align npm with consumer contracts by default; explicit false keeps bundled npm during rollout retirement (#392)"
-        required: false
-        default: true
-        type: boolean
       warn-missing-breaking-bang:
         description: "Warn when an explicit JSON commit-analyzer config lacks breaking-header handling"
         required: false
@@ -77,11 +72,10 @@ jobs:
           node-version: 22
           # setup-node auto-detects npm from package.json and otherwise invokes the runner-bundled
           # npm before the alignment step below. An npm 11 consumer can reject that npm 10
-          # cache probe through devEngines, so defer caching until after the contract is aligned.
-          package-manager-cache: ${{ !inputs.align-npm-with-consumer-contract }}
+          # cache probe through devEngines, so disable setup-node's automatic probing.
+          package-manager-cache: false
 
       - name: 📦 Align npm with consumer contract
-        if: ${{ inputs.align-npm-with-consumer-contract }}
         shell: bash
         run: |
           set -euo pipefail
