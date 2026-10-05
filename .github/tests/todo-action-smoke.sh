@@ -16,6 +16,7 @@ case "${1:-}" in
     image="$(yq -r '.runs.steps[] | select(.name == "📝 Create issues from TODOs") | .env.TODO_TO_ISSUE_IMAGE' "$root/actions/create-issues-from-todos/action.yaml")"
     jq -n --arg temp "$RUNNER_TEMP" --arg image "$image" --arg workspace "${GITHUB_WORKSPACE:?}" \
       --arg repo "${GITHUB_REPOSITORY:?}" --arg before "${TODO_EXPECTED_BEFORE:-}" \
+      --arg repo_id "${GITHUB_REPOSITORY_ID:-}" \
       --arg commits "${TODO_EXPECTED_COMMITS:-null}" --arg diff "${TODO_EXPECTED_DIFF:-}" \
       --arg sha "${GITHUB_SHA:?}" --arg actor "${GITHUB_ACTOR:?}" \
       --arg api "${GITHUB_API_URL:?}" --arg server "${GITHUB_SERVER_URL:?}" \
@@ -23,12 +24,12 @@ case "${1:-}" in
       --arg ignore "${TODO_EXPECTED_IGNORE:-}" '
       {args:(["run","--rm","--pull","never","--entrypoint","/opt/todo-guard","--volume",($temp+"/devantler-todo-guard:/opt/todo-guard:ro"),"--workdir","/github/workspace","--volume",($workspace+":/github/workspace"),
         "--env","GITHUB_ACTIONS=true","--env","GITHUB_WORKSPACE=/github/workspace","--env","CI=true"]
-        + (["INPUT_REPO","INPUT_BEFORE","INPUT_COMMITS","INPUT_DIFF_URL","INPUT_SHA","INPUT_TOKEN",
+        + (["INPUT_REPO","INPUT_REPOSITORY_ID","INPUT_BEFORE","INPUT_COMMITS","INPUT_DIFF_URL","INPUT_SHA","INPUT_TOKEN",
           "INPUT_CLOSE_ISSUES","INPUT_AUTO_P","INPUT_PROJECT","INPUT_PROJECTS_SECRET","INPUT_AUTO_ASSIGN",
           "INPUT_ACTOR","INPUT_GITHUB_URL","INPUT_GITHUB_SERVER_URL","INPUT_ESCAPE","INPUT_NO_STANDARD",
           "INPUT_INSERT_ISSUE_URLS","INPUT_IGNORE"] | map(["--env",.]) | add) + [$image]),
        env:{GITHUB_ACTIONS:"true",GITHUB_WORKSPACE:"/github/workspace",CI:"true",
-         INPUT_REPO:$repo,INPUT_BEFORE:$before,INPUT_COMMITS:$commits,INPUT_DIFF_URL:$diff,
+         INPUT_REPO:$repo,INPUT_REPOSITORY_ID:$repo_id,INPUT_BEFORE:$before,INPUT_COMMITS:$commits,INPUT_DIFF_URL:$diff,
          INPUT_SHA:$sha,INPUT_TOKEN:"<present>",INPUT_CLOSE_ISSUES:"true",INPUT_AUTO_P:"true",
          INPUT_PROJECT:$project,INPUT_PROJECTS_SECRET:(if $secret == "" then "" else "<present>" end),INPUT_AUTO_ASSIGN:"true",
          INPUT_ACTOR:$actor,INPUT_GITHUB_URL:$api,INPUT_GITHUB_SERVER_URL:$server,

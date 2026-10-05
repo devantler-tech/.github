@@ -29,6 +29,8 @@ lost legacy App inputs	.runs.steps |= map(if .id == "app-token" then del(.with["
 missing credential validation	.runs.steps[0].run=":"	invalid project credentials were accepted
 missing ignore forwarding	.runs.steps |= map(if .name == "📝 Create issues from TODOs" then .run |= sub("--env INPUT_IGNORE"; "--env INPUT_OMITTED") else . end)	exact Docker projection or retry count changed
 missing commit forwarding	.runs.steps |= map(if .name == "📝 Create issues from TODOs" then .run |= sub("--env INPUT_COMMITS"; "--env INPUT_OMITTED") else . end)	exact Docker projection or retry count changed
+missing repository ID forwarding	.runs.steps |= map(if .name == "📝 Create issues from TODOs" then .run |= sub("--env INPUT_REPOSITORY_ID"; "--env INPUT_OMITTED") else . end)	exact Docker projection or retry count changed
+wrong repository ID binding	.runs.steps |= map(if .name == "📝 Create issues from TODOs" then .env.INPUT_REPOSITORY_ID="4243" else . end)	exact Docker projection or retry count changed
 wrong issue token	.runs.steps |= map(if .name == "📝 Create issues from TODOs" then .run = "INPUT_TOKEN=unexpected\n"+.run else . end)	no-project: expected exit 0, got 74
 wrong project token	.runs.steps |= map(if .name == "📝 Create issues from TODOs" then .run = "INPUT_PROJECTS_SECRET=unexpected\n"+.run else . end)	no-project: expected exit 0, got 74
 wrong workdir	.runs.steps |= map(if .name == "📝 Create issues from TODOs" then .run |= sub("/github/workspace"; "/unexpected") else . end)	exact Docker projection or retry count changed
@@ -44,4 +46,4 @@ vendor filter skips all sources	.runs.steps |= map(if .id == "vendored-ignore" t
 scanner replay	.runs.steps |= map(if .name == "📝 Create issues from TODOs" then .run |= sub("docker run --rm"; "retry docker run --rm") else . end)	scanner-fails-once: exact Docker projection or retry count changed
 missing supervisor entrypoint	.runs.steps |= map(if .name == "📝 Create issues from TODOs" then .run |= sub("/opt/todo-guard"; "/unexpected") else . end)	exact Docker projection or retry count changed
 CASES
-echo 'PASS: 21 independent to-do action mutations are rejected'
+echo 'PASS: 23 independent to-do action mutations are rejected'
