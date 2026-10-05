@@ -36,6 +36,9 @@ resolved_digest="sha256:$(printf 'c%.0s' $(seq 1 64))"
 image_digest="sha256:$(printf 'b%.0s' $(seq 1 64))"
 
 mkdir -p "$scratch/bin"
+cp .github/scripts/require-unpublished-version.sh "$scratch/require-unpublished-version.sh"
+cp .github/tests/fixtures/registry-read-curl.sh "$scratch/bin/curl"
+chmod +x "$scratch/bin/curl"
 cat >"$scratch/bin/flux" <<'EOF'
 #!/usr/bin/env bash
 printf 'flux %s\n' "$*" >>"$CALLS"
@@ -71,7 +74,8 @@ run_step() { # <script> <flux push json>
   : >"$scratch/calls"
   PATH="$scratch/bin:$PATH" CALLS="$scratch/calls" FLUX_PUSH_JSON="$2" \
     RESOLVED_DIGEST="$resolved_digest" IMAGE_DIGEST="$image_digest" RUNNER_TEMP="$scratch" \
-    GITHUB_RUN_ID=123 GITHUB_RUN_ATTEMPT=2 \
+    RUN_ID=123 RUN_ATTEMPT=2 GITHUB_RUN_ID=123 GITHUB_RUN_ATTEMPT=2 \
+    IMAGE_TAGS=ghcr.io/devantler-tech/app:1.2.3 \
     REGISTRY=ghcr.io IMAGE_NAME=devantler-tech/app IMAGE=ghcr.io/devantler-tech/app \
     OCI_NAME=devantler-tech/app DIGEST="$image_digest" DEPLOY_PATH=deploy REF_NAME=v1.2.3 VERSION=1.2.3 \
     SHA=0123456789abcdef SERVER_URL=https://github.com REPOSITORY=devantler-tech/app \

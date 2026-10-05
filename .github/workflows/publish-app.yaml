@@ -22,7 +22,7 @@ on:
         default: true
         type: boolean
       enable-signed-promotion:
-        description: "Stage, sign and verify image and manifests before exposing release tags. Requires enable-caller-pin; default-off during rollout (#371)."
+        description: "Verify both signature identities and paired publication claims before exposing release tags. Requires enable-caller-pin; default-off during rollout (#371)."
         required: false
         default: false
         type: boolean
@@ -240,7 +240,7 @@ jobs:
 
       - name: 🔒 Prepare signed image staging
         id: staging
-        if: ${{ !inputs.enable-signed-recovery && (inputs.enable-signed-promotion == true || inputs.enable-signed-promotion == 'true') }}
+        if: ${{ !inputs.enable-signed-recovery }}
         shell: bash
         env:
           JOB_WORKFLOW_REF: ${{ steps.caller.outputs.ref }}
@@ -249,9 +249,10 @@ jobs:
           VERSION: ${{ steps.version.outputs.version }}
           ACTOR: ${{ github.actor }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ENABLE_SIGNED_PROMOTION: ${{ inputs.enable-signed-promotion }}
         run: |
           set -euo pipefail
-          if ! [[ "${JOB_WORKFLOW_REF:-}" =~ ^[^@]+@[0-9a-f]{40}$ ]]; then
+          if [[ "$ENABLE_SIGNED_PROMOTION" == true ]] && ! [[ "${JOB_WORKFLOW_REF:-}" =~ ^[^@]+@[0-9a-f]{40}$ ]]; then
             echo '::error::signed promotion requires enable-caller-pin and a SHA-pinned signer identity' >&2
             exit 1
           fi
@@ -283,7 +284,7 @@ jobs:
         with:
           context: .
           push: true
-          tags: ${{ (inputs.enable-signed-promotion == true || inputs.enable-signed-promotion == 'true') && steps.staging.outputs.tag || steps.meta.outputs.tags }}
+          tags: ${{ steps.staging.outputs.tag }}
           labels: ${{ steps.meta.outputs.labels }}
 
       - name: 📌 Pin image digest in manifests
@@ -319,16 +320,37 @@ jobs:
           REPOSITORY: ${{ github.repository }}
           ACTOR: ${{ github.actor }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RUN_ID: ${{ github.run_id }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+          IMAGE_TAGS: ${{ steps.meta.outputs.tags }}
         run: |
           set -euo pipefail
           : "${VERSION:?the semantic-version tag step did not resolve a version}"
           # A registry reference must be lowercase, as docker/metadata-action named the image.
           IMAGE="$(printf '%s' "$IMAGE" | tr '[:upper:]' '[:lower:]')"
           ARTIFACT="$(printf '%s' "${REGISTRY}/${IMAGE_NAME}/manifests" | tr '[:upper:]' '[:lower:]')"
+          if ! [[ "${RUN_ID:-}" =~ ^[0-9]+$ && "${RUN_ATTEMPT:-}" =~ ^[0-9]+$ ]]; then
+            echo '::error::publication requires a numeric workflow run ID and attempt' >&2
+            exit 1
+          fi
+          tags=()
+          version_tag=false
+          while IFS= read -r tag; do
+            [[ -n "$tag" ]] || continue
+            [[ "$tag" == "$IMAGE:"* ]] || { echo '::error::unexpected image publication target' >&2; exit 1; }
+            suffix="${tag#"$IMAGE:"}"
+            if [[ "$suffix" == "$VERSION" ]]; then
+              version_tag=true
+            elif ! [[ "$suffix" =~ ^sha-[0-9a-f]{7,40}$ ]]; then
+              echo '::error::unexpected image publication tag' >&2; exit 1
+            fi
+            tags+=(--tag "$tag")
+          done <<< "${IMAGE_TAGS:-}"
+          [[ "$version_tag" == true ]] || { echo '::error::image metadata omitted the release version' >&2; exit 1; }
           # Sign the digest this push produced, never the tag re-resolved later: a tag
           # moved by an overlapping release or another writer would otherwise get a
           # signature over bytes this run did not publish.
-          PUSHED="$(flux push artifact "oci://${ARTIFACT}:${VERSION}" \
+          PUSHED="$(flux push artifact "oci://${ARTIFACT}:default-staging-${RUN_ID}-${RUN_ATTEMPT}" \
             --path="${DEPLOY_PATH}" \
             --source="${SERVER_URL}/${REPOSITORY}" \
             --revision="${REF_NAME}@sha1:${SHA}" \
@@ -340,16 +362,20 @@ jobs:
           fi
           cosign sign --yes "${ARTIFACT}@${ARTIFACT_DIGEST}"
           cosign sign --yes "${IMAGE}@${DIGEST}"
+          # Check an isolated copy before exposing any selectable image tag.
+          docker buildx imagetools create --prefer-index=false \
+            --metadata-file="$RUNNER_TEMP/default-image-staging.json" \
+            --tag "${IMAGE}:default-staging-${RUN_ID}-${RUN_ATTEMPT}" "${IMAGE}@${DIGEST}"
+          COPIED="$(jq -r '."containerimage.descriptor".digest // ""' "$RUNNER_TEMP/default-image-staging.json")"
+          [[ "$COPIED" == "$DIGEST" ]] || { echo '::error::staged image digest differs from the signed image'; exit 1; }
+          name="$(printf '%s' "$IMAGE_NAME" | tr '[:upper:]' '[:lower:]')"
+          OCI_REPOSITORIES="$(printf '%s\n%s' "$name" "$name/manifests")" \
+            bash "$RUNNER_TEMP/require-unpublished-version.sh"
+          docker buildx imagetools create --prefer-index=false "${tags[@]}" "${IMAGE}@${COPIED}"
+          flux tag artifact "oci://${ARTIFACT}@${ARTIFACT_DIGEST}" --tag "$VERSION" --creds "${ACTOR}:${GH_TOKEN}"
           case "$VERSION" in
             *-*) ;; # Prereleases keep both stable latest pointers.
             *)
-              # Inspect an isolated copy before exposing it as latest. Even with
-              # format preservation requested, a transformed descriptor is refused.
-              docker buildx imagetools create --prefer-index=false \
-                --metadata-file="$RUNNER_TEMP/default-image-staging.json" \
-                --tag "${IMAGE}:default-staging-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" "${IMAGE}@${DIGEST}"
-              COPIED="$(jq -r '."containerimage.descriptor".digest // ""' "$RUNNER_TEMP/default-image-staging.json")"
-              [[ "$COPIED" == "$DIGEST" ]] || { echo '::error::staged image digest differs from the signed image'; exit 1; }
               docker buildx imagetools create --prefer-index=false \
                 --tag "${IMAGE}:latest" "${IMAGE}@${COPIED}"
               flux tag artifact "oci://${ARTIFACT}@${ARTIFACT_DIGEST}" --tag latest --creds "${ACTOR}:${GH_TOKEN}"

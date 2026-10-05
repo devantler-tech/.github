@@ -36,10 +36,12 @@ printf 'sign %s\n' "$kind" >>"$PUBLICATION_TRACE"
 "$REAL_COSIGN" sign --allow-http-registry --allow-insecure-registry --use-signing-config=false \
   --tlog-upload=false --yes --key "$FIXTURE_PRIVATE_KEY" "127.0.0.1:5000/${3#registry.test:5443/}" \
   >"$PUBLICATION_WORK/default-sign.log" 2>&1
-if [[ "$PUBLICATION_FAULT" == alias-moved && "$kind" == manifests ]]; then
+if [[ ( "$PUBLICATION_FAULT" == alias-moved || "$PUBLICATION_FAULT" == raced-version ) && "$kind" == manifests ]]; then
+  tag="default-staging-${RUN_ID}-${RUN_ATTEMPT}"
+  [[ "$PUBLICATION_FAULT" != raced-version ]] || tag="$VERSION"
   "$REAL_FLUX" tag artifact "oci://$REGISTRY/devantler-tech/app/manifests@$OLD_MANIFEST_LATEST" \
-    --tag "$VERSION" --creds "$ACTOR:$GH_TOKEN"
-  printf 'moved manifests version\n' >>"$PUBLICATION_TRACE"
+    --tag "$tag" --creds "$ACTOR:$GH_TOKEN"
+  printf 'moved manifests %s\n' "$tag" >>"$PUBLICATION_TRACE"
 fi
 COSIGN
 cat >"$work/publication-bin/flux" <<'FLUX'
@@ -93,7 +95,7 @@ for family in manifests app; do
   STEP='🔒 Refuse an occupied release version' yq -r '.jobs[].steps[] | select(.name == strenv(STEP)) | .run' \
     "$workflow" >"$work/default-admission.sh"
   [[ -s "$work/default-body.sh" && -s "$work/default-admission.sh" ]]
-  faults=(none prerelease manifests-sign alias-moved)
+  faults=(none prerelease manifests-sign alias-moved raced-version)
   [[ "$family" != app ]] || faults+=(image-sign manifests-push changed-digest)
   counter=0
   for fault in "${faults[@]}"; do
@@ -103,15 +105,37 @@ for family in manifests app; do
     [[ "$fault" != prerelease ]] || VERSION+=-rc.1
     export REF_NAME="v$VERSION"
     export GITHUB_RUN_ID="$((9000 + counter))" GITHUB_RUN_ATTEMPT=1
+    export RUN_ID="$GITHUB_RUN_ID" RUN_ATTEMPT="$GITHUB_RUN_ATTEMPT" ENABLE_SIGNED_PROMOTION=false
+    export IMAGE_TAGS
+    IMAGE_TAGS="$(printf '%s:%s\n%s:sha-fedcba9' "$IMAGE" "$VERSION" "$IMAGE")"
     reset_latest >"$work/default-reset.log" 2>&1
     : >"$PUBLICATION_TRACE"
     rm -f "$work/default-produced.json"
     status=0
     bash "$work/default-admission.sh" >"$work/default-admission.log" 2>&1 || status=$?
     if [[ "$status" != 0 ]]; then cat "$work/default-admission.log" >&2; exit "$status"; fi
+    if [[ "$family" == app ]]; then
+      : >"$work/default-staging-output"
+      GITHUB_OUTPUT="$work/default-staging-output" JOB_WORKFLOW_REF='' \
+        bash -euo pipefail -c "$(yq -r '.jobs.publish.steps[] | select(.id == "staging") | .run' "$workflow")" \
+        >"$work/default-staging.log" 2>&1
+      tag="$(sed -n 's/^tag=//p' "$work/default-staging-output" | tail -1)"
+      [[ "$tag" == "$IMAGE:staging-${RUN_ID}-${RUN_ATTEMPT}" ]]
+      "$REAL_DOCKER" buildx imagetools create --prefer-index=false --tag "$tag" "$IMAGE@$DIGEST" \
+        >"$work/default-build.log" 2>&1
+      [[ "$(readback devantler-tech/app "${tag##*:}")" == "$DIGEST" ]]
+    fi
     status=0
     PATH="$work/publication-bin:$PATH" bash "$work/default-body.sh" >"$work/default-publication.log" 2>&1 || status=$?
     case "$fault" in
+      raced-version)
+        [[ "$status" == 1 ]]
+        grep -qF "version $VERSION already exists" "$work/default-publication.log"
+        [[ "$(readback devantler-tech/app/manifests "$VERSION")" == "$latest_before" ]]
+        [[ "$(readback devantler-tech/app latest)" == "$image_latest_before" &&
+          "$(readback devantler-tech/app/manifests latest)" == "$latest_before" ]]
+        ! grep -qx 'flux tag artifact' "$PUBLICATION_TRACE"
+        ;;
       changed-digest)
         [[ "$status" == 1 ]]
         grep -qF 'staged image digest differs from the signed image' "$work/default-publication.log"
@@ -120,6 +144,9 @@ for family in manifests app; do
         [[ "$(readback devantler-tech/app "default-staging-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}")" == "$copied" ]]
         [[ "$(readback devantler-tech/app latest)" == "$image_latest_before" &&
           "$(readback devantler-tech/app/manifests latest)" == "$latest_before" ]]
+        bash "$work/default-admission.sh" >"$work/default-absence.log" 2>&1 || {
+          cat "$work/default-absence.log" >&2; echo 'FAIL: changed descriptor exposed a version' >&2; exit 1;
+        }
         ! grep -qx 'flux tag artifact' "$PUBLICATION_TRACE"
         ;;
       manifests-sign|image-sign|manifests-push)
@@ -132,9 +159,18 @@ for family in manifests app; do
         ! grep -qE 'docker promotion|flux tag artifact' "$PUBLICATION_TRACE"
         [[ "$(readback devantler-tech/app latest)" == "$image_latest_before" &&
           "$(readback devantler-tech/app/manifests latest)" == "$latest_before" ]]
+        bash "$work/default-admission.sh" >"$work/default-absence.log" 2>&1 || {
+          cat "$work/default-absence.log" >&2; echo 'FAIL: failed publication exposed a version' >&2; exit 1;
+        }
         ;;
       prerelease)
         [[ "$status" == 0 ]]
+        produced="$(jq -er '.digest' "$work/default-produced.json")"
+        [[ "$(readback devantler-tech/app/manifests "$VERSION")" == "$produced" ]]
+        if [[ "$family" == app ]]; then
+          [[ "$(readback devantler-tech/app "$VERSION")" == "$image_digest" &&
+            "$(readback devantler-tech/app sha-fedcba9)" == "$image_digest" ]]
+        fi
         [[ "$(readback devantler-tech/app latest)" == "$image_latest_before" &&
           "$(readback devantler-tech/app/manifests latest)" == "$latest_before" ]]
         ;;
@@ -142,17 +178,22 @@ for family in manifests app; do
         if [[ "$status" != 0 ]]; then cat "$work/default-publication.log" >&2; exit 1; fi
         produced="$(jq -er '.digest | select(test("^sha256:[0-9a-f]{64}$"))' "$work/default-produced.json")"
         # Verify the actual latest bytes with the real key, independently of the
-        # adapter and the mutable version tag changed by the alias control.
+        # adapter and the mutable staging tag changed by the alias control.
         target_digest="$(readback devantler-tech/app/manifests latest)"
         [[ "$target_digest" == "$produced" && "$target_digest" != "$latest_before" ]]
+        [[ "$(readback devantler-tech/app/manifests "$VERSION")" == "$produced" ]]
         if [[ "$fault" == alias-moved ]]; then
-          grep -qx 'moved manifests version' "$PUBLICATION_TRACE"
-          [[ "$(readback devantler-tech/app/manifests "$VERSION")" == "$latest_before" ]]
+          grep -qx "moved manifests default-staging-${RUN_ID}-${RUN_ATTEMPT}" "$PUBLICATION_TRACE"
+          [[ "$(readback devantler-tech/app/manifests "default-staging-${RUN_ID}-${RUN_ATTEMPT}")" == "$latest_before" ]]
         fi
         "$REAL_COSIGN" verify --allow-http-registry --allow-insecure-registry --insecure-ignore-tlog \
           --key "$FIXTURE_PUBLIC_KEY" "127.0.0.1:5000/devantler-tech/app/manifests@$target_digest" \
           >"$work/default-verify.json" 2>"$work/default-verify.log"
-        if [[ "$family" == app ]]; then [[ "$(readback devantler-tech/app latest)" == "$image_digest" ]]; fi
+        if [[ "$family" == app ]]; then
+          [[ "$(readback devantler-tech/app latest)" == "$image_digest" &&
+            "$(readback devantler-tech/app "$VERSION")" == "$image_digest" &&
+            "$(readback devantler-tech/app sha-fedcba9)" == "$image_digest" ]]
+        fi
         ;;
     esac
     echo "PASS: native default $family $fault registry readback"

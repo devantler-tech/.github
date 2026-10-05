@@ -21,7 +21,8 @@ else
   if [[ "$scenario" == registry-existing ||
         ( "$scenario" == registry-image-only && "${21}" != */manifests/manifests/* ) ||
         ( "$scenario" == registry-manifests-only && "${21}" == */manifests/manifests/* ) ||
-        ( "$scenario" == registry-raced && -e "$STATE/verified" ) ]]; then
+        ( "$scenario" == registry-raced && ( -e "$STATE/verified" ||
+          ( "${SIGNED_PROMOTION:-true}" == false && -e "$STATE/signed" ) ) ) ]]; then
     printf '{}' >"$output"; printf 200
   else
     printf '{"errors":[{"code":"MANIFEST_UNKNOWN"}]}' >"$output"; printf 404

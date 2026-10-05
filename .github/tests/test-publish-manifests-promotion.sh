@@ -80,7 +80,7 @@ case "$1 $2" in
       fi
     fi
     if [[ "$5" == latest ]]; then printf '%s\n' "$promoted" >"$STATE/latest";
-    else printf '%s\n' "$EXPECTED_DIGEST" >"$STATE/version"; fi
+    else printf '%s\n' "$promoted" >"$STATE/version"; fi
     ;;
   *) exit 67 ;;
 esac
@@ -148,14 +148,22 @@ default_mode="$(yq -r '.on.workflow_call.inputs["enable-signed-promotion"].defau
 for failure in push digest sign; do
   if run_case "$failure" 1.2.3 "$default_mode" '' 123; then fail "default succeeded after $failure failure"; fi
   [[ "$(<"$state/latest")" == old-latest ]] || fail "default $failure failure moved latest"
+  [[ "$(<"$state/version")" == old-version ]] || fail "default $failure failure exposed a version before signing"
 done
 run_case none 1.2.3-rc.1 "$default_mode" '' 123 || fail 'default prerelease failed'
 [[ "$(<"$state/latest")" == old-latest ]] || fail 'default prerelease moved latest'
 run_case alias-moved 1.2.3 "$default_mode" '' 123 || fail 'default alias-movement fixture failed'
+[[ "$(<"$state/version")" == "$digest" ]] || fail 'default version selected a mutable staging alias'
 [[ "$(<"$state/latest")" == "$digest" ]] || fail 'default latest selected a mutable version alias'
+if run_case registry-raced 1.2.3 "$default_mode" '' 123; then fail 'default overwrote a version appearing during signing'; fi
+[[ -e "$state/signed" ]] || fail 'default late-occupancy fixture did not reach signing'
+[[ "$(<"$state/version")" == old-version && "$(<"$state/latest")" == old-latest ]] || fail 'default late occupancy moved release tags'
+if run_case none 1.2.3 "$default_mode" '' invalid; then fail 'default accepted an invalid staging run'; fi
+[[ ! -s "$state/calls" ]] || fail 'default invalid staging run reached registry writes'
 run_case none 1.2.3 "$default_mode" '' 123 || fail 'legacy default changed'
 [[ -e "$state/signed" ]] || fail 'default stable release was not signed'
-[[ "$(<"$state/pushed")" == "oci://$artifact:1.2.3" && "$(<"$state/latest")" == "$digest" ]] || fail 'legacy publication changed'
+[[ "$(<"$state/pushed")" == "oci://$artifact:default-staging-123-2" &&
+   "$(<"$state/version")" == "$digest" && "$(<"$state/latest")" == "$digest" ]] || fail 'default release tags did not select the staged signed digest'
 echo 'ok default-off preserves existing callers; opted-in malformed identities fail before writes'
 echo 'ok default manifests latest is signed, stable-only and bound to the produced digest'
 
@@ -176,18 +184,21 @@ done
 echo 'ok configuration caller refuses missing controls, moving refs and the wrong workflow family'
 
 if [[ "$#" == 0 ]]; then
-  for mutation in early-latest prerelease-latest mutable-alias; do
+  for mutation in early-version early-latest prerelease-latest mutable-alias; do
     # shellcheck disable=SC2016 # Literal production variables in negative controls.
     case "$mutation" in
-      early-latest) expression='(.jobs[].steps[] | select(.name == "📦 Push & sign manifests artifact")).run |= sub("cosign sign --yes"; "flux tag artifact \"oci://${ARTIFACT}@${DIGEST}\" --tag latest --creds \"${ACTOR}:${GH_TOKEN}\"\ncosign sign --yes")' ;;
-      prerelease-latest) expression='(.jobs[].steps[] | select(.name == "📦 Push & sign manifests artifact")).run |= sub("\\*-\\*\\) ;;"; "*-*) flux tag artifact \"oci://${ARTIFACT}@${DIGEST}\" --tag latest --creds \"${ACTOR}:${GH_TOKEN}\" ;;")' ;;
-      mutable-alias) expression='(.jobs[].steps[] | select(.name == "📦 Push & sign manifests artifact")).run |= sub("oci://\\$\\{ARTIFACT\\}@\\$\\{DIGEST\\}"; "oci://${ARTIFACT}:${VERSION}")' ;;
+      early-version) expression='(.jobs[].steps[] | select(.name == "📦 Push & sign manifests artifact")).run |= sub("PUSH_TAG=[^\n]+"; "PUSH_TAG=\"$$VERSION\"")' ;;
+      early-latest) expression='(.jobs[].steps[] | select(.name == "📦 Push & sign manifests artifact")).run |= sub("cosign sign --yes"; "flux tag artifact \"oci://$${ARTIFACT}@$${DIGEST}\" --tag latest --creds \"$${ACTOR}:$${GH_TOKEN}\"\ncosign sign --yes")' ;;
+      prerelease-latest) expression='(.jobs[].steps[] | select(.name == "📦 Push & sign manifests artifact")).run |= sub("\\*-\\*\\) ;;"; "*-*) flux tag artifact \"oci://$${ARTIFACT}@$${DIGEST}\" --tag latest --creds \"$${ACTOR}:$${GH_TOKEN}\" ;;")' ;;
+      mutable-alias) expression='(.jobs[].steps[] | select(.name == "📦 Push & sign manifests artifact")).run |= sub("oci://\\$\\{ARTIFACT\\}@\\$\\{DIGEST\\}"; "oci://$${ARTIFACT}:$${VERSION}")' ;;
     esac
     yq "$expression" "$workflow" >"$scratch/mutated.yaml"
+    STEP='📦 Push & sign manifests artifact' yq -r '.jobs[].steps[] | select(.name == strenv(STEP)) | .run' "$scratch/mutated.yaml" >"$scratch/mutated.sh"
+    ! cmp -s "$scratch/mutated.sh" "$scratch/legacy.sh" || fail "mutation did not change the production step: $mutation"
     if bash "$0" "$scratch/mutated.yaml" >"$scratch/mutation.log" 2>&1; then
       fail "accepted default manifests $mutation regression"
     fi
-    grep -qE 'default sign failure moved latest|default prerelease moved latest|default latest selected a mutable version alias' "$scratch/mutation.log" ||
+    grep -qE 'default .* failure exposed a version before signing|default sign failure moved latest|default prerelease moved latest|default (latest|version) selected a mutable' "$scratch/mutation.log" ||
       fail "default $mutation failed for an unrelated reason"
   done
   echo 'ok default latest ordering, prerelease and mutable-alias regressions are detected'
@@ -201,4 +212,12 @@ if [[ "$#" == 0 ]]; then
   grep -q 'version created during signing was overwritten' "$scratch/mutation.log" ||
     fail 'final-refusal mutation failed for an unrelated reason'
   echo 'ok removing the final refusal fails the late-version regression'
+  STEP='📦 Push & sign manifests artifact' yq '(.jobs[].steps[] | select(.name == strenv(STEP))).run |=
+    sub("OCI_REPOSITORIES=[^\n]*require-unpublished-version[.]sh[^\n]*"; "true")' "$workflow" >"$scratch/mutated.yaml"
+  if bash "$0" "$scratch/mutated.yaml" >"$scratch/mutation.log" 2>&1; then
+    fail 'accepted default publication without the final absence check'
+  fi
+  grep -qF 'default overwrote a version appearing during signing' "$scratch/mutation.log" ||
+    fail 'default final-refusal mutation failed for an unrelated reason'
+  echo 'ok removing the default final refusal fails the late-version regression'
 fi

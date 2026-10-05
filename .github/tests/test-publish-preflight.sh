@@ -478,8 +478,12 @@ run_job "$app" publish "$wd" tag v1.2.3 app-name=app ||
   fail "publish-app failed a good release: $(cat "$log")"
 grep -qxF "image push 🐳 Build & push image" "$calls" ||
   fail "publish-app never pushed the image; calls: $(cat "$calls")"
-grep -qF "flux push artifact oci://ghcr.io/devantler-tech/app/manifests:1.2.3 " "$calls" ||
-  fail "publish-app did not push the manifests artifact as 1.2.3; calls: $(cat "$calls")"
+grep -qF "image tags ghcr.io/devantler-tech/app:staging-123-2" "$calls" ||
+  fail "publish-app did not stage the image before signing; calls: $(cat "$calls")"
+grep -qF "flux push artifact oci://ghcr.io/devantler-tech/app/manifests:default-staging-123-2 " "$calls" ||
+  fail "publish-app did not stage the manifests before signing; calls: $(cat "$calls")"
+grep -qF "flux tag artifact oci://ghcr.io/devantler-tech/app/manifests@$artifact_digest --tag 1.2.3 " "$calls" ||
+  fail "publish-app did not promote its signed manifests digest as 1.2.3; calls: $(cat "$calls")"
 pinned="$(yq '.spec.template.spec.containers[] | select(.name == "app") | .image' \
   "$wd/deploy/deployment.yaml")"
 [[ "$pinned" == "ghcr.io/devantler-tech/app@$image_digest" ]] ||
@@ -549,7 +553,7 @@ wd="$scratch/app-uppercase"
 new_app "$wd"
 SIM_REPOSITORY=devantler-tech/MyApp run_job "$app" publish "$wd" tag v1.2.3 app-name=app ||
   fail "publish-app failed a good release from an uppercase repository name: $(cat "$log")"
-grep -qF "flux push artifact oci://ghcr.io/devantler-tech/myapp/manifests:1.2.3 " "$calls" ||
+grep -qF "flux push artifact oci://ghcr.io/devantler-tech/myapp/manifests:default-staging-123-2 " "$calls" ||
   fail "publish-app did not push the manifests under a lowercase path; calls: $(cat "$calls")"
 pinned="$(yq '.spec.template.spec.containers[] | select(.name == "app") | .image' \
   "$wd/deploy/deployment.yaml")"
@@ -557,7 +561,7 @@ pinned="$(yq '.spec.template.spec.containers[] | select(.name == "app") | .image
   fail "publish-app pinned a reference that is not lowercase: $pinned"
 SIM_REPOSITORY=devantler-tech/MyApp run_job "$manifests" publish-manifests "$wd" tag v1.2.3 ||
   fail "publish-manifests failed a good release from an uppercase repository name: $(cat "$log")"
-grep -qF "flux push artifact oci://ghcr.io/devantler-tech/myapp/manifests:1.2.3 " "$calls" ||
+grep -qF "flux push artifact oci://ghcr.io/devantler-tech/myapp/manifests:default-staging-123-2 " "$calls" ||
   fail "publish-manifests did not push under a lowercase path; calls: $(cat "$calls")"
 echo "ok   both workflows publish an uppercase repository name under lowercase references"
 
@@ -670,7 +674,7 @@ for workflow in "$app" "$manifests"; do
     new_app "$wd"
     run_job "$workflow" "$job" "$wd" tag "$tag" ${with[@]+"${with[@]}"} ||
       fail "$workflow refused the valid tag $tag: $(cat "$log")"
-    grep -qF "flux push artifact oci://ghcr.io/devantler-tech/app/manifests:${want} " "$calls" ||
+    grep -qF "flux tag artifact oci://ghcr.io/devantler-tech/app/manifests@$artifact_digest --tag ${want} " "$calls" ||
       fail "$workflow did not publish $tag as $want; calls: $(cat "$calls")"
   done
 
