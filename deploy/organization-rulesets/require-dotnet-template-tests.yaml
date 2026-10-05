@@ -1,0 +1,36 @@
+# Give dotnet-template the .NET build and test gate its AGENTS.md describes
+# (devantler-tech/dotnet-template#424). The UI-managed "Require workflows … for
+# .NET" ruleset does not target the template, so its pull requests have had no
+# cross-platform build or test check. That ruleset stays UI-managed and
+# untouched: this rule targets only dotnet-template, by id, and requires the
+# canonical workflow from this repository's reviewed main branch, so a candidate
+# cannot edit or remove the gate it is judged by.
+# No bypass or Delete policy is declared.
+apiVersion: enterprise.github.m.upbound.io/v1alpha1
+kind: OrganizationRuleset
+metadata:
+  name: require-dotnet-template-tests
+spec:
+  managementPolicies:
+    - Observe
+    - Create
+    - Update
+    - LateInitialize
+  forProvider:
+    name: Require workflow - .NET template tests
+    target: branch
+    enforcement: active
+    conditions:
+      - refName:
+          - include: ["~DEFAULT_BRANCH"]
+            exclude: []
+        repositoryId: [825979604]
+    rules:
+      - requiredWorkflows:
+          - requiredWorkflow:
+              - repositoryId: 948529001
+                path: .github/workflows/run-dotnet-tests.yaml
+                ref: refs/heads/main
+  providerConfigRef:
+    kind: ProviderConfig
+    name: default
