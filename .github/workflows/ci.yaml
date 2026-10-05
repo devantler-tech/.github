@@ -3585,16 +3585,14 @@ jobs:
       actions: read
 
   test-dependency-review-workflow:
-    needs: catalogue-scope
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && needs.catalogue-scope.outputs.catalogue == 'true' }}"
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
     name: "[Test] Dependency Review - Default Settings"
     uses: ./.github/workflows/dependency-review.yaml
     permissions:
       contents: read
 
   test-delete-workflow-runs-all:
-    needs: catalogue-scope
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && needs.catalogue-scope.outputs.catalogue == 'true' }}"
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
     name: "[Test] Delete Workflow Runs - All Workflows"
     uses: ./.github/workflows/delete-workflow-runs-readonly.yaml
     with:
@@ -3608,8 +3606,7 @@ jobs:
       contents: read
 
   test-delete-workflow-runs-specific:
-    needs: catalogue-scope
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && needs.catalogue-scope.outputs.catalogue == 'true' }}"
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
     name: "[Test] Delete Workflow Runs - Specific Pattern"
     uses: ./.github/workflows/delete-workflow-runs-readonly.yaml
     with:
@@ -3623,8 +3620,7 @@ jobs:
       contents: read
 
   test-delete-workflow-runs-minimal:
-    needs: catalogue-scope
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && needs.catalogue-scope.outputs.catalogue == 'true' }}"
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
     name: "[Test] Delete Workflow Runs - Minimal Parameters"
     uses: ./.github/workflows/delete-workflow-runs-readonly.yaml
     permissions:
@@ -3635,8 +3631,7 @@ jobs:
   # Its repository exclusion skips every executed job here; behavior is tested
   # through the source-derived read-only entrypoint below.
   test-validate-go-project-interface:
-    needs: catalogue-scope
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && needs.catalogue-scope.outputs.catalogue == 'true' }}"
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
     name: "[Test] Validate Go Project - Production Interface"
     uses: ./.github/workflows/validate-go-project.yaml
     with:
@@ -3650,8 +3645,7 @@ jobs:
       code-quality: write
 
   test-validate-go-project:
-    needs: catalogue-scope
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && needs.catalogue-scope.outputs.catalogue == 'true' }}"
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
     name: "[Test] Validate Go Project"
     uses: ./.github/workflows/validate-go-project-readonly.yaml
     # Fixture-targeted: validate the known-good Go fixture (this repo is not itself a Go module).
@@ -3668,8 +3662,7 @@ jobs:
       code-quality: write # callers must grant this for the coverage upload (GitHub Code Quality)
 
   test-validate-go-project-manual-fixes:
-    needs: catalogue-scope
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && needs.catalogue-scope.outputs.catalogue == 'true' }}"
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
     name: "[Test] Validate Go Project - Manual Workflow Fixes Opted In"
     uses: ./.github/workflows/validate-go-project-readonly.yaml
     with:
@@ -3683,8 +3676,7 @@ jobs:
 
   # The read-only entrypoint suppresses signed-fix opt-in; all fixers still run.
   test-validate-go-project-apply-signed-fixes:
-    needs: catalogue-scope
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && needs.catalogue-scope.outputs.catalogue == 'true' }}"
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
     name: "[Test] Validate Go Project - Signed Fixes Suppressed"
     uses: ./.github/workflows/validate-go-project-readonly.yaml
     with:
@@ -3715,8 +3707,7 @@ jobs:
   # unreachable by construction). The reachability of that arm is what the structural guard
   # in test-suite-default-branch-coverage.sh asserts instead.
   test-validate-go-project-test-default-branch:
-    needs: catalogue-scope
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && needs.catalogue-scope.outputs.catalogue == 'true' }}"
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
     name: "[Test] Validate Go Project - Default-Branch Test Opted Out"
     uses: ./.github/workflows/validate-go-project-readonly.yaml
     with:
@@ -3733,8 +3724,7 @@ jobs:
   # This call instantiates ON; trigger fixtures cover actual default-branch refs,
   # which cannot be selected by a pull-request-triggered reusable-workflow call.
   test-validate-go-project-maintenance-default-branch:
-    needs: catalogue-scope
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && needs.catalogue-scope.outputs.catalogue == 'true' }}"
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
     name: "[Test] Validate Go Project - Default-Branch Maintenance Opted In"
     uses: ./.github/workflows/validate-go-project-readonly.yaml
     with:
@@ -3747,8 +3737,7 @@ jobs:
       code-quality: write
 
   test-run-dotnet-tests-workflow:
-    needs: catalogue-scope
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && needs.catalogue-scope.outputs.catalogue == 'true' }}"
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
     name: "[Test] Run .NET Tests"
     uses: ./.github/workflows/run-dotnet-tests.yaml
     # Fixture-targeted: exercise the workflow against the known-good .NET fixture
@@ -3761,15 +3750,14 @@ jobs:
       code-quality: write # callers must grant this for the coverage upload (GitHub Code Quality)
 
   test-run-dotnet-tests-workflow-authenticated:
-    needs: catalogue-scope
-    if: "${{ github.event_name != 'merge_group' &&   !startsWith(github.event.head_commit.message, 'chore(main): release ') &&   github.event_name == 'pull_request' &&   github.event.pull_request.head.repo.full_name == github.repository &&   github.event.pull_request.user.login == 'devantler' && needs.catalogue-scope.outputs.catalogue == 'true' }}"
-
-
-
-
-
-
-
+    if: >-
+      ${{
+        github.event_name != 'merge_group' &&
+        !startsWith(github.event.head_commit.message, 'chore(main): release ') &&
+        github.event_name == 'pull_request' &&
+        github.event.pull_request.head.repo.full_name == github.repository &&
+        github.event.pull_request.user.login == 'devantler'
+      }}
     name: "[Test] Run .NET Tests - Authenticated Packages"
     uses: ./.github/workflows/run-dotnet-tests.yaml
     # Exercise the opt-in state only for the maintainer-authored code from this repository.
@@ -3782,8 +3770,7 @@ jobs:
       code-quality: write # callers must grant this for the coverage upload (GitHub Code Quality)
 
   test-enable-auto-merge:
-    needs: catalogue-scope
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && needs.catalogue-scope.outputs.catalogue == 'true' }}"
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
     name: "[Test] Enable Auto-Merge"
     uses: ./.github/workflows/enable-auto-merge.yaml
     # Static caller ceiling for the production callee. Dry-run excludes both
@@ -3798,8 +3785,7 @@ jobs:
       actions: read
 
   test-enable-auto-merge-actor-trust:
-    needs: catalogue-scope
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && needs.catalogue-scope.outputs.catalogue == 'true' }}"
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
     name: "[Test] Enable Auto-Merge - Actor Trust Enabled"
     uses: ./.github/workflows/enable-auto-merge.yaml
     with:
@@ -3813,8 +3799,7 @@ jobs:
       contents: write
 
   test-enable-auto-merge-queued:
-    needs: catalogue-scope
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && needs.catalogue-scope.outputs.catalogue == 'true' }}"
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
     name: "[Test] Enable Auto-Merge - Pending Queue Enabled"
     uses: ./.github/workflows/enable-auto-merge.yaml
     with:
@@ -3981,8 +3966,7 @@ jobs:
         run: bash .github/tests/test-queue-observer-controls.sh
 
   test-create-release:
-    needs: catalogue-scope
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && needs.catalogue-scope.outputs.catalogue == 'true' }}"
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
     name: "[Test] Create Release - Dry Run"
     uses: ./.github/workflows/create-release.yaml
     permissions: {}
@@ -3991,8 +3975,7 @@ jobs:
       offline-test: true
 
   test-create-release-no-issue-side-effects:
-    needs: catalogue-scope
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && needs.catalogue-scope.outputs.catalogue == 'true' }}"
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
     name: "[Test] Create Release - No Issue Side Effects"
     uses: ./.github/workflows/create-release.yaml
     permissions: {}
@@ -4095,8 +4078,7 @@ jobs:
       dry-run: true
 
   test-publish-dotnet-library:
-    needs: catalogue-scope
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && needs.catalogue-scope.outputs.catalogue == 'true' }}"
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
     name: "[Test] Publish .NET Library - Dry Run"
     uses: ./.github/workflows/publish-dotnet-library.yaml
     permissions:
@@ -4243,8 +4225,7 @@ jobs:
       enable-signed-promotion: true
 
   test-scan-for-todo-comments:
-    needs: catalogue-scope
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && needs.catalogue-scope.outputs.catalogue == 'true' }}"
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
     name: "[Test] Scan for TODO Comments - Dry Run (vendor exclusion)"
     uses: ./.github/workflows/scan-for-todo-comments-readonly.yaml
     permissions:
@@ -4254,8 +4235,7 @@ jobs:
       exclude-vendored: true
 
   test-scan-for-todo-comments-no-project:
-    needs: catalogue-scope
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && needs.catalogue-scope.outputs.catalogue == 'true' }}"
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
     name: "[Test] Scan for TODO Comments - Production Steps Without a Project"
     uses: ./.github/workflows/scan-for-todo-comments-readonly.yaml
     permissions:
@@ -4268,16 +4248,14 @@ jobs:
       ignore: ".*"
 
   test-scan-for-todo-comments-default:
-    needs: catalogue-scope
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && needs.catalogue-scope.outputs.catalogue == 'true' }}"
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
     name: "[Test] Scan for TODO Comments - Production Compatibility Defaults"
     uses: ./.github/workflows/scan-for-todo-comments-default-fixture.yaml
     permissions:
       contents: read
 
   test-scan-for-todo-comments-default-control:
-    needs: catalogue-scope
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && needs.catalogue-scope.outputs.catalogue == 'true' }}"
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
     name: "[Test] Scan for TODO Comments - Reject Missing Project Token"
     uses: ./.github/workflows/scan-for-todo-comments-default-fixture.yaml
     permissions:
@@ -4286,8 +4264,7 @@ jobs:
       fixture-skip-app-token: true
 
   test-scan-for-todo-comments-ignore:
-    needs: catalogue-scope
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && needs.catalogue-scope.outputs.catalogue == 'true' }}"
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
     name: "[Test] Scan for TODO Comments - Dry Run (ignore configured)"
     uses: ./.github/workflows/scan-for-todo-comments-readonly.yaml
     permissions:
@@ -4297,8 +4274,7 @@ jobs:
       ignore: '^\.github/tests/'
 
   test-sync-cluster-policies:
-    needs: catalogue-scope
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && needs.catalogue-scope.outputs.catalogue == 'true' }}"
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
     name: "[Test] Sync Cluster Policies - Dry Run"
     uses: ./.github/workflows/sync-cluster-policies.yaml
     permissions: {}
@@ -4335,8 +4311,7 @@ jobs:
         run: bash .github/tests/test-sync-cluster-policies-credentials-blocks.sh
 
   test-update-agent-skills:
-    needs: catalogue-scope
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && needs.catalogue-scope.outputs.catalogue == 'true' }}"
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
     name: "[Test] Update Agent Skills - Dry Run"
     uses: ./.github/workflows/update-agent-skills.yaml
     permissions:
@@ -4348,8 +4323,7 @@ jobs:
   # Flag-on state of the opt-in per-skill PRs (#1309), so the input stays part of the interface;
   # test-update-agent-skills-per-skill.sh pins both states and the per-skill job's apply step.
   test-update-agent-skills-per-skill:
-    needs: catalogue-scope
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && needs.catalogue-scope.outputs.catalogue == 'true' }}"
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
     name: "[Test] Update Agent Skills - Per-Skill PRs Dry Run"
     uses: ./.github/workflows/update-agent-skills.yaml # zizmor: ignore[self-repository]
     permissions:
@@ -4360,8 +4334,7 @@ jobs:
       pr-per-skill: true
 
   test-template-sync:
-    needs: catalogue-scope
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && needs.catalogue-scope.outputs.catalogue == 'true' }}"
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
     name: "[Test] Template Sync - Dry Run"
     uses: ./.github/workflows/template-sync.yaml
     permissions:
@@ -4375,8 +4348,7 @@ jobs:
   # The ignore-entry merge is a release flag: instantiate its on state as well. Its behaviour is
   # exercised offline by test-template-sync-ignore-merge.sh in lint-ci-coverage-parity.
   test-template-sync-merge-ignore:
-    needs: catalogue-scope
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && needs.catalogue-scope.outputs.catalogue == 'true' }}"
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
     name: "[Test] Template Sync - Dry Run (Merge Ignore Entries)"
     uses: ./.github/workflows/template-sync.yaml
     permissions:
@@ -5481,8 +5453,7 @@ jobs:
   # self-test — a happy-path test alone cannot catch a gate that silently stopped biting.
   # apply-fixes is false here: the self-test must never commit to the branch under test.
   test-lint-workflow:
-    needs: catalogue-scope
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && needs.catalogue-scope.outputs.catalogue == 'true' }}"
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
     name: "[Test] Lint - Passes On Clean Fixture"
     # This is the real read-only consumer proof: GitHub rejects a called workflow at
     # startup if any job tries to elevate beyond these caller permissions.
@@ -5494,8 +5465,7 @@ jobs:
       apply-fixes: false
 
   test-lint-workflow-manual-fixes:
-    needs: catalogue-scope
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && needs.catalogue-scope.outputs.catalogue == 'true' }}"
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
     name: "[Test] Lint - Manual Workflow Fixes Opted In"
     permissions:
       contents: read
@@ -5770,8 +5740,7 @@ jobs:
   # permissions. The call commits nothing by construction as well as by gate: no patch
   # artifact exists and no App key is passed.
   test-apply-signed-fixes-suppresses-bots:
-    needs: catalogue-scope
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && needs.catalogue-scope.outputs.catalogue == 'true' }}"
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
     name: "[Test] Apply Signed Fixes - Refuses A Dependency-Bot Branch"
     permissions:
       contents: read
@@ -5795,8 +5764,7 @@ jobs:
   # would fail with an empty private key and take this job red. A green here therefore asserts
   # both halves at once: the check ran, and nothing privileged did.
   test-apply-signed-fixes-verifies-without-a-patch:
-    needs: catalogue-scope
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && needs.catalogue-scope.outputs.catalogue == 'true' }}"
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
     name: "[Test] Apply Signed Fixes - Verifies The Tip With No Patch"
     permissions:
       contents: read

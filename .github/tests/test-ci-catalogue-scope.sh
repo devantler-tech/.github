@@ -160,6 +160,10 @@ yq -o=json -I=0 '.jobs' "${ci}" | jq -e '
   [to_entries[] | select(any(.value.steps[]?; (.run // "") | contains(".github/tests/test-"))) |
     select(.value.needs != null or ((.value.if // "") | contains("needs.catalogue-scope")))] | length == 0
 ' >/dev/null || fail 'a required test entrypoint became scope-dependent'
+yq -o=json -I=0 '.jobs' "${ci}" | jq -e '
+  [to_entries[] | select(.value.uses != null) |
+    select((.value.if // "") | contains("needs.catalogue-scope"))] | length == 0
+' >/dev/null || fail 'a reusable workflow contract became scope-dependent'
 
 # Exercise the actual workflow shell against an isolated public-shape Git fixture.
 # Missing trusted-base helper cannot be taken as permission to omit tests.
