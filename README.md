@@ -947,6 +947,8 @@ With `use-app-token: true`, the sync protects pins in both `devantler-tech/.gith
 
 Migration from `devantler-tech/actions` to `devantler-tech/.github` is allowed without comparing the two repositories' separate histories. Reusable workflows keep their `.github/workflows/` path; public actions move beneath `actions/` in the new catalogue. Once a consumer uses the new location for a component, a template that moves it back to the retired catalogue is refused before signing, including when files are renamed or calls are consolidated across files. Unchanged use of both catalogues and changes that only remove pins remain allowed. Migrating other calls does not permit downgrading a pin already in the new catalogue, including a pin removed from a different file. These cross-file checks examine the final proposed tree after any safe line restorations. If several calls move between files, each replacement must be at least as new as every removed pin for that component; ambiguous changes stop for manual review.
 
+A sync that changes no files leaves nothing behind. Every consumer squash-merges its sync pull request, so a template commit that was already delivered is not in this repository's history and the sync proposes it again. When the proposed commit equals the base, the workflow closes that pull request with a note and deletes its branch, on both token paths. It only ever removes the branch the same run generated, at the commit that run pushed.
+
 #### Usage
 
 ```yaml
