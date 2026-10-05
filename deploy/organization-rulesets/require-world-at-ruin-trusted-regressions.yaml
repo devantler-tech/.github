@@ -1,13 +1,14 @@
-# Require the centrally hosted trusted-regression workflow on World at Ruin's
-# default branch. The organization scope is required for GitHub ruleset
-# workflows; repositoryId narrows this rule to the one product repository.
+# Require both the established catalogue workflow and World at Ruin's
+# product-owned replacement on the product's default branch. The coexistence
+# window proves the replacement before the established source is retired.
+# The organization scope is required for GitHub ruleset workflows;
+# repositoryId narrows this rule to the one product repository.
 #
-# The workflow lives in devantler-tech/.github, outside the candidate product
-# checkout. provider-upjet-github v0.20.0 exposes a branch/tag ref but not
-# GitHub's workflow SHA selector, so refs/heads/main is the strongest
-# declarative source binding the deployed provider can express. Changes to the
-# trusted controller therefore go through the canonical catalogue's reviewed
-# main branch and its own merge gates.
+# The established workflow lives in devantler-tech/.github. The replacement
+# lives in World at Ruin, but GitHub still selects its reviewed main definition
+# rather than candidate bytes. provider-upjet-github v0.20.0 exposes a
+# branch/tag ref but not GitHub's workflow SHA selector, so refs/heads/main is
+# the strongest declarative source binding the deployed provider can express.
 #
 # This is net-new and managed Observe + Create + Update + LateInitialize, never
 # Delete. No bypassActors are declared.
@@ -35,6 +36,9 @@ spec:
           - requiredWorkflow:
               - repositoryId: 933213756
                 path: .github/workflows/world-at-ruin-required-regressions.yaml
+                ref: refs/heads/main
+              - repositoryId: 1303188705
+                path: .github/workflows/trusted-regressions.yaml
                 ref: refs/heads/main
   providerConfigRef:
     kind: ProviderConfig

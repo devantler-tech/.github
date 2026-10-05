@@ -52,10 +52,13 @@ assert_json "target exclusions" '[]' '.spec.forProvider.conditions[0].refName[0]
 assert_value "bypass actor count" "0" '(.spec.forProvider.bypassActors // []) | length'
 assert_value "rule count" "1" '.spec.forProvider.rules | length'
 assert_value "required workflow block count" "1" '.spec.forProvider.rules[0].requiredWorkflows | length'
-assert_value "required workflow count" "1" '.spec.forProvider.rules[0].requiredWorkflows[0].requiredWorkflow | length'
+assert_value "required workflow count" "2" '.spec.forProvider.rules[0].requiredWorkflows[0].requiredWorkflow | length'
 assert_value "source repository" "933213756" '.spec.forProvider.rules[0].requiredWorkflows[0].requiredWorkflow[0].repositoryId'
 assert_value "source path" ".github/workflows/world-at-ruin-required-regressions.yaml" '.spec.forProvider.rules[0].requiredWorkflows[0].requiredWorkflow[0].path'
 assert_value "source ref" "refs/heads/main" '.spec.forProvider.rules[0].requiredWorkflows[0].requiredWorkflow[0].ref'
+assert_value "product source repository" "1303188705" '.spec.forProvider.rules[0].requiredWorkflows[0].requiredWorkflow[1].repositoryId'
+assert_value "product source path" ".github/workflows/trusted-regressions.yaml" '.spec.forProvider.rules[0].requiredWorkflows[0].requiredWorkflow[1].path'
+assert_value "product source ref" "refs/heads/main" '.spec.forProvider.rules[0].requiredWorkflows[0].requiredWorkflow[1].ref'
 
 inventory="${repo_root}/deploy/organization-rulesets/README.md"
 grep -Fq 'The 10 imported org rulesets' "${inventory}" ||
