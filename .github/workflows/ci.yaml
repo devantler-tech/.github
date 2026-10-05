@@ -5974,6 +5974,9 @@ jobs:
       - name: 🧪 Test Go template validation ruleset
         run: bash tests/go-template-validation-ruleset.sh
 
+      - name: 🧪 Test .NET template tests ruleset
+        run: bash tests/dotnet-template-tests-ruleset.sh
+
       - name: 🧪 Test trusted deploy/ guards ruleset
         run: bash tests/deploy-guards-ruleset.sh
 

@@ -28,6 +28,7 @@ fail() {
 }
 
 scratch="$(mktemp -d)"
+repo_root="$(pwd)"
 trap 'rm -rf "$scratch"' EXIT
 
 sha40="0123456789abcdef0123456789abcdef01234567"
@@ -49,10 +50,18 @@ EOF
 cat >"$scratch/bin/docker" <<'EOF'
 #!/usr/bin/env bash
 printf 'docker %s\n' "$*" >>"$CALLS"
+for arg in "$@"; do
+  if [[ "$arg" == --metadata-file=* ]]; then
+    printf '{"containerimage.descriptor":{"digest":"%s"}}\n' "$STUB_IMAGE_DIGEST" >"${arg#*=}"
+  fi
+done
 printf '%s\n' "$STUB_ARTIFACT_DIGEST"
 EOF
+cp .github/tests/fixtures/registry-read-curl.sh "$scratch/bin/registry-curl"
+chmod +x "$scratch/bin/registry-curl"
 cat >"$scratch/bin/curl" <<'EOF'
 #!/usr/bin/env bash
+if [[ "${1:-}" == -q ]]; then exec registry-curl "$@"; fi
 [[ "$#" == 6 && "$1" == -fsS && "$2" == --max-time && "$3" =~ ^[1-9][0-9]*$ && \
   "$4" == -H && "$5" == "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" && \
   "$6" == "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=sigstore" ]] || {
@@ -79,7 +88,7 @@ fi
 # A step that reaches for anything else — oras, crane, gh — fails loudly instead of writing
 # where the no-push assertions below cannot see it. Add a tool here only if it cannot publish.
 mkdir -p "$scratch/tools"
-for tool in base64 bash cat cut grep head jq sed sort tail tr wc yq; do
+for tool in base64 bash cat cp cut grep head jq mkdir mktemp rm sed sort tail tr wc yq; do
   tool_path="$(command -v "$tool")" || fail "this test needs $tool on PATH"
   ln -s "$tool_path" "$scratch/tools/$tool"
 done
@@ -136,6 +145,8 @@ lookup_expr() { # <expression> — the value GitHub would substitute for ${{ <ex
     github.server_url) printf '%s' "https://github.com" ;;
     github.repository) printf '%s' "$sim_repository" ;;
     github.actor) printf '%s' "bot" ;;
+    job.workflow_repository) printf '%s' 'devantler-tech/.github' ;;
+    job.workflow_sha) printf '%s' "$sha40" ;;
     secrets.GITHUB_TOKEN) printf '%s' "stub-not-a-secret" ;;
     env.*) lookup_line "$scratch/job-env" "${1#env.}" ;;
     inputs.*)
@@ -253,12 +264,11 @@ run_job() {
     and . != "permissions" and . != "env" and . != "steps" and . != "concurrency")) | join(" ")')"
   [[ -z "$unmodelled" ]] ||
     fail "$sim_workflow job $sim_job sets $unmodelled, which this test does not model"
-  # GitHub serializes opted-in writers for one target, across both workflow families.
-  # Legacy callers retain unique groups; queue:max prevents pending releases replacing each other.
+  # Both publisher modes serialize one target without replacing pending releases.
   local concurrency_group
   case "$sim_job" in
-    publish) concurrency_group='${{ (inputs.enable-signed-promotion == true || inputs.enable-signed-promotion == '\''true'\'') && format('\''publish-verified-{0}'\'', github.repository) || format('\''publish-legacy-app-{0}-{1}'\'', github.run_id, github.run_attempt) }}' ;;
-    publish-manifests) concurrency_group='${{ (inputs.enable-signed-promotion == true || inputs.enable-signed-promotion == '\''true'\'') && format('\''publish-verified-{0}'\'', inputs.oci-name || github.repository) || format('\''publish-legacy-manifests-{0}-{1}'\'', github.run_id, github.run_attempt) }}' ;;
+    publish) concurrency_group='${{ format('\''publish-verified-{0}'\'', github.repository) }}' ;;
+    publish-manifests) concurrency_group='${{ format('\''publish-verified-{0}'\'', inputs.oci-name || github.repository) }}' ;;
     *) fail 'unmodelled publication concurrency group' ;;
   esac
   [[ "$(in_job '$J.concurrency | keys | sort | join(" ")')" == 'cancel-in-progress group queue' &&
@@ -317,6 +327,14 @@ run_job() {
           [[ ! -s "$calls" ]] ||
             fail "$sim_workflow step '$name' sets up $action after the first registry write"
           printf 'setup %s\n' "$action" >>"$log"
+          if [[ "$action" == actions/checkout && "$(step '.with.path // ""')" == .devantler-tech-publisher ]]; then
+            [[ "$(resolve "$(step '.with.repository')")" == devantler-tech/.github &&
+              "$(resolve "$(step '.with.ref')")" == "$sha40" ]] || fail 'helper checkout does not select immutable publisher source'
+            mkdir -p "$workdir/.devantler-tech-publisher/.github/scripts"
+            cp "$repo_root/.github/scripts/require-unpublished-version.sh" \
+              "$repo_root/.github/scripts/recover-app-version.sh" "$repo_root/.github/scripts/recover-manifests-version.sh" \
+              "$workdir/.devantler-tech-publisher/.github/scripts/"
+          fi
           if [[ "$action" == docker/metadata-action ]]; then
             printf '%s.tags=ghcr.io/%s:%s\n' "$id" "$(printf '%s' "$sim_repository" | tr '[:upper:]' '[:lower:]')" \
               "$(lookup_expr steps.version.outputs.version)" >>"$sim_outputs"
@@ -371,6 +389,7 @@ run_job() {
     status=0
     (cd "$workdir" && env -i PATH="$step_path" HOME="$HOME" TMPDIR="$scratch" \
       CALLS="$calls" UNMODELLED="$scratch/unmodelled" STUB_ARTIFACT_DIGEST="$artifact_digest" \
+      STUB_IMAGE_DIGEST="$image_digest" RUNNER_TEMP="$scratch" GITHUB_RUN_ID=123 GITHUB_RUN_ATTEMPT=2 \
       GITHUB_OUTPUT="$scratch/github-output" \
       OIDC_FIXTURE="$scratch/oidc-token.json" OIDC_CALLS="$scratch/oidc-calls" \
       ACTIONS_ID_TOKEN_REQUEST_URL="https://oidc.invalid/token" \
@@ -459,8 +478,12 @@ run_job "$app" publish "$wd" tag v1.2.3 app-name=app ||
   fail "publish-app failed a good release: $(cat "$log")"
 grep -qxF "image push 🐳 Build & push image" "$calls" ||
   fail "publish-app never pushed the image; calls: $(cat "$calls")"
-grep -qF "flux push artifact oci://ghcr.io/devantler-tech/app/manifests:1.2.3 " "$calls" ||
-  fail "publish-app did not push the manifests artifact as 1.2.3; calls: $(cat "$calls")"
+grep -qF "image tags ghcr.io/devantler-tech/app:staging-123-2" "$calls" ||
+  fail "publish-app did not stage the image before signing; calls: $(cat "$calls")"
+grep -qF "flux push artifact oci://ghcr.io/devantler-tech/app/manifests:default-staging-123-2 " "$calls" ||
+  fail "publish-app did not stage the manifests before signing; calls: $(cat "$calls")"
+grep -qF "flux tag artifact oci://ghcr.io/devantler-tech/app/manifests@$artifact_digest --tag 1.2.3 " "$calls" ||
+  fail "publish-app did not promote its signed manifests digest as 1.2.3; calls: $(cat "$calls")"
 pinned="$(yq '.spec.template.spec.containers[] | select(.name == "app") | .image' \
   "$wd/deploy/deployment.yaml")"
 [[ "$pinned" == "ghcr.io/devantler-tech/app@$image_digest" ]] ||
@@ -530,7 +553,7 @@ wd="$scratch/app-uppercase"
 new_app "$wd"
 SIM_REPOSITORY=devantler-tech/MyApp run_job "$app" publish "$wd" tag v1.2.3 app-name=app ||
   fail "publish-app failed a good release from an uppercase repository name: $(cat "$log")"
-grep -qF "flux push artifact oci://ghcr.io/devantler-tech/myapp/manifests:1.2.3 " "$calls" ||
+grep -qF "flux push artifact oci://ghcr.io/devantler-tech/myapp/manifests:default-staging-123-2 " "$calls" ||
   fail "publish-app did not push the manifests under a lowercase path; calls: $(cat "$calls")"
 pinned="$(yq '.spec.template.spec.containers[] | select(.name == "app") | .image' \
   "$wd/deploy/deployment.yaml")"
@@ -538,7 +561,7 @@ pinned="$(yq '.spec.template.spec.containers[] | select(.name == "app") | .image
   fail "publish-app pinned a reference that is not lowercase: $pinned"
 SIM_REPOSITORY=devantler-tech/MyApp run_job "$manifests" publish-manifests "$wd" tag v1.2.3 ||
   fail "publish-manifests failed a good release from an uppercase repository name: $(cat "$log")"
-grep -qF "flux push artifact oci://ghcr.io/devantler-tech/myapp/manifests:1.2.3 " "$calls" ||
+grep -qF "flux push artifact oci://ghcr.io/devantler-tech/myapp/manifests:default-staging-123-2 " "$calls" ||
   fail "publish-manifests did not push under a lowercase path; calls: $(cat "$calls")"
 echo "ok   both workflows publish an uppercase repository name under lowercase references"
 
@@ -651,7 +674,7 @@ for workflow in "$app" "$manifests"; do
     new_app "$wd"
     run_job "$workflow" "$job" "$wd" tag "$tag" ${with[@]+"${with[@]}"} ||
       fail "$workflow refused the valid tag $tag: $(cat "$log")"
-    grep -qF "flux push artifact oci://ghcr.io/devantler-tech/app/manifests:${want} " "$calls" ||
+    grep -qF "flux tag artifact oci://ghcr.io/devantler-tech/app/manifests@$artifact_digest --tag ${want} " "$calls" ||
       fail "$workflow did not publish $tag as $want; calls: $(cat "$calls")"
   done
 

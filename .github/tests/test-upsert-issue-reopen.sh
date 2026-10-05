@@ -49,6 +49,12 @@ case "$1 $2" in
     esac
     ;;
   "issue view")
+    attempt=$(( $(cat "$STUB_DIR/views" 2>/dev/null || echo 0) + 1 ))
+    printf '%s\n' "$attempt" >"$STUB_DIR/views"
+    if [[ "$attempt" -le "${STUB_VIEW_FAILURES:-0}" ]]; then
+      printf 'CLOSED\n'
+      exit 7
+    fi
     [[ "$STUB_VIEW_RC" -eq 0 ]] || exit "$STUB_VIEW_RC"
     printf '%s\n' "$STUB_LIVE_STATE"
     ;;
@@ -101,6 +107,7 @@ run_case() {
     PATH="$work/bin:$PATH" \
       STUB_DIR="$dir" STUB_OPEN_JSON="$open_json" STUB_CLOSED_JSON="$closed_json" \
       STUB_LIVE_STATE="$live" STUB_REOPEN_FAILURES="$reopen_failures" STUB_LIST_RC="$list_rc" \
+      STUB_VIEW_FAILURES="${TEST_VIEW_FAILURES:-0}" \
       STUB_EDIT_RC="${TEST_EDIT_RC:-0}" STUB_VIEW_RC="${TEST_VIEW_RC:-0}" \
       STUB_CLOSE_RC="${TEST_CLOSE_RC:-0}" STUB_CREATE_RC="${TEST_CREATE_RC:-0}" \
       STUB_CREATED_URL="${TEST_CREATED_URL:-https://github.com/$repo/issues/99}" \
@@ -181,6 +188,8 @@ run_case "a failed search fails the step and never creates" true "$none" "$none"
 
 # Closing: an open issue is closed once; an already-closed one is left alone.
 run_case "an open issue is closed" false "$one" "$none" OPEN 0 0 0 0 1 0 7
+TEST_VIEW_FAILURES=1 \
+  run_case "failed lookup stdout cannot suppress a successful live close" false "$one" "$none" OPEN 0 0 0 0 1 0 7
 run_case "an already-closed issue is not closed again" false "$none" "$one" CLOSED 0 0 0 0 0 0 7
 run_case "no matching issue is a no-op when closing" false "$none" "$other" CLOSED 0 0 0 0 0 0 ""
 run_case "a failed search fails the closing step too" false "$none" "$none" OPEN 0 1 1 0 0 0 ""
@@ -213,4 +222,5 @@ run_case "malformed search data never creates a duplicate" true "invalid" "$none
   echo "FAIL: ${failures} upsert-issue case(s) failed" >&2
   exit 1
 }
-echo "PASS: 26 offline upsert-issue cases preserve lifecycle, payloads, outputs and failure boundaries"
+echo "PASS: 27 offline upsert-issue cases preserve lifecycle, payloads, outputs and failure boundaries"
+bash "$root/.github/tests/retry-result-native.sh"

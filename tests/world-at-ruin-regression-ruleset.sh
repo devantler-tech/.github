@@ -63,11 +63,11 @@ grep -Fq 'The 10 imported org rulesets' "${inventory}" ||
 # The backticks are literal Markdown table cell delimiters, not command substitution.
 # shellcheck disable=SC2016
 managed_rows="$(grep -c '^| `[a-z-]*\.yaml` | .*(net-new) | Managed (Create)' "${inventory}" || true)"
-[[ "${managed_rows}" == "5" ]] ||
-  fail "organization ruleset inventory must list 5 managed rulesets, got ${managed_rows}"
+[[ "${managed_rows}" == "6" ]] ||
+  fail "organization ruleset inventory must list 6 managed rulesets, got ${managed_rows}"
 managed_rendered="$(yq -N 'select(.kind == "OrganizationRuleset" and (.spec.managementPolicies | contains(["Create"]))) | .metadata.name' "${render}" | grep -c . || true)"
-[[ "${managed_rendered}" == "5" ]] ||
-  fail "expected 5 rendered managed (Create) organization rulesets, got ${managed_rendered}"
+[[ "${managed_rendered}" == "6" ]] ||
+  fail "expected 6 rendered managed (Create) organization rulesets, got ${managed_rendered}"
 # Schema inspection is not a live census. Keep rendered ownership checks above,
 # and require the capability inventory to preserve that evidence boundary.
 if ! grep -Fq 'Schema support determines what can be declared; it does not prove adoption,' "${inventory}" ||
