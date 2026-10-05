@@ -1,0 +1,148 @@
+#!/usr/bin/env bash
+
+# Discard a template-sync pull request that would change nothing (#467).
+#
+# The sync action pushes its commit and opens the pull request before the signing helper runs.
+# When the template lags this repository on a catalogue pin, the signing helper puts this
+# repository's newer line back, and the result can equal the base: the pull request then has no
+# changed files (wedding-app#377, ascoachingogvaner#280). The signing helper calls this instead of
+# signing such a commit.
+#
+# It moves the generated branch back onto the base commit, then makes sure the pull request
+# this run opened is closed. The branch is kept on purpose: the sync action skips a template
+# commit whose branch already exists, so the same empty pull request is not reopened on every
+# scheduled run. A new template commit gets a new branch name and syncs normally.
+#
+# It touches only the branch this run generated, at the commit this run pushed. stdout is the one
+# word `discarded`.
+
+set -euo pipefail
+
+fail() {
+  echo "template-sync empty discard: $*" >&2
+  exit 1
+}
+
+usage() {
+  echo "usage: $0 --base-sha <sha> --branch-prefix <prefix> --tree <tree-sha>" >&2
+  exit 2
+}
+
+base_sha=""
+branch_prefix=""
+tree_sha=""
+while (($#)); do
+  case "$1" in
+    --base-sha)
+      [[ $# -ge 2 ]] || usage
+      base_sha="$2"
+      shift 2
+      ;;
+    --branch-prefix)
+      [[ $# -ge 2 ]] || usage
+      branch_prefix="$2"
+      shift 2
+      ;;
+    --tree)
+      [[ $# -ge 2 ]] || usage
+      tree_sha="$2"
+      shift 2
+      ;;
+    *)
+      usage
+      ;;
+  esac
+done
+
+[[ "$base_sha" =~ ^[0-9a-f]{40}$ ]] || fail "base sha is not a full commit oid"
+[[ "$tree_sha" =~ ^[0-9a-f]{40}$ ]] || fail "tree sha is not a full tree oid"
+[[ "$branch_prefix" =~ ^[A-Za-z0-9][A-Za-z0-9._/-]*$ ]] || fail "branch prefix is unsafe"
+[[ "${GITHUB_REPOSITORY:-}" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] || fail "GITHUB_REPOSITORY is unsafe"
+command -v gh >/dev/null || fail "gh is unavailable"
+command -v jq >/dev/null || fail "jq is unavailable"
+
+# Everything named below must be what this run generated, and the proposal must really be empty.
+base_tree="$(git rev-parse "${base_sha}^{tree}")" || fail "could not read the base tree"
+[[ "$tree_sha" == "$base_tree" ]] || fail "the proposed tree differs from the base; refusing to discard a real sync"
+current_sha="$(git rev-parse HEAD)" || fail "could not read the caller checkout head"
+[[ "$current_sha" != "$base_sha" ]] || fail "no sync commit was created; nothing to discard"
+branch="$(git branch --show-current)" || fail "could not read the generated branch"
+[[ "$branch" == "${branch_prefix}_"* ]] ||
+  fail "refusing to discard unexpected branch '$branch' (expected '${branch_prefix}_*')"
+[[ "$branch" =~ ^[A-Za-z0-9][A-Za-z0-9._/-]*$ ]] || fail "generated branch name is unsafe"
+git merge-base --is-ancestor "$base_sha" HEAD ||
+  fail "the sync commit does not descend from the workflow base sha"
+
+owner="${GITHUB_REPOSITORY%%/*}"
+# The head filter names an owner and a branch, not a repository, so a fork under the same owner
+# can appear in this list. Only pull requests whose head is in this repository are considered.
+pulls="$(gh api "repos/${GITHUB_REPOSITORY}/pulls?state=open&head=${owner}:${branch}&per_page=100")" ||
+  fail "could not list the pull requests opened from $branch"
+numbers="$(jq -er --arg sha "$current_sha" --arg branch "$branch" --arg repo "$GITHUB_REPOSITORY" '
+  if type != "array" then error("not a list") else . end
+  | map(select(.head.repo.full_name == $repo))
+  | map(
+      if (.head.ref == $branch and .head.sha == $sha and (.number | type) == "number")
+      then .number
+      else error("unexpected pull request")
+      end
+    )
+  | .[]
+' <<<"$pulls")" || {
+  # jq -e also fails on an empty list, which is fine: the branch may have no pull request.
+  [[ "$(jq -r --arg repo "$GITHUB_REPOSITORY" \
+    'if type == "array" then map(select(.head.repo.full_name == $repo)) | length else "invalid" end' \
+    <<<"$pulls")" == "0" ]] ||
+    fail "a pull request from $branch does not match the commit this run pushed; refusing to discard"
+  numbers=""
+}
+
+# GitHub's ref API has no conditional update, so read the branch as late as possible: it must
+# still be the commit this run pushed immediately before it is moved.
+ref_endpoint="repos/${GITHUB_REPOSITORY}/git/ref/heads/${branch}"
+remote_ref="$(gh api "$ref_endpoint")" || fail "could not read the generated remote branch"
+remote_sha="$(jq -er '.object.sha' <<<"$remote_ref")" || fail "generated remote branch response has no sha"
+[[ "$remote_sha" == "$current_sha" ]] ||
+  fail "generated remote branch moved after the sync action (expected $current_sha, found $remote_sha)"
+
+# Move the branch first: that write takes the unsigned sync commit off it, so a later failure
+# cannot leave the proposal standing. The branch stays as the marker.
+moved="$(jq -n --arg sha "$base_sha" '{sha:$sha,force:true}' |
+  gh api -X PATCH "repos/${GITHUB_REPOSITORY}/git/refs/heads/${branch}" --input -)" ||
+  fail "could not move the generated branch $branch back onto the base"
+[[ "$(jq -r '.object.sha // ""' <<<"$moved")" == "$base_sha" ]] ||
+  fail "the generated branch $branch did not report the base commit"
+echo "Moved $branch back onto the base; it stays as the marker for this template commit." >&2
+
+# pull_state <number>: the pull request's state as GitHub reports it now.
+pull_state() {
+  local pull
+  pull="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/$1")" ||
+    fail "could not read pull request #$1 after moving its branch"
+  jq -r '.state // ""' <<<"$pull"
+}
+
+note="This template sync would change no files: what the template proposes is already here, or is older than what this repository uses. The pull request was closed automatically. Its branch is kept so the same template commit is not proposed again."
+while IFS= read -r number; do
+  [[ -n "$number" ]] || continue
+  [[ "$number" =~ ^[0-9]+$ ]] || fail "pull request number '$number' is not numeric"
+  # The note is a courtesy: a failed comment must not stop the pull request from being closed.
+  jq -n --arg body "$note" '{body:$body}' |
+    gh api -X POST "repos/${GITHUB_REPOSITORY}/issues/${number}/comments" --input - >/dev/null ||
+    echo "::warning::Could not explain the closure on pull request #$number." >&2
+  # GitHub closes a pull request by itself once its branch has no commits left, some time after
+  # the move, and refuses to close it again (422, measured on wedding-app#378). So close it only
+  # while it reads open, and judge the outcome by reading it back, not by the close request.
+  state="$(pull_state "$number")"
+  if [[ "$state" == "open" ]]; then
+    jq -n '{state:"closed"}' |
+      gh api -X PATCH "repos/${GITHUB_REPOSITORY}/pulls/${number}" --input - >/dev/null ||
+      echo "Close request for pull request #$number was refused; reading its state back." >&2
+    state="$(pull_state "$number")"
+  fi
+  [[ "$state" == "closed" ]] ||
+    fail "pull request #$number is not closed (state '$state')"
+  echo "::notice::Template sync would change no files; closed pull request #$number and kept $branch as its marker." >&2
+done <<<"$numbers"
+
+echo discarded
