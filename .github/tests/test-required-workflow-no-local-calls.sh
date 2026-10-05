@@ -23,11 +23,50 @@ consumer_relative_calls="$(
 [[ -z "$consumer_relative_calls" ]] ||
   fail "required workflow contains consumer-relative reusable-workflow calls: ${consumer_relative_calls//$'\n'/, }"
 
-expected_ref='devantler-tech/.github/.github/workflows/apply-signed-fixes.yaml@498fb4b11f129928d3af9a90e9c5a46f1c4dbd77'
-for job in apply-tidy-fixes apply-golangci-lint-fixes apply-fixes; do
-  actual_ref="$(yq -r ".jobs.\"${job}\".uses // \"\"" "$workflow")"
-  [[ "$actual_ref" == "$expected_ref" ]] ||
-    fail "${job} must call the signed-fixes workflow through the audited immutable source-repository reference"
-done
+# The three signed-fixes callers must name ONE reference: this source repository, the signed-fixes
+# workflow path, and a full commit. A branch or a tag is mutable, another repository or path is a
+# different workflow, and callers that disagree run different code in one validation.
+#
+# What is reviewed is the CONTENT of that workflow, so the content is what this test pins: the Git
+# blob id of the reviewed `apply-signed-fixes.yaml`. The referenced commit must carry exactly that
+# file. The workflow is self-contained (commit-pinned actions and inline scripts only), so its blob
+# id covers everything a caller runs. A release that leaves the workflow untouched therefore passes
+# with no edit here, and a release that changes it fails until the new content has been reviewed and
+# its blob id recorded below (#484: naming the commit instead made every release bump fail until
+# someone copied the commit Dependabot had already chosen, which reviewed nothing).
+signed_fixes_path='.github/workflows/apply-signed-fixes.yaml'
+reviewed_blob='ccbcbabb46c1c5ae40066d05880ff29c50263f25'
+source_remote="${SIGNED_FIXES_SOURCE_REMOTE:-https://github.com/devantler-tech/.github.git}"
+# Each reference is read JSON-encoded: command substitution drops trailing newlines, so a plain
+# read would accept text after the commit.
+ref_pattern="^\"(devantler-tech/\\.github/${signed_fixes_path//./\\.}@[0-9a-f]{40})\"\$"
 
-echo "PASS: required workflow calls signed fixes through one immutable source-repository reference"
+common_ref=''
+for job in apply-tidy-fixes apply-golangci-lint-fixes apply-fixes; do
+  encoded_ref="$(yq -o=json -I=0 ".jobs.\"${job}\".uses // \"\"" "$workflow")"
+  [[ "$encoded_ref" =~ $ref_pattern ]] ||
+    fail "${job} must call the signed-fixes workflow in the source repository at a full commit, got ${encoded_ref}"
+  actual_ref="${BASH_REMATCH[1]}"
+  [[ -z "$common_ref" || "$actual_ref" == "$common_ref" ]] ||
+    fail "${job} calls '${actual_ref}' but an earlier signed-fixes caller calls '${common_ref}'; all three must name one reference"
+  common_ref="$actual_ref"
+done
+[[ -n "$common_ref" ]] || fail "no signed-fixes caller was examined"
+pinned_commit="${common_ref##*@}"
+
+# A shallow checkout does not hold the referenced commit. Fetch only its trees: the blob id is
+# recorded in the tree, so the file itself is never downloaded.
+if ! git cat-file -e "${pinned_commit}^{commit}" 2>/dev/null; then
+  git fetch --quiet --no-tags --depth=1 --filter=blob:none "$source_remote" "$pinned_commit" 2>/dev/null ||
+    fail "cannot read signed-fixes commit ${pinned_commit} from ${source_remote}; the reference stays unverified"
+fi
+git cat-file -e "${pinned_commit}^{commit}" 2>/dev/null ||
+  fail "signed-fixes reference ${pinned_commit} is not a commit"
+
+actual_blob="$(git rev-parse --verify --quiet "${pinned_commit}:${signed_fixes_path}" || true)"
+[[ -n "$actual_blob" ]] ||
+  fail "commit ${pinned_commit} has no ${signed_fixes_path}"
+[[ "$actual_blob" == "$reviewed_blob" ]] ||
+  fail "commit ${pinned_commit} carries ${signed_fixes_path} as blob ${actual_blob}, but the reviewed content is blob ${reviewed_blob}; review the changed workflow, then record its blob id in this test"
+
+echo "PASS: required workflow calls signed fixes through one immutable source-repository reference whose content is the reviewed workflow"
