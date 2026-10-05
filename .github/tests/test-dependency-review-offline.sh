@@ -248,6 +248,47 @@ reject 'a completion from another server start' 'clean completion receipt' "$cre
 export OFFLINE_EVIDENCE_NONCE="$nonce"
 accept "$created"
 
+# A real parser read and the later digest must examine identical bytes. Restore
+# the certified original immediately after a parser consumes altered evidence;
+# this deterministically models another writer between the verifier's reads.
+mkdir "$work/parser-wrapper"
+real_jq="$(command -v jq)"
+cat >"$work/parser-wrapper/jq" <<'JQ'
+#!/usr/bin/env bash
+set -euo pipefail
+if [[ "$1" == "$RESTORE_ON_ARG" && ! -e "$RESTORE_MARKER" ]]; then
+  "$REAL_JQ" "$@"
+  cp "$CERTIFIED_INPUT" "$MUTABLE_INPUT"
+  : >"$RESTORE_MARKER"
+else
+  exec "$REAL_JQ" "$@"
+fi
+JQ
+chmod +x "$work/parser-wrapper/jq"
+for kind in record scenario; do
+  mutable="$work/mutable-$kind"
+  marker="$work/restored-$kind"
+  if [[ "$kind" == record ]]; then
+    certified="$good"
+    restore_arg=-cs
+    jq -c 'if .method == "GET" then .body = {unrecorded: true} else . end' "$good" >"$mutable"
+    checked_scenario="$created"
+    checked_record="$mutable"
+  else
+    certified="$created"
+    restore_arg=-e
+    jq '.routes[0].body = {unserved: true}' "$created" >"$mutable"
+    checked_scenario="$mutable"
+    checked_record="$good"
+  fi
+  PATH="$work/parser-wrapper:$PATH" REAL_JQ="$real_jq" RESTORE_ON_ARG="$restore_arg" \
+    RESTORE_MARKER="$marker" CERTIFIED_INPUT="$certified" MUTABLE_INPUT="$mutable" \
+    reject "$kind restored after parsing" 'clean completion receipt' "$checked_scenario" \
+      "$checked_record" "$blocked" success "$(report "$created")"
+  [[ -e "$marker" ]] || fail "$kind concurrent restore was not exercised"
+  cmp "$certified" "$mutable" || fail "$kind restore did not use certified bytes"
+done
+
 : >"$work/empty.jsonl"
 reject 'an action that sent nothing' 'sent no request' "$created" "$work/empty.jsonl" "$blocked" success "$(report "$created")"
 

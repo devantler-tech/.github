@@ -48,9 +48,26 @@ validate() { # <scenario-file>
 }
 
 # Compare what the stand-in recorded, and how the action ended, with the scenario.
-check() { # <scenario-file> <request-record> <blocked-hosts-file> <action-log>
+check() ( # <scenario-file> <request-record> <blocked-hosts-file> <action-log>
   local scenario="$1" record="$2" blocked="$3" log="$4" requests expected got unmatched raised
   local outcome="${REVIEW_OUTCOME:-}" content="${COMMENT_CONTENT:-}"
+  local receipt="${OFFLINE_COMPLETION_FILE:-$record.completed.json}" nonce="${OFFLINE_EVIDENCE_NONCE:-}"
+  local evidence scenario_name="$scenario"
+
+  # Snapshot every input once. Semantic checks and the completion digests must
+  # examine the same bytes even if another process replaces an original path.
+  evidence="$(umask 077; mktemp -d)" || fail "could not snapshot offline evidence"
+  trap 'rm -rf "$evidence"' EXIT
+  cat <"$scenario" >"$evidence/scenario.json" || fail "the scenario is unreadable"
+  cat <"$record" >"$evidence/record.jsonl" || fail "the request record is unreadable"
+  cat <"$blocked" >"$evidence/blocked-hosts" || fail "the blocked-hosts record is unreadable"
+  cat <"$log" >"$evidence/action.log" || fail "the action log is unreadable"
+  cat <"$receipt" >"$evidence/completion.json" || fail "missing or inconsistent clean completion receipt"
+  scenario="$evidence/scenario.json"
+  record="$evidence/record.jsonl"
+  blocked="$evidence/blocked-hosts"
+  log="$evidence/action.log"
+  receipt="$evidence/completion.json"
 
   validate "$scenario"
 
@@ -123,7 +140,6 @@ check() { # <scenario-file> <request-record> <blocked-hosts-file> <action-log>
 
   # Only the server writes this receipt, after clean shutdown, durable recording
   # and close. Bind it to this start and the complete scenario/record bytes.
-  local receipt="${OFFLINE_COMPLETION_FILE:-$record.completed.json}" nonce="${OFFLINE_EVIDENCE_NONCE:-}"
   local record_hash scenario_hash
   [[ "$nonce" =~ ^[0-9a-f]{32}$ ]] || fail "missing completion identity"
   record_hash="$(shasum -a 256 "$record" | cut -d ' ' -f1)"
@@ -132,8 +148,8 @@ check() { # <scenario-file> <request-record> <blocked-hosts-file> <action-log>
     length == 1 and (.[0] | .nonce == $nonce and .record_sha256 == $record and .scenario_sha256 == $scenario)
   ' "$receipt" >/dev/null 2>&1 || fail "missing or inconsistent clean completion receipt"
 
-  echo "PASS: $(basename "$scenario" .json) — $(jq 'length' <<<"$requests") recorded requests match the reviewed conversation"
-}
+  echo "PASS: $(basename "$scenario_name" .json) — $(jq 'length' <<<"$requests") recorded requests match the reviewed conversation"
+)
 
 case "${1:-}" in
 start)
