@@ -2,11 +2,11 @@
 # default branch. The organization scope is required for GitHub ruleset
 # workflows; repositoryId narrows this rule to the one product repository.
 #
-# The workflow lives in devantler-tech/actions, outside the candidate product
-# checkout. provider-upjet-github v0.19.1 exposes a branch/tag ref but not
+# The workflow lives in devantler-tech/.github, outside the candidate product
+# checkout. provider-upjet-github v0.20.0 exposes a branch/tag ref but not
 # GitHub's workflow SHA selector, so refs/heads/main is the strongest
 # declarative source binding the deployed provider can express. Changes to the
-# trusted controller therefore go through the Actions repository's reviewed
+# trusted controller therefore go through the canonical catalogue's reviewed
 # main branch and its own merge gates.
 #
 # This is net-new and managed Observe + Create + Update + LateInitialize, never
@@ -33,7 +33,7 @@ spec:
     rules:
       - requiredWorkflows:
           - requiredWorkflow:
-              - repositoryId: 948529001
+              - repositoryId: 933213756
                 path: .github/workflows/world-at-ruin-required-regressions.yaml
                 ref: refs/heads/main
   providerConfigRef:

@@ -53,7 +53,7 @@ assert_value "bypass actor count" "0" '(.spec.forProvider.bypassActors // []) | 
 assert_value "rule count" "1" '.spec.forProvider.rules | length'
 assert_value "required workflow block count" "1" '.spec.forProvider.rules[0].requiredWorkflows | length'
 assert_value "required workflow count" "1" '.spec.forProvider.rules[0].requiredWorkflows[0].requiredWorkflow | length'
-assert_value "source repository" "948529001" '.spec.forProvider.rules[0].requiredWorkflows[0].requiredWorkflow[0].repositoryId'
+assert_value "source repository" "933213756" '.spec.forProvider.rules[0].requiredWorkflows[0].requiredWorkflow[0].repositoryId'
 assert_value "source path" ".github/workflows/world-at-ruin-required-regressions.yaml" '.spec.forProvider.rules[0].requiredWorkflows[0].requiredWorkflow[0].path'
 assert_value "source ref" "refs/heads/main" '.spec.forProvider.rules[0].requiredWorkflows[0].requiredWorkflow[0].ref'
 
