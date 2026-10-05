@@ -55,9 +55,17 @@ done
 pinned_commit="${common_ref##*@}"
 
 # A shallow checkout does not hold the referenced commit. Fetch only its trees: the blob id is
-# recorded in the tree, so the file itself is never downloaded.
+# recorded in the tree, so the file itself is never downloaded. The fetch is bounded twice: Git
+# aborts a transfer that stalls for a minute, and where `timeout` exists (every CI runner; not stock
+# macOS) the whole command has a two-minute deadline. Either way a hung network fails this test
+# instead of holding its job until the runner's own limit.
+bounded=()
+if command -v timeout >/dev/null 2>&1; then
+  bounded=(timeout 2m)
+fi
 if ! git cat-file -e "${pinned_commit}^{commit}" 2>/dev/null; then
-  git fetch --quiet --no-tags --depth=1 --filter=blob:none "$source_remote" "$pinned_commit" 2>/dev/null ||
+  ${bounded[@]+"${bounded[@]}"} git -c http.lowSpeedLimit=1000 -c http.lowSpeedTime=60 \
+    fetch --quiet --no-tags --depth=1 --filter=blob:none "$source_remote" "$pinned_commit" 2>/dev/null ||
     fail "cannot read signed-fixes commit ${pinned_commit} from ${source_remote}; the reference stays unverified"
 fi
 git cat-file -e "${pinned_commit}^{commit}" 2>/dev/null ||
