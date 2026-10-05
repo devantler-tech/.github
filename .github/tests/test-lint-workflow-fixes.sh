@@ -178,4 +178,29 @@ for workflow in lint:lint validate-go-project:tidy validate-go-project:golangci-
   fi
 done
 
+# Exercise the hosted failure fixture itself, so a change to Git's raw-output
+# options cannot silently stop injecting the late read failure. The wrapper must
+# still allow exporting the complete patch before rejecting workflow inspection.
+fixture="$work/hosted-failure"
+mkdir -p "$fixture" "$work/hosted-temp"
+: >"$work/hosted-path"
+(
+  cd "$fixture"
+  SCENARIO=export-failure MANUAL=true RUNNER_TEMP="$work/hosted-temp" \
+    GITHUB_PATH="$work/hosted-path" bash "$root/.github/tests/fixtures/prepare-fixes-runner.sh" setup
+)
+rc=0
+(
+  cd "$fixture"
+  RUNNER_TEMP="$work/hosted-temp" PATH="$work/hosted-temp/git-wrapper:$PATH" \
+    git diff --no-ext-diff --no-textconv --name-only --no-renames HEAD -- .github/workflows/
+) >"$work/hosted-inspection.log" 2>&1 || rc=$?
+[[ "$rc" == 42 ]] || fail 'hosted workflow inspection fault was not injected'
+(
+  cd "$fixture"
+  RUNNER_TEMP="$work/hosted-temp" PATH="$work/hosted-temp/git-wrapper:$PATH" \
+    git diff --no-ext-diff --no-textconv --src-prefix=a/ --dst-prefix=b/ --binary --full-index HEAD
+) >"$work/hosted-patch"
+[[ -s "$work/hosted-patch" ]] || fail 'hosted wrapper refused raw patch export'
+
 echo 'PASS: workflow fixes stay complete, recoverable, and out of automatic commits'
