@@ -389,7 +389,10 @@ that the job holds `contents: read` and the action receives only a fixture token
 `.github/tests/dependency-review-offline/scenarios/` is one matrix leg and states the action
 inputs, the responses, and what the action must produce: the complete conversation, the
 outcome, the summary, and every error and warning it raises, so a failed read or write is
-never silent. `dependency-review-offline.sh` starts the stand-in and checks the record. To
+never silent. Scenario admission rejects duplicate keys and constraints HTTP cannot serve;
+malformed request queries never receive a reviewed response. Recording failures stop the server.
+`dependency-review-offline.sh` requires a clean completion receipt bound to the start identity
+and complete scenario/record bytes, and validates integral route indices and declared statuses. To
 add a scenario, add its file and its matrix entry. `test-dependency-review-comments.sh`
 rejects a matrix that differs from the scenario files, a restored write permission or
 credential, and a scenario set that no longer covers every comment mode and result;

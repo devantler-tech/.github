@@ -57,7 +57,8 @@ check() { # <scenario-file> <request-record> <blocked-hosts-file> <action-log>
   requests="$(jq -cs '
     if all(.[]; type == "object" and (.method | type) == "string" and (.path | type) == "string" and
       (.query | type) == "object" and (.authorized | type) == "boolean" and
-      (.route | type) == "number" and (.status | type) == "number")
+      (.route | type) == "number" and .route == (.route | floor) and
+      (.status | type) == "number" and .status == (.status | floor))
     then . else error("malformed entry") end' "$record" 2>/dev/null)" ||
     fail "the request record is unreadable"
   [[ "$(jq 'length' <<<"$requests")" != 0 ]] ||
@@ -75,6 +76,16 @@ check() { # <scenario-file> <request-record> <blocked-hosts-file> <action-log>
     fail "the recorded requests differ from the reviewed conversation
   expected: $expected
   recorded: $got"
+
+  jq -e --slurpfile scenario "$scenario" '
+    $scenario[0].routes as $routes |
+    all(.[]; . as $entry |
+      [$routes | to_entries[] |
+        select(.value.method == $entry.method and .value.path == $entry.path) |
+        select(all((.value.query // {}) | to_entries[];
+          $entry.query[.key] == [.value]))] as $matched |
+      ($matched | length) > 0 and .route == $matched[0].key and .status == $matched[0].value.status)
+  ' <<<"$requests" >/dev/null || fail "the recorded route or response status differs from the scenario"
 
   [[ "$outcome" == "$(jq -r '.expect.outcome' "$scenario")" ]] ||
     fail "the action finished with '$outcome'; the scenario expects '$(jq -r '.expect.outcome' "$scenario")'"
@@ -110,6 +121,17 @@ check() { # <scenario-file> <request-record> <blocked-hosts-file> <action-log>
   [[ "$(jq -Rcn '[inputs | select(length > 0)] | unique' "$blocked")" == "$(jq -c '.expect["blocked-hosts"] | unique' "$scenario")" ]] ||
     fail "the hosts the action could not resolve differ from the scenario's: $(jq -Rcn '[inputs | select(length > 0)] | unique' "$blocked")"
 
+  # Only the server writes this receipt, after clean shutdown, durable recording
+  # and close. Bind it to this start and the complete scenario/record bytes.
+  local receipt="${OFFLINE_COMPLETION_FILE:-$record.completed.json}" nonce="${OFFLINE_EVIDENCE_NONCE:-}"
+  local record_hash scenario_hash
+  [[ "$nonce" =~ ^[0-9a-f]{32}$ ]] || fail "missing completion identity"
+  record_hash="$(shasum -a 256 "$record" | cut -d ' ' -f1)"
+  scenario_hash="$(shasum -a 256 "$scenario" | cut -d ' ' -f1)"
+  jq -se --arg nonce "$nonce" --arg record "$record_hash" --arg scenario "$scenario_hash" '
+    length == 1 and (.[0] | .nonce == $nonce and .record_sha256 == $record and .scenario_sha256 == $scenario)
+  ' "$receipt" >/dev/null 2>&1 || fail "missing or inconsistent clean completion receipt"
+
   echo "PASS: $(basename "$scenario" .json) — $(jq 'length' <<<"$requests") recorded requests match the reviewed conversation"
 }
 
@@ -125,8 +147,12 @@ start)
   : >"$work/requests.jsonl"
   : >"$work/blocked-hosts"
   : >"$work/action.log"
+  nonce="$(od -An -N16 -tx1 /dev/urandom | tr -d ' \n')"
+  [[ "$nonce" =~ ^[0-9a-f]{32}$ ]] || fail "could not create completion identity"
+  printf '%s\n' "$nonce" >"$work/nonce"
   nohup "$work/api" -scenario "$scenario" -record "$work/requests.jsonl" \
-    -address-file "$work/address" -token "$token" </dev/null >"$work/api.log" 2>&1 &
+    -address-file "$work/address" -token "$token" -nonce "$nonce" \
+    -completion-file "$work/requests.jsonl.completed.json" </dev/null >"$work/api.log" 2>&1 &
   echo "$!" >"$work/pid"
   for _ in $(seq 1 100); do
     [[ -s "$work/address" ]] && break
@@ -159,6 +185,9 @@ verify)
     sleep 0.1
   done
   if kill -0 "$pid" 2>/dev/null; then fail "the offline stand-in did not stop"; fi
+  export OFFLINE_EVIDENCE_NONCE OFFLINE_COMPLETION_FILE
+  OFFLINE_EVIDENCE_NONCE="$(cat "$work/nonce")"
+  OFFLINE_COMPLETION_FILE="$work/requests.jsonl.completed.json"
   echo "::group::Requests the action sent to the stand-in"
   cat "$work/requests.jsonl"
   echo "::endgroup::"

@@ -29,14 +29,18 @@ fail() {
   exit 1
 }
 
+go test -race "$root/.github/tests/fixtures/offline-github-api/main.go" "$root/.github/tests/fixtures/offline-github-api/main_test.go"
 go build -o "$work/api" "$root/.github/tests/fixtures/offline-github-api/main.go"
 
 # Start the exact scenario API and require its bounded readiness signal.
 start_api() { # <scenario-file>
-  rm -f "$work/address" "$work/requests.jsonl"
+  rm -f "$work/address" "$work/requests.jsonl" "$work/requests.jsonl.completed.json"
+  export OFFLINE_EVIDENCE_NONCE OFFLINE_COMPLETION_FILE
+  OFFLINE_EVIDENCE_NONCE="$(od -An -N16 -tx1 /dev/urandom | tr -d ' \n')"
+  OFFLINE_COMPLETION_FILE="$work/requests.jsonl.completed.json"
   : >"$work/requests.jsonl"
   "$work/api" -scenario "$1" -record "$work/requests.jsonl" -address-file "$work/address" \
-    -token "$token" >"$work/api.log" 2>&1 &
+    -token "$token" -nonce "$OFFLINE_EVIDENCE_NONCE" -completion-file "$OFFLINE_COMPLETION_FILE" >"$work/api.log" 2>&1 &
   api_pid=$!
   for _ in $(seq 1 100); do
     [[ -s "$work/address" ]] && break
@@ -226,6 +230,24 @@ stop_api
 cp "$work/requests.jsonl" "$good"
 accept "$created"
 
+jq -c '.route = 999' "$good" >"$work/unknown-route.jsonl"
+reject 'an unknown route index' 'recorded route or response status differs' "$created" "$work/unknown-route.jsonl" "$blocked" success "$(report "$created")"
+jq -c '.route = 1.5' "$good" >"$work/fractional-route.jsonl"
+reject 'a fractional route index' 'record is unreadable' "$created" "$work/fractional-route.jsonl" "$blocked" success "$(report "$created")"
+jq -c 'if .method == "GET" then .status = 500 else . end' "$good" >"$work/failed-reads.jsonl"
+reject 'unreviewed failed reads' 'recorded route or response status differs' "$created" "$work/failed-reads.jsonl" "$blocked" success "$(report "$created")"
+jq -c 'if .method == "GET" then .body = {unrecorded: true} else . end' "$good" >"$work/changed-evidence.jsonl"
+reject 'evidence changed after server completion' 'clean completion receipt' "$created" "$work/changed-evidence.jsonl" "$blocked" success "$(report "$created")"
+receipt="$OFFLINE_COMPLETION_FILE"
+mv "$receipt" "$receipt.saved"
+reject 'a missing completion' 'clean completion receipt' "$created" "$good" "$blocked" success "$(report "$created")"
+mv "$receipt.saved" "$receipt"
+nonce="$OFFLINE_EVIDENCE_NONCE"
+export OFFLINE_EVIDENCE_NONCE=ffffffffffffffffffffffffffffffff
+reject 'a completion from another server start' 'clean completion receipt' "$created" "$good" "$blocked" success "$(report "$created")"
+export OFFLINE_EVIDENCE_NONCE="$nonce"
+accept "$created"
+
 : >"$work/empty.jsonl"
 reject 'an action that sent nothing' 'sent no request' "$created" "$work/empty.jsonl" "$blocked" success "$(report "$created")"
 
@@ -260,7 +282,7 @@ reject 'a comment without the action report' 'summary comment is not' "$created"
 reject 'an empty action report' 'summary comment is not' "$created" "$good" "$blocked" success ''
 
 jq -c 'if .method == "POST" then .status = 403 else . end' "$good" >"$work/refused.jsonl"
-reject 'a refused comment' 'summary comment is not' "$created" "$work/refused.jsonl" "$blocked" success "$(report "$created")"
+reject 'a refused comment' 'recorded route or response status differs' "$created" "$work/refused.jsonl" "$blocked" success "$(report "$created")"
 
 jq -c 'if .method == "POST" then .body = null else . end' "$good" >"$work/no-body.jsonl"
 reject 'a comment without a body' 'summary comment is not' "$created" "$work/no-body.jsonl" "$blocked" success "$(report "$created")"
@@ -350,7 +372,7 @@ for failed in "$scenarios/compare-forbidden.json" "$scenarios/comments-unreadabl
   cp "$work/requests.jsonl" "$work/failed.jsonl"
   # The rejected write has the reviewed requests of a created summary; only its answer differs.
   claimed='differ from the reviewed conversation'
-  [[ "$name" != comment-rejected ]] || claimed='summary comment is not'
+  [[ "$name" != comment-rejected ]] || claimed='recorded route or response status differs'
   reject "a summary claimed from the $name conversation" "$claimed" "$created" "$work/failed.jsonl" "$blocked" success "$(report "$created")"
   reject "a silent $name" 'errors and warnings the action raised differ' "$failed" "$work/failed.jsonl" "$blocked" "$(jq -r '.expect.outcome' "$failed")" "$(report "$failed")" "$work/silent.log"
 done
