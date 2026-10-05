@@ -58,7 +58,7 @@ assert_json "bypass actors" '[{"actorType":"OrganizationAdmin","bypassMode":"alw
 assert_json "target branch" '["~DEFAULT_BRANCH"]' '.spec.forProvider.conditions[0].refName[0].include'
 assert_json "excluded branches" '[]' '.spec.forProvider.conditions[0].refName[0].exclude'
 assert_value "rule count" "1" '.spec.forProvider.rules | length'
-assert_json "merge queue" '[{"checkResponseTimeoutMinutes":90,"groupingStrategy":"ALLGREEN","maxEntriesToBuild":1,"maxEntriesToMerge":1,"mergeMethod":"SQUASH","minEntriesToMerge":1,"minEntriesToMergeWaitMinutes":5}]' '.spec.forProvider.rules[0].mergeQueue'
+assert_json "merge queue" '[{"checkResponseTimeoutMinutes":120,"groupingStrategy":"ALLGREEN","maxEntriesToBuild":1,"maxEntriesToMerge":1,"mergeMethod":"SQUASH","minEntriesToMerge":1,"minEntriesToMergeWaitMinutes":5}]' '.spec.forProvider.rules[0].mergeQueue'
 
 # The platform#3097 probe has served its purpose and must not come back.
 probe="$(yq -N 'select(.kind == "RepositoryRuleset" and .metadata.name == "platform-template-probe-bypass-roundtrip") | .metadata.name' "${render}" | grep -c . || true)"
