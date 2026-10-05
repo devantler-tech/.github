@@ -41,9 +41,9 @@ out-of-band changes made in the GitHub UI.
 - `organization-rulesets/` — one `OrganizationRuleset` per file (org-wide branch/tag
   protection). 9 existing org rulesets remain **Observe-only**; the existing signing
   rule is retained disabled with only Observe/Update and its full observed fields.
-  Four net-new rulesets are managed: `v*` tag protection, World at Ruin's trusted-regression
-  workflow, monorepo's independent CI aggregate check, and this repository's `deploy/` guards
-  run from its reviewed `main`. Unadopted org rulesets remain outside managed updates;
+  Five net-new rulesets are managed: `v*` tag protection, World at Ruin's trusted-regression
+  workflow, monorepo's independent CI aggregate check, this repository's `deploy/` guards
+  run from its reviewed `main`, and go-template's Go validation workflow. Unadopted org rulesets remain outside managed updates;
   schema-supported adoption work is distinct from remaining provider gaps — see
   [`organization-rulesets/README.md`](organization-rulesets/README.md) for the full
   importability matrix and the push/tag/Actions-policy analysis.
