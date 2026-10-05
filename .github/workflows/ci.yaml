@@ -3196,6 +3196,11 @@ jobs:
         shell: bash
         run: bash .github/tests/test-template-sync-signed-commit.sh
 
+      # A sync that would change nothing must be closed, never signed (#467).
+      - name: 🗑️ Check Template Sync discards an empty sync
+        shell: bash
+        run: bash .github/tests/test-template-sync-empty-discard.sh
+
       # Template sync must never move a consumer back to an older devantler-tech/actions pin
       # (wedding-app#332: v13.6.0 → v13.5.1, both approved, every check green) (#1239).
       - name: 📌 Check Template Sync never downgrades a shared-workflow pin
