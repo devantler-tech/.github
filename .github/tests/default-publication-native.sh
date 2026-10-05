@@ -57,6 +57,16 @@ cat >"$work/publication-bin/docker" <<'DOCKER'
 #!/usr/bin/env bash
 set -euo pipefail
 printf 'docker promotion\n' >>"$PUBLICATION_TRACE"
+if [[ "$PUBLICATION_FAULT" == changed-digest ]]; then
+  # Use the real CLI to wrap the single-platform fixture in a new index.
+  # The metadata and registry bytes must both show the changed descriptor.
+  args=()
+  for arg in "$@"; do
+    [[ "$arg" != --prefer-index=false ]] || arg=--prefer-index=true
+    args+=("$arg")
+  done
+  exec "$REAL_DOCKER" "${args[@]}"
+fi
 exec "$REAL_DOCKER" "$@"
 DOCKER
 chmod +x "$work/publication-bin/"*
@@ -84,7 +94,7 @@ for family in manifests app; do
     "$workflow" >"$work/default-admission.sh"
   [[ -s "$work/default-body.sh" && -s "$work/default-admission.sh" ]]
   faults=(none prerelease manifests-sign alias-moved)
-  [[ "$family" != app ]] || faults+=(image-sign manifests-push)
+  [[ "$family" != app ]] || faults+=(image-sign manifests-push changed-digest)
   counter=0
   for fault in "${faults[@]}"; do
     counter=$((counter + 1))
@@ -92,13 +102,26 @@ for family in manifests app; do
     [[ "$family" != app ]] || VERSION="7.2.$counter"
     [[ "$fault" != prerelease ]] || VERSION+=-rc.1
     export REF_NAME="v$VERSION"
+    export GITHUB_RUN_ID="$((9000 + counter))" GITHUB_RUN_ATTEMPT=1
     reset_latest >"$work/default-reset.log" 2>&1
     : >"$PUBLICATION_TRACE"
     rm -f "$work/default-produced.json"
-    bash "$work/default-admission.sh" >"$work/default-admission.log" 2>&1
+    status=0
+    bash "$work/default-admission.sh" >"$work/default-admission.log" 2>&1 || status=$?
+    if [[ "$status" != 0 ]]; then cat "$work/default-admission.log" >&2; exit "$status"; fi
     status=0
     PATH="$work/publication-bin:$PATH" bash "$work/default-body.sh" >"$work/default-publication.log" 2>&1 || status=$?
     case "$fault" in
+      changed-digest)
+        [[ "$status" == 1 ]]
+        grep -qF 'staged image digest differs from the signed image' "$work/default-publication.log"
+        copied="$(jq -er '."containerimage.descriptor".digest | select(test("^sha256:[0-9a-f]{64}$"))' "$work/default-image-staging.json")"
+        [[ "$copied" != "$image_digest" ]]
+        [[ "$(readback devantler-tech/app "default-staging-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}")" == "$copied" ]]
+        [[ "$(readback devantler-tech/app latest)" == "$image_latest_before" &&
+          "$(readback devantler-tech/app/manifests latest)" == "$latest_before" ]]
+        ! grep -qx 'flux tag artifact' "$PUBLICATION_TRACE"
+        ;;
       manifests-sign|image-sign|manifests-push)
         [[ "$status" == 23 ]]
         if [[ "$fault" == manifests-push ]]; then

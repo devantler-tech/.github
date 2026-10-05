@@ -69,7 +69,7 @@ run_step() {
     REGISTRY=ghcr.io IMAGE_NAME=devantler-tech/app DEPLOY_PATH=./deploy \
     VERSION="$2" REF_NAME="v$2" SHA=fedcba9876543210fedcba9876543210fedcba98 \
     SERVER_URL=https://github.com REPOSITORY=devantler-tech/app ACTOR=fixture GH_TOKEN=fixture \
-    JOB_WORKFLOW_REF="$3" RUN_ID=123 RUN_ATTEMPT=2 RUNNER_TEMP="$work" \
+    JOB_WORKFLOW_REF="$3" RUN_ID=123 RUN_ATTEMPT=2 GITHUB_RUN_ID=123 GITHUB_RUN_ATTEMPT=2 RUNNER_TEMP="$work" \
     GITHUB_OUTPUT="$work/output" bash --noprofile --norc -eo pipefail "$4"
 }
 identity=devantler-tech/.github/.github/workflows/publish-app.yaml@0123456789abcdef0123456789abcdef01234567
@@ -113,7 +113,7 @@ for version in 1.2.3 1.2.3-rc.1; do
 done
 echo 'app-promotion: healthy stable/prerelease and signing, verification, push and digest failures pass'
 
-for fault in manifest-push image-sign manifest-sign; do
+for fault in manifest-push image-sign manifest-sign changed-digest image-promotion; do
   rm -f "$work/state/"* "$work/trace"
   if run_step "$fault" 1.2.3 '' "$work/default.sh" "$image_digest" false >"$work/log" 2>&1; then
     fail "default accepted failed $fault"

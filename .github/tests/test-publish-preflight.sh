@@ -389,7 +389,7 @@ run_job() {
     status=0
     (cd "$workdir" && env -i PATH="$step_path" HOME="$HOME" TMPDIR="$scratch" \
       CALLS="$calls" UNMODELLED="$scratch/unmodelled" STUB_ARTIFACT_DIGEST="$artifact_digest" \
-      STUB_IMAGE_DIGEST="$image_digest" RUNNER_TEMP="$scratch" \
+      STUB_IMAGE_DIGEST="$image_digest" RUNNER_TEMP="$scratch" GITHUB_RUN_ID=123 GITHUB_RUN_ATTEMPT=2 \
       GITHUB_OUTPUT="$scratch/github-output" \
       OIDC_FIXTURE="$scratch/oidc-token.json" OIDC_CALLS="$scratch/oidc-calls" \
       ACTIONS_ID_TOKEN_REQUEST_URL="https://oidc.invalid/token" \

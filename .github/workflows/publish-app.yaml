@@ -342,13 +342,15 @@ jobs:
           case "$VERSION" in
             *-*) ;; # Prereleases keep both stable latest pointers.
             *)
-              # Copy the signed image manifest without wrapping a single-platform
-              # image in a new index, which would change its signed digest.
+              # Inspect an isolated copy before exposing it as latest. Even with
+              # format preservation requested, a transformed descriptor is refused.
               docker buildx imagetools create --prefer-index=false \
-                --metadata-file="$RUNNER_TEMP/default-image-latest.json" \
-                --tag "${IMAGE}:latest" "${IMAGE}@${DIGEST}"
-              COPIED="$(jq -r '."containerimage.descriptor".digest // ""' "$RUNNER_TEMP/default-image-latest.json")"
-              [[ "$COPIED" == "$DIGEST" ]] || { echo '::error::image latest digest differs from the signed image'; exit 1; }
+                --metadata-file="$RUNNER_TEMP/default-image-staging.json" \
+                --tag "${IMAGE}:default-staging-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" "${IMAGE}@${DIGEST}"
+              COPIED="$(jq -r '."containerimage.descriptor".digest // ""' "$RUNNER_TEMP/default-image-staging.json")"
+              [[ "$COPIED" == "$DIGEST" ]] || { echo '::error::staged image digest differs from the signed image'; exit 1; }
+              docker buildx imagetools create --prefer-index=false \
+                --tag "${IMAGE}:latest" "${IMAGE}@${COPIED}"
               flux tag artifact "oci://${ARTIFACT}@${ARTIFACT_DIGEST}" --tag latest --creds "${ACTOR}:${GH_TOKEN}"
               ;;
           esac

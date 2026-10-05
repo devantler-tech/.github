@@ -71,6 +71,7 @@ run_step() { # <script> <flux push json>
   : >"$scratch/calls"
   PATH="$scratch/bin:$PATH" CALLS="$scratch/calls" FLUX_PUSH_JSON="$2" \
     RESOLVED_DIGEST="$resolved_digest" IMAGE_DIGEST="$image_digest" RUNNER_TEMP="$scratch" \
+    GITHUB_RUN_ID=123 GITHUB_RUN_ATTEMPT=2 \
     REGISTRY=ghcr.io IMAGE_NAME=devantler-tech/app IMAGE=ghcr.io/devantler-tech/app \
     OCI_NAME=devantler-tech/app DIGEST="$image_digest" DEPLOY_PATH=deploy REF_NAME=v1.2.3 VERSION=1.2.3 \
     SHA=0123456789abcdef SERVER_URL=https://github.com REPOSITORY=devantler-tech/app \
