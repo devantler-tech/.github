@@ -30,7 +30,7 @@ script=$(yq -r "$gate.steps[] | select(.name == \"📊 Summarize workflow result
 run_case() {
   local label=$1 input=$2 expected=$3 needle=$4 output rc=0
 
-  output=$(JOB_RESULTS="$input" bash -c "$script" 2>&1) || rc=$?
+  output=$(JOB_RESULTS="$input" CATALOGUE_REQUIRED=true SELECTOR_RESULT=success SELECTED_JOBS='[]' NEEDS_JSON='{}' bash -c "$script" 2>&1) || rc=$?
 
   if [ "$expected" = pass ] && [ "$rc" -ne 0 ]; then
     fail "$label should pass, got exit $rc: $output"
@@ -48,5 +48,31 @@ run_case 'failed result' 'success failure' fail 'failed or was cancelled'
 run_case 'cancelled result' 'cancelled' fail 'failed or was cancelled'
 run_case 'unknown result' 'success pending' fail "unknown job result: 'pending'"
 run_case 'empty result list' '' fail 'no job results were provided'
+
+# A successful selector cannot make a selected-but-skipped test green. Execute
+# the actual reducer, not an independent model of its intended behavior.
+selection_case() {
+  local label=$1 selector=$2 selected=$3 needs=$4 expected=$5 rc=0 output
+  output=$(JOB_RESULTS='success skipped' CATALOGUE_REQUIRED="${6:-true}" SELECTOR_RESULT="$selector" SELECTED_JOBS="$selected" NEEDS_JSON="$needs" bash -c "$script" 2>&1) || rc=$?
+  if [[ "$expected" == fail && "$rc" == 0 ]]; then
+    fail "$label was silently accepted"
+  fi
+  if [[ "$expected" == pass && "$rc" != 0 ]]; then
+    fail "$label failed: $output"
+  fi
+}
+selection_case 'selected successful test' success '["test-one"]' '{"test-one":{"result":"success"}}' pass
+selection_case 'selected skipped test' success '["test-one"]' '{"test-one":{"result":"skipped"}}' fail
+selection_case 'selected missing test' success '["test-one"]' '{}' fail
+selection_case 'failed selector' failure '[]' '{}' fail
+selection_case 'skipped selector' skipped '[]' '{}' fail
+selection_case 'missing selection evidence' success '' '{}' fail
+selection_case 'non-array selection evidence' success '{}' '{}' fail
+selection_case 'duplicate selected jobs' success '["test-one","test-one"]' '{"test-one":{"result":"success"}}' fail
+selection_case 'malformed results evidence' success '[]' 'invalid' fail
+selection_case 'original excluded-event skip' skipped '' '{}' pass false
+selection_case 'executed selector on excluded event' success '[]' '{}' fail false
+selection_case 'manufactured excluded-event selection' skipped '["test-one"]' '{}' fail false
+selection_case 'unknown event eligibility' success '[]' '{}' fail unknown
 
 printf 'ci-required-checks boundary and behavior are enforced\n'

@@ -152,15 +152,21 @@ yq -o=json -I=0 '.jobs."ci-required-checks".needs' "${ci}" |
   jq -e 'index("catalogue-scope") != null' >/dev/null || fail 'scope failure cannot reach the required check'
 results="$(yq -r '.jobs."ci-required-checks".steps[] | select(.name == "📊 Summarize workflow result") | .env.JOB_RESULTS' "${ci}")"
 [[ "${results}" == *'needs.catalogue-scope.result'* ]] || fail 'scope result is not aggregated'
-[[ "$(yq -r '.jobs."test-validate-retired-repo-links".needs' "${ci}")" == catalogue-scope ]] || fail 'unrelated smoke job does not wait for classification'
-[[ "$(yq -r '.jobs."test-validate-retired-repo-links".if' "${ci}")" == *"needs.catalogue-scope.outputs.catalogue == 'true'"* ]] || fail 'unrelated smoke job ignores scope'
+[[ "$(yq -r '.jobs."select-ci-tests".needs' "${ci}")" == catalogue-scope ]] || fail 'selection does not wait for trusted classification'
+yq -o=json -I=0 '.jobs."test-validate-retired-repo-links".needs' "${ci}" |
+  jq -e '. == ["select-ci-tests"]' >/dev/null || fail 'unrelated smoke job ignores selection'
+[[ "$(yq -r '.jobs."test-validate-retired-repo-links".if' "${ci}")" == *"contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-validate-retired-repo-links')"* ]] || fail 'unrelated smoke job ignores selection'
+jq -e '.catalogue_optional | index("test-validate-retired-repo-links") != null' "${repo_root}/.github/scripts/ci-selection/inventory.json" >/dev/null || fail 'deployment-only selection retains unrelated smoke job'
 [[ "$(yq -r '.jobs."validate-manifests".needs' "${ci}")" == null ]] || fail 'manifest checks became conditional on scope'
 [[ "$(yq -r '.jobs."lint-ci-coverage-parity".needs' "${ci}")" == null ]] || fail 'security contract checks became conditional on scope'
 [[ "$(yq -r '.jobs."test-dependency-review-comments".needs' "${ci}")" == null ]] || fail 'credential-boundary replay became conditional on scope'
 [[ "$(yq -r '.jobs."test-dependency-review-comments".if' "${ci}")" != *'needs.catalogue-scope'* ]] || fail 'credential-boundary replay ignores its unconditional contract'
-yq -o=json -I=0 '.jobs' "${ci}" | jq -e '
+yq -o=json -I=0 '.jobs' "${ci}" | jq -e --slurpfile inventory "${repo_root}/.github/scripts/ci-selection/inventory.json" '
   [to_entries[] | select(any(.value.steps[]?; (.run // "") | contains(".github/tests/test-"))) |
-    select(.value.needs != null or ((.value.if // "") | contains("needs.catalogue-scope")))] | length == 0
+    .key as $id |
+    select(((.value.needs != null) and (.value.needs != ["select-ci-tests"])) or
+      ((.value.if // "") | contains("needs.catalogue-scope")) or
+      (($inventory[0].catalogue_optional | index($id)) != null))] | length == 0
 ' >/dev/null || fail 'a required test entrypoint became scope-dependent'
 yq -o=json -I=0 '.jobs' "${ci}" | jq -e '
   [to_entries[] | select(.value.uses != null) |
@@ -194,6 +200,35 @@ git -C "${current}" remote add origin "${current}"
 : >"${output}"
 (cd "${current}" && GITHUB_EVENT_NAME=pull_request GITHUB_REPOSITORY=devantler-tech/.github PR_NUMBER=7 BASE_SHA="${base}" HEAD_SHA="${head}" GITHUB_OUTPUT="${output}" bash "${fixture}/scope-step.sh")
 [[ "$(cat "${output}")" == catalogue=false ]] || fail 'real workflow did not recognize deployment-only changes'
+
+# Compose real Git classification, the production selector and the actual
+# required reducer. A false scope omits 48 gated smoke jobs plus the separately
+# event-gated dependency-review smoke, not the other 33 selectable jobs or
+# the three independently admitted native cleanup callers.
+yq -o=json . "${ci}" >"${fixture}/workflow.json"
+selection_output="${fixture}/selection-output"
+: >"${selection_output}"
+scope="$(sed -n 's/^catalogue=//p' "${output}")"
+EVENT_NAME=pull_request RUN_CATALOGUE=true CATALOGUE_SCOPE="${scope}" BASE_SHA="${base}" HEAD_SHA="${head}" GITHUB_OUTPUT="${selection_output}" \
+  go -C "${repo_root}/.github/scripts/ci-selection" run . "${current}" "${repo_root}/.github/scripts/ci-selection/inventory.json" "${fixture}/workflow.json"
+selected="$(sed -n 's/^selected=//p' "${selection_output}")"
+[[ "$(jq 'length' <<<"${selected}")" == 36 ]] || fail 'deployment-only selection changed the independent coverage floor'
+jq -en --argjson selected "${selected}" --slurpfile inventory "${repo_root}/.github/scripts/ci-selection/inventory.json" '
+  ($inventory[0].catalogue_optional | length == 48) and
+  all($selected[]; . as $id | ($inventory[0].catalogue_optional | index($id)) == null) and
+  ($selected | index("test-approve-pr-credential-boundary") != null) and
+  ($selected | index("test-validate-go-project-apply-signed-fixes") != null)
+' >/dev/null || fail 'selection omitted an independent credential or signed-fix contract'
+reducer="$(yq -r '.jobs."ci-required-checks".steps[] | select(.name == "📊 Summarize workflow result") | .run' "${ci}")"
+needs="$(jq -cn --argjson selected "${selected}" --slurpfile inventory "${repo_root}/.github/scripts/ci-selection/inventory.json" '
+  reduce ($inventory[0].jobs | keys[]) as $id ({}; .[$id] = {result:(if $selected | index($id) != null then "success" else "skipped" end)})
+')"
+JOB_RESULTS='success skipped' CATALOGUE_REQUIRED=true SELECTOR_RESULT=success SELECTED_JOBS="${selected}" NEEDS_JSON="${needs}" bash -c "${reducer}" || fail 'real deployment-only selection failed the required reducer'
+bad_needs="$(jq '."test-approve-pr-credential-boundary".result="skipped"' <<<"${needs}")"
+if JOB_RESULTS='success skipped' CATALOGUE_REQUIRED=true SELECTOR_RESULT=success SELECTED_JOBS="${selected}" NEEDS_JSON="${bad_needs}" bash -c "${reducer}"; then
+  fail 'selected-but-skipped credential replay was accepted'
+fi
+
 : >"${output}"
 (cd "${current}" && GITHUB_EVENT_NAME=pull_request GITHUB_REPOSITORY=devantler-tech/.github PR_NUMBER=7 BASE_SHA="${base}" HEAD_SHA="0000000000000000000000000000000000000000" GITHUB_OUTPUT="${output}" bash "${fixture}/scope-step.sh")
 [[ "$(cat "${output}")" == catalogue=true ]] || fail 'moved PR head narrowed the catalogue'

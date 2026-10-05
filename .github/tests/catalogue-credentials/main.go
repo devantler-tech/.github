@@ -1179,7 +1179,7 @@ func checkWiring(w object) error {
 				return fail()
 			}
 			// Pin the reviewed failure reducer; arbitrary Bash mentions are not result admission.
-			if fmt.Sprintf("%x", sha256.Sum256([]byte(text(s["run"])))) != "243b869868468d895f48d6d4021091c35cf407dc2f4f3430455d980db12fabef" {
+			if fmt.Sprintf("%x", sha256.Sum256([]byte(text(s["run"])))) != "762278aed902fc6d9b607515c2dff2139b64cdc381e1128c21a4f630b3149b84" {
 				return fail()
 			}
 			results = true
