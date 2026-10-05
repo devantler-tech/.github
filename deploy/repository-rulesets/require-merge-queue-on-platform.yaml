@@ -16,10 +16,10 @@
 # this promotion (evidence on platform#3097). Per the provider CRD, `actorId` is
 # left unset for OrganizationAdmin.
 #
-# checkResponseTimeoutMinutes 60 -> 90: a merge-group run's p90 is ~22 minutes
-# and its maximum ~68, and the only two checks_timed_out evictions in 30 days
-# were a lock wait behind a failing group and a ~40-minute hosted-runner queue.
-# 90 minutes absorbs that queueing without hiding a genuinely hung run.
+# A hosted-runner queue delayed a successful required check to 111 minutes
+# (platform#3097). A bounded 120-minute response window absorbs that measured
+# admission delay while preserving every required check and single-build queue.
+# Catalogue runner demand remains a separate root-cause repair in .github#475.
 #
 # No Create and no Delete: the ruleset already exists, and removing this file
 # must orphan it on GitHub rather than delete the production merge gate.
@@ -54,7 +54,7 @@ spec:
         update: false
         updateAllowsFetchAndMerge: false
         mergeQueue:
-          - checkResponseTimeoutMinutes: 90
+          - checkResponseTimeoutMinutes: 120
             groupingStrategy: ALLGREEN
             maxEntriesToBuild: 1
             maxEntriesToMerge: 1

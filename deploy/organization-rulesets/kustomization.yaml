@@ -23,3 +23,4 @@ resources:
   - require-world-at-ruin-trusted-regressions.yaml
   - require-monorepo-ci-aggregate-contract.yaml
   - require-dotgithub-deploy-guards.yaml
+  - require-go-template-validation.yaml

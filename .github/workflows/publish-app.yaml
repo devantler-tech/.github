@@ -135,6 +135,7 @@ jobs:
       - name: 🔎 Resolve the calling ref from the OIDC claim
         id: caller
         if: ${{ inputs.enable-caller-pin }}
+        shell: bash
         run: |
           # github.job_workflow_ref is NOT exposed in the expression context — measured empty inside
           # a called reusable workflow, while github.workflow_ref (the caller's own entry workflow)

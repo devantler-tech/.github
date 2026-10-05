@@ -3407,6 +3407,12 @@ jobs:
         shell: bash
         run: bash .github/tests/test-required-workflow-no-local-calls.sh
 
+      # The guard above pins the reviewed signed-fixes workflow CONTENT, so an unchanged release
+      # passes untouched and every unsafe reference still fails for its own reason (#484).
+      - name: 🔗 Check the sibling-call guard rejects unsafe signed-fixes references
+        shell: bash
+        run: bash .github/tests/test-required-workflow-no-local-calls-blocks.sh
+
       - name: 🧪 Check the test-wiring guard rejects disconnected scripts
         shell: bash
         run: bash .github/tests/test-test-script-wiring.sh
@@ -5922,6 +5928,9 @@ jobs:
 
       - name: 🧪 Test independent Monorepo CI aggregate ruleset
         run: bash tests/ci-aggregate-ruleset.sh
+
+      - name: 🧪 Test Go template validation ruleset
+        run: bash tests/go-template-validation-ruleset.sh
 
       - name: 🧪 Test trusted deploy/ guards ruleset
         run: bash tests/deploy-guards-ruleset.sh
