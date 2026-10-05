@@ -4,8 +4,14 @@ set -euo pipefail
 root="$(git rev-parse --show-toplevel)"
 workflow="${1:-$root/.github/workflows/create-release.yaml}"
 ci="${2:-$root/.github/workflows/ci.yaml}"
-work="$(mktemp -d)"
-trap 'rm -rf "$work"' EXIT
+fixture_parent="$(mktemp -d)"
+trap 'rm -rf "$fixture_parent"' EXIT
+mkdir "$fixture_parent/physical"
+ln -s physical "$fixture_parent/logical"
+# Exercise symbolic temporary paths on every runner, including Linux.
+work_logical="$(TMPDIR="$fixture_parent/logical" mktemp -d)"
+work="$(CDPATH='' cd -- "$work_logical" && pwd -P)"
+[[ "$work_logical" != "$work" ]]
 yq -o=json '.' "$workflow" >"$work/workflow.json"
 yq -o=json '.' "$ci" >"$work/ci.json"
 jq -n --slurpfile w "$work/workflow.json" --slurpfile c "$work/ci.json" \
@@ -144,6 +150,10 @@ expected=(--disable --fail --silent --show-error --location
 [[ $# -eq ${#expected[@]} ]]
 index=0
 for argument in "$@"; do
+  # Compare filesystem identity while retaining the caller's raw spelling below.
+  if [[ "${expected[$index]}" == "$fixture/catalogue.tar.gz" ]]; then
+    argument="$(CDPATH='' cd -- "$(dirname -- "$argument")" && pwd -P)/$(basename -- "$argument")"
+  fi
   [[ "$argument" == "${expected[$index]}" ]]
   index=$((index + 1))
 done
@@ -164,7 +174,7 @@ for invalid in repository short-sha mutable-ref path-sha uppercase-sha; do
   path-sha) sha=../../main ;;
   uppercase-sha) sha=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA ;;
   esac
-  if (cd "$work/download" && env -i PATH="$work/bin:$PATH" RUNNER_TEMP="$work" \
+  if (cd "$work/download" && env -i PATH="$work/bin:$PATH" RUNNER_TEMP="$work_logical" \
     CATALOGUE_REPOSITORY="$repository" CATALOGUE_SHA="$sha" bash -eo pipefail "$work/download.sh") >"$work/result" 2>&1; then
     echo "FAIL: invalid $invalid metadata was accepted" >&2
     exit 1
@@ -187,11 +197,15 @@ for transport in failure truncated missing-fixture valid; do
   valid) cp "$work/valid.tar.gz" "$work/payload" ;;
   esac
   result=0
-  (cd "$work/download" && env -i PATH="$work/bin:$PATH" RUNNER_TEMP="$work" \
+  (cd "$work/download" && env -i PATH="$work/bin:$PATH" RUNNER_TEMP="$work_logical" \
     CATALOGUE_REPOSITORY=devantler-tech/.github CATALOGUE_SHA=0000000000000000000000000000000000000000 \
     CURL_HOME=fixture-curl-config HTTPS_PROXY=fixture-proxy GITHUB_TOKEN=fixture-token GH_TOKEN=fixture-token \
     bash -eo pipefail "$work/download.sh") >"$work/result" 2>&1 || result=$?
   grep -qxF 'https://codeload.github.com/devantler-tech/.github/tar.gz/0000000000000000000000000000000000000000' "$work/request"
+  grep -qxF "$work_logical/catalogue.tar.gz" "$work/request" || {
+    echo 'FAIL: retrieval did not use the logical temporary path' >&2
+    exit 1
+  }
   if [[ "$transport" == valid ]]; then
     [[ "$result" == 0 ]]
     cmp "$root/.releaserc" "$work/download/.devantler-tech-actions/.releaserc"
