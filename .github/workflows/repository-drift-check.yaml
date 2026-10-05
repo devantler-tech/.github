@@ -102,11 +102,20 @@ jobs:
       && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-latest
     permissions:
+      contents: read
       issues: write # open, update, or close the tracking issue
     steps:
+      - name: Checkout reporter from the workflow source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ${{ github.repository }}
+          ref: ${{ github.workflow_sha }}
+          path: .devantler-tech-actions
+          persist-credentials: false
+      # This action is inside the explicit checkout; $/ would resolve a source-tree path.
       - name: 📣 Open or update the tracking issue
         if: needs.repository-drift-check.result != 'success'
-        uses: devantler-tech/.github/actions/upsert-issue@18b1389c9e48c50da4769897258662cc78975b79 # v2.5.13
+        uses: ./.devantler-tech-actions/actions/upsert-issue # zizmor: ignore[self-repository]
         with:
           title: "Scheduled repository drift check is failing on main"
           body: |
@@ -118,7 +127,7 @@ jobs:
             Read the failing step first. A failure at `🔑 Get GitHub App Token` means the App credential needs attention. A `DRIFT` line from the compare step means a declared repository setting never reached the live repository: fix the resource in `deploy/`, never the live repository. This issue is updated by every failing run and closed by the next passing one.
       - name: ✅ Close the tracking issue
         if: needs.repository-drift-check.result == 'success'
-        uses: devantler-tech/.github/actions/upsert-issue@18b1389c9e48c50da4769897258662cc78975b79 # v2.5.13
+        uses: ./.devantler-tech-actions/actions/upsert-issue # zizmor: ignore[self-repository]
         with:
           title: "Scheduled repository drift check is failing on main"
           open: "false"
