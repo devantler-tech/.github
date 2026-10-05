@@ -26,7 +26,7 @@ touch "$work/output"
 EVENT_NAME=push RUN_CATALOGUE=true CATALOGUE_SCOPE=true GITHUB_OUTPUT="$work/output" \
   go -C "$root/.github/scripts/ci-selection" run . "$root" "$root/.github/scripts/ci-selection/inventory.json" "$work/workflow.json"
 selected="$(sed -n 's/^selected=//p' "$work/output")"
-[[ "$(jq 'length' <<< "$selected")" == 89 ]]
+[[ "$(jq 'length' <<< "$selected")" == 92 ]]
 EVENT_NAME=merge_group RUN_CATALOGUE=false GITHUB_OUTPUT="$work/output" \
   go -C "$root/.github/scripts/ci-selection" run . "$root" "$root/.github/scripts/ci-selection/inventory.json" "$work/workflow.json"
 [[ "$(tail -n 1 "$work/output")" == 'selected=[]' ]]
@@ -36,4 +36,36 @@ jq -e --slurpfile inventory "$root/.github/scripts/ci-selection/inventory.json" 
     .key as $id | all(.value.steps[]? | .uses? // empty | select(startswith("./actions/"));
       (.[2:] + "/") as $owner | $inventory[0].jobs[$id] | index($owner) != null))
 ' "$work/workflow.json" > /dev/null
+
+# Exercise the real binary against immutable cleanup-only Git history and the
+# complete production inventory, then feed its output into the actual reducer.
+fixture="$work/cleanup"
+mkdir -p "$fixture/.github/workflows"
+git init -q "$fixture"
+git -C "$fixture" config user.name 'CI fixture'
+git -C "$fixture" config user.email 'fixture@example.invalid'
+git -C "$fixture" config commit.gpgsign false
+printf 'base\n' > "$fixture/.github/workflows/delete-workflow-runs.yaml"
+git -C "$fixture" add -- .github/workflows/delete-workflow-runs.yaml
+git -C "$fixture" commit -qm 'test: cleanup baseline'
+base="$(git -C "$fixture" rev-parse HEAD)"
+printf 'changed\n' > "$fixture/.github/workflows/delete-workflow-runs.yaml"
+git -C "$fixture" add -- .github/workflows/delete-workflow-runs.yaml
+git -C "$fixture" commit -qm 'test: cleanup change'
+head="$(git -C "$fixture" rev-parse HEAD)"
+: > "$work/output"
+EVENT_NAME=pull_request RUN_CATALOGUE=true CATALOGUE_SCOPE=true BASE_SHA="$base" HEAD_SHA="$head" GITHUB_OUTPUT="$work/output" \
+  go -C "$root/.github/scripts/ci-selection" run . "$fixture" "$root/.github/scripts/ci-selection/inventory.json" "$work/workflow.json"
+selected="$(sed -n 's/^selected=//p' "$work/output")"
+jq -e '. == ["test-delete-workflow-runs-all","test-delete-workflow-runs-minimal","test-delete-workflow-runs-specific"]' <<< "$selected" > /dev/null
+needs="$(jq -cn --argjson selected "$selected" 'reduce $selected[] as $id ({}; .[$id] = {result:"success"})')"
+reducer="$(yq -r '.jobs."ci-required-checks".steps[] | select(.name == "📊 Summarize workflow result") | .run' "$ci")"
+JOB_RESULTS='success skipped' CATALOGUE_REQUIRED=true SELECTOR_RESULT=success SELECTED_JOBS="$selected" NEEDS_JSON="$needs" bash -c "$reducer"
+for caller in test-delete-workflow-runs-all test-delete-workflow-runs-minimal test-delete-workflow-runs-specific; do
+  bad_needs="$(jq --arg caller "$caller" '.[$caller].result="skipped"' <<< "$needs")"
+  if JOB_RESULTS='success skipped' CATALOGUE_REQUIRED=true SELECTOR_RESULT=success SELECTED_JOBS="$selected" NEEDS_JSON="$bad_needs" bash -c "$reducer" > /dev/null 2>&1; then
+    echo "FAIL: selected native cleanup caller $caller was skipped without rejection" >&2
+    exit 1
+  fi
+done
 echo 'PASS: complete job inventory, owner coverage and preserved scheduling'

@@ -420,7 +420,10 @@ functions. Helper scripts use names without the
 **Affected catalogue selection:** The read-only `select-ci-tests` job checks the complete
 job inventory and immutable full-history Git diff before allocating 89 independently
 gated test jobs. Recognized action-owned paths narrow that set, including reviewed
-transitive caller and inline-lockstep ownership. Shared helpers, workflows, tests,
+transitive caller and inline-lockstep ownership. The cleanup workflow and its
+generated read-only projection have exact file ownership bound to all three native
+callers; their admission stays intact, and affected callers must succeed in the
+required reducer. Shared helpers, other workflows, tests,
 fixtures, root configuration and unknown paths retain full coverage; missing Git
 evidence fails the selector. A successful trusted-base `catalogue-scope` decision
 for a deployment-only PR omits only the 48 explicitly inventoried smoke jobs; the

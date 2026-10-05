@@ -18,6 +18,9 @@ import (
 
 const scheduling = "github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ')"
 
+const cleanupWorkflow = ".github/workflows/delete-workflow-runs.yaml"
+const cleanupProjection = ".github/workflows/delete-workflow-runs-readonly.yaml"
+
 type inventory struct {
 	Always            []string            `json:"always"`
 	Jobs              map[string][]string `json:"jobs"`
@@ -27,6 +30,7 @@ type inventory struct {
 type job struct {
 	If    string `json:"if"`
 	Needs any    `json:"needs"`
+	Uses  string `json:"uses"`
 }
 type workflow struct {
 	Jobs map[string]job `json:"jobs"`
@@ -37,6 +41,17 @@ func selectionGuard(id string) string {
 }
 
 func validateInventory(i inventory, w workflow) ([]string, error) {
+	// All native cleanup callers depend on both the production source and its
+	// generated read-only projection. Their event-specific admission stays intact.
+	for id, j := range w.Jobs {
+		if j.Uses == "./"+cleanupProjection {
+			paths := i.Jobs[id]
+			if len(paths) != 2 || !((paths[0] == cleanupWorkflow && paths[1] == cleanupProjection) ||
+				(paths[1] == cleanupWorkflow && paths[0] == cleanupProjection)) {
+				return nil, fmt.Errorf("incomplete cleanup workflow owners for %s", id)
+			}
+		}
+	}
 	seen := map[string]bool{"select-ci-tests": true, "ci-required-checks": true}
 	for _, id := range i.Always {
 		if seen[id] {
@@ -59,7 +74,8 @@ func validateInventory(i inventory, w workflow) ([]string, error) {
 		}
 		seen[id] = true
 		for _, p := range paths {
-			if !regexp.MustCompile(`^actions/[a-z0-9-]+/$`).MatchString(p) {
+			if !regexp.MustCompile(`^actions/[a-z0-9-]+/$`).MatchString(p) &&
+				!((p == cleanupWorkflow || p == cleanupProjection) && j.Uses == "./"+cleanupProjection) {
 				return nil, fmt.Errorf("invalid selective owner %q", p)
 			}
 		}
@@ -116,7 +132,7 @@ func selectJobs(i inventory, event string, paths []string) []string {
 		known := false
 		for id, owners := range i.Jobs {
 			for _, owner := range owners {
-				if strings.HasPrefix(path, owner) {
+				if path == owner || strings.HasSuffix(owner, "/") && strings.HasPrefix(path, owner) {
 					selected[id], known = true, true
 				}
 			}
@@ -247,13 +263,23 @@ func run() error {
 		}
 	}
 	result := []string{}
+	gatedCount := 0
 	if eligible == "true" {
 		for _, id := range gated {
 			if chosen[id] {
 				result = append(result, id)
+				gatedCount++
+			}
+		}
+		// These callers retain their existing unconditional admission. Include
+		// affected callers in the reducer so an unexpected skip cannot pass.
+		for id := range i.Preserved {
+			if chosen[id] && w.Jobs[id].Uses == "./"+cleanupProjection {
+				result = append(result, id)
 			}
 		}
 	}
+	sort.Strings(result)
 	encoded, err := json.Marshal(result)
 	if err != nil {
 		return err
@@ -265,7 +291,7 @@ func run() error {
 	if err := writeSelectionOutput(f, encoded); err != nil {
 		return err
 	}
-	fmt.Printf("Selected %d of %d gated catalogue jobs; existing shared and event-specific jobs are unchanged.\n", len(result), len(gated))
+	fmt.Printf("Selected %d of %d gated catalogue jobs and %d required native cleanup callers; existing admission is unchanged.\n", gatedCount, len(gated), len(result)-gatedCount)
 	return nil
 }
 
