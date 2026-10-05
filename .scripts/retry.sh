@@ -41,13 +41,35 @@ fi
 attempt_stdout=$(umask 077; mktemp "${TMPDIR:-/tmp}/retry-stdout.XXXXXX") || exit 2
 trap 'rm -f "$attempt_stdout"' EXIT
 command_pid=''
+launching=false
+pending_interrupt=''
+launch_owned() {
+  local restore_monitor=false
+  [[ "$-" == *m* ]] || restore_monitor=true
+  launching=true
+  # Job control gives this attempt its own process group on both macOS and
+  # Linux. Nested installers inherit that group; no process-name search or
+  # signal to the caller's group is needed when cancellation arrives.
+  set -m
+  "$@" <&0 >"$attempt_stdout" &
+  command_pid=$!
+  [[ "$restore_monitor" == false ]] || set +m
+  launching=false
+  [[ -z "$pending_interrupt" ]] || interrupted "$pending_interrupt"
+}
 interrupted() {
+  # A signal can arrive between spawning and saving $!. Defer it until the
+  # launch records the group identity rather than leaving an unowned child.
+  if [[ "$launching" == true ]]; then
+    pending_interrupt="${pending_interrupt:-$1}"
+    return
+  fi
   trap '' HUP INT TERM
   if [ -n "$command_pid" ]; then
-    # Only this helper's unreaped child is targeted. Stop it before removing
-    # its partial result; an interrupted attempt can never become a success.
-    kill -TERM "$command_pid" 2>/dev/null || true
-    kill -KILL "$command_pid" 2>/dev/null || true
+    # Stop this attempt's group, including a wrapper's nested installer,
+    # before removing its partial result. Then reap the owned direct child.
+    kill -TERM -- "-$command_pid" 2>/dev/null || true
+    kill -KILL -- "-$command_pid" 2>/dev/null || true
     wait "$command_pid" 2>/dev/null || true
   fi
   exit "$1"
@@ -61,8 +83,7 @@ delay="$base_delay"
 while true; do
   # An asynchronous wait lets Bash run signal traps while the command is
   # still alive. Explicit stdin preserves the wrapped command's input.
-  "$@" <&0 >"$attempt_stdout" &
-  command_pid=$!
+  launch_owned "$@"
   wait "$command_pid"
   status=$?
   command_pid=''
@@ -75,8 +96,7 @@ while true; do
     exit "$status"
   fi
   echo "::warning::'$*' failed (exit ${status}); attempt ${attempt}/${max_attempts}, retrying in ${delay}s" >&2
-  sleep "$delay" &
-  command_pid=$!
+  launch_owned sleep "$delay"
   wait "$command_pid"
   sleep_status=$?
   command_pid=''

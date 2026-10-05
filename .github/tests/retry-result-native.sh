@@ -3,7 +3,12 @@
 set -euo pipefail
 root="$(cd "$(dirname "$0")/../.." && pwd)"
 work="$(mktemp -d)"
-trap 'rm -rf "$work"' EXIT
+nested_pid=''
+cleanup() {
+  [[ -z "$nested_pid" ]] || kill -KILL "$nested_pid" 2>/dev/null || true
+  rm -rf "$work"
+}
+trap cleanup EXIT
 mkdir "$work/temp"
 timeout_cmd="$(command -v timeout || command -v gtimeout)"
 cat >"$work/producer" <<'PRODUCER'
@@ -79,5 +84,42 @@ kill -TERM "$(cat "$work/backoff/helper-pid")"
 status=0
 wait "$supervisor" || status=$?
 [[ "$status" == 143 && ! -s "$work/backoff/stdout" && -z "$(ls -A "$work/temp")" ]] || { echo "FAIL: backoff cancellation status $status" >&2; exit 1; }
+
+# The real installer wrapper launches its own process. Cancellation must stop
+# that installer as well as the immediate Bash child, without a network call.
+mkdir "$work/nested" "$work/nested-bin" "$work/install-temp"
+cat >"$work/nested-bin/gh" <<'INSTALLER'
+#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\n' "$$" >"$CASE_DIR/installer-pid"
+printf '%s\n' "$PPID" >"$CASE_DIR/wrapper-pid"
+while true; do
+  printf 'still installing\n' >>"$CASE_DIR/installed"
+  sleep 0.02
+done
+INSTALLER
+chmod +x "$work/nested-bin/gh"
+CASE_DIR="$work/nested" PATH="$work/nested-bin:$PATH" TMPDIR="$work/temp" \
+  "$timeout_cmd" 3 bash "$root/.scripts/retry.sh" env TMPDIR="$work/install-temp" \
+    bash "$root/.scripts/gh-skill-install.sh" offline-fixture \
+  >"$work/nested/stdout" 2>"$work/nested/stderr" &
+supervisor=$!
+for ((i=0; i<100; i++)); do
+  [[ ! -s "$work/nested/installed" ]] || break
+  sleep 0.01
+done
+[[ -s "$work/nested/installed" ]] || { echo 'FAIL: nested installer did not start' >&2; exit 1; }
+nested_pid="$(cat "$work/nested/installer-pid")"
+helper_pid="$(ps -o ppid= -p "$(cat "$work/nested/wrapper-pid")" | tr -d ' ')"
+[[ "$helper_pid" =~ ^[1-9][0-9]*$ ]] || { echo 'FAIL: nested helper identity missing' >&2; exit 1; }
+kill -TERM "$helper_pid"
+status=0
+wait "$supervisor" || status=$?
+[[ "$status" == 143 && ! -s "$work/nested/stdout" && -z "$(ls -A "$work/temp")" ]] || { echo "FAIL: nested cancellation status $status" >&2; exit 1; }
+if kill -0 "$nested_pid" 2>/dev/null; then
+  state="$(ps -o stat= -p "$nested_pid" 2>/dev/null || true)"
+  [[ "$state" == Z* ]] || { echo 'FAIL: cancelled nested installer remained running' >&2; exit 1; }
+fi
+nested_pid=''
 
 echo 'PASS: retry output preserves binary bytes, last status, stderr and buffer cleanup'
