@@ -41,6 +41,7 @@ verb — e.g. `require-pull-request.yaml`). Repo-scoped rulesets live next door 
 | `require-signed-commits.yaml` | **Require signed commits** (existing, retired) | Observe + Update — retain the disabled record; never create or delete |
 | `protect-release-tags.yaml` | **Protect release tags** (net-new) | Managed (Create) — block tag delete + force-move + require `v<semver>` |
 | `require-world-at-ruin-trusted-regressions.yaml` | **Require workflow - World at Ruin trusted regressions** (net-new) | Managed (Create) — target only World at Ruin and require the canonical catalogue's trusted regression workflow |
+| `require-world-at-ruin-product-regressions.yaml` | **Require workflow - World at Ruin product regressions** (net-new) | Managed (Create) — target only World at Ruin and require its product-owned trusted regression workflow from reviewed `main` |
 | `require-monorepo-ci-aggregate-contract.yaml` | **Require workflow - Monorepo CI aggregate contract** (net-new) | Managed (Create) — target only monorepo and require the aggregate-execution control from its reviewed `main` |
 | `require-dotgithub-deploy-guards.yaml` | **Require workflow - .github deploy guards** (net-new) | Managed (Create) — target only this repository and run the `deploy/` release-contract and deletion validators from its reviewed `main` |
 | (in `../repository-rulesets/`) `require-merge-queue-on-platform.yaml` | `platform` "Require merge queue" | Observe + Update (managed import, full ruleset backfilled) |
@@ -112,10 +113,11 @@ gates; a team audit cannot clear the latter two.
   that file's header for the team-vs-enterprise tier caveat on the name-pattern rule and
   its fallback.
 - **Required-workflow source pins** — v0.20.0 exposes the source repository, path and a
-  branch/tag `ref`, but not GitHub's immutable workflow `sha` selector. The World at Ruin
-  rule therefore binds the external trusted source to `devantler-tech/.github` on
-  `refs/heads/main`; Actions review and merge gates own source changes until the provider
-  exposes `sha`.
+  branch/tag `ref`, but not GitHub's immutable workflow `sha` selector. The two World at
+  Ruin rules bind the established external source in `devantler-tech/.github` and the
+  product-owned replacement in `devantler-tech/world-at-ruin` independently to
+  `refs/heads/main`. Their separate rulesets preserve replacement enforcement while the
+  established rule is later disabled and retired.
 - **Actions policies** — the 2026-06-18
   [workflow execution protections](https://github.blog/changelog/2026-06-18-control-who-and-what-triggers-github-actions-workflows/)
   (actor + event allow-lists controlling who/what triggers workflows, delivered as org

@@ -1,0 +1,39 @@
+# Require World at Ruin's product-owned regression workflow on the product's
+# default branch. This rule is separate from the established external rule so
+# the replacement remains active while that rule is disabled and retired.
+#
+# GitHub selects the workflow from World at Ruin's reviewed main branch rather
+# than from candidate bytes. provider-upjet-github v0.20.0 exposes a branch/tag
+# ref but not GitHub's workflow SHA selector, so refs/heads/main is the strongest
+# declarative source binding the deployed provider can express.
+#
+# This is net-new and managed Observe + Create + Update + LateInitialize, never
+# Delete. No bypassActors are declared.
+apiVersion: enterprise.github.m.upbound.io/v1alpha1
+kind: OrganizationRuleset
+metadata:
+  name: require-world-at-ruin-product-regressions
+spec:
+  managementPolicies:
+    - Observe
+    - Create
+    - Update
+    - LateInitialize
+  forProvider:
+    name: Require workflow - World at Ruin product regressions
+    target: branch
+    enforcement: active
+    conditions:
+      - refName:
+          - include: ["~DEFAULT_BRANCH"]
+            exclude: []
+        repositoryId: [1303188705]
+    rules:
+      - requiredWorkflows:
+          - requiredWorkflow:
+              - repositoryId: 1303188705
+                path: .github/workflows/trusted-regressions.yaml
+                ref: refs/heads/main
+  providerConfigRef:
+    kind: ProviderConfig
+    name: default
