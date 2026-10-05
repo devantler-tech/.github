@@ -100,26 +100,40 @@ case "$method $endpoint" in
     echo '{}'
     ;;
   "GET repos/example/consumer/pulls/41")
-    # GitHub closes the pull request by itself once its branch is back on the base (measured
-    # on wedding-app#378); the other modes model a pull request that is still open.
+    # GitHub closes the pull request by itself some time after its branch is back on the base
+    # (measured on wedding-app#378). Before the branch move it is always open; after it, each
+    # mode models when, or whether, it reads closed.
     [[ "$FAKE_GH_MODE" != "read-fails" ]] || exit 1
-    case "$FAKE_GH_MODE" in
-      still-open | close-fails | stays-open) echo '{"state":"open"}' ;;
-      *) echo '{"state":"closed"}' ;;
-    esac
+    if ! grep -qx 'PATCH-REF base' "$FAKE_GH_LOG"; then
+      echo '{"state":"open"}'
+    elif [[ "$FAKE_GH_MODE" == "no-state" ]]; then
+      echo '{}'
+    elif [[ -f "$FAKE_GH_CLOSED" ]]; then
+      echo '{"state":"closed"}'
+    else
+      case "$FAKE_GH_MODE" in
+        still-open | close-fails | stays-open | race) echo '{"state":"open"}' ;;
+        *) echo '{"state":"closed"}' ;;
+      esac
+    fi
     ;;
   "PATCH repos/example/consumer/pulls/41")
     jq -e '. == {state:"closed"}' >/dev/null || exit 95
-    # Closing a closed pull request is a 422.
     case "$FAKE_GH_MODE" in
-      still-open | stays-open) ;;
+      still-open)
+        : >"$FAKE_GH_CLOSED"
+        echo '{"state":"closed"}'
+        ;;
+      # The automatic close lands between the read and this request: 422, yet it is closed.
+      race)
+        : >"$FAKE_GH_CLOSED"
+        exit 1
+        ;;
+      # GitHub accepts the request but the pull request stays open.
+      stays-open) echo '{"state":"open"}' ;;
+      # Closing a closed pull request, or any refused close, is an error.
       *) exit 1 ;;
     esac
-    if [[ "$FAKE_GH_MODE" == "stays-open" ]]; then
-      echo '{"state":"open"}'
-      exit 0
-    fi
-    echo '{"state":"closed"}'
     ;;
   "PATCH repos/example/consumer/git/refs/heads/chore/template-sync_deadbee")
     payload="$(cat)"
@@ -199,7 +213,8 @@ run() {
   (
     cd "$fixture/repo"
     PATH="$fixture/bin:$PATH" GITHUB_REPOSITORY=example/consumer FAKE_GH_LOG="$fixture/gh.log" \
-      FAKE_GH_UPDATED="$fixture/updated" FAKE_GH_COMMIT="$fixture/commit.json" "$@"
+      FAKE_GH_UPDATED="$fixture/updated" FAKE_GH_COMMIT="$fixture/commit.json" \
+      FAKE_GH_CLOSED="$fixture/closed" "$@"
   ) >"$fixture/output" 2>"$fixture/error" || rc=$?
 }
 
@@ -330,7 +345,8 @@ base="$(git -C "$fixture/repo" rev-parse HEAD)"
 run_helper "$fixture" "$base" "$(git -C "$fixture/repo" rev-parse 'HEAD^{tree}')"
 refused "no commit" "no sync commit was created"
 
-# proposal_gone <case> <mode>: a later failure is reported, but the branch is already off the proposal.
+# proposal_gone <case> <mode> <error pattern>: a later failure is reported for its own reason, but
+# the branch is already off the proposal and nothing was signed.
 proposal_gone() {
   prepare "$2" downgrade
   FAKE_GH_MODE="$2"
@@ -338,6 +354,7 @@ proposal_gone() {
   FAKE_GH_MODE=success
   [[ "$rc" -ne 0 ]] || fail "$1 — the helper reported success"
   [[ -z "$(cat "$fixture/output")" ]] || fail "$1 — the helper still printed a result"
+  grep -q "$3" "$fixture/error" || fail "$1 — the failure did not name its reason: $(cat "$fixture/error")"
   grep -qx 'PATCH-REF base' "$fixture/gh.log" ||
     fail "$1 — the branch still carries the unsigned proposal"
   if grep -qE '^(PATCH-REF signed|POST repos/example/consumer/git/commits)$' "$fixture/gh.log"; then
@@ -345,24 +362,38 @@ proposal_gone() {
   fi
 }
 
-# 12–15. The comment fails, the state read fails, the close request fails, or GitHub still
-# reports the pull request open.
-proposal_gone "comment fails" comment-fails
-proposal_gone "read fails" read-fails
-proposal_gone "close fails" close-fails
-proposal_gone "stays open" stays-open
+# 12–15. The state read fails, the close is refused and the pull request stays open, GitHub accepts
+# the close but still reports it open, or the state is missing from the answer.
+proposal_gone "read fails" read-fails "could not read pull request #41"
+proposal_gone "close fails" close-fails "pull request #41 is not closed (state 'open')"
+proposal_gone "stays open" stays-open "pull request #41 is not closed (state 'open')"
+proposal_gone "no state" no-state "pull request #41 is not closed (state '')"
 
-# A pull request GitHub left open is closed explicitly.
-prepare still-open downgrade
-FAKE_GH_MODE=still-open
-run_signer "$fixture" "$base"
-FAKE_GH_MODE=success
-[[ "$rc" -eq 0 && "$(cat "$fixture/output")" == "discarded" ]] ||
-  fail "still open — expected 'discarded': $(cat "$fixture/error")"
-[[ "$(writes "$fixture")" == "$discard_writes
-PATCH repos/example/consumer/pulls/41" ]] || fail "still open — the pull request was not closed: $(writes "$fixture")"
+# discarded_in <case> <mode> <expected writes>: the run succeeds with exactly those writes.
+discarded_in() {
+  prepare "$2" downgrade
+  FAKE_GH_MODE="$2"
+  run_signer "$fixture" "$base"
+  FAKE_GH_MODE=success
+  [[ "$rc" -eq 0 && "$(cat "$fixture/output")" == "discarded" ]] ||
+    fail "$1 — expected 'discarded': $(cat "$fixture/error")"
+  [[ "$(writes "$fixture")" == "$3" ]] || fail "$1 — unexpected writes: $(writes "$fixture")"
+}
 
-# 15. A branch update GitHub answers with another commit stops before the pull request is touched.
+# 16. A pull request GitHub left open is closed explicitly.
+discarded_in "still open" still-open "$discard_writes
+PATCH repos/example/consumer/pulls/41"
+
+# 17. The automatic close lands between the read and the close request: the refusal is not a failure.
+discarded_in "race" race "$discard_writes
+PATCH repos/example/consumer/pulls/41"
+
+# 18. A note that cannot be posted is a warning; the pull request is still closed.
+discarded_in "comment fails" comment-fails "$discard_writes"
+grep -q '^::warning::Could not explain the closure on pull request #41' "$fixture/error" ||
+  fail "comment fails — the missing note was not reported"
+
+# 19. A branch update GitHub answers with another commit stops before the pull request is touched.
 prepare ref-elsewhere downgrade
 FAKE_GH_MODE=ref-elsewhere
 run_signer "$fixture" "$base"
@@ -371,7 +402,7 @@ FAKE_GH_MODE=success
 [[ -z "$(cat "$fixture/output")" ]] || fail "branch elsewhere — the helper still printed a result"
 [[ "$(writes "$fixture")" == "PATCH-REF base" ]] || fail "branch elsewhere — the pull request was touched: $(writes "$fixture")"
 
-# 16. With a merged ignore list, the proposal still changes the ignore file: signed, not discarded.
+# 20. With a merged ignore list, the proposal still changes the ignore file: signed, not discarded.
 fixture="$(make_fixture pre-sync)"
 base="$(git -C "$fixture/repo" rev-parse HEAD)"
 git -C "$fixture/repo" switch -q -c "$branch"

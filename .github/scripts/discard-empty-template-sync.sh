@@ -8,10 +8,10 @@
 # changed files (wedding-app#377, ascoachingogvaner#280). The signing helper calls this instead of
 # signing such a commit.
 #
-# It closes the pull request this run opened and moves the generated branch back onto the base
-# commit. The branch is kept on purpose: the sync action skips a template commit whose branch
-# already exists, so the same empty pull request is not reopened on every scheduled run. A new
-# template commit gets a new branch name and syncs normally.
+# It moves the generated branch back onto the base commit, then makes sure the pull request
+# this run opened is closed. The branch is kept on purpose: the sync action skips a template
+# commit whose branch already exists, so the same empty pull request is not reopened on every
+# scheduled run. A new template commit gets a new branch name and syncs normally.
 #
 # It touches only the branch this run generated, at the commit this run pushed. stdout is the one
 # word `discarded`.
@@ -107,26 +107,34 @@ moved="$(jq -n --arg sha "$base_sha" '{sha:$sha,force:true}' |
   fail "the generated branch $branch did not report the base commit"
 echo "Moved $branch back onto the base; it stays as the marker for this template commit." >&2
 
+# pull_state <number>: the pull request's state as GitHub reports it now.
+pull_state() {
+  local pull
+  pull="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/$1")" ||
+    fail "could not read pull request #$1 after moving its branch"
+  jq -r '.state // ""' <<<"$pull"
+}
+
 note="This template sync would change no files: what the template proposes is already here, or is older than what this repository uses. The pull request was closed automatically. Its branch is kept so the same template commit is not proposed again."
 while IFS= read -r number; do
   [[ -n "$number" ]] || continue
   [[ "$number" =~ ^[0-9]+$ ]] || fail "pull request number '$number' is not numeric"
+  # The note is a courtesy: a failed comment must not stop the pull request from being closed.
   jq -n --arg body "$note" '{body:$body}' |
     gh api -X POST "repos/${GITHUB_REPOSITORY}/issues/${number}/comments" --input - >/dev/null ||
-    fail "could not explain the closure on pull request #$number"
-  # GitHub closes a pull request by itself once its branch has no commits left, and refuses to
-  # close it again (422, measured on wedding-app#378). Close it only while it is still open.
-  pull="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${number}")" ||
-    fail "could not read pull request #$number after moving its branch"
-  state="$(jq -r '.state // ""' <<<"$pull")"
+    echo "::warning::Could not explain the closure on pull request #$number." >&2
+  # GitHub closes a pull request by itself once its branch has no commits left, some time after
+  # the move, and refuses to close it again (422, measured on wedding-app#378). So close it only
+  # while it reads open, and judge the outcome by reading it back, not by the close request.
+  state="$(pull_state "$number")"
   if [[ "$state" == "open" ]]; then
-    pull="$(jq -n '{state:"closed"}' |
-      gh api -X PATCH "repos/${GITHUB_REPOSITORY}/pulls/${number}" --input -)" ||
-      fail "could not close pull request #$number"
-    state="$(jq -r '.state // ""' <<<"$pull")"
+    jq -n '{state:"closed"}' |
+      gh api -X PATCH "repos/${GITHUB_REPOSITORY}/pulls/${number}" --input - >/dev/null ||
+      echo "Close request for pull request #$number was refused; reading its state back." >&2
+    state="$(pull_state "$number")"
   fi
   [[ "$state" == "closed" ]] ||
-    fail "pull request #$number did not report closed"
+    fail "pull request #$number is not closed (state '$state')"
   echo "::notice::Template sync would change no files; closed pull request #$number and kept $branch as its marker." >&2
 done <<<"$numbers"
 
