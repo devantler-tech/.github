@@ -4,8 +4,13 @@ set -euo pipefail
 root="$(git rev-parse --show-toplevel)"
 workflow="${1:-$root/.github/workflows/create-release.yaml}"
 ci="${2:-$root/.github/workflows/ci.yaml}"
-work="$(mktemp -d)"
-trap 'rm -rf "$work"' EXIT
+fixture_parent="$(mktemp -d)"
+trap 'rm -rf "$fixture_parent"' EXIT
+mkdir "$fixture_parent/physical"
+ln -s physical "$fixture_parent/logical"
+# Exercise symbolic temporary paths on every runner, including Linux.
+work="$(TMPDIR="$fixture_parent/logical" mktemp -d)"
+work="$(CDPATH='' cd -- "$work" && pwd -P)"
 yq -o=json '.' "$workflow" >"$work/workflow.json"
 yq -o=json '.' "$ci" >"$work/ci.json"
 jq -n --slurpfile w "$work/workflow.json" --slurpfile c "$work/ci.json" \
