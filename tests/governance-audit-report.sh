@@ -1,12 +1,11 @@
 #!/usr/bin/env bash
-# Execute the pinned reporter's actual action script with a closed offline CLI plan.
+# Execute the same-commit reporter action script with a closed offline CLI plan.
 set -euo pipefail
 root="$(cd "$(dirname "$0")/.." && pwd)"
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
 mkdir "$work/bin"
-git -C "$root" show 6d7a19f3b37722806610ade51da745d939eef7e5:actions/upsert-issue/action.yaml >"$work/action.yaml"
-yq -r '.runs.steps[0].run' "$work/action.yaml" >"$work/action.sh"
+yq -r '.runs.steps[0].run' "$root/actions/upsert-issue/action.yaml" >"$work/action.sh"
 cat >"$work/bin/gh" <<'SH'
 #!/usr/bin/env bash
 set -euo pipefail
