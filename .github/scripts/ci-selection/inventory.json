@@ -18,6 +18,14 @@
     "test-validate-shell-pipelines", "test-validate-shell-pipelines-scope", "test-zizmor-action-lockstep", "test-zizmor-blocks"
   ],
   "preserved": {
+    "test-apply-signed-fixes-suppresses-bots": {"if": "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"},
+    "test-publish-dotnet-library": {"if": "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"},
+    "test-sync-cluster-policies": {"if": "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"},
+    "test-template-sync": {"if": "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"},
+    "test-template-sync-merge-ignore": {"if": "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"},
+    "test-update-agent-skills": {"if": "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"},
+    "test-update-agent-skills-per-skill": {"if": "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"},
+    "test-validate-go-project-interface": {"if": "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"},
     "test-delete-workflow-runs-all": {"if": "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"},
     "test-delete-workflow-runs-specific": {"if": "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"},
     "test-delete-workflow-runs-minimal": {"if": "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"},

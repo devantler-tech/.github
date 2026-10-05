@@ -3687,8 +3687,7 @@ jobs:
   # Its repository exclusion skips every executed job here; behavior is tested
   # through the source-derived read-only entrypoint below.
   test-validate-go-project-interface:
-    needs: [select-ci-tests]
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-validate-go-project-interface') }}"
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
     name: "[Test] Validate Go Project - Production Interface"
     uses: ./.github/workflows/validate-go-project.yaml
     with:
@@ -4145,8 +4144,7 @@ jobs:
       dry-run: true
 
   test-publish-dotnet-library:
-    needs: [select-ci-tests]
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-publish-dotnet-library') }}"
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
     name: "[Test] Publish .NET Library - Dry Run"
     uses: ./.github/workflows/publish-dotnet-library.yaml
     permissions:
@@ -4342,8 +4340,7 @@ jobs:
       ignore: '^\.github/tests/'
 
   test-sync-cluster-policies:
-    needs: [select-ci-tests]
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-sync-cluster-policies') }}"
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
     name: "[Test] Sync Cluster Policies - Dry Run"
     uses: ./.github/workflows/sync-cluster-policies.yaml
     permissions: {}
@@ -4381,8 +4378,7 @@ jobs:
         run: bash .github/tests/test-sync-cluster-policies-credentials-blocks.sh
 
   test-update-agent-skills:
-    needs: [select-ci-tests]
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-update-agent-skills') }}"
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
     name: "[Test] Update Agent Skills - Dry Run"
     uses: ./.github/workflows/update-agent-skills.yaml
     permissions:
@@ -4394,8 +4390,7 @@ jobs:
   # Flag-on state of the opt-in per-skill PRs (#1309), so the input stays part of the interface;
   # test-update-agent-skills-per-skill.sh pins both states and the per-skill job's apply step.
   test-update-agent-skills-per-skill:
-    needs: [select-ci-tests]
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-update-agent-skills-per-skill') }}"
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
     name: "[Test] Update Agent Skills - Per-Skill PRs Dry Run"
     uses: ./.github/workflows/update-agent-skills.yaml # zizmor: ignore[self-repository]
     permissions:
@@ -4406,8 +4401,7 @@ jobs:
       pr-per-skill: true
 
   test-template-sync:
-    needs: [select-ci-tests]
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-template-sync') }}"
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
     name: "[Test] Template Sync - Dry Run"
     uses: ./.github/workflows/template-sync.yaml
     permissions:
@@ -4421,8 +4415,7 @@ jobs:
   # The ignore-entry merge is a release flag: instantiate its on state as well. Its behaviour is
   # exercised offline by test-template-sync-ignore-merge.sh in lint-ci-coverage-parity.
   test-template-sync-merge-ignore:
-    needs: [select-ci-tests]
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-template-sync-merge-ignore') }}"
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
     name: "[Test] Template Sync - Dry Run (Merge Ignore Entries)"
     uses: ./.github/workflows/template-sync.yaml
     permissions:
@@ -5827,8 +5820,7 @@ jobs:
   # permissions. The call commits nothing by construction as well as by gate: no patch
   # artifact exists and no App key is passed.
   test-apply-signed-fixes-suppresses-bots:
-    needs: [select-ci-tests]
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-apply-signed-fixes-suppresses-bots') }}"
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
     name: "[Test] Apply Signed Fixes - Refuses A Dependency-Bot Branch"
     permissions:
       contents: read

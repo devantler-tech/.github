@@ -418,7 +418,7 @@ functions. Helper scripts use names without the
 `test-` prefix and are invoked by a tested entrypoint instead of needing an exemption list.
 
 **Affected catalogue selection:** The read-only `select-ci-tests` job checks the complete
-job inventory and immutable full-history Git diff before allocating 89 independently
+job inventory and immutable full-history Git diff before allocating 81 independently
 gated test jobs. Recognized action-owned paths narrow that set, including reviewed
 transitive caller and inline-lockstep ownership. The cleanup workflow and its
 generated read-only projection have exact file ownership bound to all three native
@@ -428,12 +428,15 @@ fixtures, root configuration and unknown paths retain full coverage; missing Git
 evidence fails the selector. A successful trusted-base `catalogue-scope` decision
 for a deployment-only PR omits only the 48 explicitly inventoried smoke jobs; the
 separate event-gated dependency-review smoke retains its scope condition. The other
-41 selectable jobs and all independent shared guards remain available. Missing or
+33 selectable jobs and all independent shared guards remain available. Missing or
 malformed scope output fails selection; unproven classification keeps full coverage.
 Renames retain both old and new owners. Main keeps full
 coverage, and existing merge-group/release exclusions, credential-specific and
 independently admitted offline caller jobs
-remain unchanged. The credential graph, test-wiring, shell, documentation and manifest
+remain unchanged. Eight interface-only callers whose callee jobs intentionally
+skip retain their original admission outside the execution selection. Their
+failures still reach the global reducer; selected execution jobs must succeed. The credential graph, test-wiring, shell,
+documentation and manifest
 guards never depend on selection. The workspace-free required reducer requires a
 successful selector and every selected job's success; an unexpectedly skipped test
 cannot make CI green. Keep `test-ci-selection.sh`, its inventory and required-reducer

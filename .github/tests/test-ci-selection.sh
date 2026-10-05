@@ -26,7 +26,37 @@ touch "$work/output"
 EVENT_NAME=push RUN_CATALOGUE=true CATALOGUE_SCOPE=true GITHUB_OUTPUT="$work/output" \
   go -C "$root/.github/scripts/ci-selection" run . "$root" "$root/.github/scripts/ci-selection/inventory.json" "$work/workflow.json"
 selected="$(sed -n 's/^selected=//p' "$work/output")"
-[[ "$(jq 'length' <<< "$selected")" == 92 ]]
+[[ "$(jq 'length' <<< "$selected")" == 84 ]]
+# Hosted CI reports these callers as skipped because their callee jobs are
+# intentionally excluded (dry-run, repository exclusion, or dependency-bot
+# suppression). They still exercise interfaces and retain original admission;
+# selection must not promise an executed test where no job can run.
+interface_callers='["test-apply-signed-fixes-suppresses-bots","test-publish-dotnet-library","test-sync-cluster-policies","test-template-sync","test-template-sync-merge-ignore","test-update-agent-skills","test-update-agent-skills-per-skill","test-validate-go-project-interface"]'
+needs="$(jq -cn --argjson skipped "$interface_callers" --slurpfile workflow "$work/workflow.json" '
+  reduce ($workflow[0].jobs | keys[]) as $id ({};
+    .[$id] = {result: (if ($skipped | index($id)) != null then "skipped" else "success" end)})
+')"
+reducer="$(yq -r '.jobs."ci-required-checks".steps[] | select(.name == "📊 Summarize workflow result") | .run' "$ci")"
+JOB_RESULTS="$(jq -r '[.[].result] | join(" ")' <<< "$needs")" CATALOGUE_REQUIRED=true SELECTOR_RESULT=success SELECTED_JOBS="$selected" NEEDS_JSON="$needs" bash -c "$reducer" || {
+  echo "FAIL: intentional interface-only caller skips incorrectly failed hosted selection" >&2
+  exit 1
+}
+# A failed interface call must still fail the global reducer. Only expected
+# no-execution callers may skip; every selected execution remains mandatory.
+for caller in $(jq -r '.[]' <<< "$interface_callers"); do
+  bad_needs="$(jq --arg caller "$caller" '.[$caller].result="failure"' <<< "$needs")"
+  if JOB_RESULTS="$(jq -r '[.[].result] | join(" ")' <<< "$bad_needs")" CATALOGUE_REQUIRED=true SELECTOR_RESULT=success SELECTED_JOBS="$selected" NEEDS_JSON="$bad_needs" bash -c "$reducer" > /dev/null 2>&1; then
+    echo "FAIL: failed interface caller $caller was silently accepted" >&2
+    exit 1
+  fi
+done
+for caller in $(jq -r '.[]' <<< "$selected"); do
+  bad_needs="$(jq --arg caller "$caller" '.[$caller].result="skipped"' <<< "$needs")"
+  if JOB_RESULTS="$(jq -r '[.[].result] | join(" ")' <<< "$bad_needs")" CATALOGUE_REQUIRED=true SELECTOR_RESULT=success SELECTED_JOBS="$selected" NEEDS_JSON="$bad_needs" bash -c "$reducer" > /dev/null 2>&1; then
+    echo "FAIL: selected execution $caller was silently skipped" >&2
+    exit 1
+  fi
+done
 EVENT_NAME=merge_group RUN_CATALOGUE=false GITHUB_OUTPUT="$work/output" \
   go -C "$root/.github/scripts/ci-selection" run . "$root" "$root/.github/scripts/ci-selection/inventory.json" "$work/workflow.json"
 [[ "$(tail -n 1 "$work/output")" == 'selected=[]' ]]

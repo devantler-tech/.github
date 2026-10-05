@@ -203,7 +203,7 @@ git -C "${current}" remote add origin "${current}"
 
 # Compose real Git classification, the production selector and the actual
 # required reducer. A false scope omits 48 gated smoke jobs plus the separately
-# event-gated dependency-review smoke, not the other 41 selectable jobs or
+# event-gated dependency-review smoke, not the other 33 selectable jobs or
 # the three independently admitted native cleanup callers.
 yq -o=json . "${ci}" >"${fixture}/workflow.json"
 selection_output="${fixture}/selection-output"
@@ -212,7 +212,7 @@ scope="$(sed -n 's/^catalogue=//p' "${output}")"
 EVENT_NAME=pull_request RUN_CATALOGUE=true CATALOGUE_SCOPE="${scope}" BASE_SHA="${base}" HEAD_SHA="${head}" GITHUB_OUTPUT="${selection_output}" \
   go -C "${repo_root}/.github/scripts/ci-selection" run . "${current}" "${repo_root}/.github/scripts/ci-selection/inventory.json" "${fixture}/workflow.json"
 selected="$(sed -n 's/^selected=//p' "${selection_output}")"
-[[ "$(jq 'length' <<<"${selected}")" == 44 ]] || fail 'deployment-only selection changed the independent coverage floor'
+[[ "$(jq 'length' <<<"${selected}")" == 36 ]] || fail 'deployment-only selection changed the independent coverage floor'
 jq -en --argjson selected "${selected}" --slurpfile inventory "${repo_root}/.github/scripts/ci-selection/inventory.json" '
   ($inventory[0].catalogue_optional | length == 48) and
   all($selected[]; . as $id | ($inventory[0].catalogue_optional | index($id)) == null) and
