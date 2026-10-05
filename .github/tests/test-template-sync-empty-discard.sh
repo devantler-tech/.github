@@ -96,6 +96,7 @@ case "$method $endpoint" in
     ;;
   "POST repos/example/consumer/issues/41/comments")
     jq -e '.body | test("would change no files")' >/dev/null || exit 94
+    [[ "$FAKE_GH_MODE" != "comment-fails" ]] || exit 1
     echo '{}'
     ;;
   "PATCH repos/example/consumer/pulls/41")
@@ -196,7 +197,7 @@ run_signer() {
 # The writes a run made, in order; the ref update is named by what it published.
 writes() {
   [[ -e "$1/gh.log" ]] || return 0
-  grep -vE '^(GET |PATCH repos/example/consumer/git/refs/)' "$1/gh.log" || true
+  grep -vE "^(GET |PATCH repos/example/consumer/git/refs/)" "$1/gh.log" || true
 }
 
 pull_list() {
@@ -214,9 +215,9 @@ prepare() {
   export REMOTE_SHA FAKE_PULLS BASE_SHA
 }
 
-discard_writes="POST repos/example/consumer/issues/41/comments
-PATCH repos/example/consumer/pulls/41
-PATCH-REF base"
+discard_writes="PATCH-REF base
+POST repos/example/consumer/issues/41/comments
+PATCH repos/example/consumer/pulls/41"
 
 export FAKE_GH_MODE=success
 
@@ -227,7 +228,7 @@ run_signer "$fixture" "$base"
 [[ "$(cat "$fixture/output")" == "discarded" ]] ||
   fail "downgrade — expected 'discarded', got '$(cat "$fixture/output")'"
 [[ "$(writes "$fixture")" == "$discard_writes" ]] ||
-  fail "downgrade — expected comment, close, branch back on base and nothing signed, got: $(writes "$fixture")"
+  fail "downgrade — expected branch back on base, comment, close and nothing signed, got: $(writes "$fixture")"
 grep -q '^::warning file=\.github/workflows/release\.yaml' "$fixture/error" ||
   fail "downgrade — the omitted pin was not reported"
 
@@ -317,29 +318,53 @@ base="$(git -C "$fixture/repo" rev-parse HEAD)"
 run_helper "$fixture" "$base" "$(git -C "$fixture/repo" rev-parse 'HEAD^{tree}')"
 refused "no commit" "no sync commit was created"
 
-# kept_branch <case> <mode>: a pull request that does not close keeps its branch where it was.
-kept_branch() {
+# proposal_gone <case> <mode>: a later failure is reported, but the branch is already off the proposal.
+proposal_gone() {
   prepare "$2" downgrade
   FAKE_GH_MODE="$2"
   run_signer "$fixture" "$base"
   FAKE_GH_MODE=success
   [[ "$rc" -ne 0 ]] || fail "$1 — the helper reported success"
   [[ -z "$(cat "$fixture/output")" ]] || fail "$1 — the helper still printed a result"
-  if grep -q '^PATCH-REF ' "$fixture/gh.log"; then
-    fail "$1 — the branch was moved although its pull request stayed open"
+  grep -qx 'PATCH-REF base' "$fixture/gh.log" ||
+    fail "$1 — the branch still carries the unsigned proposal"
+  if grep -qE '^(PATCH-REF signed|POST repos/example/consumer/git/commits)$' "$fixture/gh.log"; then
+    fail "$1 — the empty proposal was signed"
   fi
 }
 
-# 12–13. The close request fails, or GitHub still reports the pull request open.
-kept_branch "close fails" close-fails
-kept_branch "stays open" stays-open
+# 12–14. The comment fails, the close request fails, or GitHub still reports the pull request open.
+proposal_gone "comment fails" comment-fails
+proposal_gone "close fails" close-fails
+proposal_gone "stays open" stays-open
 
-# 14. A branch update GitHub answers with another commit is not reported as done.
+# 15. A branch update GitHub answers with another commit stops before the pull request is touched.
 prepare ref-elsewhere downgrade
 FAKE_GH_MODE=ref-elsewhere
 run_signer "$fixture" "$base"
 FAKE_GH_MODE=success
 [[ "$rc" -ne 0 ]] || fail "branch elsewhere — the helper reported success"
 [[ -z "$(cat "$fixture/output")" ]] || fail "branch elsewhere — the helper still printed a result"
+[[ "$(writes "$fixture")" == "PATCH-REF base" ]] || fail "branch elsewhere — the pull request was touched: $(writes "$fixture")"
+
+# 16. With a merged ignore list, the proposal still changes the ignore file: signed, not discarded.
+fixture="$(make_fixture pre-sync)"
+base="$(git -C "$fixture/repo" rev-parse HEAD)"
+git -C "$fixture/repo" switch -q -c "$branch"
+printf 'docs/\n' >"$fixture/repo/.templatesyncignore"
+git -C "$fixture/repo" add -A
+git -C "$fixture/repo" commit -q -m "chore: merge the template's ignore entries"
+pre_sync="$(git -C "$fixture/repo" rev-parse HEAD)"
+caller "$fixture/repo/.github/workflows/release.yaml" "$older"
+git -C "$fixture/repo" add -A
+git -C "$fixture/repo" commit -q -m "chore: sync changes from the upstream template"
+REMOTE_SHA="$(git -C "$fixture/repo" rev-parse HEAD)"
+FAKE_PULLS="$(pull_list "$branch" "$REMOTE_SHA")"
+BASE_SHA="$base"
+run "$fixture" "$signer" --base-sha "$base" --branch-prefix chore/template-sync \
+  --pre-sync-sha "$pre_sync" --pre-sync-path .templatesyncignore
+[[ "$rc" -eq 0 && "$(cat "$fixture/output")" == "$SIGNED_SHA" ]] ||
+  fail "pre-sync — an ignore-list change was not signed: $(cat "$fixture/output") $(cat "$fixture/error")"
+[[ "$(writes "$fixture")" == "$expected_real" ]] || fail "pre-sync — unexpected writes: $(writes "$fixture")"
 
 echo "PASS: a template sync that would change nothing is closed and never signed, and a real one is signed as before"

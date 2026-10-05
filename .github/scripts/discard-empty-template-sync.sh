@@ -98,6 +98,15 @@ numbers="$(jq -er --arg sha "$current_sha" --arg branch "$branch" '
   numbers=""
 }
 
+# Move the branch first: that write takes the unsigned sync commit off it, so a later failure
+# cannot leave the proposal standing. The branch stays as the marker.
+moved="$(jq -n --arg sha "$base_sha" '{sha:$sha,force:true}' |
+  gh api -X PATCH "repos/${GITHUB_REPOSITORY}/git/refs/heads/${branch}" --input -)" ||
+  fail "could not move the generated branch $branch back onto the base"
+[[ "$(jq -r '.object.sha // ""' <<<"$moved")" == "$base_sha" ]] ||
+  fail "the generated branch $branch did not report the base commit"
+echo "Moved $branch back onto the base; it stays as the marker for this template commit." >&2
+
 note="This template sync would change no files: what the template proposes is already here, or is older than what this repository uses. The pull request was closed automatically. Its branch is kept so the same template commit is not proposed again."
 while IFS= read -r number; do
   [[ -n "$number" ]] || continue
@@ -110,14 +119,7 @@ while IFS= read -r number; do
     fail "could not close pull request #$number"
   [[ "$(jq -r '.state // ""' <<<"$closed")" == "closed" ]] ||
     fail "pull request #$number did not report closed"
-  echo "Closed empty template-sync pull request #$number." >&2
+  echo "::notice::Template sync would change no files; closed pull request #$number and kept $branch as its marker." >&2
 done <<<"$numbers"
 
-# Keep the branch as the marker, but without the unsigned sync commit on it.
-moved="$(jq -n --arg sha "$base_sha" '{sha:$sha,force:true}' |
-  gh api -X PATCH "repos/${GITHUB_REPOSITORY}/git/refs/heads/${branch}" --input -)" ||
-  fail "could not move the generated branch $branch back onto the base"
-[[ "$(jq -r '.object.sha // ""' <<<"$moved")" == "$base_sha" ]] ||
-  fail "the generated branch $branch did not report the base commit"
-echo "Moved $branch back onto the base; it stays as the marker for this template commit." >&2
 echo discarded
