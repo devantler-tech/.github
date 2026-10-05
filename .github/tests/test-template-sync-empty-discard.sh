@@ -229,7 +229,8 @@ writes() {
 }
 
 pull_list() {
-  jq -cn --arg ref "$1" --arg sha "$2" '[{number:41,head:{ref:$ref,sha:$sha}}]'
+  jq -cn --arg ref "$1" --arg sha "$2" \
+    '[{number:41,head:{ref:$ref,sha:$sha,repo:{full_name:"example/consumer"}}}]'
 }
 
 # prepare <name> <kind> [branch]: fixture, base and remote state for one sync; sets fixture, base.
@@ -258,6 +259,28 @@ run_signer "$fixture" "$base"
   fail "downgrade — expected branch back on base, a comment and nothing signed, got: $(writes "$fixture")"
 grep -q '^::warning file=\.github/workflows/release\.yaml' "$fixture/error" ||
   fail "downgrade — the omitted pin was not reported"
+
+# The branch is read immediately before it is moved: GitHub offers no conditional ref update.
+[[ "$(grep -B1 -x "PATCH repos/example/consumer/git/refs/heads/$branch" "$fixture/gh.log" | head -n 1)" == \
+  "GET repos/example/consumer/git/ref/heads/$branch" ]] ||
+  fail "downgrade — the branch was not re-read immediately before the move"
+
+# A pull request from a fork under the same owner, even with the same branch name and commit,
+# is not this run's pull request: it is left alone and this run's is still closed.
+prepare fork downgrade
+FAKE_PULLS="$(jq -c --arg ref "$branch" --arg sha "$REMOTE_SHA" \
+  '. + [{number:99,head:{ref:$ref,sha:$sha,repo:{full_name:"example/fork"}}}]' <<<"$FAKE_PULLS")"
+run_signer "$fixture" "$base"
+[[ "$rc" -eq 0 && "$(cat "$fixture/output")" == "discarded" ]] ||
+  fail "fork — expected 'discarded': $(cat "$fixture/error")"
+[[ "$(writes "$fixture")" == "$discard_writes" ]] || fail "fork — unexpected writes: $(writes "$fixture")"
+
+# A fork's pull request alone means this run has none: only the branch moves.
+prepare fork-only downgrade
+FAKE_PULLS="$(jq -c '.[0].number = 99 | .[0].head.repo.full_name = "example/fork"' <<<"$FAKE_PULLS")"
+run_signer "$fixture" "$base"
+[[ "$rc" -eq 0 && "$(writes "$fixture")" == "PATCH-REF base" ]] ||
+  fail "fork only — the fork's pull request was touched: $(writes "$fixture") $(cat "$fixture/error")"
 
 # 2. A sync commit with no change at all is discarded the same way.
 prepare empty empty

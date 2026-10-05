@@ -73,17 +73,14 @@ branch="$(git branch --show-current)" || fail "could not read the generated bran
 git merge-base --is-ancestor "$base_sha" HEAD ||
   fail "the sync commit does not descend from the workflow base sha"
 
-ref_endpoint="repos/${GITHUB_REPOSITORY}/git/ref/heads/${branch}"
-remote_ref="$(gh api "$ref_endpoint")" || fail "could not read the generated remote branch"
-remote_sha="$(jq -er '.object.sha' <<<"$remote_ref")" || fail "generated remote branch response has no sha"
-[[ "$remote_sha" == "$current_sha" ]] ||
-  fail "generated remote branch moved after the sync action (expected $current_sha, found $remote_sha)"
-
 owner="${GITHUB_REPOSITORY%%/*}"
+# The head filter names an owner and a branch, not a repository, so a fork under the same owner
+# can appear in this list. Only pull requests whose head is in this repository are considered.
 pulls="$(gh api "repos/${GITHUB_REPOSITORY}/pulls?state=open&head=${owner}:${branch}&per_page=100")" ||
   fail "could not list the pull requests opened from $branch"
-numbers="$(jq -er --arg sha "$current_sha" --arg branch "$branch" '
+numbers="$(jq -er --arg sha "$current_sha" --arg branch "$branch" --arg repo "$GITHUB_REPOSITORY" '
   if type != "array" then error("not a list") else . end
+  | map(select(.head.repo.full_name == $repo))
   | map(
       if (.head.ref == $branch and .head.sha == $sha and (.number | type) == "number")
       then .number
@@ -93,10 +90,20 @@ numbers="$(jq -er --arg sha "$current_sha" --arg branch "$branch" '
   | .[]
 ' <<<"$pulls")" || {
   # jq -e also fails on an empty list, which is fine: the branch may have no pull request.
-  [[ "$(jq -r 'if type == "array" then length else "invalid" end' <<<"$pulls")" == "0" ]] ||
+  [[ "$(jq -r --arg repo "$GITHUB_REPOSITORY" \
+    'if type == "array" then map(select(.head.repo.full_name == $repo)) | length else "invalid" end' \
+    <<<"$pulls")" == "0" ]] ||
     fail "a pull request from $branch does not match the commit this run pushed; refusing to discard"
   numbers=""
 }
+
+# GitHub's ref API has no conditional update, so read the branch as late as possible: it must
+# still be the commit this run pushed immediately before it is moved.
+ref_endpoint="repos/${GITHUB_REPOSITORY}/git/ref/heads/${branch}"
+remote_ref="$(gh api "$ref_endpoint")" || fail "could not read the generated remote branch"
+remote_sha="$(jq -er '.object.sha' <<<"$remote_ref")" || fail "generated remote branch response has no sha"
+[[ "$remote_sha" == "$current_sha" ]] ||
+  fail "generated remote branch moved after the sync action (expected $current_sha, found $remote_sha)"
 
 # Move the branch first: that write takes the unsigned sync commit off it, so a later failure
 # cannot leave the proposal standing. The branch stays as the marker.
