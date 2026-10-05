@@ -107,6 +107,7 @@ for ((i=0; i<count; i++)); do
   before="$(jq -r 'if has("Before") then .Before else "fixture-base" end' "$TODO_CASE_DIR/source.json")"
   jq -n --arg before "$before" --arg project "$project" --arg ignore "$ignore" '{
     "${{ github.repository }}":"offline/fixture",
+    "${{ github.repository_id }}":"4242",
     "${{ github.event.before || github.base_ref }}":$before,
     "${{ toJSON(github.event.commits) }}":"null",
     "${{ github.event.pull_request.diff_url }}":"",

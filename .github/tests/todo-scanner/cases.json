@@ -1309,5 +1309,565 @@
     "ForbiddenOutput": [
       "Issue created:"
     ]
+  },
+  {
+    "Name": "GitHub numeric cursor inventory closes once after bound commit fallback",
+    "Files": {
+      "removed.sh": {
+        "Before": "# TODO: Completed task\n",
+        "After": ""
+      }
+    },
+    "Existing": [
+      {
+        "number": 11,
+        "title": "Completed task",
+        "state": "open",
+        "html_url": "https://example.invalid/offline/fixture/issues/11"
+      }
+    ],
+    "Operations": [
+      {
+        "Method": "PATCH",
+        "Path": "/repos/offline/fixture/issues/11",
+        "Body": "{\"state\":\"closed\"}",
+        "Status": 200,
+        "Response": "{\"number\":11,\"state\":\"closed\"}"
+      },
+      {
+        "Method": "POST",
+        "Path": "/repos/offline/fixture/issues/11/comments",
+        "Body": "{\"body\":\"Closed in 1111111111111111111111111111111111111111.\"}",
+        "Status": 201,
+        "Response": "{\"id\":5956146819}"
+      }
+    ],
+    "Output": [
+      "Issue closed"
+    ],
+    "Before": "",
+    "InitialReads": [
+      {
+        "Method": "GET",
+        "Path": "/repos/offline/fixture/issues?state=open&per_page=100&page=1",
+        "Status": 200,
+        "Response": "[{\"number\":7,\"title\":\"Earlier task\",\"state\":\"open\",\"html_url\":\"https://example.invalid/offline/fixture/issues/7\"}]",
+        "Headers": {
+          "Link": "<http://127.0.0.1/repositories/4242/issues?state=open&per_page=100&after=Y3Vyc29yOjE%3D&page=2>; rel=\"next\""
+        }
+      },
+      {
+        "Method": "GET",
+        "Path": "/repositories/4242/issues?state=open&per_page=100&after=Y3Vyc29yOjE%3D&page=2",
+        "Status": 200,
+        "Response": "[{\"number\":11,\"title\":\"Completed task\",\"state\":\"open\",\"html_url\":\"https://example.invalid/offline/fixture/issues/11\"}]",
+        "Headers": {
+          "Link": "<http://127.0.0.1/repositories/4242/issues?state=open&per_page=100&before=Y3Vyc29yOjI%3D&page=1>; rel=\"prev\""
+        }
+      },
+      {
+        "Method": "GET",
+        "Path": "/repos/offline/fixture/milestones?state=open&per_page=100&page=1",
+        "Status": 200,
+        "Response": "[]"
+      }
+    ],
+    "DiffReads": [
+      {
+        "Method": "GET",
+        "Path": "/repos/offline/fixture/compare/...1111111111111111111111111111111111111111",
+        "Status": 422,
+        "Response": "{\"message\":\"empty base\"}"
+      },
+      {
+        "Method": "GET",
+        "Path": "/repos/offline/fixture/commits/1111111111111111111111111111111111111111",
+        "Status": 200,
+        "Response": "",
+        "Diff": true
+      }
+    ]
+  },
+  {
+    "Name": "GitHub cursor refusal: foreign-id",
+    "Files": {
+      "removed.sh": {
+        "Before": "# TODO: Completed task\n",
+        "After": ""
+      }
+    },
+    "Existing": [
+      {
+        "number": 11,
+        "title": "Completed task",
+        "state": "open",
+        "html_url": "https://example.invalid/offline/fixture/issues/11"
+      }
+    ],
+    "Operations": [],
+    "Output": [
+      "scanner incomplete"
+    ],
+    "Before": "",
+    "InitialReads": [
+      {
+        "Method": "GET",
+        "Path": "/repos/offline/fixture/issues?state=open&per_page=100&page=1",
+        "Status": 200,
+        "Response": "[{\"number\":7,\"title\":\"Earlier task\",\"state\":\"open\",\"html_url\":\"https://example.invalid/offline/fixture/issues/7\"}]",
+        "Headers": {
+          "Link": "<http://127.0.0.1/repositories/4243/issues?state=open&per_page=100&after=Y3Vyc29yOjE%3D&page=2>; rel=\"next\""
+        }
+      }
+    ],
+    "WantFailure": true,
+    "StopAfterInitialFailure": true,
+    "ForbiddenOutput": [
+      "Issue closed"
+    ]
+  },
+  {
+    "Name": "GitHub cursor refusal: changed-state",
+    "Files": {
+      "removed.sh": {
+        "Before": "# TODO: Completed task\n",
+        "After": ""
+      }
+    },
+    "Existing": [
+      {
+        "number": 11,
+        "title": "Completed task",
+        "state": "open",
+        "html_url": "https://example.invalid/offline/fixture/issues/11"
+      }
+    ],
+    "Operations": [],
+    "Output": [
+      "scanner incomplete"
+    ],
+    "Before": "",
+    "InitialReads": [
+      {
+        "Method": "GET",
+        "Path": "/repos/offline/fixture/issues?state=open&per_page=100&page=1",
+        "Status": 200,
+        "Response": "[{\"number\":7,\"title\":\"Earlier task\",\"state\":\"open\",\"html_url\":\"https://example.invalid/offline/fixture/issues/7\"}]",
+        "Headers": {
+          "Link": "<http://127.0.0.1/repositories/4242/issues?state=closed&per_page=100&after=Y3Vyc29yOjE%3D&page=2>; rel=\"next\""
+        }
+      }
+    ],
+    "WantFailure": true,
+    "StopAfterInitialFailure": true,
+    "ForbiddenOutput": [
+      "Issue closed"
+    ]
+  },
+  {
+    "Name": "GitHub cursor refusal: changed-size",
+    "Files": {
+      "removed.sh": {
+        "Before": "# TODO: Completed task\n",
+        "After": ""
+      }
+    },
+    "Existing": [
+      {
+        "number": 11,
+        "title": "Completed task",
+        "state": "open",
+        "html_url": "https://example.invalid/offline/fixture/issues/11"
+      }
+    ],
+    "Operations": [],
+    "Output": [
+      "scanner incomplete"
+    ],
+    "Before": "",
+    "InitialReads": [
+      {
+        "Method": "GET",
+        "Path": "/repos/offline/fixture/issues?state=open&per_page=100&page=1",
+        "Status": 200,
+        "Response": "[{\"number\":7,\"title\":\"Earlier task\",\"state\":\"open\",\"html_url\":\"https://example.invalid/offline/fixture/issues/7\"}]",
+        "Headers": {
+          "Link": "<http://127.0.0.1/repositories/4242/issues?state=open&per_page=1&after=Y3Vyc29yOjE%3D&page=2>; rel=\"next\""
+        }
+      }
+    ],
+    "WantFailure": true,
+    "StopAfterInitialFailure": true,
+    "ForbiddenOutput": [
+      "Issue closed"
+    ]
+  },
+  {
+    "Name": "GitHub cursor refusal: duplicate-cursor",
+    "Files": {
+      "removed.sh": {
+        "Before": "# TODO: Completed task\n",
+        "After": ""
+      }
+    },
+    "Existing": [
+      {
+        "number": 11,
+        "title": "Completed task",
+        "state": "open",
+        "html_url": "https://example.invalid/offline/fixture/issues/11"
+      }
+    ],
+    "Operations": [],
+    "Output": [
+      "scanner incomplete"
+    ],
+    "Before": "",
+    "InitialReads": [
+      {
+        "Method": "GET",
+        "Path": "/repos/offline/fixture/issues?state=open&per_page=100&page=1",
+        "Status": 200,
+        "Response": "[{\"number\":7,\"title\":\"Earlier task\",\"state\":\"open\",\"html_url\":\"https://example.invalid/offline/fixture/issues/7\"}]",
+        "Headers": {
+          "Link": "<http://127.0.0.1/repositories/4242/issues?state=open&per_page=100&after=Y3Vyc29yOjE%3D&after=Y3Vyc29yOjI%3D&page=2>; rel=\"next\""
+        }
+      }
+    ],
+    "WantFailure": true,
+    "StopAfterInitialFailure": true,
+    "ForbiddenOutput": [
+      "Issue closed"
+    ]
+  },
+  {
+    "Name": "GitHub cursor refusal: mixed-cursors",
+    "Files": {
+      "removed.sh": {
+        "Before": "# TODO: Completed task\n",
+        "After": ""
+      }
+    },
+    "Existing": [
+      {
+        "number": 11,
+        "title": "Completed task",
+        "state": "open",
+        "html_url": "https://example.invalid/offline/fixture/issues/11"
+      }
+    ],
+    "Operations": [],
+    "Output": [
+      "scanner incomplete"
+    ],
+    "Before": "",
+    "InitialReads": [
+      {
+        "Method": "GET",
+        "Path": "/repos/offline/fixture/issues?state=open&per_page=100&page=1",
+        "Status": 200,
+        "Response": "[{\"number\":7,\"title\":\"Earlier task\",\"state\":\"open\",\"html_url\":\"https://example.invalid/offline/fixture/issues/7\"}]",
+        "Headers": {
+          "Link": "<http://127.0.0.1/repositories/4242/issues?state=open&per_page=100&after=Y3Vyc29yOjE%3D&before=Y3Vyc29yOjI%3D&page=2>; rel=\"next\""
+        }
+      }
+    ],
+    "WantFailure": true,
+    "StopAfterInitialFailure": true,
+    "ForbiddenOutput": [
+      "Issue closed"
+    ]
+  },
+  {
+    "Name": "GitHub cursor refusal: wrong-direction",
+    "Files": {
+      "removed.sh": {
+        "Before": "# TODO: Completed task\n",
+        "After": ""
+      }
+    },
+    "Existing": [
+      {
+        "number": 11,
+        "title": "Completed task",
+        "state": "open",
+        "html_url": "https://example.invalid/offline/fixture/issues/11"
+      }
+    ],
+    "Operations": [],
+    "Output": [
+      "scanner incomplete"
+    ],
+    "Before": "",
+    "InitialReads": [
+      {
+        "Method": "GET",
+        "Path": "/repos/offline/fixture/issues?state=open&per_page=100&page=1",
+        "Status": 200,
+        "Response": "[{\"number\":7,\"title\":\"Earlier task\",\"state\":\"open\",\"html_url\":\"https://example.invalid/offline/fixture/issues/7\"}]",
+        "Headers": {
+          "Link": "<http://127.0.0.1/repositories/4242/issues?state=open&per_page=100&before=Y3Vyc29yOjE%3D&page=2>; rel=\"next\""
+        }
+      }
+    ],
+    "WantFailure": true,
+    "StopAfterInitialFailure": true,
+    "ForbiddenOutput": [
+      "Issue closed"
+    ]
+  },
+  {
+    "Name": "GitHub cursor refusal: failed-second-page",
+    "Files": {
+      "removed.sh": {
+        "Before": "# TODO: Completed task\n",
+        "After": ""
+      }
+    },
+    "Existing": [
+      {
+        "number": 11,
+        "title": "Completed task",
+        "state": "open",
+        "html_url": "https://example.invalid/offline/fixture/issues/11"
+      }
+    ],
+    "Operations": [],
+    "Output": [
+      "scanner incomplete"
+    ],
+    "Before": "",
+    "InitialReads": [
+      {
+        "Method": "GET",
+        "Path": "/repos/offline/fixture/issues?state=open&per_page=100&page=1",
+        "Status": 200,
+        "Response": "[{\"number\":7,\"title\":\"Earlier task\",\"state\":\"open\",\"html_url\":\"https://example.invalid/offline/fixture/issues/7\"}]",
+        "Headers": {
+          "Link": "<http://127.0.0.1/repositories/4242/issues?state=open&per_page=100&after=Y3Vyc29yOjE%3D&page=2>; rel=\"next\""
+        }
+      },
+      {
+        "Method": "GET",
+        "Path": "/repositories/4242/issues?state=open&per_page=100&after=Y3Vyc29yOjE%3D&page=2",
+        "Status": 503,
+        "Response": "{\"message\":\"unavailable\"}"
+      }
+    ],
+    "WantFailure": true,
+    "StopAfterInitialFailure": true,
+    "ForbiddenOutput": [
+      "Issue closed"
+    ]
+  },
+  {
+    "Name": "GitHub cursor refusal: lost-last",
+    "Files": {
+      "removed.sh": {
+        "Before": "# TODO: Completed task\n",
+        "After": ""
+      }
+    },
+    "Existing": [
+      {
+        "number": 11,
+        "title": "Completed task",
+        "state": "open",
+        "html_url": "https://example.invalid/offline/fixture/issues/11"
+      }
+    ],
+    "Operations": [],
+    "Output": [
+      "scanner incomplete"
+    ],
+    "Before": "",
+    "InitialReads": [
+      {
+        "Method": "GET",
+        "Path": "/repos/offline/fixture/issues?state=open&per_page=100&page=1",
+        "Status": 200,
+        "Response": "[{\"number\":7,\"title\":\"Earlier task\",\"state\":\"open\",\"html_url\":\"https://example.invalid/offline/fixture/issues/7\"}]",
+        "Headers": {
+          "Link": "<http://127.0.0.1/repositories/4242/issues?state=open&per_page=100&after=Y3Vyc29yOjE%3D&page=2>; rel=\"next\", <http://127.0.0.1/repositories/4242/issues?state=open&per_page=100&after=Y3Vyc29yOjM%3D&page=3>; rel=\"last\""
+        }
+      },
+      {
+        "Method": "GET",
+        "Path": "/repositories/4242/issues?state=open&per_page=100&after=Y3Vyc29yOjE%3D&page=2",
+        "Status": 200,
+        "Response": "[{\"number\":11,\"title\":\"Completed task\",\"state\":\"open\",\"html_url\":\"https://example.invalid/offline/fixture/issues/11\"}]",
+        "Headers": {
+          "Link": "<http://127.0.0.1/repositories/4242/issues?state=open&per_page=100&before=Y3Vyc29yOjI%3D&page=1>; rel=\"prev\""
+        }
+      }
+    ],
+    "WantFailure": true,
+    "StopAfterInitialFailure": true,
+    "ForbiddenOutput": [
+      "Issue closed"
+    ]
+  },
+  {
+    "Name": "GitHub cursor refusal: wrong-terminal-direction",
+    "Files": {
+      "removed.sh": {
+        "Before": "# TODO: Completed task\n",
+        "After": ""
+      }
+    },
+    "Existing": [
+      {
+        "number": 11,
+        "title": "Completed task",
+        "state": "open",
+        "html_url": "https://example.invalid/offline/fixture/issues/11"
+      }
+    ],
+    "Operations": [],
+    "Output": [
+      "scanner incomplete"
+    ],
+    "Before": "",
+    "InitialReads": [
+      {
+        "Method": "GET",
+        "Path": "/repos/offline/fixture/issues?state=open&per_page=100&page=1",
+        "Status": 200,
+        "Response": "[{\"number\":7,\"title\":\"Earlier task\",\"state\":\"open\",\"html_url\":\"https://example.invalid/offline/fixture/issues/7\"}]",
+        "Headers": {
+          "Link": "<http://127.0.0.1/repositories/4242/issues?state=open&per_page=100&after=Y3Vyc29yOjE%3D&page=2>; rel=\"next\""
+        }
+      },
+      {
+        "Method": "GET",
+        "Path": "/repositories/4242/issues?state=open&per_page=100&after=Y3Vyc29yOjE%3D&page=2",
+        "Status": 200,
+        "Response": "[{\"number\":11,\"title\":\"Completed task\",\"state\":\"open\",\"html_url\":\"https://example.invalid/offline/fixture/issues/11\"}]",
+        "Headers": {
+          "Link": "<http://127.0.0.1/repositories/4242/issues?state=open&per_page=100&after=Y3Vyc29yOjI%3D&page=1>; rel=\"prev\""
+        }
+      }
+    ],
+    "WantFailure": true,
+    "StopAfterInitialFailure": true,
+    "ForbiddenOutput": [
+      "Issue closed"
+    ]
+  },
+  {
+    "Name": "GitHub equal next-last cursor targets complete once",
+    "Files": {
+      "removed.sh": {
+        "Before": "# TODO: Completed task\n",
+        "After": ""
+      }
+    },
+    "Existing": [
+      {
+        "number": 11,
+        "title": "Completed task",
+        "state": "open",
+        "html_url": "https://example.invalid/offline/fixture/issues/11"
+      }
+    ],
+    "Operations": [
+      {
+        "Method": "PATCH",
+        "Path": "/repos/offline/fixture/issues/11",
+        "Body": "{\"state\":\"closed\"}",
+        "Status": 200,
+        "Response": "{\"number\":11,\"state\":\"closed\"}"
+      },
+      {
+        "Method": "POST",
+        "Path": "/repos/offline/fixture/issues/11/comments",
+        "Body": "{\"body\":\"Closed in 1111111111111111111111111111111111111111.\"}",
+        "Status": 201,
+        "Response": "{\"id\":5956146819}"
+      }
+    ],
+    "Output": [
+      "Issue closed"
+    ],
+    "Before": "",
+    "InitialReads": [
+      {
+        "Method": "GET",
+        "Path": "/repos/offline/fixture/issues?state=open&per_page=100&page=1",
+        "Status": 200,
+        "Response": "[{\"number\":7,\"title\":\"Earlier task\",\"state\":\"open\",\"html_url\":\"https://example.invalid/offline/fixture/issues/7\"}]",
+        "Headers": {
+          "Link": "<http://127.0.0.1/repositories/4242/issues?state=open&per_page=100&after=Y3Vyc29yOjE%3D&page=2>; rel=\"next\", <http://127.0.0.1/repositories/4242/issues?state=open&per_page=100&after=Y3Vyc29yOjE%3D&page=2>; rel=\"last\""
+        }
+      },
+      {
+        "Method": "GET",
+        "Path": "/repositories/4242/issues?state=open&per_page=100&after=Y3Vyc29yOjE%3D&page=2",
+        "Status": 200,
+        "Response": "[{\"number\":11,\"title\":\"Completed task\",\"state\":\"open\",\"html_url\":\"https://example.invalid/offline/fixture/issues/11\"}]",
+        "Headers": {
+          "Link": "<http://127.0.0.1/repositories/4242/issues?state=open&per_page=100&before=Y3Vyc29yOjI%3D&page=1>; rel=\"prev\""
+        }
+      },
+      {
+        "Method": "GET",
+        "Path": "/repos/offline/fixture/milestones?state=open&per_page=100&page=1",
+        "Status": 200,
+        "Response": "[]"
+      }
+    ],
+    "DiffReads": [
+      {
+        "Method": "GET",
+        "Path": "/repos/offline/fixture/compare/...1111111111111111111111111111111111111111",
+        "Status": 422,
+        "Response": "{\"message\":\"empty base\"}"
+      },
+      {
+        "Method": "GET",
+        "Path": "/repos/offline/fixture/commits/1111111111111111111111111111111111111111",
+        "Status": 200,
+        "Response": "",
+        "Diff": true
+      }
+    ]
+  },
+  {
+    "Name": "GitHub contradictory next-last cursor targets refuse closure",
+    "Files": {
+      "removed.sh": {
+        "Before": "# TODO: Completed task\n",
+        "After": ""
+      }
+    },
+    "Existing": [
+      {
+        "number": 11,
+        "title": "Completed task",
+        "state": "open",
+        "html_url": "https://example.invalid/offline/fixture/issues/11"
+      }
+    ],
+    "Operations": [],
+    "Output": [
+      "ambiguous page evidence"
+    ],
+    "Before": "",
+    "InitialReads": [
+      {
+        "Method": "GET",
+        "Path": "/repos/offline/fixture/issues?state=open&per_page=100&page=1",
+        "Status": 200,
+        "Response": "[{\"number\":7,\"title\":\"Earlier task\",\"state\":\"open\",\"html_url\":\"https://example.invalid/offline/fixture/issues/7\"}]",
+        "Headers": {
+          "Link": "<http://127.0.0.1/repositories/4242/issues?state=open&per_page=100&after=Y3Vyc29yOjE%3D&page=2>; rel=\"next\", <http://127.0.0.1/repositories/4242/issues?state=open&per_page=100&after=Y3Vyc29yOjI%3D&page=2>; rel=\"last\""
+        }
+      }
+    ],
+    "WantFailure": true,
+    "StopAfterInitialFailure": true,
+    "ForbiddenOutput": [
+      "Issue closed"
+    ]
   }
 ]

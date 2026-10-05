@@ -77,7 +77,7 @@ run_case() (
   resolved_ignore="$(bash "$root/.github/tests/todo-ignore-resolution.sh" "$work/action.json" "$work/ignore-input.json")"
   export RUNNER_TEMP="$work/$label/temp" GITHUB_WORKSPACE="$work/$label/workspace with spaces"
   export GITHUB_ACTION_PATH="$work/$label/catalogue/actions/create-issues-from-todos"
-  export GITHUB_PATH="$work/$label/path" GITHUB_REPOSITORY=offline/fixture
+  export GITHUB_PATH="$work/$label/path" GITHUB_REPOSITORY=offline/fixture GITHUB_REPOSITORY_ID=4242
   export GITHUB_SHA=1111111111111111111111111111111111111111 GITHUB_ACTOR=offline-actor
   export GITHUB_API_URL=https://api.example.invalid GITHUB_SERVER_URL=https://example.invalid
   export TODO_EXPECTED_BEFORE=fixture-base TODO_EXPECTED_DIFF=https://example.invalid/pull.diff
@@ -96,7 +96,7 @@ run_case() (
     {"${{ inputs.project }}":$project,"${{ inputs.app-private-key }}":$key,
      "${{ inputs.client-id }}":$client,"${{ inputs.app-id }}":$app,
      "${{ inputs.ignore || steps.vendored-ignore.outputs.ignore }}":$ignore,
-     "${{ github.repository }}":$repo,"${{ github.sha }}":$sha,"${{ github.actor }}":$actor,
+     "${{ github.repository }}":$repo,"${{ github.repository_id }}":"4242","${{ github.sha }}":$sha,"${{ github.actor }}":$actor,
      "${{ github.api_url }}":$api,"${{ github.server_url }}":$server,"${{ github.token }}":"offline-token",
      "${{ github.event.before || github.base_ref }}":$before,"${{ toJSON(github.event.commits) }}":$commits,
      "${{ github.event.pull_request.diff_url }}":$diff,

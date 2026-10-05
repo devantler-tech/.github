@@ -86,6 +86,11 @@ a closure comment. API, JSON and project-operation failures fail the action even
 when the scanner exits zero. A completed close followed by a rejected comment remains
 a failed partial operation, with the completed close count in the diagnostic.
 
+GitHub's issue inventory may link later pages through its numeric repository route
+and opaque navigation cursors. The supervisor accepts that route only when it matches
+the runner's repository ID. Every page must retain the original filters and API origin;
+duplicate cursors, contradictory page targets and incomplete chains fail before writes.
+
 Project selectors accept `organization/owner/number` or `user/owner/number`, resolved by
 the actual project number, and existing title selectors, resolved across all pages.
 Missing or ambiguous projects, incomplete GraphQL data and rejected additions fail.

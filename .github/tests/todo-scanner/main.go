@@ -139,6 +139,8 @@ func (t replayTransport) RoundTrip(r *http.Request) (*http.Response, error) {
 	t.fixture.ServeHTTP(w, serverRequest)
 	return w.Result(), nil
 }
+
+// run executes the unchanged scanner once against independent replay expectations.
 func run() error {
 	if os.Getenv("INPUT_TOKEN") != "offline-token" {
 		return errors.New("scanner fixture requires synthetic issue authentication")
@@ -158,7 +160,10 @@ func run() error {
 	}
 	fixture := newReplay(test.Exchanges)
 	api, _ := url.Parse("http://127.0.0.1")
-	supervisor := guard.New(guard.Config{API: api, Repository: "offline/fixture", Server: "https://example.invalid", Token: "offline-token", SHA: os.Getenv("INPUT_SHA"), Before: os.Getenv("INPUT_BEFORE"), Project: project, ProjectToken: projectToken}, &http.Client{Transport: replayTransport{fixture}})
+	if os.Getenv("INPUT_REPOSITORY_ID") != "4242" {
+		return errors.New("scanner fixture requires the independently bound repository ID")
+	}
+	supervisor := guard.New(guard.Config{API: api, Repository: "offline/fixture", RepositoryID: "4242", Server: "https://example.invalid", Token: "offline-token", SHA: os.Getenv("INPUT_SHA"), Before: os.Getenv("INPUT_BEFORE"), Project: project, ProjectToken: projectToken}, &http.Client{Transport: replayTransport{fixture}})
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 	var output bytes.Buffer

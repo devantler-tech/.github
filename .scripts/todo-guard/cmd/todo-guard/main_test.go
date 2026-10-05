@@ -24,3 +24,20 @@ func TestProjectOriginRejectedBeforeExecution(t *testing.T) {
 		t.Fatal("project credentials accepted a prefixed API origin")
 	}
 }
+
+// A missing legacy ID retains named routes, but malformed IDs cannot admit aliases.
+func TestRepositoryIdentityAdmission(t *testing.T) {
+	for key, value := range map[string]string{"INPUT_GITHUB_URL": "https://api.github.com", "INPUT_GITHUB_SERVER_URL": "https://github.com", "INPUT_REPO": "offline/fixture", "INPUT_SHA": strings.Repeat("1", 40), "INPUT_TOKEN": "fixture-token", "INPUT_PROJECT": "", "INPUT_PROJECTS_SECRET": "", "INPUT_BEFORE": "", "INPUT_COMMITS": "null"} {
+		t.Setenv(key, value)
+	}
+	for _, id := range []string{"", "4242", "0", "04242", "-1", "4242/other", "18446744073709551616"} {
+		t.Run(id, func(t *testing.T) {
+			t.Setenv("INPUT_REPOSITORY_ID", id)
+			_, err := configuration()
+			valid := id == "" || id == "4242"
+			if (err == nil) != valid {
+				t.Fatalf("repository ID admission: id=%q valid=%t err=%v", id, valid, err)
+			}
+		})
+	}
+}

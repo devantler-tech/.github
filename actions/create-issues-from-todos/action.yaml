@@ -93,6 +93,7 @@ runs:
       shell: bash
       env:
         INPUT_REPO: ${{ github.repository }}
+        INPUT_REPOSITORY_ID: ${{ github.repository_id }}
         INPUT_BEFORE: ${{ github.event.before || github.base_ref }}
         INPUT_COMMITS: ${{ toJSON(github.event.commits) }}
         INPUT_DIFF_URL: ${{ github.event.pull_request.diff_url }}
@@ -130,6 +131,7 @@ runs:
           --env GITHUB_WORKSPACE=/github/workspace \
           --env CI=true \
           --env INPUT_REPO \
+          --env INPUT_REPOSITORY_ID \
           --env INPUT_BEFORE \
           --env INPUT_COMMITS \
           --env INPUT_DIFF_URL \

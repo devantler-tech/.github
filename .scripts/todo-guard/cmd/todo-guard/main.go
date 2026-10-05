@@ -11,11 +11,13 @@ import (
 	"os/signal"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
 )
 
+// configuration binds runner identity and credentials before the scanner can start.
 func configuration() (*guard.Guard, error) {
 	api, e := url.Parse(os.Getenv("INPUT_GITHUB_URL"))
 	if e != nil || api.Scheme != "https" || api.Host == "" || api.User != nil || api.RawQuery != "" || api.Fragment != "" {
@@ -24,6 +26,13 @@ func configuration() (*guard.Guard, error) {
 	repo := os.Getenv("INPUT_REPO")
 	if !regexp.MustCompile("^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$").MatchString(repo) {
 		return nil, errors.New("configured repository invalid")
+	}
+	repoID := os.Getenv("INPUT_REPOSITORY_ID")
+	if repoID != "" {
+		id, err := strconv.ParseUint(repoID, 10, 64)
+		if err != nil || id == 0 || strconv.FormatUint(id, 10) != repoID {
+			return nil, errors.New("configured repository identity invalid")
+		}
 	}
 	sha := os.Getenv("INPUT_SHA")
 	if !regexp.MustCompile("^[0-9a-f]{40}$").MatchString(sha) {
@@ -49,7 +58,7 @@ func configuration() (*guard.Guard, error) {
 	if strings.ContainsAny(before, "?#\n\r") {
 		return nil, errors.New("configured comparison ref invalid")
 	}
-	g := guard.New(guard.Config{API: api, Repository: repo, Server: server.String(), Token: token, SHA: sha, Before: before, Project: project, ProjectToken: projectToken}, nil)
+	g := guard.New(guard.Config{API: api, Repository: repo, RepositoryID: repoID, Server: server.String(), Token: token, SHA: sha, Before: before, Project: project, ProjectToken: projectToken}, nil)
 	return g, nil
 }
 func comparisonBase(before, commits string) (string, error) {

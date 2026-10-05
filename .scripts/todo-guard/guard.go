@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -18,6 +19,7 @@ import (
 type Config struct {
 	API                                                           *url.URL
 	Repository, Server, Token, SHA, Before, Project, ProjectToken string
+	RepositoryID                                                  string
 }
 type config = Config
 type guard struct {
@@ -314,7 +316,7 @@ func (g *guard) list(w http.ResponseWriter, r *http.Request, search bool, title 
 			}
 			items = append(items, row)
 		}
-		next, last, e := nextPage(p.header.Values("Link"), target, g.cfg.API, page, lastDeclared)
+		next, last, e := g.nextPage(p.header.Values("Link"), target, g.cfg.API, page, lastDeclared)
 		lastDeclared = last
 		if e != nil {
 			g.fail(w, "ambiguous page evidence")
@@ -370,9 +372,30 @@ func (g *guard) list(w http.ResponseWriter, r *http.Request, search bool, title 
 	}
 	g.fail(w, "page ceiling exceeded")
 }
-func nextPage(headers []string, current, base *url.URL, page, declaredLast int) (*url.URL, int, error) {
+
+// repositoryID accepts only the canonical decimal identity supplied by the runner.
+func repositoryID(id string) bool {
+	n, err := strconv.ParseUint(id, 10, 64)
+	return err == nil && n > 0 && strconv.FormatUint(n, 10) == id
+}
+
+var cursorPattern = regexp.MustCompile(`^[A-Za-z0-9_+/-]+={0,2}$`)
+
+// pagePath permits GitHub's issue alias only for the same independently bound ID.
+func (g *guard) pagePath(current, candidate string) bool {
+	if current == candidate {
+		return true
+	}
+	named := "/repos/" + g.cfg.Repository + "/issues"
+	numeric := "/repositories/" + g.cfg.RepositoryID + "/issues"
+	return repositoryID(g.cfg.RepositoryID) && (current == named || current == numeric) && (candidate == named || candidate == numeric)
+}
+
+// nextPage joins a complete page chain without allowing links to change its filters.
+func (g *guard) nextPage(headers []string, current, base *url.URL, page, declaredLast int) (*url.URL, int, error) {
 	var next *url.URL
 	seen := map[string]bool{}
+	targets := map[int]string{}
 	last := declaredLast
 	for _, header := range headers {
 		for _, part := range strings.Split(header, ",") {
@@ -397,7 +420,7 @@ func nextPage(headers []string, current, base *url.URL, page, declaredLast int) 
 				return nil, last, errors.New("unknown link relation")
 			}
 			u, e := url.Parse(part[1:end])
-			if e != nil || u.User != nil || u.Fragment != "" || u.RawPath != "" || u.Scheme != base.Scheme || u.Host != base.Host || u.Path != strings.TrimSuffix(base.Path, "/")+currentPath(current, base) {
+			if e != nil || u.User != nil || u.Fragment != "" || u.RawPath != "" || u.Scheme != base.Scheme || u.Host != base.Host || !strings.HasPrefix(u.Path, strings.TrimSuffix(base.Path, "/")+"/") || !g.pagePath(currentPath(current, base), currentPath(u, base)) {
 				return nil, last, errors.New("page origin differs")
 			}
 			q, e := url.ParseQuery(u.RawQuery)
@@ -409,6 +432,26 @@ func nextPage(headers []string, current, base *url.URL, page, declaredLast int) 
 			for _, values := range q {
 				if len(values) != 1 {
 					return nil, last, errors.New("duplicate page query")
+				}
+			}
+			// Two relations naming one page must name the same navigation state.
+			// Otherwise following only `next` could skip contradictory `last` evidence.
+			if previous, exists := targets[n]; exists && previous != q.Encode() {
+				return nil, last, errors.New("contradictory page targets")
+			}
+			targets[n] = q.Encode()
+			// Cursors are opaque, bounded navigation values, not query filters.
+			// Only issue inventories use this shape; search keeps its stricter query.
+			if strings.HasSuffix(currentPath(current, base), "/issues") && currentPath(current, base) != "/search/issues" {
+				for _, key := range []string{"after", "before"} {
+					if values, present := q[key]; present {
+						forward := rel == "next" || rel == "last"
+						if len(values) != 1 || len(values[0]) > 2048 || !cursorPattern.MatchString(values[0]) || (key == "after") != forward || q.Has(map[string]string{"after": "before", "before": "after"}[key]) {
+							return nil, last, errors.New("page cursor differs")
+						}
+					}
+					q.Del(key)
+					old.Del(key)
 				}
 			}
 			q.Del("page")
