@@ -1,7 +1,10 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
+	"errors"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -9,6 +12,61 @@ import (
 	"strings"
 	"testing"
 )
+
+type failingOutput struct {
+	bytes.Buffer
+	writeErr, closeErr error
+	shortWrite         bool
+	closed             int
+}
+
+func (output *failingOutput) Write(data []byte) (int, error) {
+	if output.writeErr != nil {
+		return 0, output.writeErr
+	}
+	if output.shortWrite {
+		data = data[:len(data)-1]
+	}
+	return output.Buffer.Write(data)
+}
+
+func (output *failingOutput) Close() error {
+	output.closed++
+	return output.closeErr
+}
+
+func TestSelectionOutputPropagatesWriteAndCloseFailures(t *testing.T) {
+	writeFailure := errors.New("write failed")
+	closeFailure := errors.New("close failed")
+	for _, tc := range []struct {
+		name               string
+		writeErr, closeErr error
+		shortWrite         bool
+		want               []error
+	}{
+		{name: "complete output"},
+		{name: "write failure", writeErr: writeFailure, want: []error{writeFailure}},
+		{name: "close failure", closeErr: closeFailure, want: []error{closeFailure}},
+		{name: "both failures", writeErr: writeFailure, closeErr: closeFailure, want: []error{writeFailure, closeFailure}},
+		{name: "short output", shortWrite: true, want: []error{io.ErrShortWrite}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			output := &failingOutput{writeErr: tc.writeErr, closeErr: tc.closeErr, shortWrite: tc.shortWrite}
+			err := writeSelectionOutput(output, []byte(`["test-one"]`))
+			for _, want := range tc.want {
+				if !errors.Is(err, want) {
+					t.Errorf("selection output error = %v; want %v", err, want)
+				}
+			}
+			if len(tc.want) == 0 && (err != nil || output.String() != "selected=[\"test-one\"]\n") {
+				t.Errorf("complete output = %q, error %v", output.String(), err)
+			}
+			if output.closed != 1 {
+				t.Errorf("closed %d times; want exactly once even after write failure", output.closed)
+			}
+		})
+	}
+}
 
 func fixtureInventory() inventory {
 	return inventory{Always: []string{"lint-ci-coverage-parity"}, Jobs: map[string][]string{

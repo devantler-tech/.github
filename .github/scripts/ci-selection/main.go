@@ -4,7 +4,9 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -185,6 +187,14 @@ func load(path string, value any) error {
 	return d.Decode(value)
 }
 
+func writeSelectionOutput(output io.WriteCloser, encoded []byte) error {
+	n, writeErr := fmt.Fprintf(output, "selected=%s\n", encoded)
+	if writeErr == nil && n != len(encoded)+len("selected=\n") {
+		writeErr = io.ErrShortWrite
+	}
+	return errors.Join(writeErr, output.Close())
+}
+
 func run() error {
 	if len(os.Args) != 4 {
 		return fmt.Errorf("usage: ci-selection ROOT INVENTORY WORKFLOW_JSON")
@@ -252,8 +262,7 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	defer f.Close()
-	if _, err := fmt.Fprintf(f, "selected=%s\n", encoded); err != nil {
+	if err := writeSelectionOutput(f, encoded); err != nil {
 		return err
 	}
 	fmt.Printf("Selected %d of %d gated catalogue jobs; existing shared and event-specific jobs are unchanged.\n", len(result), len(gated))
