@@ -10,7 +10,8 @@ set -euo pipefail
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 workflow="${DEPLOY_GUARDS_WORKFLOW:-${repo_root}/.github/workflows/deploy-guards.yaml}"
 render="$(mktemp)"
-trap 'rm -f "${render}"' EXIT
+scratch="$(mktemp -d)"
+trap 'rm -f "${render}"; rm -rf "$scratch"' EXIT
 
 fail() {
   echo "deploy-guards-ruleset test: $*" >&2
@@ -87,5 +88,62 @@ done
 
 candidate_scripts="$(wf '[.jobs[].steps[] | select(.run // "" | test("(^|[^/[:alnum:]_])(candidate/)?scripts/"))] | length')"
 [[ "${candidate_scripts}" == "0" ]] || fail "no step may run a script outside trusted/ (${candidate_scripts} do)"
+
+# Execute the actual required step using its declared runner shell. A failed
+# producer must not turn into a healthy empty/partial history or diff.
+mkdir -p "$scratch/bin" "$scratch/trusted/scripts"
+cp "$repo_root/scripts/validate-release-contract.sh" "$scratch/trusted/scripts/"
+wf '.jobs["deploy-guards"].steps[] | select(.name == "🚦 Validate release contract") | .run' >"$scratch/step.sh"
+case "$(wf '.jobs["deploy-guards"].steps[] | select(.name == "🚦 Validate release contract") | .shell // ""')" in
+  '') runner_flags=(-e) ;;
+  bash) runner_flags=(--noprofile --norc -e -o pipefail) ;;
+  *) fail 'release step has unsupported runner shell' ;;
+esac
+cat >"$scratch/bin/git" <<'GIT'
+#!/usr/bin/env bash
+set -euo pipefail
+[[ "$1 $2" == '-C candidate' ]] || exit 92
+shift 2
+case "$1" in
+  log)
+    printf 'log\n' >>"$TRACE"
+    if [[ "$MODE" == log-empty ]]; then echo 'injected Git log failure' >&2; exit 71; fi
+    printf 'fix: healthy candidate\n'
+    if [[ "$MODE" == log-partial ]]; then echo 'injected Git log failure' >&2; exit 71; fi
+    ;;
+  diff)
+    printf 'diff\n' >>"$TRACE"
+    if [[ "$MODE" == diff-empty ]]; then echo 'injected Git diff failure' >&2; exit 72; fi
+    if [[ "$MODE" == healthy-other ]]; then printf 'README.md\0'; else printf 'deploy/resource.yaml\0'; fi
+    if [[ "$MODE" == diff-partial ]]; then echo 'injected Git diff failure' >&2; exit 72; fi
+    ;;
+  *) exit 93 ;;
+esac
+GIT
+chmod +x "$scratch/bin/git"
+for mode in healthy-deploy healthy-other log-empty log-partial diff-empty diff-partial; do
+  : >"$scratch/trace"
+  status=0
+  (cd "$scratch" && env -i PATH="$scratch/bin:$PATH" MODE="$mode" TRACE="$scratch/trace" \
+    BASE_SHA=base HEAD_SHA=head PR_TITLE='fix: preserve required guard failures' COMMIT_COUNT=2 \
+    bash "${runner_flags[@]}" step.sh) >"$scratch/result" 2>&1 || status=$?
+  if [[ "$mode" == healthy-* ]]; then
+    [[ "$status" == 0 ]] || { cat "$scratch/result" >&2; fail "$mode failed"; }
+    grep -q 'release-contract: OK' "$scratch/result" || fail 'healthy control did not reach the real validator'
+  else
+    producer="${mode%%-*}"
+    grep -qx "$producer" "$scratch/trace" || fail "$mode did not execute its intended Git producer"
+    grep -q "injected Git $producer failure" "$scratch/result" || fail "$mode failed for an unrelated reason"
+    [[ "$status" != 0 ]] || fail "producer $mode reported success"
+  fi
+done
+if [[ "${DEPLOY_GUARDS_SKIP_MUTATION:-}" != 1 ]]; then
+  yq 'del(.jobs["deploy-guards"].steps[] | select(.name == "🚦 Validate release contract") | .shell)' "$workflow" >"$scratch/default-shell.yaml"
+  if DEPLOY_GUARDS_SKIP_MUTATION=1 DEPLOY_GUARDS_WORKFLOW="$scratch/default-shell.yaml" \
+    bash "$repo_root/tests/deploy-guards-ruleset.sh" >"$scratch/mutation" 2>&1; then
+    fail 'removing explicit pipeline semantics passed the regression'
+  fi
+  grep -q 'producer log-empty reported success' "$scratch/mutation" || { cat "$scratch/mutation" >&2; fail 'default-shell mutation failed for an unrelated reason'; }
+fi
 
 echo "deploy-guards-ruleset: OK"
