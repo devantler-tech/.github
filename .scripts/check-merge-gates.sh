@@ -150,6 +150,8 @@ latest_codex_comment_probe="$(jq -r '
      | ($body | split("\n") | map(select(test("^Codex Review:")))) as $verdicts
      | (($verdicts | length) == 1 and
         ($verdicts[0] | test("^Codex Review: Didn\u0027t find any major issues\\.[ \\t]*$")) and
+        ($body | split("\n") | map(select(test("[^ \\t]"))) | first) == $verdicts[0] and
+        ($body | test("(^|\n)[ \\t]*(`{3,}|~{3,})") | not) and
         ($body | test("usage limits|rate limited|Review limit reached"; "i") | not)) as $clean
      | {at: (.updated_at // .created_at), reviewed: $reviewed, clean: $clean, body: $body}]
   | sort_by(.at) | last
@@ -227,13 +229,17 @@ if [[ -n "$premerge_body" ]]; then
       region="${region%%<!-- pre_merge_checks_walkthrough_end -->*}"
     fi
 
-    compact_line="$(grep -oE '🚥 Pre-merge checks \|[^<]*' <<<"$region" || true)"
+    compact_line="$(grep -E '🚥 Pre-merge checks \|' <<<"$region" || true)"
     if [[ -n "$compact_line" ]]; then
       # Parse the whole counter grammar. Unknown, repeated or malformed
       # counters never disappear merely because a success counter is present.
-      counters="${compact_line#*|}"
-      if [[ "$compact_line" != *$'\n'* ]] && jq -ne --arg line "$counters" '
-        $line | split("|") | map(gsub("^[ \\t]+|[ \\t]+$"; "")) |
+      if [[ "$compact_line" != *$'\n'* ]] && jq -ne --arg line "$compact_line" '
+        $line | gsub("^[ \\t]+|[ \\t]+$"; "") |
+        if startswith("<summary>") and endswith("</summary>") then
+          ltrimstr("<summary>") | rtrimstr("</summary>")
+        else . end |
+        try capture("^🚥 Pre-merge checks \\|(?<counters>[^<>\\r\\n]+)$").counters catch "" |
+        split("|") | map(gsub("^[ \\t]+|[ \\t]+$"; "")) |
         if length > 0 and all(.[]; test("^(✅|❌|❓|⚠️) (0|[1-9][0-9]*)$")) then
           map(capture("^(?<kind>✅|❌|❓|⚠️) (?<count>0|[1-9][0-9]*)$")) |
           (map(.kind) | unique | length) == length and

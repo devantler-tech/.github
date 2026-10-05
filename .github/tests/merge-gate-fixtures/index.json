@@ -190,5 +190,13 @@
   {
     "name": "codex-ambiguous-sha",
     "expect_green": false
+  },
+  {
+    "name": "codex-fenced-clean-verdict",
+    "expect_green": false
+  },
+  {
+    "name": "premerge-hidden-markup-counter",
+    "expect_green": false
   }
 ]
