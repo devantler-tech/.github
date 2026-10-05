@@ -19,8 +19,10 @@ updates:
       # actions/run-dotnet-tests inlines the coverage-upload step, and CI
       # (test-run-dotnet-tests-coverage-inline-lockstep) requires its pin to equal the one in
       # actions/upload-coverage. Ungrouped, Dependabot opens one PR per directory and each fails
-      # on the other's file. A group spans every directory above, so both pins move in one PR.
+      # on the other's file. A group alone still yields one PR per directory; group-by makes it
+      # one PR across every directory above, so both pins move together.
       coverage-upload-lockstep:
+        group-by: dependency-name
         patterns:
           - "actions/upload-code-coverage"
   # The govulncheck allowlist self-test fixture (.github/tests/govulncheck-allowlist)
