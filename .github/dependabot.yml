@@ -20,7 +20,9 @@ updates:
       # (test-run-dotnet-tests-coverage-inline-lockstep) requires its pin to equal the one in
       # actions/upload-coverage. Ungrouped, Dependabot opens one PR per directory and each fails
       # on the other's file. A group alone still yields one PR per directory; group-by makes it
-      # one PR across every directory above, so both pins move together.
+      # one PR across every directory above, so both pins move together. That holds for
+      # version updates only: Dependabot documents group-by as not applying to security
+      # updates, which still arrive per directory and need the other pin moved by hand.
       coverage-upload-lockstep:
         group-by: dependency-name
         patterns:
