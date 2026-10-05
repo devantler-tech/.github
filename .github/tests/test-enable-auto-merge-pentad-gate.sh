@@ -294,11 +294,11 @@ fi
 # The arming step must degrade gracefully on the workflows-permission refusal
 # (warn + exit 0) rather than fail the required check, while any OTHER merge
 # failure stays a hard error (actions#559).
-if ! grep -Fq 'without `workflows` permission' <<<"$pre_arm_run"; then
+if ! grep -Fq "without \`workflows\` permission" <<<"$pre_arm_run"; then
   echo "::error file=$workflow::Enable Auto-Merge must detect the 'without \`workflows\` permission' arming refusal and degrade gracefully (actions#559)"
   status=1
 fi
-graceful_line="$(grep -nF 'without `workflows` permission' <<<"$pre_arm_run" | head -1 | cut -d: -f1 || true)"
+graceful_line="$(grep -nF "without \`workflows\` permission" <<<"$pre_arm_run" | head -1 | cut -d: -f1 || true)"
 graceful_exit_line="$(awk -v start="$graceful_line" 'NR >= start && /exit 0/ {print NR; exit}' <<<"$pre_arm_run")"
 hard_error_line="$(grep -nF 'Failed to enable auto-merge' <<<"$pre_arm_run" | head -1 | cut -d: -f1 || true)"
 if [[ -z "$graceful_line" || -z "$graceful_exit_line" || -z "$hard_error_line" ]]; then

@@ -142,14 +142,21 @@ latest_codex_comment_probe="$(jq -r '
      | select(.user.login == "chatgpt-codex-connector[bot]")
      | (.body // "") as $body
      | select($body | contains("Codex Review:"))
-     | ([try ($body
-          | capture("\\*\\*Reviewed commit:\\*\\*[[:space:]]*`?(?<sha>[0-9a-fA-F]{7,40})")
-          | .sha) catch ""]
-        | first // "" | ascii_downcase) as $reviewed
-     | {at: (.updated_at // .created_at), reviewed: $reviewed, body: $body}]
+     | ($body | split("\n") | map(select(test("^\\*\\*Reviewed commit:")))) as $claims
+     | (if ($claims | length) == 1 then
+          try ($claims[0] | capture("^\\*\\*Reviewed commit:\\*\\*[ \\t]+(?:`(?<quoted>[0-9a-fA-F]{7,40})`|(?<plain>[0-9a-fA-F]{7,40}))[ \\t]*$") |
+            (.quoted // .plain) | ascii_downcase) catch ""
+        else "" end) as $reviewed
+     | ($body | split("\n") | map(select(test("^Codex Review:")))) as $verdicts
+     | (($verdicts | length) == 1 and
+        ($verdicts[0] | test("^Codex Review: Didn\u0027t find any major issues\\.[ \\t]*$")) and
+        ($body | split("\n") | map(select(test("[^ \\t]"))) | first) == $verdicts[0] and
+        ($body | test("(^|\n)[ \\t]*(`{3,}|~{3,})") | not) and
+        ($body | test("usage limits|rate limited|Review limit reached"; "i") | not)) as $clean
+     | {at: (.updated_at // .created_at), reviewed: $reviewed, clean: $clean, body: $body}]
   | sort_by(.at) | last
   | if . == null then "absent"
-    else "present\n" + .reviewed + "\n" + .body
+    else "present\n" + .reviewed + "\n" + (.clean | tostring) + "\n" + .body
     end' "$comments_json")"
 
 if [[ "$codex_findings_at_head" -gt 0 ]]; then
@@ -158,6 +165,8 @@ elif [[ "$latest_codex_comment_probe" == present* ]]; then
   latest_codex_payload="${latest_codex_comment_probe#*$'\n'}"
   latest_codex_reviewed="${latest_codex_payload%%$'\n'*}"
   latest_codex_body="${latest_codex_payload#*$'\n'}"
+  latest_codex_clean="${latest_codex_body%%$'\n'*}"
+  latest_codex_body="${latest_codex_body#*$'\n'}"
   codex_comment_matches_head=false
 
   if [[ ${#latest_codex_reviewed} -eq 40 && "$latest_codex_reviewed" == "$head_sha" ]]; then
@@ -172,7 +181,7 @@ elif [[ "$latest_codex_comment_probe" == present* ]]; then
   fi
 
   if [[ "$codex_comment_matches_head" == "true" &&
-    "$latest_codex_body" == *"Didn't find any major issues"* ]]; then
+    "$latest_codex_clean" == true ]]; then
     if [[ "$review_state" == "missing" || "$review_state" == "stale" ]]; then
       review_state="green"
     fi
@@ -220,12 +229,23 @@ if [[ -n "$premerge_body" ]]; then
       region="${region%%<!-- pre_merge_checks_walkthrough_end -->*}"
     fi
 
-    compact_line="$(grep -oE '🚥 Pre-merge checks \|[^<]*' <<<"$region" | head -n 1 || true)"
+    compact_line="$(grep -E '🚥 Pre-merge checks \|' <<<"$region" || true)"
     if [[ -n "$compact_line" ]]; then
-      # Compact shape: green only with a positive ✅ count and no positive
-      # ❌ / ❓ / ⚠️ counter anywhere in the summary line.
-      if grep -qE '✅ [1-9][0-9]*' <<<"$compact_line" &&
-        ! grep -qE '(❌|❓|⚠️) *[1-9][0-9]*' <<<"$compact_line"; then
+      # Parse the whole counter grammar. Unknown, repeated or malformed
+      # counters never disappear merely because a success counter is present.
+      if [[ "$compact_line" != *$'\n'* ]] && jq -ne --arg line "$compact_line" '
+        $line | gsub("^[ \\t]+|[ \\t]+$"; "") |
+        if startswith("<summary>") and endswith("</summary>") then
+          ltrimstr("<summary>") | rtrimstr("</summary>")
+        else . end |
+        try capture("^🚥 Pre-merge checks \\|(?<counters>[^<>\\r\\n]+)$").counters catch "" |
+        split("|") | map(gsub("^[ \\t]+|[ \\t]+$"; "")) |
+        if length > 0 and all(.[]; test("^(✅|❌|❓|⚠️) (0|[1-9][0-9]*)$")) then
+          map(capture("^(?<kind>✅|❌|❓|⚠️) (?<count>0|[1-9][0-9]*)$")) |
+          (map(.kind) | unique | length) == length and
+          any(.[]; .kind == "✅" and .count != "0") and
+          all(.[]; .kind == "✅" or .count == "0")
+        else false end' >/dev/null; then
         premerge_state="green"
       else
         premerge_state="failed"
