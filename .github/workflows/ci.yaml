@@ -3888,7 +3888,6 @@ jobs:
     permissions: {}
     with:
       disable-issue-side-effects: true
-      align-npm-with-consumer-contract: false # Explicit compatibility path; omitted uses alignment.
       warn-missing-breaking-bang: true
       dry-run: true
       offline-test: true
