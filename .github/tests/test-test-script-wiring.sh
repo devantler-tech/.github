@@ -165,6 +165,22 @@ CONDITION="\${{ github.event_name != 'merge_group' && !startsWith(github.event.h
 run_guard || fail 'supported CI event scheduling gate rejected'
 echo 'PASS: supported merge-group and release scheduling exclusions'
 
+# Only the exact selection prerequisite + positive current-job membership gate
+# may add a dependency. A similarly named or negative selection cannot count.
+selector_condition='$'"{{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'tests') }}"
+CONDITION="$selector_condition" yq '.jobs.tests.if = strenv(CONDITION) | .jobs.tests.needs = ["select-ci-tests"] | .jobs.tests.steps += [{"run": "bash .github/tests/test-sentinel.sh"}]' "$work/base.yaml" >"$ci"
+run_guard || fail 'exact positive selection gate rejected'
+echo 'PASS: exact current-job selection with the sole selector prerequisite'
+for mutation in \
+  '.jobs.tests.needs = ["select-ci-tests", "prerequisite"]' \
+  '.jobs.tests.needs = ["select-ci-tests-extra"]' \
+  ".jobs.tests.if = \"\${{ false }}\"" \
+  '.jobs.tests.if |= sub("tests"; "tests-extra")'; do
+  CONDITION="$selector_condition" yq '.jobs.tests.if = strenv(CONDITION) | .jobs.tests.needs = ["select-ci-tests"] | .jobs.tests.steps += [{"run": "bash .github/tests/test-sentinel.sh"}]' "$work/base.yaml" >"$ci"
+  yq -i "$mutation" "$ci"
+  blocked "invalid selection contract: $mutation"
+done
+
 # shellcheck disable=SC2016
 for scope in step job; do
   for tolerate in true '"true"' '"${{ true }}"'; do

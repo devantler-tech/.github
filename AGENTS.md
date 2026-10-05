@@ -400,14 +400,31 @@ success without executing the test script.
 Working-directory overrides at those scopes must be `.` so relative paths identify the repository's
 actual test entrypoints, rather than a shadow script in a fixture directory.
 The containing job may omit `if` or use CI's exact merge-group/release scheduling
-exclusion; arbitrary job conditions do not count because they could silently disable the test. The
-containing job has no prerequisites and appears in `ci-required-checks.needs` and `JOB_RESULTS`,
+exclusion, optionally followed by the exact positive current-job membership test
+in `needs.select-ci-tests.outputs.selected`; arbitrary job conditions do not count
+because they could silently disable the test. The containing job has no prerequisites
+except that exact selector contract and appears in `ci-required-checks.needs` and `JOB_RESULTS`,
 so its failure reaches the required check. Neither the job nor the step may use `continue-on-error`
 except literal `false`. Keep shell control operators (`;`, `&`, `|`) out of invocation lines so test
 failures reach CI. The wiring
 guard rejects missing invocations and ignores step names, printed commands, heredocs, and uncalled
 functions. Helper scripts use names without the
 `test-` prefix and are invoked by a tested entrypoint instead of needing an exemption list.
+
+**Affected catalogue selection:** The read-only `select-ci-tests` job checks the complete
+job inventory and immutable full-history Git diff before allocating 89 independently
+gated test jobs. Only recognized action-owned paths narrow that set, including reviewed
+transitive caller and inline-lockstep ownership. Shared helpers, workflows, tests,
+fixtures, root configuration and unknown paths retain full coverage; missing Git
+evidence fails the selector. Renames retain both old and new owners. Main keeps full
+coverage, and existing merge-group/release exclusions, credential-specific and
+independently admitted offline caller jobs
+remain unchanged. The credential graph, test-wiring, shell, documentation and manifest
+guards never depend on selection. The workspace-free required reducer requires a
+successful selector and every selected job's success; an unexpectedly skipped test
+cannot make CI green. Keep `test-ci-selection.sh`, its inventory and required-reducer
+negative controls passing. Historical coverage and burst latency measurements remain
+separate evidence in #475.
 
 `lint-readme-parity` also checks every reusable workflow's declared inputs and secrets against
 its own level-three section in the root README. Link that section to the workflow file and put

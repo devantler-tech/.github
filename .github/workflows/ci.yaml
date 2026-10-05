@@ -16,8 +16,44 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  test-validate-retired-repo-links:
+  select-ci-tests:
+    name: Select affected catalogue tests
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      selected: ${{ steps.select.outputs.selected }}
+    steps:
+      - name: 🔒 Harden Runner
+        uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
+        with:
+          egress-policy: audit
+      - name: 📑 Checkout complete immutable history
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Select from the complete Git diff
+        id: select
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          RUN_CATALOGUE: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+          GOWORK: "off"
+          GOFLAGS: ""
+          GOTOOLCHAIN: local
+        run: |
+          set -euo pipefail
+          workflow_json="$RUNNER_TEMP/catalogue-ci.json"
+          yq -o=json . .github/workflows/ci.yaml > "$workflow_json"
+          go -C .github/scripts/ci-selection run . "$GITHUB_WORKSPACE" "$GITHUB_WORKSPACE/.github/scripts/ci-selection/inventory.json" "$workflow_json"
+
+  test-validate-retired-repo-links:
+    needs: [select-ci-tests]
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-validate-retired-repo-links') }}"
     name: "[Test] Retired Repository Links - Enabled (${{ matrix.os }})"
     runs-on: ${{ matrix.os }}
     strategy:
@@ -76,7 +112,8 @@ jobs:
           grep -F 'docs/history.md:3: link targets retired repository example/retired' "$RUNNER_TEMP/retired-links.log"
 
   test-validate-retired-repo-links-disabled:
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    needs: [select-ci-tests]
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-validate-retired-repo-links-disabled') }}"
     name: "[Test] Retired Repository Links - Disabled"
     runs-on: ubuntu-latest
     permissions:
@@ -121,7 +158,8 @@ jobs:
           test "$INVALID" = failure
 
   test-validate-shell-pipelines:
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    needs: [select-ci-tests]
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-validate-shell-pipelines') }}"
     name: "[Test] Validate Shell Pipelines (${{ matrix.os }})"
     runs-on: ${{ matrix.os }}
     strategy:
@@ -194,7 +232,8 @@ jobs:
           go -C actions/validate-shell-pipelines vet ./...
 
   test-validate-shell-pipelines-scope:
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    needs: [select-ci-tests]
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-validate-shell-pipelines-scope') }}"
     name: "[Test] Validate Shell Pipelines - Rejects Invalid Scope"
     runs-on: ubuntu-latest
     permissions:
@@ -225,7 +264,8 @@ jobs:
           test "$INVALID" = failure
 
   test-validate-naming:
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    needs: [select-ci-tests]
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-validate-naming') }}"
     name: "[Test] Validate Naming (${{ matrix.os }})"
     runs-on: ${{ matrix.os }}
     strategy:
@@ -261,7 +301,8 @@ jobs:
           go -C actions/validate-naming vet ./...
 
   test-validate-naming-rejects:
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    needs: [select-ci-tests]
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-validate-naming-rejects') }}"
     name: "[Test] Validate Naming - Rejects Violations"
     runs-on: ubuntu-latest
     permissions:
@@ -327,7 +368,8 @@ jobs:
   # name: a head branch is contributor-controlled, and the inline gate reads skipped as success.
   # ── approve-pr ──────────────────────────────────────────────
   test-approve-pr:
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    needs: [select-ci-tests]
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-approve-pr') }}"
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -349,7 +391,8 @@ jobs:
           dry-run: "true"
 
   test-approve-pr-credential-boundary:
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    needs: [select-ci-tests]
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-approve-pr-credential-boundary') }}"
     name: "[Test] Approve PR - Credential-Free CI"
     runs-on: ubuntu-latest
     permissions:
@@ -370,7 +413,8 @@ jobs:
 
   # ── cleanup-ghcr-packages ───────────────────────────────────
   test-cleanup-ghcr-packages:
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    needs: [select-ci-tests]
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-cleanup-ghcr-packages') }}"
     runs-on: ubuntu-latest
     permissions:
       packages: read
@@ -647,7 +691,8 @@ jobs:
 
   # ── diagnose-flux ───────────────────────────────────────────
   test-diagnose-flux:
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    needs: [select-ci-tests]
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-diagnose-flux') }}"
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -722,7 +767,8 @@ jobs:
           dry-run: "true"
 
   test-enable-auto-merge-on-pr-credential-boundary:
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    needs: [select-ci-tests]
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-enable-auto-merge-on-pr-credential-boundary') }}"
     name: "[Test] Enable Auto-Merge on PR - Credential-Free CI"
     runs-on: ubuntu-latest
     permissions:
@@ -743,7 +789,8 @@ jobs:
 
   # ── free-disk-space ─────────────────────────────────────────
   test-free-disk-space:
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    needs: [select-ci-tests]
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-free-disk-space') }}"
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -783,7 +830,8 @@ jobs:
 
   # ── free-disk-space (all categories disabled → clean no-op) ──
   test-free-disk-space-keep:
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    needs: [select-ci-tests]
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-free-disk-space-keep') }}"
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -834,7 +882,8 @@ jobs:
 
   # ── login-to-ghcr ──────────────────────────────────────────
   test-login-to-ghcr:
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    needs: [select-ci-tests]
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-login-to-ghcr') }}"
     runs-on: ubuntu-latest
     permissions:
       packages: read
@@ -859,7 +908,8 @@ jobs:
 
   # ── aggregate-job-checks ────────────────────────────────────
   test-aggregate-job-checks-empty:
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    needs: [select-ci-tests]
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-aggregate-job-checks-empty') }}"
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -880,7 +930,8 @@ jobs:
           job-results: ""
 
   test-aggregate-job-checks-success:
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    needs: [select-ci-tests]
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-aggregate-job-checks-success') }}"
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -901,7 +952,8 @@ jobs:
           job-results: "success skipped success"
 
   test-aggregate-job-checks-failure:
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    needs: [select-ci-tests]
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-aggregate-job-checks-failure') }}"
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -934,7 +986,8 @@ jobs:
           fi
 
   test-aggregate-job-checks-unknown:
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    needs: [select-ci-tests]
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-aggregate-job-checks-unknown') }}"
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -994,7 +1047,8 @@ jobs:
 
   # ── run-dotnet-tests ────────────────────────────────────────
   test-run-dotnet-tests:
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    needs: [select-ci-tests]
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-run-dotnet-tests') }}"
     runs-on: ${{ matrix.os }}
     permissions:
       contents: read
@@ -1033,7 +1087,8 @@ jobs:
   # global.json opts in — and which rejects the VSTest flags the default path uses. Both
   # fixtures opt in; one references the code coverage extension and one does not.
   test-run-dotnet-tests-mtp:
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    needs: [select-ci-tests]
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-run-dotnet-tests-mtp') }}"
     name: "[Test] Run .NET Tests - Microsoft.Testing.Platform"
     runs-on: ${{ matrix.os }}
     permissions:
@@ -1089,7 +1144,8 @@ jobs:
         run: bash .github/tests/test-dotnet-helper-checkout.sh .github/workflows/run-dotnet-tests.yaml hosted
 
   test-run-dotnet-tests-preserves-source-mapping:
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    needs: [select-ci-tests]
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-run-dotnet-tests-preserves-source-mapping') }}"
     name: "[Test] Run .NET Tests - Preserve Source Mapping"
     runs-on: ubuntu-latest
     permissions:
@@ -1235,7 +1291,8 @@ jobs:
 
   # ── setup-agent-skills ────────────────────────────────────
   test-setup-agent-skills-inline:
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    needs: [select-ci-tests]
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-setup-agent-skills-inline') }}"
     runs-on: ${{ matrix.os }}
     permissions:
       contents: read
@@ -1288,7 +1345,8 @@ jobs:
           done
 
   test-setup-agent-skills-pinned:
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    needs: [select-ci-tests]
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-setup-agent-skills-pinned') }}"
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -1333,7 +1391,8 @@ jobs:
           fi
 
   test-setup-agent-skills-missing-input:
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    needs: [select-ci-tests]
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-setup-agent-skills-missing-input') }}"
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -1366,7 +1425,8 @@ jobs:
           fi
 
   test-setup-agent-skills-malformed-line:
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    needs: [select-ci-tests]
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-setup-agent-skills-malformed-line') }}"
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -1400,7 +1460,8 @@ jobs:
           fi
 
   test-setup-agent-skills-multi-agent:
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    needs: [select-ci-tests]
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-setup-agent-skills-multi-agent') }}"
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -1447,7 +1508,8 @@ jobs:
 
   # ── setup-go-toolchain ─────────────────────────────────────
   test-setup-go-toolchain:
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    needs: [select-ci-tests]
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-setup-go-toolchain') }}"
     runs-on: ${{ matrix.os }}
     permissions:
       contents: read
@@ -1487,7 +1549,8 @@ jobs:
           echo "Go version: $GO_VERSION"
 
   test-setup-go-toolchain-private-modules:
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    needs: [select-ci-tests]
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-setup-go-toolchain-private-modules') }}"
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -1524,7 +1587,8 @@ jobs:
 
   # ── setup-ksail-cli ────────────────────────────────────────
   test-setup-ksail-cli:
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    needs: [select-ci-tests]
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-setup-ksail-cli') }}"
     runs-on: ${{ matrix.os }}
     permissions:
       contents: read
@@ -1558,7 +1622,8 @@ jobs:
 
   # ── .scripts/retry.sh (shared reliability helper) ──────────
   test-retry-script:
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    needs: [select-ci-tests]
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-retry-script') }}"
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -1655,7 +1720,8 @@ jobs:
   # ── guard-installed-skill-edits (composite + hermetic suite) ─────────────
   test-guard-installed-skill-edits:
     name: 🧪 Test Guard Installed Skill Edits
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    needs: [select-ci-tests]
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-guard-installed-skill-edits') }}"
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -1684,7 +1750,8 @@ jobs:
 
   # ── .scripts/ensure-gh-skill.sh (shared gh-skill bootstrap) ─
   test-ensure-gh-skill-script:
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    needs: [select-ci-tests]
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-ensure-gh-skill-script') }}"
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -2293,7 +2360,8 @@ jobs:
 
   # ── .scripts/gh-skill-install.sh (shared idempotent install helper) ─
   test-gh-skill-install-script:
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    needs: [select-ci-tests]
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-gh-skill-install-script') }}"
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -2314,7 +2382,8 @@ jobs:
 
   # ── .scripts/agent-skills-retry-env.sh (rate-limit-retry opt-in) ─
   test-agent-skills-retry-env:
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    needs: [select-ci-tests]
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-agent-skills-retry-env') }}"
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
@@ -2342,7 +2411,8 @@ jobs:
 
   # ── update-agent-skills ───────────────────────────────────
   test-update-agent-skills-noop:
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    needs: [select-ci-tests]
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-update-agent-skills-noop') }}"
     runs-on: ${{ matrix.os }}
     permissions:
       contents: read
@@ -2405,7 +2475,8 @@ jobs:
           fi
 
   test-update-agent-skills-dry-run:
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    needs: [select-ci-tests]
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-update-agent-skills-dry-run') }}"
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -2459,7 +2530,8 @@ jobs:
           fi
 
   test-update-agent-skills-missing-dir:
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    needs: [select-ci-tests]
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-update-agent-skills-missing-dir') }}"
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -2492,7 +2564,8 @@ jobs:
           fi
 
   test-update-agent-skills-mark-internal:
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    needs: [select-ci-tests]
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-update-agent-skills-mark-internal') }}"
     runs-on: ${{ matrix.os }}
     permissions:
       contents: read
@@ -2593,7 +2666,8 @@ jobs:
 
   # ── upload-coverage ─────────────────────────────────────────
   test-upload-coverage:
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    needs: [select-ci-tests]
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-upload-coverage') }}"
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -2622,7 +2696,8 @@ jobs:
 
   # ── login-to-ghcr (negative path) ──────────────────────────
   test-login-to-ghcr-empty-token:
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    needs: [select-ci-tests]
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-login-to-ghcr-empty-token') }}"
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -2656,7 +2731,8 @@ jobs:
 
   # ── setup-go-toolchain (negative path) ─────────────────────
   test-setup-go-toolchain-invalid-version:
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    needs: [select-ci-tests]
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-setup-go-toolchain-invalid-version') }}"
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -2737,7 +2813,8 @@ jobs:
 
   # ── run-dotnet-tests (negative path) ───────────────────────
   test-run-dotnet-tests-missing-working-directory:
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    needs: [select-ci-tests]
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-run-dotnet-tests-missing-working-directory') }}"
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -2788,7 +2865,8 @@ jobs:
   # own `dotnet test` command at a fixture whose only test fails on purpose and asserts the
   # run is blocked. test-run-dotnet-tests-gate-lockstep keeps the command in sync with the gate.
   test-run-dotnet-tests-blocks:
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    needs: [select-ci-tests]
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-run-dotnet-tests-blocks') }}"
     name: "[Test] Run .NET Tests - Gate Blocks"
     runs-on: ubuntu-latest
     permissions:
@@ -2848,7 +2926,8 @@ jobs:
 
   # ── run-dotnet-tests (gate lockstep) ───────────────────────
   test-run-dotnet-tests-gate-lockstep:
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    needs: [select-ci-tests]
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-run-dotnet-tests-gate-lockstep') }}"
     name: "[Test] Run .NET Tests - Gate Lockstep"
     runs-on: ubuntu-latest
     permissions:
@@ -2966,7 +3045,8 @@ jobs:
   # input set, so a bump or input change to the wrapper cannot silently leave the inline
   # copy behind (mirrors test-govulncheck-action-lockstep).
   test-run-dotnet-tests-coverage-inline-lockstep:
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    needs: [select-ci-tests]
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-run-dotnet-tests-coverage-inline-lockstep') }}"
     name: "[Test] Run .NET Tests - Coverage Inline Lockstep"
     runs-on: ubuntu-latest
     permissions:
@@ -3307,6 +3387,10 @@ jobs:
         shell: bash
         run: bash .github/tests/test-ci-required-checks-boundary.sh
 
+      - name: 🧪 Check complete affected-test selection and its failure controls
+        shell: bash
+        run: bash .github/tests/test-ci-selection.sh
+
       - name: 🔐 Check every eligible step-bearing CI job hardens the runner first
         shell: bash
         run: bash .github/tests/test-ci-harden-runner-first.sh
@@ -3446,6 +3530,8 @@ jobs:
           # overrides must keep relative paths anchored at the repository root.
           # Build the literal expression without letting GitHub interpolate it here.
           export TESTED_JOB_CONDITION='$'"{{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+          export TESTED_SELECTOR_PREFIX='$'"{{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), '"
+          export TESTED_SELECTOR_SUFFIX="') }}"
           invoked_tests="$(
             yq -r '
               select(.defaults.run.shell == null or .defaults.run.shell == "bash")
@@ -3457,8 +3543,8 @@ jobs:
               | .value
               | select(.defaults.run.shell == null or .defaults.run.shell == "bash")
               | select(.defaults.run.working-directory == null or .defaults.run.working-directory == ".")
-              | select((has("if") | not) or .if == strenv(TESTED_JOB_CONDITION))
-              | select((has("needs") | not) or ((.needs | type) == "!!seq" and (.needs | length) == 0))
+              | select((has("if") | not) or .if == strenv(TESTED_JOB_CONDITION) or .if == (strenv(TESTED_SELECTOR_PREFIX) + $job + strenv(TESTED_SELECTOR_SUFFIX)))
+              | select((has("needs") | not) or ((.needs | type) == "!!seq" and (.needs | length) == 0) or ((.needs | type) == "!!seq" and (.needs | length) == 1 and .needs[0] == "select-ci-tests" and .if == (strenv(TESTED_SELECTOR_PREFIX) + $job + strenv(TESTED_SELECTOR_SUFFIX))))
               | select((has("continue-on-error") | not) or .continue-on-error == false)
               | .steps[]?
               | select((has("shell") | not) or .shell == "bash")
@@ -3498,7 +3584,8 @@ jobs:
       actions: read
 
   test-dependency-review-workflow:
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    needs: [select-ci-tests]
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-dependency-review-workflow') }}"
     name: "[Test] Dependency Review - Default Settings"
     uses: ./.github/workflows/dependency-review.yaml
     permissions:
@@ -3544,7 +3631,8 @@ jobs:
   # Its repository exclusion skips every executed job here; behavior is tested
   # through the source-derived read-only entrypoint below.
   test-validate-go-project-interface:
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    needs: [select-ci-tests]
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-validate-go-project-interface') }}"
     name: "[Test] Validate Go Project - Production Interface"
     uses: ./.github/workflows/validate-go-project.yaml
     with:
@@ -3558,7 +3646,8 @@ jobs:
       code-quality: write
 
   test-validate-go-project:
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    needs: [select-ci-tests]
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-validate-go-project') }}"
     name: "[Test] Validate Go Project"
     uses: ./.github/workflows/validate-go-project-readonly.yaml
     # Fixture-targeted: validate the known-good Go fixture (this repo is not itself a Go module).
@@ -3575,7 +3664,8 @@ jobs:
       code-quality: write # callers must grant this for the coverage upload (GitHub Code Quality)
 
   test-validate-go-project-manual-fixes:
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    needs: [select-ci-tests]
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-validate-go-project-manual-fixes') }}"
     name: "[Test] Validate Go Project - Manual Workflow Fixes Opted In"
     uses: ./.github/workflows/validate-go-project-readonly.yaml
     with:
@@ -3589,7 +3679,8 @@ jobs:
 
   # The read-only entrypoint suppresses signed-fix opt-in; all fixers still run.
   test-validate-go-project-apply-signed-fixes:
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    needs: [select-ci-tests]
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-validate-go-project-apply-signed-fixes') }}"
     name: "[Test] Validate Go Project - Signed Fixes Suppressed"
     uses: ./.github/workflows/validate-go-project-readonly.yaml
     with:
@@ -3620,7 +3711,8 @@ jobs:
   # unreachable by construction). The reachability of that arm is what the structural guard
   # in test-suite-default-branch-coverage.sh asserts instead.
   test-validate-go-project-test-default-branch:
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    needs: [select-ci-tests]
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-validate-go-project-test-default-branch') }}"
     name: "[Test] Validate Go Project - Default-Branch Test Opted Out"
     uses: ./.github/workflows/validate-go-project-readonly.yaml
     with:
@@ -3637,7 +3729,8 @@ jobs:
   # This call instantiates ON; trigger fixtures cover actual default-branch refs,
   # which cannot be selected by a pull-request-triggered reusable-workflow call.
   test-validate-go-project-maintenance-default-branch:
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    needs: [select-ci-tests]
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-validate-go-project-maintenance-default-branch') }}"
     name: "[Test] Validate Go Project - Default-Branch Maintenance Opted In"
     uses: ./.github/workflows/validate-go-project-readonly.yaml
     with:
@@ -3650,7 +3743,8 @@ jobs:
       code-quality: write
 
   test-run-dotnet-tests-workflow:
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    needs: [select-ci-tests]
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-run-dotnet-tests-workflow') }}"
     name: "[Test] Run .NET Tests"
     uses: ./.github/workflows/run-dotnet-tests.yaml
     # Fixture-targeted: exercise the workflow against the known-good .NET fixture
@@ -3725,7 +3819,8 @@ jobs:
       contents: write
 
   test-enable-auto-merge-author-gate:
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    needs: [select-ci-tests]
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-enable-auto-merge-author-gate') }}"
     name: "[Test] Enable Auto-Merge - Author Gate"
     runs-on: ubuntu-latest
     permissions:
@@ -3762,7 +3857,8 @@ jobs:
   # Exercise GitHub's scheduler without a PR mutation, checkout, or App token.
   # A three-job burst exposes queue:single's replacement of the middle job.
   test-enable-auto-merge-queue:
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    needs: [select-ci-tests]
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-enable-auto-merge-queue') }}"
     name: "[Test] Enable Auto-Merge - Queue Slot ${{ matrix.slot }}"
     runs-on: ubuntu-latest
     permissions: {}
@@ -3852,7 +3948,8 @@ jobs:
           fi
 
   test-enable-auto-merge-pentad-gate:
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    needs: [select-ci-tests]
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-enable-auto-merge-pentad-gate') }}"
     name: "[Test] Enable Auto-Merge - Pentad Gate"
     runs-on: ubuntu-latest
     permissions:
@@ -3898,7 +3995,8 @@ jobs:
       offline-test: true
 
   test-create-release-config:
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    needs: [select-ci-tests]
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-create-release-config') }}"
     name: "[Test] Create Release - Least Privilege"
     runs-on: ubuntu-latest
     permissions:
@@ -3945,7 +4043,8 @@ jobs:
         run: bash .github/tests/test-create-release-fixture-controls.sh
 
   test-release-please-semantics:
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    needs: [select-ci-tests]
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-release-please-semantics') }}"
     name: "[Test] Release PR Lifecycle Guard"
     runs-on: ubuntu-latest
     permissions:
@@ -3990,7 +4089,8 @@ jobs:
       dry-run: true
 
   test-publish-dotnet-library:
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    needs: [select-ci-tests]
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-publish-dotnet-library') }}"
     name: "[Test] Publish .NET Library - Dry Run"
     uses: ./.github/workflows/publish-dotnet-library.yaml
     permissions:
@@ -4186,7 +4286,8 @@ jobs:
       ignore: '^\.github/tests/'
 
   test-sync-cluster-policies:
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    needs: [select-ci-tests]
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-sync-cluster-policies') }}"
     name: "[Test] Sync Cluster Policies - Dry Run"
     uses: ./.github/workflows/sync-cluster-policies.yaml
     permissions: {}
@@ -4195,7 +4296,8 @@ jobs:
       dry-run: true
 
   test-sync-cluster-policies-allowlist:
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    needs: [select-ci-tests]
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-sync-cluster-policies-allowlist') }}"
     name: "[Test] Sync Cluster Policies - Allowlist Miss Fails Closed"
     runs-on: ubuntu-latest
     permissions:
@@ -4223,7 +4325,8 @@ jobs:
         run: bash .github/tests/test-sync-cluster-policies-credentials-blocks.sh
 
   test-update-agent-skills:
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    needs: [select-ci-tests]
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-update-agent-skills') }}"
     name: "[Test] Update Agent Skills - Dry Run"
     uses: ./.github/workflows/update-agent-skills.yaml
     permissions:
@@ -4235,7 +4338,8 @@ jobs:
   # Flag-on state of the opt-in per-skill PRs (#1309), so the input stays part of the interface;
   # test-update-agent-skills-per-skill.sh pins both states and the per-skill job's apply step.
   test-update-agent-skills-per-skill:
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    needs: [select-ci-tests]
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-update-agent-skills-per-skill') }}"
     name: "[Test] Update Agent Skills - Per-Skill PRs Dry Run"
     uses: ./.github/workflows/update-agent-skills.yaml # zizmor: ignore[self-repository]
     permissions:
@@ -4246,7 +4350,8 @@ jobs:
       pr-per-skill: true
 
   test-template-sync:
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    needs: [select-ci-tests]
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-template-sync') }}"
     name: "[Test] Template Sync - Dry Run"
     uses: ./.github/workflows/template-sync.yaml
     permissions:
@@ -4260,7 +4365,8 @@ jobs:
   # The ignore-entry merge is a release flag: instantiate its on state as well. Its behaviour is
   # exercised offline by test-template-sync-ignore-merge.sh in lint-ci-coverage-parity.
   test-template-sync-merge-ignore:
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    needs: [select-ci-tests]
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-template-sync-merge-ignore') }}"
     name: "[Test] Template Sync - Dry Run (Merge Ignore Entries)"
     uses: ./.github/workflows/template-sync.yaml
     permissions:
@@ -4283,7 +4389,8 @@ jobs:
   # The default-on caller scans this repo's clean fixture on main pushes. Dedicated
   # vulnerable fixtures below establish allowlist and strict-failure verdicts.
   test-govulncheck-allowlist-honored:
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    needs: [select-ci-tests]
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-govulncheck-allowlist-honored') }}"
     name: "[Test] Govulncheck Allowlist - Allowlisted Advisory Passes"
     strategy:
       fail-fast: false
@@ -4329,7 +4436,8 @@ jobs:
         run: jq -es --arg version "go$GO_VERSION" '.[0].config.go_version == $version' govulncheck-allowlisted.json
 
   test-govulncheck-strict-blocks:
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    needs: [select-ci-tests]
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-govulncheck-strict-blocks') }}"
     name: "[Test] Govulncheck Allowlist - Strict Path Blocks"
     strategy:
       fail-fast: false
@@ -4395,7 +4503,8 @@ jobs:
           echo "Strict scan correctly blocked on the reachable advisory ✅"
 
   test-govulncheck-action-lockstep:
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    needs: [select-ci-tests]
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-govulncheck-action-lockstep') }}"
     name: "[Test] Govulncheck Allowlist - Gate Uses Self-Tested Implementation"
     runs-on: ubuntu-latest
     permissions:
@@ -4418,7 +4527,8 @@ jobs:
         run: bash .github/tests/test-govulncheck-scan.sh
 
   test-govulncheck-timeout:
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    needs: [select-ci-tests]
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-govulncheck-timeout') }}"
     name: "[Test] Govulncheck - Timeout & Memory Safety Controls"
     runs-on: ubuntu-latest
     permissions:
@@ -4742,7 +4852,8 @@ jobs:
   # The stand-in keeps the `./` form with
   # zizmor's self-repository audit suppressed: actionlint 1.7.12 rejects `$/` (#1234).
   test-govulncheck-timeout-retry-live:
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    needs: [select-ci-tests]
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-govulncheck-timeout-retry-live') }}"
     name: "[Test] Govulncheck - A Timed-Out Scan Is Retried Once"
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -4876,7 +4987,8 @@ jobs:
           echo "A failure before the deadline fails the gate and is not retried ✅"
 
   test-govulncheck-main-coverage:
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    needs: [select-ci-tests]
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-govulncheck-main-coverage') }}"
     name: "[Test] Govulncheck - Default-Branch & Allowlist Trigger Coverage"
     runs-on: ubuntu-latest
     permissions:
@@ -4903,7 +5015,8 @@ jobs:
   # and asserts it fails WITH THE EXPECTED MESSAGE, plus that it still passes the real
   # workflow — so neither an accept-everything nor a reject-everything guard passes.
   test-govulncheck-main-coverage-blocks:
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    needs: [select-ci-tests]
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-govulncheck-main-coverage-blocks') }}"
     name: "[Test] Govulncheck Trigger Guard - Blocks On Bad Input"
     runs-on: ubuntu-latest
     permissions:
@@ -4923,7 +5036,8 @@ jobs:
         run: bash .github/tests/test-govulncheck-main-coverage-blocks.sh
 
   test-go-filter-nested-modules:
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    needs: [select-ci-tests]
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-go-filter-nested-modules') }}"
     name: "[Test] Go Filter Nested Modules"
     runs-on: ubuntu-latest
     permissions:
@@ -4943,7 +5057,8 @@ jobs:
         run: bash .github/tests/test-go-filter-nested-modules.sh
 
   test-go-filter-nested-modules-blocks:
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    needs: [select-ci-tests]
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-go-filter-nested-modules-blocks') }}"
     name: "[Test] Go Filter Nested Modules - Blocks On Bad Input"
     runs-on: ubuntu-latest
     permissions:
@@ -4969,7 +5084,8 @@ jobs:
   # the default branch keeps reporting green. Measured on ksail — a5ed9f85 changed four
   # files, none of them Go, broke internal/ciharness, and main stayed green.
   test-suite-default-branch-coverage:
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    needs: [select-ci-tests]
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-suite-default-branch-coverage') }}"
     name: "[Test] Go Suite - Default-Branch Trigger Coverage"
     runs-on: ubuntu-latest
     permissions:
@@ -5014,7 +5130,8 @@ jobs:
   # the real workflow and a reflowed-but-equivalent gate, so neither an accept-everything
   # nor a reject-everything guard passes.
   test-suite-default-branch-coverage-blocks:
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    needs: [select-ci-tests]
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-suite-default-branch-coverage-blocks') }}"
     name: "[Test] Go Suite Trigger Guard - Blocks On Bad Input"
     runs-on: ubuntu-latest
     permissions:
@@ -5047,7 +5164,8 @@ jobs:
   # path, audits it. Keep the action SHA in lockstep with the gate
   # (enforced by test-zizmor-action-lockstep).
   test-zizmor-blocks:
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    needs: [select-ci-tests]
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-zizmor-blocks') }}"
     name: "[Test] Zizmor - Blocks On Vulnerable Fixture"
     runs-on: ubuntu-latest
     permissions:
@@ -5100,7 +5218,8 @@ jobs:
           echo "Zizmor gate correctly blocked on the vulnerable fixture ✅"
 
   test-zizmor-action-lockstep:
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    needs: [select-ci-tests]
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-zizmor-action-lockstep') }}"
     name: "[Test] Zizmor - Gate Pins Self-Tested Action"
     runs-on: ubuntu-latest
     permissions:
@@ -5153,7 +5272,8 @@ jobs:
   # "the gate silently stopped blocking" into a red check. test-validate-go-gate-lockstep
   # keeps the tool pins hard-coded here in step with the gate.
   test-validate-go-lint-blocks:
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    needs: [select-ci-tests]
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-validate-go-lint-blocks') }}"
     name: "[Test] Validate Go Project - Lint Gate Blocks"
     runs-on: ubuntu-latest
     permissions:
@@ -5215,7 +5335,8 @@ jobs:
           echo "Lint gate correctly blocked on the errcheck violation ✅"
 
   test-validate-go-test-blocks:
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    needs: [select-ci-tests]
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-validate-go-test-blocks') }}"
     name: "[Test] Validate Go Project - Test Gate Blocks"
     runs-on: ubuntu-latest
     permissions:
@@ -5270,7 +5391,8 @@ jobs:
           echo "Test gate correctly blocked on the failing test ✅"
 
   test-validate-go-gate-lockstep:
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    needs: [select-ci-tests]
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-validate-go-gate-lockstep') }}"
     name: "[Test] Validate Go Project - Gate Lockstep"
     runs-on: ubuntu-latest
     permissions:
@@ -5293,7 +5415,8 @@ jobs:
         run: bash .github/tests/test-catalogue-pin-guards-controls.sh
 
   test-validate-go-project-concurrency-key:
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    needs: [select-ci-tests]
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-validate-go-project-concurrency-key') }}"
     name: "[Test] Validate Go Project - Invocation-Aware Concurrency Key"
     runs-on: ubuntu-latest
     permissions:
@@ -5358,7 +5481,8 @@ jobs:
   # self-test — a happy-path test alone cannot catch a gate that silently stopped biting.
   # apply-fixes is false here: the self-test must never commit to the branch under test.
   test-lint-workflow:
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    needs: [select-ci-tests]
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-lint-workflow') }}"
     name: "[Test] Lint - Passes On Clean Fixture"
     # This is the real read-only consumer proof: GitHub rejects a called workflow at
     # startup if any job tries to elevate beyond these caller permissions.
@@ -5370,7 +5494,8 @@ jobs:
       apply-fixes: false
 
   test-lint-workflow-manual-fixes:
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    needs: [select-ci-tests]
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-lint-workflow-manual-fixes') }}"
     name: "[Test] Lint - Manual Workflow Fixes Opted In"
     permissions:
       contents: read
@@ -5381,7 +5506,8 @@ jobs:
       manual-workflow-fixes: true
 
   test-lint-blocks:
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    needs: [select-ci-tests]
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-lint-blocks') }}"
     name: "[Test] Lint - Blocks On Invalid Fixture"
     runs-on: ubuntu-latest
     permissions:
@@ -5435,7 +5561,8 @@ jobs:
   # Exercise the internal exporter through the runner, including deletion of its
   # loaded helper checkout and upload recovery after an actual preparation error.
   test-prepare-fixes:
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    needs: [select-ci-tests]
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-prepare-fixes') }}"
     name: "[Test] Fix Exporter - ${{ matrix.scenario }}"
     runs-on: ubuntu-latest
     permissions:
@@ -5506,7 +5633,8 @@ jobs:
         run: bash "$RUNNER_TEMP/prepare-fixes-runner.sh" verify
 
   test-lint-gate-lockstep:
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    needs: [select-ci-tests]
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-lint-gate-lockstep') }}"
     name: "[Test] Lint - Gate Pins Self-Tested Image"
     runs-on: ubuntu-latest
     permissions:
@@ -5643,7 +5771,8 @@ jobs:
   # permissions. The call commits nothing by construction as well as by gate: no patch
   # artifact exists and no App key is passed.
   test-apply-signed-fixes-suppresses-bots:
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    needs: [select-ci-tests]
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-apply-signed-fixes-suppresses-bots') }}"
     name: "[Test] Apply Signed Fixes - Refuses A Dependency-Bot Branch"
     permissions:
       contents: read
@@ -5667,7 +5796,8 @@ jobs:
   # would fail with an empty private key and take this job red. A green here therefore asserts
   # both halves at once: the check ran, and nothing privileged did.
   test-apply-signed-fixes-verifies-without-a-patch:
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    needs: [select-ci-tests]
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-apply-signed-fixes-verifies-without-a-patch') }}"
     name: "[Test] Apply Signed Fixes - Verifies The Tip With No Patch"
     permissions:
       contents: read
@@ -5832,6 +5962,7 @@ jobs:
     name: CI - Required Checks
     if: ${{ always() }}
     needs:
+      - select-ci-tests
       - test-validate-naming
       - test-validate-retired-repo-links
       - test-validate-retired-repo-links-disabled
@@ -5960,7 +6091,12 @@ jobs:
       - name: 📊 Summarize workflow result
         shell: bash
         env:
+          CATALOGUE_REQUIRED: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+          SELECTOR_RESULT: ${{ needs.select-ci-tests.result }}
+          SELECTED_JOBS: ${{ needs.select-ci-tests.outputs.selected }}
+          NEEDS_JSON: ${{ toJSON(needs) }}
           JOB_RESULTS: >-
+            ${{ needs.select-ci-tests.result }}
             ${{ needs.test-validate-naming.result }}
             ${{ needs.test-validate-retired-repo-links.result }}
             ${{ needs.test-validate-retired-repo-links-disabled.result }}
@@ -6105,5 +6241,32 @@ jobs:
                 ;;
             esac
           done
+
+          if [[ "$CATALOGUE_REQUIRED" == false ]]; then
+            # These events retain the original candidate-code exclusion. The
+            # selector must itself be skipped, with no manufactured selection.
+            if [[ "$SELECTOR_RESULT" != skipped || -n "$SELECTED_JOBS" ]]; then
+              echo "❌ CI - Required Checks — excluded catalogue event ran selection."
+              exit 1
+            fi
+            echo "✅ CI - Required Checks — all jobs succeeded or were skipped."
+            exit 0
+          fi
+          if [[ "$CATALOGUE_REQUIRED" != true || "$SELECTOR_RESULT" != success ]]; then
+            echo "❌ CI - Required Checks — test selection did not succeed."
+            exit 1
+          fi
+          # Selection and results are JSON data, never interpolated shell code.
+          # A skipped job is acceptable only when it was not selected to run.
+          jq -en --argjson selected "$SELECTED_JOBS" --argjson results "$NEEDS_JSON" '
+            ($selected | type == "array") and
+            ($results | type == "object") and
+            ($selected | length == (unique | length)) and
+            all($selected[]; type == "string" and test("^test-[a-z0-9-]+$")) and
+            all($selected[]; $results[.].result == "success")
+          ' > /dev/null || {
+            echo "❌ CI - Required Checks — incomplete selection or a selected test did not succeed."
+            exit 1
+          }
 
           echo "✅ CI - Required Checks — all jobs succeeded or were skipped."
