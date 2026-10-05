@@ -162,5 +162,33 @@
   {
     "name": "premerge-edited-newest-updated-wins",
     "expect_green": true
+  },
+  {
+    "name": "premerge-unknown-counter",
+    "expect_green": false
+  },
+  {
+    "name": "premerge-leading-zero-failure",
+    "expect_green": false
+  },
+  {
+    "name": "premerge-duplicate-success",
+    "expect_green": false
+  },
+  {
+    "name": "premerge-unknown-state",
+    "expect_green": false
+  },
+  {
+    "name": "codex-quoted-clean-verdict",
+    "expect_green": false
+  },
+  {
+    "name": "codex-malformed-long-sha",
+    "expect_green": false
+  },
+  {
+    "name": "codex-ambiguous-sha",
+    "expect_green": false
   }
 ]
