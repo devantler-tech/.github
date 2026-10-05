@@ -311,3 +311,5 @@ done
 [[ "$(read_digest devantler-tech/app latest)" == "$image_latest_before" && "$(read_digest devantler-tech/app/manifests latest)" == "$latest_before" ]]
 ! grep -Eq 'synthetic-token|synthetic-bearer' "$work/recovery.log" || { echo 'FAIL: paired recovery printed credentials'; exit 1; }
 echo 'PASS: actual Buildx and Flux preserve paired digests, restore either partial release, perform no matching retry writes, refuse both conflict directions and wrong original claims, and retain latest'
+export image_digest image_latest_before latest_before
+bash "$root/.github/tests/default-publication-native.sh" "$work"
