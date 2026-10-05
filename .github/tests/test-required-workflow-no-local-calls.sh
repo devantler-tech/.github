@@ -36,7 +36,7 @@ consumer_relative_calls="$(
 # someone copied the commit Dependabot had already chosen, which reviewed nothing).
 signed_fixes_path='.github/workflows/apply-signed-fixes.yaml'
 reviewed_blob='ccbcbabb46c1c5ae40066d05880ff29c50263f25'
-source_remote="${SIGNED_FIXES_SOURCE_REMOTE:-https://github.com/devantler-tech/.github.git}"
+source_remote='https://github.com/devantler-tech/.github.git'
 # Each reference is read JSON-encoded: command substitution drops trailing newlines, so a plain
 # read would accept text after the commit.
 ref_pattern="^\"(devantler-tech/\\.github/${signed_fixes_path//./\\.}@[0-9a-f]{40})\"\$"
@@ -54,24 +54,37 @@ done
 [[ -n "$common_ref" ]] || fail "no signed-fixes caller was examined"
 pinned_commit="${common_ref##*@}"
 
-# A shallow checkout does not hold the referenced commit. Fetch only its trees: the blob id is
-# recorded in the tree, so the file itself is never downloaded. The fetch is bounded twice: Git
-# aborts a transfer that stalls for a minute, and where `timeout` exists (every CI runner; not stock
-# macOS) the whole command has a two-minute deadline. Either way a hung network fails this test
-# instead of holding its job until the runner's own limit.
-bounded=()
-if command -v timeout >/dev/null 2>&1; then
-  bounded=(timeout 2m)
-fi
+
+# A shallow checkout does not hold the referenced commit, and fetching it into the checkout would
+# turn a full clone shallow and add a partial-clone remote to its configuration. So a commit that
+# is absent is fetched into a throwaway repository and read there; this test never writes to the
+# repository it runs in. Only the commit's trees are fetched: the blob id is recorded in the tree,
+# so the file itself is never downloaded. The fetch is bounded twice: Git aborts a transfer that
+# stalls for a minute, and where `timeout` exists (every CI runner; not stock macOS) the whole
+# command has a two-minute deadline. Either way a hung network fails this test instead of holding
+# its job until the runner's own limit.
+object_store=()
 if ! git cat-file -e "${pinned_commit}^{commit}" 2>/dev/null; then
-  ${bounded[@]+"${bounded[@]}"} git -c http.lowSpeedLimit=1000 -c http.lowSpeedTime=60 \
+  scratch="$(mktemp -d)"
+  trap 'rm -rf "$scratch"' EXIT
+  git init --quiet --bare "$scratch/source.git"
+  object_store=(--git-dir "$scratch/source.git")
+  bounded=()
+  if command -v timeout >/dev/null 2>&1; then
+    bounded=(timeout 2m)
+  fi
+  ${bounded[@]+"${bounded[@]}"} git "${object_store[@]}" \
+    -c http.lowSpeedLimit=1000 -c http.lowSpeedTime=60 \
     fetch --quiet --no-tags --depth=1 --filter=blob:none "$source_remote" "$pinned_commit" 2>/dev/null ||
     fail "cannot read signed-fixes commit ${pinned_commit} from ${source_remote}; the reference stays unverified"
 fi
-git cat-file -e "${pinned_commit}^{commit}" 2>/dev/null ||
+read_object() {
+  git ${object_store[@]+"${object_store[@]}"} "$@"
+}
+read_object cat-file -e "${pinned_commit}^{commit}" 2>/dev/null ||
   fail "signed-fixes reference ${pinned_commit} is not a commit"
 
-actual_blob="$(git rev-parse --verify --quiet "${pinned_commit}:${signed_fixes_path}" || true)"
+actual_blob="$(read_object rev-parse --verify --quiet "${pinned_commit}:${signed_fixes_path}" || true)"
 [[ -n "$actual_blob" ]] ||
   fail "commit ${pinned_commit} has no ${signed_fixes_path}"
 [[ "$actual_blob" == "$reviewed_blob" ]] ||
