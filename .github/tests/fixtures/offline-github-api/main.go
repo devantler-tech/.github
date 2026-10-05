@@ -178,6 +178,11 @@ func parseScenario(raw []byte, path string) ([]route, error) {
 				return nil, errors.New("route header names must be unique ignoring case")
 			}
 			headerNames[canonical] = true
+			// The HTTP transport trims edge whitespace and removes Content-Type
+			// from 304 responses. Never certify a header it cannot serve unchanged.
+			if value != strings.Trim(value, " \t") || candidate.Status == http.StatusNotModified && canonical == "Content-Type" {
+				return nil, fmt.Errorf("%s: route %d has an unservable header", path, index)
+			}
 			if !httpToken(name) || strings.IndexFunc(value, func(ch rune) bool { return ch < 32 && ch != '\t' || ch == 127 }) >= 0 || strings.EqualFold(name, "Content-Length") || strings.EqualFold(name, "Transfer-Encoding") || strings.EqualFold(name, "Trailer") {
 				return nil, fmt.Errorf("%s: route %d has an unservable header", path, index)
 			}

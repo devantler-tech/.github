@@ -55,6 +55,94 @@ func TestScenarioAdmission(t *testing.T) {
 	}
 }
 
+func requestReviewedRoute(t *testing.T, candidate route) *http.Response {
+	t.Helper()
+	record, err := os.CreateTemp(t.TempDir(), "record")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = record.Close() })
+	fixture := httptest.NewServer(&server{routes: []route{candidate}, token: "fixture", record: record})
+	t.Cleanup(fixture.Close)
+	request, err := http.NewRequest(candidate.Method, fixture.URL+candidate.Path, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request.Header.Set("Authorization", "token fixture")
+	client := fixture.Client()
+	client.Timeout = time.Second
+	response, err := client.Do(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = response.Body.Close() })
+	return response
+}
+
+func TestScenarioRejectsSuppressedNotModifiedHeader(t *testing.T) {
+	for _, name := range []string{"Content-Type", "content-type", "CONTENT-TYPE"} {
+		t.Run(name, func(t *testing.T) {
+			fixture := fmt.Sprintf(`{"routes":[{"method":"GET","path":"/ok","status":304,"headers":{%q:"application/problem+json"}}]}`, name)
+			routes, err := parseScenario([]byte(fixture), "reviewed")
+			if err == nil {
+				// ResponseRecorder keeps headers that the actual HTTP transport
+				// suppresses. Exercise the real stand-in before reporting admission.
+				response := requestReviewedRoute(t, routes[0])
+				if response.StatusCode != http.StatusNotModified {
+					t.Fatalf("304 transport control returned %d", response.StatusCode)
+				}
+				t.Fatalf("admitted unservable 304 header: reviewed Content-Type %q, actual %q", "application/problem+json", response.Header.Get("Content-Type"))
+			}
+			if !strings.Contains(err.Error(), "unservable header") {
+				t.Fatalf("rejected for an unrelated reason: %v", err)
+			}
+		})
+	}
+}
+
+func TestReviewedHeadersSurviveHTTPTransport(t *testing.T) {
+	for name, raw := range map[string]string{
+		"content type":        `{"routes":[{"method":"GET","path":"/ok","status":200,"headers":{"content-type":"application/problem+json"}}]}`,
+		"not modified":        `{"routes":[{"method":"GET","path":"/ok","status":304,"headers":{"Cache-Control":"max-age=60","X-Fixture":"reviewed"}}]}`,
+		"internal whitespace": `{"routes":[{"method":"GET","path":"/ok","status":200,"headers":{"X-Fixture":"two words\tinside"}}]}`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			routes, err := parseScenario([]byte(raw), "reviewed")
+			if err != nil {
+				t.Fatal(err)
+			}
+			response := requestReviewedRoute(t, routes[0])
+			if response.StatusCode != routes[0].Status {
+				t.Fatalf("status: got %d, want %d", response.StatusCode, routes[0].Status)
+			}
+			for header, value := range routes[0].Headers {
+				if got := response.Header.Get(header); got != value {
+					t.Fatalf("reviewed %s: got %q, want %q", header, got, value)
+				}
+			}
+		})
+	}
+}
+
+func TestScenarioRejectsTrimmedHeaderValues(t *testing.T) {
+	for _, value := range []string{" reviewed", "reviewed ", "\treviewed", "reviewed\t"} {
+		t.Run(fmt.Sprintf("%q", value), func(t *testing.T) {
+			fixture := fmt.Sprintf(`{"routes":[{"method":"GET","path":"/ok","status":200,"headers":{"X-Fixture":%q}}]}`, value)
+			routes, err := parseScenario([]byte(fixture), "reviewed")
+			if err == nil {
+				response := requestReviewedRoute(t, routes[0])
+				if response.StatusCode != http.StatusOK {
+					t.Fatalf("header transport control returned %d", response.StatusCode)
+				}
+				t.Fatalf("admitted unservable header: reviewed %q, actual %q", value, response.Header.Get("X-Fixture"))
+			}
+			if !strings.Contains(err.Error(), "unservable header") {
+				t.Fatalf("rejected for an unrelated reason: %v", err)
+			}
+		})
+	}
+}
+
 func TestRunProcessHelper(t *testing.T) {
 	if os.Getenv("OFFLINE_RUN_PROCESS_TEST") != "1" {
 		return
