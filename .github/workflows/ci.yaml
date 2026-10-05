@@ -16,8 +16,52 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  test-validate-retired-repo-links:
+  catalogue-scope:
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      catalogue: ${{ steps.scope.outputs.catalogue }}
+    steps:
+      - name: 🔒 Harden Runner
+        uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
+        with:
+          egress-policy: audit
+      - name: Checkout trusted base scope reader
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.base.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Classify exact PR scope
+        id: scope
+        shell: bash
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          # Only this repository's PRs may use the optimization. The first
+          # rollout, main pushes and uncertain reads run the whole catalogue.
+          if [[ "${GITHUB_EVENT_NAME}" != pull_request || "${GITHUB_REPOSITORY}" != devantler-tech/.github ]] ||
+            [[ ! "${PR_NUMBER}" =~ ^[1-9][0-9]*$ || ! "${BASE_SHA}" =~ ^[0-9a-f]{40}$ || ! "${HEAD_SHA}" =~ ^[0-9a-f]{40}$ ]] ||
+            [[ ! -f .github/scripts/classify-ci-catalogue.sh ]]; then
+            printf 'catalogue=true\n' >>"${GITHUB_OUTPUT}"
+            exit 0
+          fi
+          if ! git fetch --no-tags origin "+refs/pull/${PR_NUMBER}/head:refs/remotes/origin/ci-scope-head" ||
+            [[ "$(git rev-parse refs/remotes/origin/ci-scope-head)" != "${HEAD_SHA}" ]]; then
+            printf 'catalogue=true\n' >>"${GITHUB_OUTPUT}"
+            exit 0
+          fi
+          bash .github/scripts/classify-ci-catalogue.sh "${BASE_SHA}" "${HEAD_SHA}" >>"${GITHUB_OUTPUT}"
+
+  test-validate-retired-repo-links:
+    needs: catalogue-scope
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && needs.catalogue-scope.outputs.catalogue == 'true' }}"
     name: "[Test] Retired Repository Links - Enabled (${{ matrix.os }})"
     runs-on: ${{ matrix.os }}
     strategy:
@@ -76,7 +120,8 @@ jobs:
           grep -F 'docs/history.md:3: link targets retired repository example/retired' "$RUNNER_TEMP/retired-links.log"
 
   test-validate-retired-repo-links-disabled:
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    needs: catalogue-scope
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && needs.catalogue-scope.outputs.catalogue == 'true' }}"
     name: "[Test] Retired Repository Links - Disabled"
     runs-on: ubuntu-latest
     permissions:
@@ -121,7 +166,8 @@ jobs:
           test "$INVALID" = failure
 
   test-validate-shell-pipelines:
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    needs: catalogue-scope
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && needs.catalogue-scope.outputs.catalogue == 'true' }}"
     name: "[Test] Validate Shell Pipelines (${{ matrix.os }})"
     runs-on: ${{ matrix.os }}
     strategy:
@@ -194,7 +240,8 @@ jobs:
           go -C actions/validate-shell-pipelines vet ./...
 
   test-validate-shell-pipelines-scope:
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    needs: catalogue-scope
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && needs.catalogue-scope.outputs.catalogue == 'true' }}"
     name: "[Test] Validate Shell Pipelines - Rejects Invalid Scope"
     runs-on: ubuntu-latest
     permissions:
@@ -225,7 +272,8 @@ jobs:
           test "$INVALID" = failure
 
   test-validate-naming:
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    needs: catalogue-scope
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && needs.catalogue-scope.outputs.catalogue == 'true' }}"
     name: "[Test] Validate Naming (${{ matrix.os }})"
     runs-on: ${{ matrix.os }}
     strategy:
@@ -261,7 +309,8 @@ jobs:
           go -C actions/validate-naming vet ./...
 
   test-validate-naming-rejects:
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    needs: catalogue-scope
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && needs.catalogue-scope.outputs.catalogue == 'true' }}"
     name: "[Test] Validate Naming - Rejects Violations"
     runs-on: ubuntu-latest
     permissions:
@@ -327,7 +376,8 @@ jobs:
   # name: a head branch is contributor-controlled, and the inline gate reads skipped as success.
   # ── approve-pr ──────────────────────────────────────────────
   test-approve-pr:
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    needs: catalogue-scope
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && needs.catalogue-scope.outputs.catalogue == 'true' }}"
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -370,7 +420,8 @@ jobs:
 
   # ── cleanup-ghcr-packages ───────────────────────────────────
   test-cleanup-ghcr-packages:
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    needs: catalogue-scope
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && needs.catalogue-scope.outputs.catalogue == 'true' }}"
     runs-on: ubuntu-latest
     permissions:
       packages: read
@@ -540,7 +591,8 @@ jobs:
     # merge_group there is no PR to review, so the test is PR-gated (skipped
     # otherwise, which the inline required-check collector tolerates — like
     # test-approve-pr).
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && startsWith(github.event_name, 'pull_request') }}"
+    needs: catalogue-scope
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && startsWith(github.event_name, 'pull_request') && needs.catalogue-scope.outputs.catalogue == 'true' }}"
     permissions:
       contents: read
     steps:
@@ -579,7 +631,8 @@ jobs:
   # conversation and the verifier compares it with the reviewed one.
   test-dependency-review-comments:
     name: "[Test] Dependency Review - Summary Comment (${{ matrix.scenario }})"
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    needs: catalogue-scope
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && needs.catalogue-scope.outputs.catalogue == 'true' }}"
     runs-on: ubuntu-latest
     timeout-minutes: 10
     strategy:
@@ -647,7 +700,8 @@ jobs:
 
   # ── diagnose-flux ───────────────────────────────────────────
   test-diagnose-flux:
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    needs: catalogue-scope
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && needs.catalogue-scope.outputs.catalogue == 'true' }}"
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -743,7 +797,8 @@ jobs:
 
   # ── free-disk-space ─────────────────────────────────────────
   test-free-disk-space:
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    needs: catalogue-scope
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && needs.catalogue-scope.outputs.catalogue == 'true' }}"
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -783,7 +838,8 @@ jobs:
 
   # ── free-disk-space (all categories disabled → clean no-op) ──
   test-free-disk-space-keep:
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    needs: catalogue-scope
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && needs.catalogue-scope.outputs.catalogue == 'true' }}"
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -834,7 +890,8 @@ jobs:
 
   # ── login-to-ghcr ──────────────────────────────────────────
   test-login-to-ghcr:
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    needs: catalogue-scope
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && needs.catalogue-scope.outputs.catalogue == 'true' }}"
     runs-on: ubuntu-latest
     permissions:
       packages: read
@@ -859,7 +916,8 @@ jobs:
 
   # ── aggregate-job-checks ────────────────────────────────────
   test-aggregate-job-checks-empty:
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    needs: catalogue-scope
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && needs.catalogue-scope.outputs.catalogue == 'true' }}"
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -880,7 +938,8 @@ jobs:
           job-results: ""
 
   test-aggregate-job-checks-success:
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    needs: catalogue-scope
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && needs.catalogue-scope.outputs.catalogue == 'true' }}"
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -901,7 +960,8 @@ jobs:
           job-results: "success skipped success"
 
   test-aggregate-job-checks-failure:
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    needs: catalogue-scope
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && needs.catalogue-scope.outputs.catalogue == 'true' }}"
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -994,7 +1054,8 @@ jobs:
 
   # ── run-dotnet-tests ────────────────────────────────────────
   test-run-dotnet-tests:
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    needs: catalogue-scope
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && needs.catalogue-scope.outputs.catalogue == 'true' }}"
     runs-on: ${{ matrix.os }}
     permissions:
       contents: read
@@ -1089,7 +1150,8 @@ jobs:
         run: bash .github/tests/test-dotnet-helper-checkout.sh .github/workflows/run-dotnet-tests.yaml hosted
 
   test-run-dotnet-tests-preserves-source-mapping:
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    needs: catalogue-scope
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && needs.catalogue-scope.outputs.catalogue == 'true' }}"
     name: "[Test] Run .NET Tests - Preserve Source Mapping"
     runs-on: ubuntu-latest
     permissions:
@@ -1235,7 +1297,8 @@ jobs:
 
   # ── setup-agent-skills ────────────────────────────────────
   test-setup-agent-skills-inline:
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    needs: catalogue-scope
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && needs.catalogue-scope.outputs.catalogue == 'true' }}"
     runs-on: ${{ matrix.os }}
     permissions:
       contents: read
@@ -1288,7 +1351,8 @@ jobs:
           done
 
   test-setup-agent-skills-pinned:
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    needs: catalogue-scope
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && needs.catalogue-scope.outputs.catalogue == 'true' }}"
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -1333,7 +1397,8 @@ jobs:
           fi
 
   test-setup-agent-skills-missing-input:
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    needs: catalogue-scope
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && needs.catalogue-scope.outputs.catalogue == 'true' }}"
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -1366,7 +1431,8 @@ jobs:
           fi
 
   test-setup-agent-skills-malformed-line:
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    needs: catalogue-scope
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && needs.catalogue-scope.outputs.catalogue == 'true' }}"
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -1400,7 +1466,8 @@ jobs:
           fi
 
   test-setup-agent-skills-multi-agent:
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    needs: catalogue-scope
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && needs.catalogue-scope.outputs.catalogue == 'true' }}"
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -1447,7 +1514,8 @@ jobs:
 
   # ── setup-go-toolchain ─────────────────────────────────────
   test-setup-go-toolchain:
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    needs: catalogue-scope
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && needs.catalogue-scope.outputs.catalogue == 'true' }}"
     runs-on: ${{ matrix.os }}
     permissions:
       contents: read
@@ -1487,7 +1555,8 @@ jobs:
           echo "Go version: $GO_VERSION"
 
   test-setup-go-toolchain-private-modules:
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    needs: catalogue-scope
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && needs.catalogue-scope.outputs.catalogue == 'true' }}"
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -1558,7 +1627,8 @@ jobs:
 
   # ── .scripts/retry.sh (shared reliability helper) ──────────
   test-retry-script:
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    needs: catalogue-scope
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && needs.catalogue-scope.outputs.catalogue == 'true' }}"
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -1655,7 +1725,8 @@ jobs:
   # ── guard-installed-skill-edits (composite + hermetic suite) ─────────────
   test-guard-installed-skill-edits:
     name: 🧪 Test Guard Installed Skill Edits
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    needs: catalogue-scope
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && needs.catalogue-scope.outputs.catalogue == 'true' }}"
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -2293,7 +2364,8 @@ jobs:
 
   # ── .scripts/gh-skill-install.sh (shared idempotent install helper) ─
   test-gh-skill-install-script:
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    needs: catalogue-scope
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && needs.catalogue-scope.outputs.catalogue == 'true' }}"
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -2314,7 +2386,8 @@ jobs:
 
   # ── .scripts/agent-skills-retry-env.sh (rate-limit-retry opt-in) ─
   test-agent-skills-retry-env:
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    needs: catalogue-scope
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && needs.catalogue-scope.outputs.catalogue == 'true' }}"
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
@@ -2342,7 +2415,8 @@ jobs:
 
   # ── update-agent-skills ───────────────────────────────────
   test-update-agent-skills-noop:
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    needs: catalogue-scope
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && needs.catalogue-scope.outputs.catalogue == 'true' }}"
     runs-on: ${{ matrix.os }}
     permissions:
       contents: read
@@ -2405,7 +2479,8 @@ jobs:
           fi
 
   test-update-agent-skills-dry-run:
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    needs: catalogue-scope
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && needs.catalogue-scope.outputs.catalogue == 'true' }}"
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -2459,7 +2534,8 @@ jobs:
           fi
 
   test-update-agent-skills-missing-dir:
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    needs: catalogue-scope
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && needs.catalogue-scope.outputs.catalogue == 'true' }}"
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -2593,7 +2669,8 @@ jobs:
 
   # ── upload-coverage ─────────────────────────────────────────
   test-upload-coverage:
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    needs: catalogue-scope
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && needs.catalogue-scope.outputs.catalogue == 'true' }}"
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -2622,7 +2699,8 @@ jobs:
 
   # ── login-to-ghcr (negative path) ──────────────────────────
   test-login-to-ghcr-empty-token:
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    needs: catalogue-scope
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && needs.catalogue-scope.outputs.catalogue == 'true' }}"
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -2656,7 +2734,8 @@ jobs:
 
   # ── setup-go-toolchain (negative path) ─────────────────────
   test-setup-go-toolchain-invalid-version:
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    needs: catalogue-scope
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && needs.catalogue-scope.outputs.catalogue == 'true' }}"
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -2737,7 +2816,8 @@ jobs:
 
   # ── run-dotnet-tests (negative path) ───────────────────────
   test-run-dotnet-tests-missing-working-directory:
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    needs: catalogue-scope
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && needs.catalogue-scope.outputs.catalogue == 'true' }}"
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -2788,7 +2868,8 @@ jobs:
   # own `dotnet test` command at a fixture whose only test fails on purpose and asserts the
   # run is blocked. test-run-dotnet-tests-gate-lockstep keeps the command in sync with the gate.
   test-run-dotnet-tests-blocks:
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    needs: catalogue-scope
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && needs.catalogue-scope.outputs.catalogue == 'true' }}"
     name: "[Test] Run .NET Tests - Gate Blocks"
     runs-on: ubuntu-latest
     permissions:
@@ -2848,7 +2929,8 @@ jobs:
 
   # ── run-dotnet-tests (gate lockstep) ───────────────────────
   test-run-dotnet-tests-gate-lockstep:
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    needs: catalogue-scope
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && needs.catalogue-scope.outputs.catalogue == 'true' }}"
     name: "[Test] Run .NET Tests - Gate Lockstep"
     runs-on: ubuntu-latest
     permissions:
@@ -2966,7 +3048,8 @@ jobs:
   # input set, so a bump or input change to the wrapper cannot silently leave the inline
   # copy behind (mirrors test-govulncheck-action-lockstep).
   test-run-dotnet-tests-coverage-inline-lockstep:
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    needs: catalogue-scope
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && needs.catalogue-scope.outputs.catalogue == 'true' }}"
     name: "[Test] Run .NET Tests - Coverage Inline Lockstep"
     runs-on: ubuntu-latest
     permissions:
@@ -3183,6 +3266,10 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: bash .github/tests/test-catalogue-credentials.sh
+
+      - name: 🧪 Check deployment scope and full catalogue fallback
+        shell: bash
+        run: bash .github/tests/test-ci-catalogue-scope.sh
 
       - name: 🔐 Reject catalogue credential boundary regressions
         shell: bash
@@ -3498,14 +3585,16 @@ jobs:
       actions: read
 
   test-dependency-review-workflow:
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    needs: catalogue-scope
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && needs.catalogue-scope.outputs.catalogue == 'true' }}"
     name: "[Test] Dependency Review - Default Settings"
     uses: ./.github/workflows/dependency-review.yaml
     permissions:
       contents: read
 
   test-delete-workflow-runs-all:
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    needs: catalogue-scope
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && needs.catalogue-scope.outputs.catalogue == 'true' }}"
     name: "[Test] Delete Workflow Runs - All Workflows"
     uses: ./.github/workflows/delete-workflow-runs-readonly.yaml
     with:
@@ -3519,7 +3608,8 @@ jobs:
       contents: read
 
   test-delete-workflow-runs-specific:
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    needs: catalogue-scope
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && needs.catalogue-scope.outputs.catalogue == 'true' }}"
     name: "[Test] Delete Workflow Runs - Specific Pattern"
     uses: ./.github/workflows/delete-workflow-runs-readonly.yaml
     with:
@@ -3533,7 +3623,8 @@ jobs:
       contents: read
 
   test-delete-workflow-runs-minimal:
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    needs: catalogue-scope
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && needs.catalogue-scope.outputs.catalogue == 'true' }}"
     name: "[Test] Delete Workflow Runs - Minimal Parameters"
     uses: ./.github/workflows/delete-workflow-runs-readonly.yaml
     permissions:
@@ -3544,7 +3635,8 @@ jobs:
   # Its repository exclusion skips every executed job here; behavior is tested
   # through the source-derived read-only entrypoint below.
   test-validate-go-project-interface:
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    needs: catalogue-scope
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && needs.catalogue-scope.outputs.catalogue == 'true' }}"
     name: "[Test] Validate Go Project - Production Interface"
     uses: ./.github/workflows/validate-go-project.yaml
     with:
@@ -3558,7 +3650,8 @@ jobs:
       code-quality: write
 
   test-validate-go-project:
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    needs: catalogue-scope
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && needs.catalogue-scope.outputs.catalogue == 'true' }}"
     name: "[Test] Validate Go Project"
     uses: ./.github/workflows/validate-go-project-readonly.yaml
     # Fixture-targeted: validate the known-good Go fixture (this repo is not itself a Go module).
@@ -3575,7 +3668,8 @@ jobs:
       code-quality: write # callers must grant this for the coverage upload (GitHub Code Quality)
 
   test-validate-go-project-manual-fixes:
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    needs: catalogue-scope
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && needs.catalogue-scope.outputs.catalogue == 'true' }}"
     name: "[Test] Validate Go Project - Manual Workflow Fixes Opted In"
     uses: ./.github/workflows/validate-go-project-readonly.yaml
     with:
@@ -3589,7 +3683,8 @@ jobs:
 
   # The read-only entrypoint suppresses signed-fix opt-in; all fixers still run.
   test-validate-go-project-apply-signed-fixes:
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    needs: catalogue-scope
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && needs.catalogue-scope.outputs.catalogue == 'true' }}"
     name: "[Test] Validate Go Project - Signed Fixes Suppressed"
     uses: ./.github/workflows/validate-go-project-readonly.yaml
     with:
@@ -3620,7 +3715,8 @@ jobs:
   # unreachable by construction). The reachability of that arm is what the structural guard
   # in test-suite-default-branch-coverage.sh asserts instead.
   test-validate-go-project-test-default-branch:
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    needs: catalogue-scope
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && needs.catalogue-scope.outputs.catalogue == 'true' }}"
     name: "[Test] Validate Go Project - Default-Branch Test Opted Out"
     uses: ./.github/workflows/validate-go-project-readonly.yaml
     with:
@@ -3637,7 +3733,8 @@ jobs:
   # This call instantiates ON; trigger fixtures cover actual default-branch refs,
   # which cannot be selected by a pull-request-triggered reusable-workflow call.
   test-validate-go-project-maintenance-default-branch:
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    needs: catalogue-scope
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && needs.catalogue-scope.outputs.catalogue == 'true' }}"
     name: "[Test] Validate Go Project - Default-Branch Maintenance Opted In"
     uses: ./.github/workflows/validate-go-project-readonly.yaml
     with:
@@ -3650,7 +3747,8 @@ jobs:
       code-quality: write
 
   test-run-dotnet-tests-workflow:
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    needs: catalogue-scope
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && needs.catalogue-scope.outputs.catalogue == 'true' }}"
     name: "[Test] Run .NET Tests"
     uses: ./.github/workflows/run-dotnet-tests.yaml
     # Fixture-targeted: exercise the workflow against the known-good .NET fixture
@@ -3663,14 +3761,15 @@ jobs:
       code-quality: write # callers must grant this for the coverage upload (GitHub Code Quality)
 
   test-run-dotnet-tests-workflow-authenticated:
-    if: >-
-      ${{
-        github.event_name != 'merge_group' &&
-        !startsWith(github.event.head_commit.message, 'chore(main): release ') &&
-        github.event_name == 'pull_request' &&
-        github.event.pull_request.head.repo.full_name == github.repository &&
-        github.event.pull_request.user.login == 'devantler'
-      }}
+    needs: catalogue-scope
+    if: "${{ github.event_name != 'merge_group' &&   !startsWith(github.event.head_commit.message, 'chore(main): release ') &&   github.event_name == 'pull_request' &&   github.event.pull_request.head.repo.full_name == github.repository &&   github.event.pull_request.user.login == 'devantler' && needs.catalogue-scope.outputs.catalogue == 'true' }}"
+
+
+
+
+
+
+
     name: "[Test] Run .NET Tests - Authenticated Packages"
     uses: ./.github/workflows/run-dotnet-tests.yaml
     # Exercise the opt-in state only for the maintainer-authored code from this repository.
@@ -3683,7 +3782,8 @@ jobs:
       code-quality: write # callers must grant this for the coverage upload (GitHub Code Quality)
 
   test-enable-auto-merge:
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    needs: catalogue-scope
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && needs.catalogue-scope.outputs.catalogue == 'true' }}"
     name: "[Test] Enable Auto-Merge"
     uses: ./.github/workflows/enable-auto-merge.yaml
     # Static caller ceiling for the production callee. Dry-run excludes both
@@ -3698,7 +3798,8 @@ jobs:
       actions: read
 
   test-enable-auto-merge-actor-trust:
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    needs: catalogue-scope
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && needs.catalogue-scope.outputs.catalogue == 'true' }}"
     name: "[Test] Enable Auto-Merge - Actor Trust Enabled"
     uses: ./.github/workflows/enable-auto-merge.yaml
     with:
@@ -3712,7 +3813,8 @@ jobs:
       contents: write
 
   test-enable-auto-merge-queued:
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    needs: catalogue-scope
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && needs.catalogue-scope.outputs.catalogue == 'true' }}"
     name: "[Test] Enable Auto-Merge - Pending Queue Enabled"
     uses: ./.github/workflows/enable-auto-merge.yaml
     with:
@@ -3762,7 +3864,8 @@ jobs:
   # Exercise GitHub's scheduler without a PR mutation, checkout, or App token.
   # A three-job burst exposes queue:single's replacement of the middle job.
   test-enable-auto-merge-queue:
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    needs: catalogue-scope
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && needs.catalogue-scope.outputs.catalogue == 'true' }}"
     name: "[Test] Enable Auto-Merge - Queue Slot ${{ matrix.slot }}"
     runs-on: ubuntu-latest
     permissions: {}
@@ -3878,7 +3981,8 @@ jobs:
         run: bash .github/tests/test-queue-observer-controls.sh
 
   test-create-release:
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    needs: catalogue-scope
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && needs.catalogue-scope.outputs.catalogue == 'true' }}"
     name: "[Test] Create Release - Dry Run"
     uses: ./.github/workflows/create-release.yaml
     permissions: {}
@@ -3887,7 +3991,8 @@ jobs:
       offline-test: true
 
   test-create-release-no-issue-side-effects:
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    needs: catalogue-scope
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && needs.catalogue-scope.outputs.catalogue == 'true' }}"
     name: "[Test] Create Release - No Issue Side Effects"
     uses: ./.github/workflows/create-release.yaml
     permissions: {}
@@ -3990,7 +4095,8 @@ jobs:
       dry-run: true
 
   test-publish-dotnet-library:
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    needs: catalogue-scope
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && needs.catalogue-scope.outputs.catalogue == 'true' }}"
     name: "[Test] Publish .NET Library - Dry Run"
     uses: ./.github/workflows/publish-dotnet-library.yaml
     permissions:
@@ -4137,7 +4243,8 @@ jobs:
       enable-signed-promotion: true
 
   test-scan-for-todo-comments:
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    needs: catalogue-scope
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && needs.catalogue-scope.outputs.catalogue == 'true' }}"
     name: "[Test] Scan for TODO Comments - Dry Run (vendor exclusion)"
     uses: ./.github/workflows/scan-for-todo-comments-readonly.yaml
     permissions:
@@ -4147,7 +4254,8 @@ jobs:
       exclude-vendored: true
 
   test-scan-for-todo-comments-no-project:
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    needs: catalogue-scope
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && needs.catalogue-scope.outputs.catalogue == 'true' }}"
     name: "[Test] Scan for TODO Comments - Production Steps Without a Project"
     uses: ./.github/workflows/scan-for-todo-comments-readonly.yaml
     permissions:
@@ -4160,14 +4268,16 @@ jobs:
       ignore: ".*"
 
   test-scan-for-todo-comments-default:
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    needs: catalogue-scope
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && needs.catalogue-scope.outputs.catalogue == 'true' }}"
     name: "[Test] Scan for TODO Comments - Production Compatibility Defaults"
     uses: ./.github/workflows/scan-for-todo-comments-default-fixture.yaml
     permissions:
       contents: read
 
   test-scan-for-todo-comments-default-control:
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    needs: catalogue-scope
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && needs.catalogue-scope.outputs.catalogue == 'true' }}"
     name: "[Test] Scan for TODO Comments - Reject Missing Project Token"
     uses: ./.github/workflows/scan-for-todo-comments-default-fixture.yaml
     permissions:
@@ -4176,7 +4286,8 @@ jobs:
       fixture-skip-app-token: true
 
   test-scan-for-todo-comments-ignore:
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    needs: catalogue-scope
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && needs.catalogue-scope.outputs.catalogue == 'true' }}"
     name: "[Test] Scan for TODO Comments - Dry Run (ignore configured)"
     uses: ./.github/workflows/scan-for-todo-comments-readonly.yaml
     permissions:
@@ -4186,7 +4297,8 @@ jobs:
       ignore: '^\.github/tests/'
 
   test-sync-cluster-policies:
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    needs: catalogue-scope
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && needs.catalogue-scope.outputs.catalogue == 'true' }}"
     name: "[Test] Sync Cluster Policies - Dry Run"
     uses: ./.github/workflows/sync-cluster-policies.yaml
     permissions: {}
@@ -4223,7 +4335,8 @@ jobs:
         run: bash .github/tests/test-sync-cluster-policies-credentials-blocks.sh
 
   test-update-agent-skills:
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    needs: catalogue-scope
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && needs.catalogue-scope.outputs.catalogue == 'true' }}"
     name: "[Test] Update Agent Skills - Dry Run"
     uses: ./.github/workflows/update-agent-skills.yaml
     permissions:
@@ -4235,7 +4348,8 @@ jobs:
   # Flag-on state of the opt-in per-skill PRs (#1309), so the input stays part of the interface;
   # test-update-agent-skills-per-skill.sh pins both states and the per-skill job's apply step.
   test-update-agent-skills-per-skill:
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    needs: catalogue-scope
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && needs.catalogue-scope.outputs.catalogue == 'true' }}"
     name: "[Test] Update Agent Skills - Per-Skill PRs Dry Run"
     uses: ./.github/workflows/update-agent-skills.yaml # zizmor: ignore[self-repository]
     permissions:
@@ -4246,7 +4360,8 @@ jobs:
       pr-per-skill: true
 
   test-template-sync:
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    needs: catalogue-scope
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && needs.catalogue-scope.outputs.catalogue == 'true' }}"
     name: "[Test] Template Sync - Dry Run"
     uses: ./.github/workflows/template-sync.yaml
     permissions:
@@ -4260,7 +4375,8 @@ jobs:
   # The ignore-entry merge is a release flag: instantiate its on state as well. Its behaviour is
   # exercised offline by test-template-sync-ignore-merge.sh in lint-ci-coverage-parity.
   test-template-sync-merge-ignore:
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    needs: catalogue-scope
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && needs.catalogue-scope.outputs.catalogue == 'true' }}"
     name: "[Test] Template Sync - Dry Run (Merge Ignore Entries)"
     uses: ./.github/workflows/template-sync.yaml
     permissions:
@@ -4283,7 +4399,8 @@ jobs:
   # The default-on caller scans this repo's clean fixture on main pushes. Dedicated
   # vulnerable fixtures below establish allowlist and strict-failure verdicts.
   test-govulncheck-allowlist-honored:
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    needs: catalogue-scope
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && needs.catalogue-scope.outputs.catalogue == 'true' }}"
     name: "[Test] Govulncheck Allowlist - Allowlisted Advisory Passes"
     strategy:
       fail-fast: false
@@ -4329,7 +4446,8 @@ jobs:
         run: jq -es --arg version "go$GO_VERSION" '.[0].config.go_version == $version' govulncheck-allowlisted.json
 
   test-govulncheck-strict-blocks:
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    needs: catalogue-scope
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && needs.catalogue-scope.outputs.catalogue == 'true' }}"
     name: "[Test] Govulncheck Allowlist - Strict Path Blocks"
     strategy:
       fail-fast: false
@@ -4742,7 +4860,8 @@ jobs:
   # The stand-in keeps the `./` form with
   # zizmor's self-repository audit suppressed: actionlint 1.7.12 rejects `$/` (#1234).
   test-govulncheck-timeout-retry-live:
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    needs: catalogue-scope
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && needs.catalogue-scope.outputs.catalogue == 'true' }}"
     name: "[Test] Govulncheck - A Timed-Out Scan Is Retried Once"
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -5047,7 +5166,8 @@ jobs:
   # path, audits it. Keep the action SHA in lockstep with the gate
   # (enforced by test-zizmor-action-lockstep).
   test-zizmor-blocks:
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    needs: catalogue-scope
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && needs.catalogue-scope.outputs.catalogue == 'true' }}"
     name: "[Test] Zizmor - Blocks On Vulnerable Fixture"
     runs-on: ubuntu-latest
     permissions:
@@ -5100,7 +5220,8 @@ jobs:
           echo "Zizmor gate correctly blocked on the vulnerable fixture ✅"
 
   test-zizmor-action-lockstep:
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    needs: catalogue-scope
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && needs.catalogue-scope.outputs.catalogue == 'true' }}"
     name: "[Test] Zizmor - Gate Pins Self-Tested Action"
     runs-on: ubuntu-latest
     permissions:
@@ -5215,7 +5336,8 @@ jobs:
           echo "Lint gate correctly blocked on the errcheck violation ✅"
 
   test-validate-go-test-blocks:
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    needs: catalogue-scope
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && needs.catalogue-scope.outputs.catalogue == 'true' }}"
     name: "[Test] Validate Go Project - Test Gate Blocks"
     runs-on: ubuntu-latest
     permissions:
@@ -5293,7 +5415,8 @@ jobs:
         run: bash .github/tests/test-catalogue-pin-guards-controls.sh
 
   test-validate-go-project-concurrency-key:
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    needs: catalogue-scope
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && needs.catalogue-scope.outputs.catalogue == 'true' }}"
     name: "[Test] Validate Go Project - Invocation-Aware Concurrency Key"
     runs-on: ubuntu-latest
     permissions:
@@ -5358,7 +5481,8 @@ jobs:
   # self-test — a happy-path test alone cannot catch a gate that silently stopped biting.
   # apply-fixes is false here: the self-test must never commit to the branch under test.
   test-lint-workflow:
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    needs: catalogue-scope
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && needs.catalogue-scope.outputs.catalogue == 'true' }}"
     name: "[Test] Lint - Passes On Clean Fixture"
     # This is the real read-only consumer proof: GitHub rejects a called workflow at
     # startup if any job tries to elevate beyond these caller permissions.
@@ -5370,7 +5494,8 @@ jobs:
       apply-fixes: false
 
   test-lint-workflow-manual-fixes:
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    needs: catalogue-scope
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && needs.catalogue-scope.outputs.catalogue == 'true' }}"
     name: "[Test] Lint - Manual Workflow Fixes Opted In"
     permissions:
       contents: read
@@ -5381,7 +5506,8 @@ jobs:
       manual-workflow-fixes: true
 
   test-lint-blocks:
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    needs: catalogue-scope
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && needs.catalogue-scope.outputs.catalogue == 'true' }}"
     name: "[Test] Lint - Blocks On Invalid Fixture"
     runs-on: ubuntu-latest
     permissions:
@@ -5435,7 +5561,8 @@ jobs:
   # Exercise the internal exporter through the runner, including deletion of its
   # loaded helper checkout and upload recovery after an actual preparation error.
   test-prepare-fixes:
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    needs: catalogue-scope
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && needs.catalogue-scope.outputs.catalogue == 'true' }}"
     name: "[Test] Fix Exporter - ${{ matrix.scenario }}"
     runs-on: ubuntu-latest
     permissions:
@@ -5643,7 +5770,8 @@ jobs:
   # permissions. The call commits nothing by construction as well as by gate: no patch
   # artifact exists and no App key is passed.
   test-apply-signed-fixes-suppresses-bots:
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    needs: catalogue-scope
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && needs.catalogue-scope.outputs.catalogue == 'true' }}"
     name: "[Test] Apply Signed Fixes - Refuses A Dependency-Bot Branch"
     permissions:
       contents: read
@@ -5667,7 +5795,8 @@ jobs:
   # would fail with an empty private key and take this job red. A green here therefore asserts
   # both halves at once: the check ran, and nothing privileged did.
   test-apply-signed-fixes-verifies-without-a-patch:
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    needs: catalogue-scope
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && needs.catalogue-scope.outputs.catalogue == 'true' }}"
     name: "[Test] Apply Signed Fixes - Verifies The Tip With No Patch"
     permissions:
       contents: read
@@ -5832,6 +5961,7 @@ jobs:
     name: CI - Required Checks
     if: ${{ always() }}
     needs:
+      - catalogue-scope
       - test-validate-naming
       - test-validate-retired-repo-links
       - test-validate-retired-repo-links-disabled
@@ -5961,6 +6091,7 @@ jobs:
         shell: bash
         env:
           JOB_RESULTS: >-
+            ${{ needs.catalogue-scope.result }}
             ${{ needs.test-validate-naming.result }}
             ${{ needs.test-validate-retired-repo-links.result }}
             ${{ needs.test-validate-retired-repo-links-disabled.result }}
