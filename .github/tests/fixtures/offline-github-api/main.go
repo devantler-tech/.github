@@ -120,6 +120,10 @@ func loadScenario(path string) ([]route, error) {
 	if err != nil {
 		return nil, err
 	}
+	return parseScenario(raw, path)
+}
+
+func parseScenario(raw []byte, path string) ([]route, error) {
 	if err := unambiguousJSON(raw); err != nil {
 		return nil, fmt.Errorf("%s: %w", path, err)
 	}
@@ -129,6 +133,21 @@ func loadScenario(path string) ([]route, error) {
 	var document map[string]json.RawMessage
 	if err := json.Unmarshal(raw, &document); err != nil {
 		return nil, fmt.Errorf("%s: %w", path, err)
+	}
+	// Struct decoding also accepts case-insensitive field aliases. Check exact
+	// keys first so served routes and the scenario verifier mean the same thing.
+	var routeDocuments []map[string]json.RawMessage
+	if err := json.Unmarshal(document["routes"], &routeDocuments); err != nil {
+		return nil, err
+	}
+	for _, fields := range routeDocuments {
+		for name := range fields {
+			switch name {
+			case "method", "path", "query", "status", "headers", "body":
+			default:
+				return nil, errors.New("route field names must match the exact scenario schema")
+			}
+		}
 	}
 	var routes []route
 	decoder := json.NewDecoder(bytes.NewReader(document["routes"]))
@@ -151,7 +170,13 @@ func loadScenario(path string) ([]route, error) {
 		if len(candidate.Body) > 0 && (candidate.Method == http.MethodHead || candidate.Status == 204 || candidate.Status == 304) {
 			return nil, fmt.Errorf("%s: route %d would discard its reviewed body", path, index)
 		}
+		headerNames := map[string]bool{}
 		for name, value := range candidate.Headers {
+			canonical := http.CanonicalHeaderKey(name)
+			if headerNames[canonical] {
+				return nil, errors.New("route header names must be unique ignoring case")
+			}
+			headerNames[canonical] = true
 			if !httpToken(name) || strings.IndexFunc(value, func(ch rune) bool { return ch < 32 && ch != '\t' || ch == 127 }) >= 0 || strings.EqualFold(name, "Content-Length") || strings.EqualFold(name, "Transfer-Encoding") || strings.EqualFold(name, "Trailer") {
 				return nil, fmt.Errorf("%s: route %d has an unservable header", path, index)
 			}
@@ -278,7 +303,7 @@ func (s *server) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
 		recorded.Status = answer.Status
 		body = answer.Body
 		for name, value := range answer.Headers {
-			headers[name] = strings.ReplaceAll(value, "{{base_url}}", s.baseURL)
+			headers[http.CanonicalHeaderKey(name)] = strings.ReplaceAll(value, "{{base_url}}", s.baseURL)
 		}
 	}
 
@@ -331,7 +356,13 @@ func run() error {
 		return errors.New("completion file and nonce must be paired")
 	}
 
-	routes, err := loadScenario(*scenarioPath)
+	// Retain the same admitted bytes used to create routes. A replacement file
+	// after serving must never receive a clean receipt for responses not served.
+	scenario, err := os.ReadFile(*scenarioPath)
+	if err != nil {
+		return err
+	}
+	routes, err := parseScenario(scenario, *scenarioPath)
 	if err != nil {
 		return err
 	}
@@ -345,10 +376,6 @@ func run() error {
 		return err
 	}
 	raw, err := os.ReadFile(*recordPath)
-	if err != nil {
-		return err
-	}
-	scenario, err := os.ReadFile(*scenarioPath)
 	if err != nil {
 		return err
 	}

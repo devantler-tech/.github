@@ -1,10 +1,19 @@
 package main
 
 import (
+	"bytes"
+	"context"
+	"crypto/sha256"
+	"encoding/json"
+	"flag"
+	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"testing"
 	"time"
@@ -16,6 +25,8 @@ func TestScenarioAdmission(t *testing.T) {
 		"duplicate document key": `{"routes":[],"routes":[{"method":"GET","path":"/ok","status":200}]}`,
 		"duplicate route key":    `{"routes":[{"method":"GET","path":"/ok","status":403,"status":200}]}`,
 		"duplicate query key":    `{"routes":[{"method":"GET","path":"/ok","query":{"x":"a","x":"b"},"status":200}]}`,
+		"route field alias":      `{"routes":[{"method":"GET","path":"/ok","status":200,"body":[],"Body":{"different":true}}]}`,
+		"header name alias":      `{"routes":[{"method":"GET","path":"/ok","status":200,"headers":{"Link":"first","link":"second"}}]}`,
 		"null query value":       `{"routes":[{"method":"GET","path":"/ok","query":{"x":null},"status":200}]}`,
 		"query in path":          `{"routes":[{"method":"GET","path":"/ok?x=1","status":200}]}`,
 		"invalid method":         `{"routes":[{"method":"G@T","path":"/ok","status":200}]}`,
@@ -44,6 +55,90 @@ func TestScenarioAdmission(t *testing.T) {
 	}
 }
 
+func TestRunProcessHelper(t *testing.T) {
+	if os.Getenv("OFFLINE_RUN_PROCESS_TEST") != "1" {
+		return
+	}
+	for i, arg := range os.Args {
+		if arg == "--" {
+			os.Args = append([]string{"offline-github-api"}, os.Args[i+1:]...)
+			break
+		}
+	}
+	flag.CommandLine = flag.NewFlagSet("offline-github-api", flag.ExitOnError)
+	main()
+	os.Exit(0)
+}
+
+func TestReceiptBindsAdmittedScenario(t *testing.T) {
+	work := t.TempDir()
+	scenario, record, address, completion := filepath.Join(work, "scenario"), filepath.Join(work, "record"), filepath.Join(work, "address"), filepath.Join(work, "completion")
+	original := []byte(`{"routes":[{"method":"GET","path":"/ok","status":200,"body":[]}]}`)
+	replacement := []byte(`{"routes":[{"method":"GET","path":"/ok","status":200,"body":{"unserved":true}}]}`)
+	if err := os.WriteFile(scenario, original, 0600); err != nil {
+		t.Fatal(err)
+	}
+	executable, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, executable, "-test.run=^TestRunProcessHelper$", "--", "-scenario", scenario, "-record", record, "-address-file", address, "-token", "fixture", "-completion-file", completion, "-nonce", "current")
+	cmd.Env = append(os.Environ(), "OFFLINE_RUN_PROCESS_TEST=1")
+	var diagnostic bytes.Buffer
+	cmd.Stderr = &diagnostic
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = cmd.Process.Kill() }()
+	var raw []byte
+	for until := time.Now().Add(5 * time.Second); time.Now().Before(until); {
+		raw, _ = os.ReadFile(address)
+		if len(raw) > 0 {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if len(raw) == 0 {
+		t.Fatal("server did not publish its address")
+	}
+	req, err := http.NewRequest("GET", strings.TrimSpace(string(raw))+"/ok", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Authorization", "token fixture")
+	response, err := (&http.Client{Timeout: 5 * time.Second}).Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, err := io.ReadAll(response.Body)
+	response.Body.Close()
+	if err != nil || string(body) != "[]" {
+		t.Fatalf("original response: %q, %v", body, err)
+	}
+	if err := os.WriteFile(scenario, replacement, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := cmd.Process.Signal(syscall.SIGTERM); err != nil {
+		t.Fatal(err)
+	}
+	if err := cmd.Wait(); err != nil {
+		t.Fatalf("shutdown: %v: %s", err, diagnostic.String())
+	}
+	raw, err = os.ReadFile(completion)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var receipt map[string]string
+	if err := json.Unmarshal(raw, &receipt); err != nil {
+		t.Fatal(err)
+	}
+	if receipt["scenario_sha256"] != fmt.Sprintf("%x", sha256.Sum256(original)) {
+		t.Fatal("receipt certified scenario bytes the server never served")
+	}
+}
+
 func TestMalformedQuery(t *testing.T) {
 	record, err := os.CreateTemp(t.TempDir(), "record")
 	if err != nil {
@@ -57,6 +152,24 @@ func TestMalformedQuery(t *testing.T) {
 	s.ServeHTTP(w, r)
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("malformed query was served: %d", w.Code)
+	}
+}
+
+func TestHeaderCaseOverridesDefault(t *testing.T) {
+	record, err := os.CreateTemp(t.TempDir(), "record")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer record.Close()
+	s := &server{routes: []route{{Method: "GET", Path: "/ok", Status: 200, Headers: map[string]string{"content-type": "application/problem+json"}}}, token: "fixture", record: record}
+	for i := 0; i < 30; i++ {
+		r := httptest.NewRequest("GET", "http://127.0.0.1/ok", nil)
+		r.Header.Set("Authorization", "token fixture")
+		w := httptest.NewRecorder()
+		s.ServeHTTP(w, r)
+		if w.Header().Get("Content-Type") != "application/problem+json" {
+			t.Fatal("reviewed header override was replaced by a default")
+		}
 	}
 }
 
