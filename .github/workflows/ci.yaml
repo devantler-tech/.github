@@ -631,8 +631,7 @@ jobs:
   # conversation and the verifier compares it with the reviewed one.
   test-dependency-review-comments:
     name: "[Test] Dependency Review - Summary Comment (${{ matrix.scenario }})"
-    needs: catalogue-scope
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && needs.catalogue-scope.outputs.catalogue == 'true' }}"
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
     runs-on: ubuntu-latest
     timeout-minutes: 10
     strategy:

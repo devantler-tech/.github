@@ -156,6 +156,8 @@ results="$(yq -r '.jobs."ci-required-checks".steps[] | select(.name == "📊 Sum
 [[ "$(yq -r '.jobs."test-validate-retired-repo-links".if' "${ci}")" == *"needs.catalogue-scope.outputs.catalogue == 'true'"* ]] || fail 'unrelated smoke job ignores scope'
 [[ "$(yq -r '.jobs."validate-manifests".needs' "${ci}")" == null ]] || fail 'manifest checks became conditional on scope'
 [[ "$(yq -r '.jobs."lint-ci-coverage-parity".needs' "${ci}")" == null ]] || fail 'security contract checks became conditional on scope'
+[[ "$(yq -r '.jobs."test-dependency-review-comments".needs' "${ci}")" == null ]] || fail 'credential-boundary replay became conditional on scope'
+[[ "$(yq -r '.jobs."test-dependency-review-comments".if' "${ci}")" != *'needs.catalogue-scope'* ]] || fail 'credential-boundary replay ignores its unconditional contract'
 yq -o=json -I=0 '.jobs' "${ci}" | jq -e '
   [to_entries[] | select(any(.value.steps[]?; (.run // "") | contains(".github/tests/test-"))) |
     select(.value.needs != null or ((.value.if // "") | contains("needs.catalogue-scope")))] | length == 0
