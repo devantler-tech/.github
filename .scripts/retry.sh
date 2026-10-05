@@ -21,6 +21,9 @@
 #   RETRY_BASE_DELAY     seconds to wait before the first retry  (default 5)
 #   RETRY_MAX_DELAY      cap on the backoff delay in seconds     (default 60)
 #
+# Stdout contains only the successful attempt, with its bytes preserved. Each
+# attempt is buffered so a partial failed response cannot contaminate a later
+# successful JSON or state read. Command stderr remains visible immediately.
 # Exit status: 0 on the first success; otherwise the failing command's last exit
 # status after RETRY_MAX_ATTEMPTS attempts, so a genuine failure still reds the
 # check. (No `set -e`: command failure is handled explicitly, not fatally.)
@@ -35,17 +38,80 @@ if [ "$#" -eq 0 ]; then
   exit 2
 fi
 
+attempt_stdout=$(umask 077; mktemp "${TMPDIR:-/tmp}/retry-stdout.XXXXXX") || exit 2
+trap 'rm -f "$attempt_stdout"' EXIT
+command_pid=''
+launching=false
+pending_interrupt=''
+launch_owned() {
+  local capture="$1"
+  shift
+  local restore_monitor=false
+  [[ "$-" == *m* ]] || restore_monitor=true
+  launching=true
+  # Job control gives this attempt its own process group on both macOS and
+  # Linux. Nested installers inherit that group; no process-name search or
+  # signal to the caller's group is needed when cancellation arrives.
+  set -m
+  if [[ "$capture" == true ]]; then
+    "$@" <&0 >"$attempt_stdout" &
+  else
+    "$@" <&0 &
+  fi
+  command_pid=$!
+  [[ "$restore_monitor" == false ]] || set +m
+  launching=false
+  [[ -z "$pending_interrupt" ]] || interrupted "$pending_interrupt"
+}
+interrupted() {
+  # A signal can arrive between spawning and saving $!. Defer it until the
+  # launch records the group identity rather than leaving an unowned child.
+  if [[ "$launching" == true ]]; then
+    pending_interrupt="${pending_interrupt:-$1}"
+    return
+  fi
+  trap '' HUP INT TERM
+  if [ -n "$command_pid" ]; then
+    # Stop this attempt's group, including a wrapper's nested installer,
+    # before removing its partial result. Then reap the owned direct child.
+    kill -TERM -- "-$command_pid" 2>/dev/null || true
+    kill -KILL -- "-$command_pid" 2>/dev/null || true
+    wait "$command_pid" 2>/dev/null || true
+  fi
+  exit "$1"
+}
+trap 'interrupted 129' HUP
+trap 'interrupted 130' INT
+trap 'interrupted 143' TERM
+
 attempt=1
 delay="$base_delay"
 while true; do
-  "$@" && exit 0
+  # An asynchronous wait lets Bash run signal traps while the command is
+  # still alive. Explicit stdin preserves the wrapped command's input.
+  launch_owned true "$@"
+  wait "$command_pid"
   status=$?
+  command_pid=''
+  if [ "$status" -eq 0 ]; then
+    # The caller can stop reading a successful result. Keep its forwarder
+    # owned and interruptible just like the producer and backoff process.
+    launch_owned false cat "$attempt_stdout"
+    wait "$command_pid"
+    status=$?
+    command_pid=''
+    exit "$status"
+  fi
   if [ "$attempt" -ge "$max_attempts" ]; then
     echo "::error::'$*' failed after ${max_attempts} attempt(s) (last exit ${status})" >&2
     exit "$status"
   fi
   echo "::warning::'$*' failed (exit ${status}); attempt ${attempt}/${max_attempts}, retrying in ${delay}s" >&2
-  sleep "$delay"
+  launch_owned true sleep "$delay"
+  wait "$command_pid"
+  sleep_status=$?
+  command_pid=''
+  [ "$sleep_status" -eq 0 ] || exit "$sleep_status"
   attempt=$((attempt + 1))
   delay=$((delay * 2))
   if [ "$delay" -gt "$max_delay" ]; then

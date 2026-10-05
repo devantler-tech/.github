@@ -15,10 +15,10 @@ yq -o=json '.' "$workflow" | jq -e '
 # shellcheck disable=SC2016 # Literal GitHub expressions are the admission contract.
 yq -o=json '.' "$workflow" | jq -e '
   .jobs.publish.steps as $steps |
-  (["🔍 Validate the deployment manifest", "🏷️ Derive image tags", "🐳 Build & push image", "📌 Pin image digest in manifests"] |
+  (["🔍 Validate the deployment manifest", "🔒 Prepare signed image staging", "🏷️ Derive image tags", "🐳 Build & push image", "📌 Pin image digest in manifests"] |
     all(. as $name | ($steps | map(select(.name == $name)) | length == 1) and
       ($steps | map(select(.name == $name))[0].if == "${{ !inputs.enable-signed-recovery }}"))) and
-  (["🔒 Prepare signed image staging", "📦 Sign & promote image and manifests"] |
+  (["📦 Sign & promote image and manifests"] |
     all(. as $name | ($steps | map(select(.name == $name))[0].if == "${{ !inputs.enable-signed-recovery && (inputs.enable-signed-promotion == true || inputs.enable-signed-promotion == '\''true'\'') }}"))) and
   ($steps | map(select(.name == "🔏 Recover original application version"))[0] |
     .if == "${{ inputs.enable-signed-recovery }}" and

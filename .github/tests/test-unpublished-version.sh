@@ -68,6 +68,17 @@ case "$url" in
 esac
 CURL
 chmod +x "$work/bin/curl"
+validate_binding() {
+  yq -o=json '.' "$1" | jq -e '
+    .jobs[] | .steps as $steps |
+    [$steps | to_entries[] | select(.value.name == "🔒 Refuse an occupied release version")] as $guard |
+    ($guard | length) == 1 and $guard[0].value.if == "${{ !inputs.enable-signed-recovery }}" and
+    all($steps | to_entries[] | select(.value.id == "build" or .value.name == "📦 Push & sign manifests artifact");
+      .key > $guard[0].key) and
+    all($steps[] | select(.name == "🔒 Reserve publisher helper checkout" or
+      .name == "📑 Checkout immutable publisher helpers" or .name == "🔒 Prepare immutable publication guard");
+      has("if") | not)' >/dev/null
+}
 if [[ "$#" == 0 ]]; then
   for workflow in publish-app publish-manifests; do
     yq -o=json '.' "$root/.github/workflows/$workflow.yaml" | jq -e '
@@ -79,6 +90,43 @@ if [[ "$#" == 0 ]]; then
         .with["persist-credentials"] == false] == [true])' >/dev/null || {
       echo 'FAIL: publication guard is not bound to the immutable workflow source'; exit 1;
     }
+    production="$root/.github/workflows/$workflow.yaml"
+    yq -r '.jobs[].steps[] | select(.name == "🔒 Refuse an occupied release version") | .run' \
+      "$production" >"$work/admission.sh"
+    [[ -s "$work/admission.sh" ]] || { echo "FAIL: $workflow has no default version admission"; exit 1; }
+    cp "$script" "$work/require-unpublished-version.sh"
+    for scenario in absent exists token-transport forbidden malformed redirect; do
+      : >"$work/trace"
+      status=0
+      env -i PATH="$work/bin:$PATH" TRACE="$work/trace" SCENARIO="$scenario" REGISTRY=ghcr.io \
+        IMAGE_NAME=devantler-tech/app OCI_NAME=devantler-tech/app REPOSITORY=devantler-tech/app \
+        VERSION=1.2.3 ACTOR=fixture GH_TOKEN=synthetic-token RUNNER_TEMP="$work" \
+        bash "$work/admission.sh" >"$work/log" 2>&1 || status=$?
+      if [[ "$scenario" == absent ]]; then
+        [[ "$status" == 0 ]] || { cat "$work/log"; exit 1; }
+        expected_reads=2
+        [[ "$workflow" != publish-app ]] || expected_reads=4
+        [[ "$(wc -l <"$work/trace" | tr -d ' ')" == "$expected_reads" ]] || {
+          echo "FAIL: default $workflow omitted a publication target"; exit 1;
+        }
+      else
+        [[ "$status" != 0 ]] || { echo "FAIL: default $workflow $scenario authorized publication"; exit 1; }
+      fi
+    done
+    validate_binding "$production" || {
+      echo "FAIL: $workflow default version refusal is not before every registry write"; exit 1;
+    }
+    for mutation in deleted gated late helper-gated; do
+      # shellcheck disable=SC2016 # Workflow expressions in negative controls.
+      case "$mutation" in
+        deleted) expression='.jobs[].steps |= map(select(.name != "🔒 Refuse an occupied release version"))' ;;
+        gated) expression='(.jobs[].steps[] | select(.name == "🔒 Refuse an occupied release version")).if = "${{ inputs.enable-signed-promotion }}"' ;;
+        late) expression='.jobs[].steps |= (map(select(.name != "🔒 Refuse an occupied release version")) + map(select(.name == "🔒 Refuse an occupied release version")))' ;;
+        helper-gated) expression='(.jobs[].steps[] | select(.name == "📑 Checkout immutable publisher helpers")).if = "${{ inputs.enable-signed-promotion }}"' ;;
+      esac
+      yq "$expression" "$production" >"$work/mutated.yaml"
+      if validate_binding "$work/mutated.yaml"; then echo "FAIL: $workflow accepted $mutation version admission"; exit 1; fi
+    done
   done
 fi
 for scenario in absent missing-repository token-padded exists image-only manifests-only token-transport token-forbidden token-malformed token-empty token-injection token-multiple token-conflict transport forbidden throttled server redirect malformed empty wrong-code mixed-errors missing-code multiple-documents; do
