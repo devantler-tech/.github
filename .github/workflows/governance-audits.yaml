@@ -86,7 +86,7 @@ jobs:
     steps:
       - name: Report incomplete or noncompliant audit
         if: needs.admit.result != 'success' || needs.audit.result != 'success'
-        uses: devantler-tech/.github/actions/upsert-issue@6d7a19f3b37722806610ade51da745d939eef7e5 # v4.3.0
+        uses: devantler-tech/.github/actions/upsert-issue@498fb4b11f129928d3af9a90e9c5a46f1c4dbd77 # v7.0.0
         with:
           repository: devantler-tech/.github
           title: "Scheduled governance audits need attention"
@@ -103,7 +103,7 @@ jobs:
             Audit: ${{ needs.audit.result }}
       - name: Close only after a complete successful audit
         if: needs.admit.result == 'success' && needs.audit.result == 'success'
-        uses: devantler-tech/.github/actions/upsert-issue@6d7a19f3b37722806610ade51da745d939eef7e5 # v4.3.0
+        uses: devantler-tech/.github/actions/upsert-issue@498fb4b11f129928d3af9a90e9c5a46f1c4dbd77 # v7.0.0
         with:
           repository: devantler-tech/.github
           title: "Scheduled governance audits need attention"
