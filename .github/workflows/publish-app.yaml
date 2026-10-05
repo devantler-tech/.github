@@ -65,7 +65,7 @@ jobs:
     if: ${{ !inputs.dry-run }}
     runs-on: ubuntu-latest
     concurrency:
-      group: ${{ (inputs.enable-signed-promotion == true || inputs.enable-signed-promotion == 'true') && format('publish-verified-{0}', github.repository) || format('publish-legacy-app-{0}-{1}', github.run_id, github.run_attempt) }}
+      group: ${{ format('publish-verified-{0}', github.repository) }}
       queue: max
       cancel-in-progress: false
     permissions:
@@ -208,12 +208,10 @@ jobs:
           password: ${{ env.GH_TOKEN }}
 
       - name: 🔒 Reserve publisher helper checkout
-        if: ${{ inputs.enable-signed-promotion == true || inputs.enable-signed-promotion == 'true' }}
         run: |
           { test ! -e .devantler-tech-publisher && test ! -L .devantler-tech-publisher; } || { echo '::error::reserved publisher helper path already exists'; exit 1; }
 
       - name: 📑 Checkout immutable publisher helpers
-        if: ${{ inputs.enable-signed-promotion == true || inputs.enable-signed-promotion == 'true' }}
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: ${{ job.workflow_repository }}
@@ -222,11 +220,22 @@ jobs:
           persist-credentials: false
 
       - name: 🔒 Prepare immutable publication guard
-        if: ${{ inputs.enable-signed-promotion == true || inputs.enable-signed-promotion == 'true' }}
         run: |
           cp .devantler-tech-publisher/.github/scripts/require-unpublished-version.sh "$RUNNER_TEMP/require-unpublished-version.sh"
           cp .devantler-tech-publisher/.github/scripts/recover-app-version.sh "$RUNNER_TEMP/recover-app-version.sh"
           rm -rf -- .devantler-tech-publisher
+
+      - name: 🔒 Refuse an occupied release version
+        if: ${{ !inputs.enable-signed-recovery }}
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          ACTOR: ${{ github.actor }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          name="$(printf '%s' "$IMAGE_NAME" | tr '[:upper:]' '[:lower:]')"
+          OCI_REPOSITORIES="$(printf '%s\n%s' "$name" "$name/manifests")" \
+            bash "$RUNNER_TEMP/require-unpublished-version.sh"
 
       - name: 🔒 Prepare signed image staging
         id: staging
@@ -261,10 +270,10 @@ jobs:
         id: meta
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          flavor: latest=false
           tags: |
             type=semver,pattern={{version}}
             type=sha
-            type=raw,value=latest
 
       - name: 🐳 Build & push image
         if: ${{ !inputs.enable-signed-recovery }}
@@ -328,9 +337,21 @@ jobs:
           if ! printf '%s' "$ARTIFACT_DIGEST" | grep -Eq '^sha256:[0-9a-f]{64}$'; then
             echo "::error::flux push did not report the pushed artifact digest"; exit 1
           fi
-          flux tag artifact "oci://${ARTIFACT}:${VERSION}" --tag latest --creds "${ACTOR}:${GH_TOKEN}"
           cosign sign --yes "${ARTIFACT}@${ARTIFACT_DIGEST}"
           cosign sign --yes "${IMAGE}@${DIGEST}"
+          case "$VERSION" in
+            *-*) ;; # Prereleases keep both stable latest pointers.
+            *)
+              # Copy the signed image manifest without wrapping a single-platform
+              # image in a new index, which would change its signed digest.
+              docker buildx imagetools create --prefer-index=false \
+                --metadata-file="$RUNNER_TEMP/default-image-latest.json" \
+                --tag "${IMAGE}:latest" "${IMAGE}@${DIGEST}"
+              COPIED="$(jq -r '."containerimage.descriptor".digest // ""' "$RUNNER_TEMP/default-image-latest.json")"
+              [[ "$COPIED" == "$DIGEST" ]] || { echo '::error::image latest digest differs from the signed image'; exit 1; }
+              flux tag artifact "oci://${ARTIFACT}@${ARTIFACT_DIGEST}" --tag latest --creds "${ACTOR}:${GH_TOKEN}"
+              ;;
+          esac
 
       - name: 📦 Sign & promote image and manifests
         if: ${{ !inputs.enable-signed-recovery && (inputs.enable-signed-promotion == true || inputs.enable-signed-promotion == 'true') }}

@@ -41,6 +41,7 @@ fi
 if [[ "${SIGNED_PROMOTION:-true}" == false ]]; then
   [[ "$mode" == sign && "${#claims[@]}" == 0 ]] || exit 71
   touch "$state/signed"
+  touch "$state/$kind-signed"
   exit 0
 fi
 expected=(

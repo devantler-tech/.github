@@ -73,7 +73,13 @@ case "$1 $2" in
       [[ "$3" == "oci://$EXPECTED_ARTIFACT@$EXPECTED_DIGEST" ]] || exit 65
       [[ -f "$STATE/verified" ]] || { echo 'unsigned promotion' >&2; exit 66; }
     fi
-    if [[ "$5" == latest ]]; then printf '%s\n' "$EXPECTED_DIGEST" >"$STATE/latest";
+    promoted="$EXPECTED_DIGEST"
+    if [[ "$SIGNED_PROMOTION" != true ]]; then
+      if [[ "$FAIL_AT" == alias-moved && "$3" != "oci://$EXPECTED_ARTIFACT@$EXPECTED_DIGEST" ]]; then
+        promoted=foreign-digest
+      fi
+    fi
+    if [[ "$5" == latest ]]; then printf '%s\n' "$promoted" >"$STATE/latest";
     else printf '%s\n' "$EXPECTED_DIGEST" >"$STATE/version"; fi
     ;;
   *) exit 67 ;;
@@ -139,9 +145,19 @@ if run_case none 1.2.3 true "${identity#https://github.com/}" invalid; then fail
 [[ ! -s "$state/calls" ]] || fail 'invalid staging identity wrote to registry'
 default_mode="$(yq -r '.on.workflow_call.inputs["enable-signed-promotion"].default' "$workflow")"
 [[ "$default_mode" == false ]] || fail 'signed promotion must remain opt-in during migration'
+for failure in push digest sign; do
+  if run_case "$failure" 1.2.3 "$default_mode" '' 123; then fail "default succeeded after $failure failure"; fi
+  [[ "$(<"$state/latest")" == old-latest ]] || fail "default $failure failure moved latest"
+done
+run_case none 1.2.3-rc.1 "$default_mode" '' 123 || fail 'default prerelease failed'
+[[ "$(<"$state/latest")" == old-latest ]] || fail 'default prerelease moved latest'
+run_case alias-moved 1.2.3 "$default_mode" '' 123 || fail 'default alias-movement fixture failed'
+[[ "$(<"$state/latest")" == "$digest" ]] || fail 'default latest selected a mutable version alias'
 run_case none 1.2.3 "$default_mode" '' 123 || fail 'legacy default changed'
+[[ -e "$state/signed" ]] || fail 'default stable release was not signed'
 [[ "$(<"$state/pushed")" == "oci://$artifact:1.2.3" && "$(<"$state/latest")" == "$digest" ]] || fail 'legacy publication changed'
 echo 'ok default-off preserves existing callers; opted-in malformed identities fail before writes'
+echo 'ok default manifests latest is signed, stable-only and bound to the produced digest'
 
 # Keep these controls in required CI, using the same predicate as the real caller.
 for mutation in promotion pin moving family; do
@@ -160,6 +176,21 @@ done
 echo 'ok configuration caller refuses missing controls, moving refs and the wrong workflow family'
 
 if [[ "$#" == 0 ]]; then
+  for mutation in early-latest prerelease-latest mutable-alias; do
+    # shellcheck disable=SC2016 # Literal production variables in negative controls.
+    case "$mutation" in
+      early-latest) expression='(.jobs[].steps[] | select(.name == "📦 Push & sign manifests artifact")).run |= sub("cosign sign --yes"; "flux tag artifact \"oci://${ARTIFACT}@${DIGEST}\" --tag latest --creds \"${ACTOR}:${GH_TOKEN}\"\ncosign sign --yes")' ;;
+      prerelease-latest) expression='(.jobs[].steps[] | select(.name == "📦 Push & sign manifests artifact")).run |= sub("\\*-\\*\\) ;;"; "*-*) flux tag artifact \"oci://${ARTIFACT}@${DIGEST}\" --tag latest --creds \"${ACTOR}:${GH_TOKEN}\" ;;")' ;;
+      mutable-alias) expression='(.jobs[].steps[] | select(.name == "📦 Push & sign manifests artifact")).run |= sub("oci://\\$\\{ARTIFACT\\}@\\$\\{DIGEST\\}"; "oci://${ARTIFACT}:${VERSION}")' ;;
+    esac
+    yq "$expression" "$workflow" >"$scratch/mutated.yaml"
+    if bash "$0" "$scratch/mutated.yaml" >"$scratch/mutation.log" 2>&1; then
+      fail "accepted default manifests $mutation regression"
+    fi
+    grep -qE 'default sign failure moved latest|default prerelease moved latest|default latest selected a mutable version alias' "$scratch/mutation.log" ||
+      fail "default $mutation failed for an unrelated reason"
+  done
+  echo 'ok default latest ordering, prerelease and mutable-alias regressions are detected'
   # Remove only the final refusal, leaving the initial absence check intact.
   STEP="$step" yq '(.jobs[].steps[] | select(.name == strenv(STEP))).run |=
     sub("# Promotions read the verified digest, never a mutable staging alias.\n.*require-unpublished-version[^\n]*";

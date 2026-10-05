@@ -24,6 +24,7 @@ cp "$root/.github/scripts/require-unpublished-version.sh" "$work/require-unpubli
 cp "$root/.github/tests/fixtures/registry-read-curl.sh" "$work/bin/curl"
 yq -r '.jobs.publish.steps[] | select(.id == "staging") | .run' "$workflow" >"$work/staging.sh"
 yq -r '.jobs.publish.steps[] | select(.name == "📦 Sign & promote image and manifests") | .run' "$workflow" >"$work/promote.sh"
+yq -r '.jobs.publish.steps[] | select(.name == "📦 Push & sign manifests artifact") | .run' "$workflow" >"$work/default.sh"
 [[ -s "$work/staging.sh" && -s "$work/promote.sh" ]] || fail 'missing production promotion steps'
 image_digest="sha256:$(printf 'b%.0s' {1..64})"
 manifest_digest="sha256:$(printf 'a%.0s' {1..64})"
@@ -35,7 +36,9 @@ if [[ "$1 $2" == 'push artifact' ]]; then
   [[ "$FAULT" != manifest-push ]] || exit 23
   printf '{"digest":"%s"}\n' "$MANIFEST_DIGEST"
 else
-  [[ -e "$STATE/image-verified" && -e "$STATE/manifest-verified" ]] || exit 24
+  if [[ "$SIGNED_PROMOTION" == true ]]; then
+    [[ -e "$STATE/image-verified" && -e "$STATE/manifest-verified" ]] || exit 24
+  fi
 fi
 FLUX
 cp "$root/.github/tests/fixtures/publication-claims-cosign.sh" "$work/bin/cosign"
@@ -43,7 +46,11 @@ cat >"$work/bin/docker" <<'DOCKER'
 #!/usr/bin/env bash
 set -euo pipefail
 printf 'docker %s\n' "$*" >>"$TRACE"
-[[ -e "$STATE/image-verified" && -e "$STATE/manifest-verified" ]] || exit 24
+if [[ "$SIGNED_PROMOTION" == true ]]; then
+  [[ -e "$STATE/image-verified" && -e "$STATE/manifest-verified" ]] || exit 24
+else
+  [[ -e "$STATE/image-signed" && -e "$STATE/manifest-signed" ]] || exit 24
+fi
 [[ "$*" == *'--prefer-index=false'* && "$*" == *"@$IMAGE_DIGEST"* ]] || exit 25
 [[ "$FAULT" != image-promotion ]] || exit 23
 for arg in "$@"; do
@@ -58,6 +65,7 @@ chmod +x "$work/bin/"*
 run_step() {
   env PATH="$work/bin:$PATH" TRACE="$work/trace" STATE="$work/state" FAULT="$1" \
     IMAGE_DIGEST="$image_digest" MANIFEST_DIGEST="$manifest_digest" DIGEST="${5:-$image_digest}" \
+    SIGNED_PROMOTION="${6:-true}" IMAGE=ghcr.io/devantler-tech/app \
     REGISTRY=ghcr.io IMAGE_NAME=devantler-tech/app DEPLOY_PATH=./deploy \
     VERSION="$2" REF_NAME="v$2" SHA=fedcba9876543210fedcba9876543210fedcba98 \
     SERVER_URL=https://github.com REPOSITORY=devantler-tech/app ACTOR=fixture GH_TOKEN=fixture \
@@ -105,14 +113,43 @@ for version in 1.2.3 1.2.3-rc.1; do
 done
 echo 'app-promotion: healthy stable/prerelease and signing, verification, push and digest failures pass'
 
+for fault in manifest-push image-sign manifest-sign; do
+  rm -f "$work/state/"* "$work/trace"
+  if run_step "$fault" 1.2.3 '' "$work/default.sh" "$image_digest" false >"$work/log" 2>&1; then
+    fail "default accepted failed $fault"
+  fi
+  ! grep -q latest "$work/trace" || fail "default advanced latest after failed $fault"
+done
+for version in 1.2.3 1.2.3-rc.1; do
+  rm -f "$work/state/"* "$work/trace"
+  run_step none "$version" '' "$work/default.sh" "$image_digest" false >"$work/log" 2>&1 ||
+    fail "default healthy $version failed: $(cat "$work/log")"
+  [[ -e "$work/state/image-signed" && -e "$work/state/manifest-signed" ]] || fail 'default omitted a paired signature'
+  if [[ "$version" == *-* ]]; then
+    ! grep -q latest "$work/trace" || fail 'default prerelease advanced latest'
+  else
+    [[ "$(grep -c latest "$work/trace")" == 2 ]] || fail 'default stable release did not promote both latest tags'
+    grep -qF "oci://ghcr.io/devantler-tech/app/manifests@$manifest_digest --tag latest" "$work/trace" ||
+      fail 'default manifests latest used a mutable version alias'
+  fi
+done
+yq -o=json '.jobs.publish.steps[] | select(.id == "meta") | .with' "$workflow" |
+  jq -e '.flavor == "latest=false" and (.tags | contains("value=latest") | not)' >/dev/null ||
+  fail 'default builder metadata can expose latest before signing'
+echo 'app-promotion: default stable/prerelease and paired push/sign failures preserve latest safety'
+
 if [[ "$#" == 0 ]]; then
-  for mutation in early-image-tags missing-verification missing-version-refusal missing-manifests-refusal; do
+  for mutation in early-image-tags missing-verification missing-version-refusal missing-manifests-refusal default-metadata default-manifest-alias default-signature default-prerelease; do
     # shellcheck disable=SC2016 # Literal workflow expression in the negative control.
     case "$mutation" in
       early-image-tags) expression='(.jobs.publish.steps[] | select(.id == "build")).with.tags = "${{ steps.meta.outputs.tags }}"' ;;
       missing-verification) expression='(.jobs.publish.steps[] | select(.name == "📦 Sign & promote image and manifests")).run |= sub("cosign verify"; "echo verify")' ;;
       missing-version-refusal) expression='(.jobs.publish.steps[] | select(.id == "staging")).run |= sub("bash.*require-unpublished-version[.]sh.*"; "true")' ;;
       missing-manifests-refusal) expression='(.jobs.publish.steps[] | select(.id == "staging")).run |= sub("\\$name/manifests"; "$name")' ;;
+      default-metadata) expression='(.jobs.publish.steps[] | select(.id == "meta")).with.flavor = "latest=auto"' ;;
+      default-manifest-alias) expression='(.jobs.publish.steps[] | select(.name == "📦 Push & sign manifests artifact")).run |= sub("oci://\\$\\{ARTIFACT\\}@\\$\\{ARTIFACT_DIGEST\\}"; "oci://${ARTIFACT}:${VERSION}")' ;;
+      default-signature) expression='(.jobs.publish.steps[] | select(.name == "📦 Push & sign manifests artifact")).run |= sub("cosign sign --yes \\\"\\$\\{IMAGE\\}@\\$\\{DIGEST\\}\\\""; "true")' ;;
+      default-prerelease) expression='(.jobs.publish.steps[] | select(.name == "📦 Push & sign manifests artifact")).run |= sub("\\*-\\*\\) ;;"; "*-*) docker buildx imagetools create --prefer-index=false --tag \"${IMAGE}:latest\" \"${IMAGE}@${DIGEST}\" ;;")' ;;
     esac
     yq "$expression" "$workflow" >"$work/mutated.yaml"
     [[ "$(cat "$work/mutated.yaml")" != "$(cat "$workflow")" ]] || fail "mutation did not change workflow: $mutation"
