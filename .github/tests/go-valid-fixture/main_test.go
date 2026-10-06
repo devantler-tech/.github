@@ -1,6 +1,20 @@
 package main
 
-import "testing"
+import (
+	"os"
+	"testing"
+)
+
+// TestCacheSubject keeps non-Go test inputs observable when compilation is reused.
+func TestCacheSubject(t *testing.T) {
+	data, err := os.ReadFile("cache-subject.txt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(data) != "valid\n" {
+		t.Fatalf("current cache subject = %q, want valid", data)
+	}
+}
 
 func TestAdd(t *testing.T) {
 	for _, tt := range []struct{ a, b, want int }{

@@ -3431,6 +3431,10 @@ jobs:
         shell: bash
         run: bash .github/tests/test-ci-selection.sh
 
+      - name: 🧪 Check independent Go compilation caches and test execution
+        shell: bash
+        run: bash .github/tests/test-go-build-cache.sh
+
       - name: 🔐 Check every eligible step-bearing CI job hardens the runner first
         shell: bash
         run: bash .github/tests/test-ci-harden-runner-first.sh

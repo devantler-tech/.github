@@ -408,6 +408,13 @@ credential, and a scenario set that no longer covers every comment mode and resu
 the action. A bump of the action pin that changes its conversation or its messages fails the
 affected leg: read what changed in the job log before updating the scenario file.
 
+**Go compilation caches:** Test and race coverage retain separate `GOCACHE` archives,
+keyed by job, runner OS/architecture, installed Go version, working directory and that
+module's `go.mod`/`go.sum`. The existing setup-go module cache stays enabled. An exact
+compiler-cache hit reuses build outputs; both original test commands still run and Go
+validates their inputs. Save only after success on a cache miss, without broad restore
+prefixes. Keep `test-go-build-cache.sh` and the read-only workflow projection passing.
+
 Every `.github/tests/test-*.sh` is a test entrypoint and must have an explicit invocation in a
 `ci.yaml` step's `run:` block. Put `bash .github/tests/test-name.sh` (or the executable path) in a
 dedicated step without a step-level `if`; quoting, arguments, and surrounding comments or blank lines
