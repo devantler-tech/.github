@@ -211,13 +211,19 @@ func (a api) workflowAbsent(ctx context.Context, prefix string, id int64) (bool,
 	return false, nil
 }
 
-// Each page must keep its total, unique identities and complete item shape.
+var searchCapped = errors.New("run search reaches GitHub's 1,000-result limit")
+
+// list requires stable totals, unique identities and complete item shapes on every page.
 func (a api) list(ctx context.Context, path, key string) ([]json.RawMessage, error) {
 	result := []json.RawMessage{}
 	seen := map[int64]bool{}
 	total := -1
+	separator := "?"
+	if strings.Contains(path, "?") {
+		separator = "&"
+	}
 	for page := 1; page <= 10000; page++ {
-		raw, err := a.request(ctx, "GET", fmt.Sprintf("%s?page=%d&per_page=100", path, page))
+		raw, err := a.request(ctx, "GET", fmt.Sprintf("%s%spage=%d&per_page=100", path, separator, page))
 		if err != nil {
 			return nil, err
 		}
@@ -251,6 +257,9 @@ func (a api) list(ctx context.Context, path, key string) ([]json.RawMessage, err
 		if len(items) > 100 || len(result)+len(items) > total {
 			return nil, errors.New("listing count exceeds declared total")
 		}
+		if key == "workflow_runs" && strings.Contains(path, "?created=") && count >= 1000 {
+			return nil, searchCapped
+		}
 		for _, item := range items {
 			var fields map[string]json.RawMessage
 			if err := json.Unmarshal(item, &fields); err != nil {
@@ -271,6 +280,57 @@ func (a api) list(ctx context.Context, path, key string) ([]json.RawMessage, err
 		}
 	}
 	return nil, errors.New("listing exceeds pagination limit")
+}
+
+// listRuns freezes creation time and splits capped searches into disjoint second
+// ranges. New arrivals cannot shift pages; uncertain or overflowing ranges fail closed.
+func (a api) listRuns(ctx context.Context, path string, now time.Time) ([]json.RawMessage, error) {
+	upper := now.UTC().Truncate(time.Second).Add(-time.Second).Unix()
+	if upper < 0 {
+		return nil, errors.New("invalid run snapshot time")
+	}
+	result := []json.RawMessage{}
+	seen := map[int64]bool{}
+	partitions := 0
+	var visit func(int64, int64) error
+	visit = func(lower, upper int64) error {
+		partitions++
+		if partitions > 10000 {
+			return errors.New("run search exceeds partition limit")
+		}
+		stamp := func(second int64) string { return time.Unix(second, 0).UTC().Format(time.RFC3339) }
+		items, err := a.list(ctx, path+"?created="+url.QueryEscape(stamp(lower)+".."+stamp(upper)), "workflow_runs")
+		if errors.Is(err, searchCapped) {
+			if lower == upper {
+				return errors.New("run search cannot prove completeness within one second")
+			}
+			middle := lower + (upper-lower)/2
+			if err := visit(lower, middle); err != nil {
+				return err
+			}
+			return visit(middle+1, upper)
+		}
+		if err != nil {
+			return err
+		}
+		runs, err := decodeRuns(items)
+		if err != nil {
+			return err
+		}
+		for _, run := range runs {
+			created, _ := time.Parse(time.RFC3339, run.CreatedAt)
+			if created.Before(time.Unix(lower, 0)) || !created.Before(time.Unix(upper+1, 0)) || seen[run.ID] {
+				return errors.New("run search returned an out-of-range or repeated identity")
+			}
+			seen[run.ID] = true
+		}
+		result = append(result, items...)
+		return nil
+	}
+	if err := visit(0, upper); err != nil {
+		return nil, err
+	}
+	return result, nil
 }
 
 // encoding/json accepts case-insensitive struct aliases. Reject those aliases so
@@ -379,7 +439,7 @@ func clean(ctx context.Context, cfg config, base, token string, client *http.Cli
 		workflows = append(workflows, w)
 		ids[w.ID] = true
 	}
-	items, err = a.list(ctx, prefix+"/actions/runs", "workflow_runs")
+	items, err = a.listRuns(ctx, prefix+"/actions/runs", now)
 	if err != nil {
 		return fmt.Errorf("list repository runs: %w", err)
 	}
@@ -411,7 +471,7 @@ func clean(ctx context.Context, cfg config, base, token string, client *http.Cli
 		if !selected(cfg, w) {
 			continue
 		}
-		items, err := a.list(ctx, fmt.Sprintf("%s/actions/workflows/%d/runs", prefix, w.ID), "workflow_runs")
+		items, err := a.listRuns(ctx, fmt.Sprintf("%s/actions/workflows/%d/runs", prefix, w.ID), now)
 		if err != nil {
 			return fmt.Errorf("list workflow runs: %w", err)
 		}

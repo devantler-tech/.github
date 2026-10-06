@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -28,6 +29,7 @@ type fixtureAPI struct {
 	mu       sync.Mutex
 	requests []string
 	routes   []fixtureRoute
+	snapshot string
 }
 
 // newFixture records actual HTTP requests and rejects unlisted routes or real credentials.
@@ -43,8 +45,25 @@ func newFixture(t *testing.T, routes []fixtureRoute) *fixtureAPI {
 			w.WriteHeader(401)
 			return
 		}
+		target := r.URL.RequestURI()
+		if r.Method == "GET" && strings.HasSuffix(r.URL.Path, "/runs") {
+			q := r.URL.Query()
+			rangeParts := strings.Split(q.Get("created"), "..")
+			valid := len(rangeParts) == 2 && rangeParts[0] == "1970-01-01T00:00:00Z"
+			if valid {
+				end, err := time.Parse(time.RFC3339, rangeParts[1])
+				valid = err == nil && !end.After(time.Now()) && (f.snapshot == "" || rangeParts[1] == f.snapshot)
+			}
+			if !valid || len(q) != 3 {
+				t.Errorf("run read omitted a valid fixed snapshot: %s", target)
+				w.WriteHeader(403)
+				return
+			}
+			q.Del("created")
+			target = r.URL.Path + "?" + q.Encode()
+		}
 		for _, route := range f.routes {
-			if route.method == r.Method && route.target == r.URL.RequestURI() {
+			if route.method == r.Method && route.target == target {
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(route.status)
 				_, _ = w.Write([]byte(route.body))
@@ -99,6 +118,7 @@ var fixedNow = time.Date(2026, 10, 6, 0, 0, 0, 0, time.UTC)
 // executeFixture exercises the real driver against synthetic HTTP history.
 func executeFixture(t *testing.T, cfg config, f *fixtureAPI) (string, error) {
 	t.Helper()
+	f.snapshot = fixedNow.Add(-time.Second).Format(time.RFC3339)
 	var log bytes.Buffer
 	err := clean(context.Background(), cfg, f.server.URL, "offline-fixture-token", f.server.Client(), fixedNow, &log, func(context.Context, time.Duration) error { return nil })
 	return log.String(), err
@@ -307,7 +327,8 @@ func TestRequestEvidenceIsComplete(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := []string{"GET /repos/fixture/catalogue/actions/workflows?page=1&per_page=100", "GET /repos/fixture/catalogue/actions/runs?page=1&per_page=100", "GET /repos/fixture/catalogue/actions/workflows/11/runs?page=1&per_page=100"}
+	query := "?created=" + url.QueryEscape("1970-01-01T00:00:00Z..2026-10-05T23:59:59Z") + "&page=1&per_page=100"
+	want := []string{"GET /repos/fixture/catalogue/actions/workflows?page=1&per_page=100", "GET /repos/fixture/catalogue/actions/runs" + query, "GET /repos/fixture/catalogue/actions/workflows/11/runs" + query}
 	if !reflect.DeepEqual(f.requests, want) {
 		t.Fatalf("conversation differs: %v", f.requests)
 	}
@@ -503,6 +524,140 @@ func TestNativeCommandDefaultsOverridesAndFailureExit(t *testing.T) {
 				}
 			} else if len(deletions(f)) != 0 || !strings.Contains(string(output), "Cleanup completed:") || (strings.Contains(string(output), "Would delete run 101") != tc.selected) {
 				t.Fatalf("native dry-run behavior incorrect: %s %v", output, deletions(f))
+			}
+		})
+	}
+}
+
+// TestRunEnumerationFreezesCreationTime excludes arrivals while history is paginated.
+func TestRunEnumerationFreezesCreationTime(t *testing.T) {
+	var writes atomic.Int64
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == "DELETE" {
+			writes.Add(1)
+			w.WriteHeader(204)
+			return
+		}
+		if r.URL.Path == fixtureRepo+"/actions/workflows" {
+			_, _ = io.WriteString(w, workflowBody)
+			return
+		}
+		want := "1970-01-01T00:00:00Z..2026-10-05T23:59:59Z"
+		if r.URL.Query().Get("created") != want {
+			w.WriteHeader(403)
+			return
+		}
+		_, _ = io.WriteString(w, runBody(oldRun(101)))
+	}))
+	defer server.Close()
+	cfg := baseConfig()
+	cfg.minimum, cfg.dryRun = 0, false
+	var log bytes.Buffer
+	err := clean(context.Background(), cfg, server.URL, "offline-fixture-token", server.Client(), fixedNow, &log, delay)
+	if err != nil || writes.Load() != 1 || !strings.Contains(log.String(), "Cleanup completed:") {
+		t.Fatalf("fixed snapshot was not used for repository and workflow reads: %v writes=%d log=%q", err, writes.Load(), log.String())
+	}
+}
+
+// TestCappedRunSearchSplitsWithoutDroppingHistory protects retention beyond GitHub's 1,000-result cap.
+func TestCappedRunSearchSplitsWithoutDroppingHistory(t *testing.T) {
+	cutoff := fixedNow.Add(-time.Second).Unix()
+	middle := cutoff / 2
+	format := func(second int64) string { return time.Unix(second, 0).UTC().Format(time.RFC3339) }
+	whole := format(0) + ".." + format(cutoff)
+	left := format(0) + ".." + format(middle)
+	right := format(middle+1) + ".." + format(cutoff)
+	newer := []string{}
+	for id := 1; id <= 999; id++ {
+		newer = append(newer, oldRun(id))
+	}
+	older := []string{runJSON(1000, "1990-01-01T00:00:00Z", "completed", "success"), runJSON(1001, "1990-01-02T00:00:00Z", "completed", "success")}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "GET" {
+			t.Error("dry-run issued a mutation")
+			w.WriteHeader(403)
+			return
+		}
+		if r.URL.Path == fixtureRepo+"/actions/workflows" {
+			_, _ = io.WriteString(w, workflowBody)
+			return
+		}
+		created := r.URL.Query().Get("created")
+		page := r.URL.Query().Get("page")
+		if created == whole {
+			// Even exactly 1,000 can be a capped total: never regard it as complete.
+			_, _ = io.WriteString(w, `{"total_count":1000,"workflow_runs":[]}`)
+			return
+		}
+		if created == left && page == "1" {
+			_, _ = io.WriteString(w, runBody(older...))
+			return
+		}
+		if created == right {
+			start := 0
+			_, _ = fmt.Sscan(page, &start)
+			start = (start - 1) * 100
+			end := min(start+100, len(newer))
+			if start >= 0 && start < len(newer) {
+				_, _ = fmt.Fprintf(w, `{"total_count":999,"workflow_runs":[%s]}`, strings.Join(newer[start:end], ","))
+				return
+			}
+		}
+		t.Errorf("unexpected range/page: %s", r.URL.RequestURI())
+		w.WriteHeader(403)
+	}))
+	defer server.Close()
+	cfg := baseConfig()
+	cfg.minimum = 0
+	var log bytes.Buffer
+	err := clean(context.Background(), cfg, server.URL, "offline-fixture-token", server.Client(), fixedNow, &log, delay)
+	if err != nil || !strings.Contains(log.String(), "selected=1001 dry-run=true") || !strings.Contains(log.String(), "Would delete run 1001\n") {
+		t.Fatalf("capped search lost old history: %v log=%q", err, log.String())
+	}
+}
+
+// TestSnapshotFailuresProduceNoWrites rejects unbounded, inconsistent and inaccessible history.
+func TestSnapshotFailuresProduceNoWrites(t *testing.T) {
+	for _, scenario := range []string{"out-of-range", "dense-second", "later-partition-denied"} {
+		t.Run(scenario, func(t *testing.T) {
+			var writes, reads atomic.Int64
+			cutoff := fixedNow.Add(-time.Second).Unix()
+			whole := "1970-01-01T00:00:00Z..2026-10-05T23:59:59Z"
+			left := "1970-01-01T00:00:00Z.." + time.Unix(cutoff/2, 0).UTC().Format(time.RFC3339)
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.Method == "DELETE" {
+					writes.Add(1)
+					w.WriteHeader(204)
+					return
+				}
+				if r.URL.Path == fixtureRepo+"/actions/workflows" {
+					_, _ = io.WriteString(w, workflowBody)
+					return
+				}
+				reads.Add(1)
+				switch scenario {
+				case "out-of-range":
+					_, _ = io.WriteString(w, runBody(runJSON(101, "2026-10-06T00:00:00Z", "completed", "success")))
+				case "dense-second":
+					_, _ = io.WriteString(w, `{"total_count":1000,"workflow_runs":[]}`)
+				case "later-partition-denied":
+					switch r.URL.Query().Get("created") {
+					case whole:
+						_, _ = io.WriteString(w, `{"total_count":1000,"workflow_runs":[]}`)
+					case left:
+						_, _ = io.WriteString(w, runBody(runJSON(101, "1990-01-01T00:00:00Z", "completed", "success")))
+					default:
+						w.WriteHeader(403)
+					}
+				}
+			}))
+			defer server.Close()
+			cfg := baseConfig()
+			cfg.minimum, cfg.dryRun = 0, false
+			var log bytes.Buffer
+			err := clean(context.Background(), cfg, server.URL, "offline-fixture-token", server.Client(), fixedNow, &log, delay)
+			if err == nil || writes.Load() != 0 || strings.Contains(log.String(), "Cleanup completed:") || reads.Load() > 33 {
+				t.Fatalf("uncertain snapshot accepted or unbounded: %v reads=%d writes=%d log=%q", err, reads.Load(), writes.Load(), log.String())
 			}
 		})
 	}
