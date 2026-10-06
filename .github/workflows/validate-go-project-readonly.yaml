@@ -822,10 +822,27 @@ jobs:
           after=$(df --output=avail -BG / | tail -1 | tr -dc '0-9')
           echo "Free disk on /: ${before}G -> ${after}G (gained $((after - before))G)"
       - name: ⚙️ Setup Go
+        id: setup-go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: ${{ inputs.working-directory || '.' }}/go.mod
           cache: true
+      # setup-go's shared immutable cache cannot retain both ordinary and race builds.
+      # Keep each test mode's compilation outputs separately; Go still validates inputs.
+      - name: Identify Go compilation cache
+        id: go-build-cache-path
+        shell: bash
+        run: |
+          set -euo pipefail
+          cache_path="$(go env GOCACHE)"
+          [[ "$cache_path" == /* && "$cache_path" != *$'\n'* ]]
+          printf 'path=%s\n' "$cache_path" >> "$GITHUB_OUTPUT"
+      - name: Restore Go compilation cache
+        id: go-build-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ steps.go-build-cache-path.outputs.path }}
+          key: go-build-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.setup-go.outputs.go-version }}-${{ inputs.working-directory || '.' }}-${{ github.job }}-${{ hashFiles(format('{0}/go.mod', inputs.working-directory || '.'), format('{0}/go.sum', inputs.working-directory || '.')) }}
       - name: "\U0001F4E5 Restore kubeconform schema cache"
         # A consumer whose Go tests exercise kubeconform-based schema validation (e.g.
         # ksail's pkg/client/kubeconform) fetches JSON schemas from
@@ -850,6 +867,12 @@ jobs:
       - name: "\U0001F9EA Test"
         run: |
           go test ./...
+      - name: Save Go compilation cache
+        if: success() && steps.go-build-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ steps.go-build-cache-path.outputs.path }}
+          key: ${{ steps.go-build-cache.outputs.cache-primary-key }}
       - name: "\U0001F4E4 Save kubeconform schema cache"
         if: "!cancelled() && steps.kubeconform-cache.outputs.cache-hit != 'true'"
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -903,10 +926,27 @@ jobs:
           after=$(df --output=avail -BG / | tail -1 | tr -dc '0-9')
           echo "Free disk on /: ${before}G -> ${after}G (gained $((after - before))G)"
       - name: ⚙️ Setup Go
+        id: setup-go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: ${{ inputs.working-directory || '.' }}/go.mod
           cache: true
+      # setup-go's shared immutable cache cannot retain both ordinary and race builds.
+      # Keep each test mode's compilation outputs separately; Go still validates inputs.
+      - name: Identify Go compilation cache
+        id: go-build-cache-path
+        shell: bash
+        run: |
+          set -euo pipefail
+          cache_path="$(go env GOCACHE)"
+          [[ "$cache_path" == /* && "$cache_path" != *$'\n'* ]]
+          printf 'path=%s\n' "$cache_path" >> "$GITHUB_OUTPUT"
+      - name: Restore Go compilation cache
+        id: go-build-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ steps.go-build-cache-path.outputs.path }}
+          key: go-build-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.setup-go.outputs.go-version }}-${{ inputs.working-directory || '.' }}-${{ github.job }}-${{ hashFiles(format('{0}/go.mod', inputs.working-directory || '.'), format('{0}/go.sum', inputs.working-directory || '.')) }}
       - name: "\U0001F4E5 Restore kubeconform schema cache"
         # See the identical step in the Test job above for the full rationale
         # (raw.githubusercontent.com 429 rate-limiting, portfolio-wide 2026-07-09;
@@ -923,6 +963,12 @@ jobs:
       - name: "\U0001F4C4 Generate coverage"
         run: |
           go test -race -coverprofile=coverage.txt -covermode=atomic ./...
+      - name: Save Go compilation cache
+        if: success() && steps.go-build-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ steps.go-build-cache-path.outputs.path }}
+          key: ${{ steps.go-build-cache.outputs.cache-primary-key }}
       - name: "\U0001F4E4 Save kubeconform schema cache"
         if: "!cancelled() && steps.kubeconform-cache.outputs.cache-hit != 'true'"
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
