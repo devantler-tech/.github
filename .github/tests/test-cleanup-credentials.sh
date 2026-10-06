@@ -19,3 +19,4 @@ cmp "$work/generated.json" "$work/checked.json" || {
   exit 1
 }
 echo 'PASS: complete cleanup projection matches current production source'
+go test -race "$root/.github/scripts/delete-workflow-runs/main.go" "$root/.github/scripts/delete-workflow-runs/main_test.go" -count=1

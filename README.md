@@ -241,25 +241,51 @@ jobs:
 | `days`                             | Input (number)  | `30`         | No       | Days-worth of runs to keep for each workflow       |
 | `minimum-runs`                     | Input (number)  | `6`          | No       | Minimum runs to keep for each workflow             |
 | `delete-workflow-pattern`          | Input (string)  | -            | No       | Name or filename of the workflow to target         |
-| `delete-workflow-by-state-pattern` | Input (string)  | `ALL`        | No       | Filter workflows by state (comma-separated)        |
-| `delete-run-by-conclusion-pattern` | Input (string)  | `ALL`        | No       | Remove runs based on conclusion (comma-separated)  |
+| `delete-workflow-by-state-pattern` | Input (string)  | `ALL`        | No       | Filter workflows by state (comma or pipe separated) |
+| `delete-run-by-conclusion-pattern` | Input (string)  | `ALL`        | No       | Remove runs by conclusion (comma or pipe separated) |
 | `dry-run`                          | Input (boolean) | `true`       | No       | Logs simulated changes, no deletions are performed |
 
 > **Note:** The calling workflow must grant `actions: write` and `contents: read` permissions.
+
+Cleanup uses a Go driver from the reusable workflow's exact commit. It first lists
+all workflows and runs, then applies the age, minimum-run and conclusion filters.
+Every workflow's retention decision uses that same complete repository-run snapshot,
+avoiding repeated scans of the same history through separate workflow endpoints.
+Run enumeration ends at the last complete second before cleanup starts, so new
+runs wait for the next cleanup instead of shifting pagination. Searches reaching
+GitHub's 1,000-result limit are split into disjoint creation-time ranges; a range
+that still reaches the limit within one second fails rather than skipping history.
+The newest `minimum-runs` matching old runs are retained in addition to recent runs.
+Runs whose workflow is no longer listed are selected independently of those filters
+only after an individual workflow lookup confirms absence. Workflows that appear
+during enumeration are retained; an uncertain lookup fails before deletion.
+Workflow patterns match names or filenames
+without case sensitivity. Workflow, state and conclusion filters accept comma or
+pipe separated values.
+
+Invalid or incomplete API responses fail before deletion starts. Transient read
+failures receive at most two retries; a deletion is attempted once, requires HTTP
+204 confirmation, and stops cleanup on rejection or an unknown outcome. Confirmed
+deletions are spaced by at least one second; cancellation interrupts that pause.
+Previews do not wait between selected runs. A rerun
+lists the current history again. `days` must be finite and nonnegative;
+`minimum-runs` must be a nonnegative integer.
 
 </details>
 
 ### 🗑️ Delete Workflow Runs (Read-Only)
 
 [.github/workflows/delete-workflow-runs-readonly.yaml](.github/workflows/delete-workflow-runs-readonly.yaml)
-executes the same pinned cleanup action with `actions: read` and `contents: read` only.
+executes the same cleanup driver with `actions: read` and `contents: read` only.
 Use it for previews and catalogue tests that must have no authority to delete workflow history.
 Deletion requires the production entrypoint above and an explicit `dry-run: false`.
 
 The read-only entrypoint is generated from the complete production wrapper by
 `bash .github/scripts/generate-cleanup-readonly.sh`. Required CI checks preserve its
 input behavior and source parity. Hosted dry-runs prove execution and the credential
-boundary; deterministic native retention and deletion fixtures are tracked in #350.
+boundary. Native HTTP fixtures exercise retention, pagination, filters, repository
+selection, command exit codes and rejected or unconfirmed deletion without live
+deletion authority.
 
 #### Inputs
 
@@ -269,8 +295,8 @@ boundary; deterministic native retention and deletion fixtures are tracked in #3
 | `days` | Input (number) | `30` | No | Days-worth of runs to retain |
 | `minimum-runs` | Input (number) | `6` | No | Minimum runs to retain per workflow |
 | `delete-workflow-pattern` | Input (string) | - | No | Workflow name or filename to match |
-| `delete-workflow-by-state-pattern` | Input (string) | `ALL` | No | Comma-separated workflow state filters |
-| `delete-run-by-conclusion-pattern` | Input (string) | `ALL` | No | Comma-separated run conclusion filters |
+| `delete-workflow-by-state-pattern` | Input (string) | `ALL` | No | Comma or pipe separated workflow state filters |
+| `delete-run-by-conclusion-pattern` | Input (string) | `ALL` | No | Comma or pipe separated run conclusion filters |
 | `dry-run` | Input (boolean) | `true` | No | Log proposed deletions; a false value still cannot grant deletion authority |
 
 ### 🛡️ Dependency Review

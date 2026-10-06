@@ -137,17 +137,24 @@ func main() {
 	var cleanup object
 	for _, value := range productionJob["steps"].([]any) {
 		step := asObject(value)
-		uses, _ := step["uses"].(string)
-		if strings.HasPrefix(uses, "Mattraks/delete-workflow-runs@") {
+		if step["name"] == "🗑️ Delete workflow runs" {
 			cleanup = step
 		}
 	}
 	require(cleanup != nil, "production cleanup action missing")
-	bindings := asObject(cleanup["with"])
-	equal(bindings["token"], "${{ secrets.GITHUB_TOKEN }}", "cleanup forwards a mutation credential")
+	equal(cleanup["run"], "go run .devantler-tech-actions/.github/scripts/delete-workflow-runs/main.go", "cleanup driver bypassed")
+	equal(cleanup["uses"], nil, "cleanup driver bypassed")
+	bindings := asObject(cleanup["env"])
+	equal(bindings["CLEANUP_TOKEN"], "${{ secrets.GITHUB_TOKEN }}", "cleanup forwards a mutation credential")
 	equal(cleanup["if"], nil, "production cleanup action disabled")
 	equal(cleanup["continue-on-error"], nil, "production cleanup ignores failure")
 	equal(job["steps"], productionJob["steps"], "cleanup projection changed production steps")
+	steps := productionJob["steps"].([]any)
+	require(len(steps) == 4, "cleanup driver setup changed")
+	equal(asObject(asObject(steps[1])["with"]), object{"repository": "${{ job.workflow_repository }}", "ref": "${{ job.workflow_sha }}", "path": ".devantler-tech-actions", "persist-credentials": false}, "cleanup source is not this workflow's commit")
+	equal(asObject(steps[1])["uses"], "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1", "cleanup source checkout changed")
+	equal(asObject(steps[2])["uses"], "actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e", "cleanup toolchain setup changed")
+	equal(asObject(steps[2])["with"], object{"go-version-file": ".devantler-tech-actions/.github/scripts/delete-workflow-runs/go.mod", "cache": false}, "cleanup toolchain setup changed")
 	var cases []struct {
 		Supplied object
 		Expected object
@@ -177,7 +184,7 @@ func main() {
 		}
 		actual := object{}
 		for key, value := range bindings {
-			if key == "token" {
+			if key == "CLEANUP_TOKEN" {
 				continue
 			}
 			text, _ := value.(string)
@@ -187,7 +194,7 @@ func main() {
 			if match[2] != "" && (selected == nil || selected == "" || selected == false || selected == float64(0)) {
 				selected = "fixture/catalogue"
 			}
-			actual[key] = selected
+			actual[strings.ToLower(strings.TrimPrefix(key, "INPUT_"))] = selected
 		}
 		equal(actual, fixture.Expected, "cleanup input behavior changed")
 	}

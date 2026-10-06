@@ -25,7 +25,7 @@ on:
         description: |
           Filter workflows by state:
             - ALL, active, deleted, disabled_fork, disabled_inactivity, disabled_manually
-          Accepts a comma-separated list of states.
+          Accepts states separated by commas or pipes.
         required: false
         default: "ALL"
         type: string
@@ -33,7 +33,7 @@ on:
         description: |
           Remove runs based on conclusion:
             - ALL, action_required, cancelled, failure, skipped, success
-          Accepts a comma-separated list of conclusions.
+          Accepts conclusions separated by commas or pipes.
         required: false
         default: "ALL"
         type: string
@@ -55,20 +55,26 @@ jobs:
         uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
         with:
           egress-policy: audit
-      - name: "\U0001F5D1️ Delete workflow runs"
-        # Pinned past v2.1.0 to commit 0cf693b, which adds bounded retry/backoff on
-        # transient GitHub API 5xx + network errors via @octokit/plugin-retry (upstream
-        # PR Mattraks/delete-workflow-runs#39, merged 2026-06-05 but not yet tagged).
-        # Repin to the next tagged release once cut. Fixes the flaky required-check 5xx.
-        # No inline version comment: this SHA is an untagged commit, so a `# vX.Y.Z`
-        # tag comment would mismatch the pin (zizmor ref-version-mismatch).
-        uses: Mattraks/delete-workflow-runs@0cf693bc9909e5e867ee8f27b813224ba862939c
+      - name: "\U0001F4E5 Checkout this workflow's commit"
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          repository: ${{ inputs.repository || github.repository }}
-          retain_days: ${{ inputs.days }}
-          keep_minimum_runs: ${{ inputs.minimum-runs }}
-          delete_workflow_pattern: ${{ inputs.delete-workflow-pattern }}
-          delete_workflow_by_state_pattern: ${{ inputs.delete-workflow-by-state-pattern }}
-          delete_run_by_conclusion_pattern: ${{ inputs.delete-run-by-conclusion-pattern }}
-          dry_run: ${{ inputs.dry-run }}
+          repository: ${{ job.workflow_repository }}
+          ref: ${{ job.workflow_sha }}
+          path: .devantler-tech-actions
+          persist-credentials: false
+      - name: "\U0001F439 Setup Go"
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: .devantler-tech-actions/.github/scripts/delete-workflow-runs/go.mod
+          cache: false
+      - name: "\U0001F5D1️ Delete workflow runs"
+        env:
+          CLEANUP_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          INPUT_REPOSITORY: ${{ inputs.repository || github.repository }}
+          INPUT_RETAIN_DAYS: ${{ inputs.days }}
+          INPUT_KEEP_MINIMUM_RUNS: ${{ inputs.minimum-runs }}
+          INPUT_DELETE_WORKFLOW_PATTERN: ${{ inputs.delete-workflow-pattern }}
+          INPUT_DELETE_WORKFLOW_BY_STATE_PATTERN: ${{ inputs.delete-workflow-by-state-pattern }}
+          INPUT_DELETE_RUN_BY_CONCLUSION_PATTERN: ${{ inputs.delete-run-by-conclusion-pattern }}
+          INPUT_DRY_RUN: ${{ inputs.dry-run }}
+        run: go run .devantler-tech-actions/.github/scripts/delete-workflow-runs/main.go

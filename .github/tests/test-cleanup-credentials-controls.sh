@@ -48,17 +48,20 @@ ci	.jobs["ci-required-checks"].needs -= ["test-delete-workflow-runs-all"]	cleanu
 ci	.jobs["ci-required-checks"].steps[0].env.JOB_RESULTS |= sub("\\$\\{\\{ needs.test-delete-workflow-runs-specific.result \\}\\}"; "")	cleanup caller omitted from required summary
 ci	.jobs["ci-required-checks"].needs -= ["test-delete-workflow-runs-minimal"] | .jobs["ci-required-checks"].steps[0].env.JOB_RESULTS |= sub("\\$\\{\\{ needs.test-delete-workflow-runs-minimal.result \\}\\}"; "")	cleanup caller omitted from required needs
 workflow	.jobs["delete-runs"].permissions.actions="write"	cleanup callee has deletion authority
-workflow	.jobs["delete-runs"].steps[1].uses="Mattraks/delete-workflow-runs@0000000000000000000000000000000000000000"	cleanup projection changed production steps
+workflow	.jobs["delete-runs"].steps[3].run="echo skipped"	cleanup projection changed production steps
 workflow	.jobs["delete-runs"].if="false"	cleanup execution disabled
 workflow	.jobs["delete-runs"]["continue-on-error"]=true	cleanup execution ignores failure
 workflow	.permissions.actions="write"	workflow grants ambient credentials
 projection	.jobs["delete-runs"].steps[1].env.TOKEN="${{\n toJson(\n Secrets\n )\n}}"	cleanup forwards a mutation credential
 projection	.on.workflow_call.inputs["dry-run"].default=false	cleanup input behavior changed
-projection	.jobs["delete-runs"].steps[1].with.dry_run="${{ inputs.repository }}"	cleanup input behavior changed
-projection	.jobs["delete-runs"].steps[1].with.retain_days="${{ inputs.minimum-runs }}"	cleanup input behavior changed
-projection	.jobs["delete-runs"].steps[1].with.repository="${{ inputs.repository }}"	cleanup input behavior changed
-projection	.jobs["delete-runs"].steps[1].with.delete_workflow_by_state_pattern="${{ inputs.delete-run-by-conclusion-pattern }}"	cleanup input behavior changed
-projection	.jobs["delete-runs"].steps[1].with.token="${{ secrets.APP_TOKEN }}"	cleanup forwards a mutation credential
-projection	.jobs["delete-runs"].steps[1].if=false	production cleanup action disabled
+projection	.jobs["delete-runs"].steps[3].env.INPUT_DRY_RUN="${{ inputs.repository }}"	cleanup input behavior changed
+projection	.jobs["delete-runs"].steps[3].env.INPUT_RETAIN_DAYS="${{ inputs.minimum-runs }}"	cleanup input behavior changed
+projection	.jobs["delete-runs"].steps[3].env.INPUT_REPOSITORY="${{ inputs.repository }}"	cleanup input behavior changed
+projection	.jobs["delete-runs"].steps[3].env.INPUT_DELETE_WORKFLOW_BY_STATE_PATTERN="${{ inputs.delete-run-by-conclusion-pattern }}"	cleanup input behavior changed
+projection	.jobs["delete-runs"].steps[3].env.CLEANUP_TOKEN="${{ secrets.APP_TOKEN }}"	cleanup forwards a mutation credential
+projection	.jobs["delete-runs"].steps[3].if=false	production cleanup action disabled
+projection	.jobs["delete-runs"].steps[1].with.ref="main"	cleanup source is not this workflow's commit
+projection	.jobs["delete-runs"].steps[1].with["persist-credentials"]=true	cleanup source is not this workflow's commit
+projection	.jobs["delete-runs"].steps[3].run="echo skipped"	cleanup driver bypassed
 CASES
 echo "PASS: $count independent cleanup credential, execution and input regressions rejected"
