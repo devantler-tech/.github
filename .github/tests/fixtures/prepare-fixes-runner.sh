@@ -35,7 +35,7 @@ case "$1" in
       cat > "$RUNNER_TEMP/git-wrapper/git" <<'GIT'
 #!/usr/bin/env bash
 set -euo pipefail
-if [ "$*" = 'diff --name-only --no-renames HEAD -- .github/workflows/' ]; then
+if [ "$*" = 'diff --no-ext-diff --no-textconv --name-only --no-renames HEAD -- .github/workflows/' ]; then
   echo 'intentional fixture workflow inspection failure' >&2
   exit 42
 fi

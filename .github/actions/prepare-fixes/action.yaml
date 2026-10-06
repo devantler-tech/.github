@@ -51,10 +51,10 @@ runs:
         fi
         echo "artifact-name=${FIXES_ARTIFACT}" >> "$GITHUB_OUTPUT"
         git add --intent-to-add .
-        if [ "$PREPARE_MODE" = ordinary ] && git diff --quiet HEAD; then
+        if [ "$PREPARE_MODE" = ordinary ] && git diff --no-ext-diff --no-textconv --quiet HEAD; then
           echo 'changed=false' >> "$GITHUB_OUTPUT"
         else
-          git diff --binary --full-index HEAD > "${RUNNER_TEMP}/${FIXES_ARTIFACT}.patch"
+          git diff --no-color --no-ext-diff --no-textconv --src-prefix=a/ --dst-prefix=b/ --binary --full-index HEAD > "${RUNNER_TEMP}/${FIXES_ARTIFACT}.patch"
           if [ -s "${RUNNER_TEMP}/${FIXES_ARTIFACT}.patch" ]; then
             echo 'changed=true' >> "$GITHUB_OUTPUT"
           else
@@ -63,7 +63,7 @@ runs:
         fi
         manual_required=false
         if [ "$PREPARE_MODE" = workflow ]; then
-          workflow_changes="$(git diff --name-only --no-renames HEAD -- .github/workflows/)"
+          workflow_changes="$(git diff --no-ext-diff --no-textconv --name-only --no-renames HEAD -- .github/workflows/)"
           if [ "${MANUAL_WORKFLOW_FIXES:-false}" = true ] && [ -n "$workflow_changes" ]; then
             manual_required=true
             echo "::warning::Linter fixes include workflow files and will not be committed automatically. Run the formatter locally and push, or download ${FIXES_ARTIFACT} if available and run git apply ${FIXES_ARTIFACT}.patch from the repository root, review, and push."

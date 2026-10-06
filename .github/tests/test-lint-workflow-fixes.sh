@@ -28,7 +28,7 @@ for workflow in lint:lint validate-go-project:tidy validate-go-project:golangci-
     jq -er '.run' <<< "$prepare" >"$work/export.sh"
   fi
   for enabled in false true; do
-  for scenario in workflow clean ordinary untracked new-workflow deleted-workflow mixed rename-in rename-out similar-directory nested-workflow binary-only binary-mixed mode-only mode-mixed; do
+  for scenario in workflow clean ordinary untracked new-workflow deleted-workflow mixed rename-in rename-out similar-directory nested-workflow binary-only binary-mixed mode-only mode-mixed diff-noprefix diff-prefix diff-textconv diff-external diff-color; do
     fixture="$work/$workflow-$enabled-$scenario"
     mkdir -p "$fixture/.github/workflows" "$fixture/.github/workflows-extra" "$fixture/nested/.github/workflows" "$fixture/nested/module" "$fixture/../artifacts-$workflow-$enabled-$scenario"
     git -C "$fixture" init -q
@@ -38,11 +38,13 @@ for workflow in lint:lint validate-go-project:tidy validate-go-project:golangci-
     git -C "$fixture" config core.filemode true
     printf 'original\n' >"$fixture/.github/workflows/ci.yaml"
     printf 'original\n' >"$fixture/value.txt"
+    mkdir "$fixture/sub"
+    printf 'original\n' >"$fixture/sub/value.txt"
     printf 'original\n' >"$fixture/.github/workflows-extra/value.yaml"
     printf 'original\n' >"$fixture/nested/.github/workflows/ci.yaml"
     printf 'before\000binary\n' >"$fixture/payload.bin"
     printf '#!/bin/sh\necho fixture\n' >"$fixture/script.sh"
-    git -C "$fixture" add -- .github value.txt nested payload.bin script.sh
+    git -C "$fixture" add -- .github value.txt sub nested payload.bin script.sh
     git -C "$fixture" commit -qm base
 
     changed=true
@@ -72,6 +74,34 @@ for workflow in lint:lint validate-go-project:tidy validate-go-project:golangci-
       mode-mixed)
         chmod +x "$fixture/script.sh"
         printf 'formatted\n' >"$fixture/.github/workflows/ci.yaml"
+        ;;
+      diff-*)
+        # Identical root/sub files make a prefixless patch apply successfully
+        # to the wrong file unless the exporter explicitly controls its format.
+        printf 'formatted\n' >"$fixture/sub/value.txt"
+        manual=false
+        case "$scenario" in
+          diff-noprefix) git -C "$fixture" config diff.noprefix true ;;
+          diff-prefix)
+            git -C "$fixture" config diff.srcPrefix before/
+            git -C "$fixture" config diff.dstPrefix after/
+            ;;
+          diff-textconv)
+            printf 'sub/value.txt diff=display\n' >"$fixture/.git/info/attributes"
+            printf '#!/bin/sh\nsed '\''s/^/display: /'\'' "$1"\n' >"$fixture/.git/display"
+            chmod +x "$fixture/.git/display"
+            git -C "$fixture" config diff.display.textconv "$fixture/.git/display"
+            ;;
+          diff-external)
+            printf '#!/bin/sh\nexit 0\n' >"$fixture/.git/display"
+            chmod +x "$fixture/.git/display"
+            git -C "$fixture" config diff.external "$fixture/.git/display"
+            ;;
+          diff-color)
+            git -C "$fixture" config color.ui always
+            git -C "$fixture" config color.diff always
+            ;;
+        esac
         ;;
     esac
     [[ "$enabled" == true ]] || manual=false
@@ -109,7 +139,7 @@ for workflow in lint:lint validate-go-project:tidy validate-go-project:golangci-
       [[ -s "$patch" ]] || fail "$workflow/$scenario lost the patch"
       # Stage the fixture's intended result only AFTER export, so additions above really
       # are untracked when the production exporter sees them.
-      git -C "$fixture" add -- .github nested payload.bin script.sh
+      git -C "$fixture" add -- .github sub nested payload.bin script.sh
       [[ ! -e "$fixture/value.txt" ]] || git -C "$fixture" add -- value.txt
       [[ ! -e "$fixture/moved.txt" ]] || git -C "$fixture" add -- moved.txt
       expected="$(git -C "$fixture" write-tree)"
@@ -151,5 +181,30 @@ for workflow in lint:lint validate-go-project:tidy validate-go-project:golangci-
     fail "$workflow accepted a Git failure"
   fi
 done
+
+# Exercise the hosted failure fixture itself, so a change to Git's raw-output
+# options cannot silently stop injecting the late read failure. The wrapper must
+# still allow exporting the complete patch before rejecting workflow inspection.
+fixture="$work/hosted-failure"
+mkdir -p "$fixture" "$work/hosted-temp"
+: >"$work/hosted-path"
+(
+  cd "$fixture"
+  SCENARIO=export-failure MANUAL=true RUNNER_TEMP="$work/hosted-temp" \
+    GITHUB_PATH="$work/hosted-path" bash "$root/.github/tests/fixtures/prepare-fixes-runner.sh" setup
+)
+rc=0
+(
+  cd "$fixture"
+  RUNNER_TEMP="$work/hosted-temp" PATH="$work/hosted-temp/git-wrapper:$PATH" \
+    git diff --no-ext-diff --no-textconv --name-only --no-renames HEAD -- .github/workflows/
+) >"$work/hosted-inspection.log" 2>&1 || rc=$?
+[[ "$rc" == 42 ]] || fail 'hosted workflow inspection fault was not injected'
+(
+  cd "$fixture"
+  RUNNER_TEMP="$work/hosted-temp" PATH="$work/hosted-temp/git-wrapper:$PATH" \
+    git diff --no-color --no-ext-diff --no-textconv --src-prefix=a/ --dst-prefix=b/ --binary --full-index HEAD
+) >"$work/hosted-patch"
+[[ -s "$work/hosted-patch" ]] || fail 'hosted wrapper refused raw patch export'
 
 echo 'PASS: workflow fixes stay complete, recoverable, and out of automatic commits'
