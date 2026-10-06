@@ -16,7 +16,8 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  catalogue-scope:
+  select-ci-tests:
+    name: Select affected catalogue tests
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -24,6 +25,7 @@ jobs:
       contents: read
     outputs:
       catalogue: ${{ steps.scope.outputs.catalogue }}
+      selected: ${{ steps.select.outputs.selected }}
     steps:
       - name: 🔒 Harden Runner
         uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
@@ -59,20 +61,8 @@ jobs:
           fi
           bash .github/scripts/classify-ci-catalogue.sh "${BASE_SHA}" "${HEAD_SHA}" >>"${GITHUB_OUTPUT}"
 
-  select-ci-tests:
-    name: Select affected catalogue tests
-    needs: catalogue-scope
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    outputs:
-      selected: ${{ steps.select.outputs.selected }}
-    steps:
-      - name: 🔒 Harden Runner
-        uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
-        with:
-          egress-policy: audit
+      # Reuse the runner after trusted-base classification. Candidate code is
+      # checked out only once the independent scope decision has completed.
       - name: 📑 Checkout complete immutable history
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -86,7 +76,7 @@ jobs:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           RUN_CATALOGUE: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
-          CATALOGUE_SCOPE: ${{ needs.catalogue-scope.outputs.catalogue }}
+          CATALOGUE_SCOPE: ${{ steps.scope.outputs.catalogue }}
           GOWORK: "off"
           GOFLAGS: ""
           GOTOOLCHAIN: local
@@ -629,8 +619,8 @@ jobs:
     # merge_group there is no PR to review, so the test is PR-gated (skipped
     # otherwise, which the inline required-check collector tolerates — like
     # test-approve-pr).
-    needs: catalogue-scope
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && startsWith(github.event_name, 'pull_request') && needs.catalogue-scope.outputs.catalogue == 'true' }}"
+    needs: select-ci-tests
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && startsWith(github.event_name, 'pull_request') && needs.select-ci-tests.outputs.catalogue == 'true' }}"
     permissions:
       contents: read
     steps:
@@ -6014,7 +6004,6 @@ jobs:
     name: CI - Required Checks
     if: ${{ always() }}
     needs:
-      - catalogue-scope
       - select-ci-tests
       - test-validate-naming
       - test-validate-retired-repo-links
@@ -6149,7 +6138,6 @@ jobs:
           SELECTED_JOBS: ${{ needs.select-ci-tests.outputs.selected }}
           NEEDS_JSON: ${{ toJSON(needs) }}
           JOB_RESULTS: >-
-            ${{ needs.catalogue-scope.result }}
             ${{ needs.select-ci-tests.result }}
             ${{ needs.test-validate-naming.result }}
             ${{ needs.test-validate-retired-repo-links.result }}

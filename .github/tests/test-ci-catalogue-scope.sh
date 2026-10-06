@@ -141,18 +141,19 @@ actual="$(cd "${current}" && REAL_GIT="${real_git}" PATH="${fixture}/bin:${PATH}
 [[ "${actual}" == catalogue=true ]] || fail 'truncated diff narrowed the catalogue'
 
 ci="${repo_root}/.github/workflows/ci.yaml"
-selector="$(yq -r '.jobs."catalogue-scope".steps[]? | select(.name == "Classify exact PR scope") | .run' "${ci}")"
-[[ -n "${selector}" ]] || fail 'scope job is absent'
-checkout="$(yq -o=json -I=0 '.jobs."catalogue-scope".steps' "${ci}" | jq '[.[] | select((.uses // "") | startswith("actions/checkout@"))] | if length == 1 then .[0] else error("expected one checkout") end')"
+selector="$(yq -r '.jobs."select-ci-tests".steps[]? | select(.name == "Classify exact PR scope") | .run' "${ci}")"
+[[ -n "${selector}" ]] || fail 'trusted classification step is absent'
+checkout="$(yq -o=json -I=0 '.jobs."select-ci-tests".steps' "${ci}" | jq '[.[] | select((.uses // "") | startswith("actions/checkout@"))] | if length == 2 then .[0] else error("expected trusted-base and candidate checkouts") end')"
 checkout_ref="$(jq -r '.with.ref' <<<"${checkout}")"
 [[ "${checkout_ref}" == "\${{ github.event.pull_request.base.sha || github.sha }}" ]] || fail 'selector executes candidate code'
 [[ "$(jq -r '.with."persist-credentials"' <<<"${checkout}")" == false ]] || fail 'selector persists credentials'
 [[ "$(jq -r '.with."fetch-depth"' <<<"${checkout}")" == 0 ]] || fail 'selector lacks complete ancestry'
 yq -o=json -I=0 '.jobs."ci-required-checks".needs' "${ci}" |
-  jq -e 'index("catalogue-scope") != null' >/dev/null || fail 'scope failure cannot reach the required check'
+  jq -e 'index("select-ci-tests") != null' >/dev/null || fail 'scope failure cannot reach the required check'
 results="$(yq -r '.jobs."ci-required-checks".steps[] | select(.name == "📊 Summarize workflow result") | .env.JOB_RESULTS' "${ci}")"
-[[ "${results}" == *'needs.catalogue-scope.result'* ]] || fail 'scope result is not aggregated'
-[[ "$(yq -r '.jobs."select-ci-tests".needs' "${ci}")" == catalogue-scope ]] || fail 'selection does not wait for trusted classification'
+[[ "${results}" == *'needs.select-ci-tests.result'* ]] || fail 'combined preflight result is not aggregated'
+[[ "$(yq -r '.jobs."select-ci-tests".needs' "${ci}")" == null ]] || fail 'combined preflight still requires another runner'
+[[ "$(yq -r '.jobs."select-ci-tests".steps[] | select(.id == "select") | .env.CATALOGUE_SCOPE' "${ci}")" == "\${{ steps.scope.outputs.catalogue }}" ]] || fail 'selection does not consume the prior trusted classification'
 yq -o=json -I=0 '.jobs."test-validate-retired-repo-links".needs' "${ci}" |
   jq -e '. == ["select-ci-tests"]' >/dev/null || fail 'unrelated smoke job ignores selection'
 [[ "$(yq -r '.jobs."test-validate-retired-repo-links".if' "${ci}")" == *"contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-validate-retired-repo-links')"* ]] || fail 'unrelated smoke job ignores selection'
@@ -160,17 +161,17 @@ jq -e '.catalogue_optional | index("test-validate-retired-repo-links") != null' 
 [[ "$(yq -r '.jobs."validate-manifests".needs' "${ci}")" == null ]] || fail 'manifest checks became conditional on scope'
 [[ "$(yq -r '.jobs."lint-ci-coverage-parity".needs' "${ci}")" == null ]] || fail 'security contract checks became conditional on scope'
 [[ "$(yq -r '.jobs."test-dependency-review-comments".needs' "${ci}")" == null ]] || fail 'credential-boundary replay became conditional on scope'
-[[ "$(yq -r '.jobs."test-dependency-review-comments".if' "${ci}")" != *'needs.catalogue-scope'* ]] || fail 'credential-boundary replay ignores its unconditional contract'
+[[ "$(yq -r '.jobs."test-dependency-review-comments".if' "${ci}")" != *'outputs.catalogue'* ]] || fail 'credential-boundary replay ignores its unconditional contract'
 yq -o=json -I=0 '.jobs' "${ci}" | jq -e --slurpfile inventory "${repo_root}/.github/scripts/ci-selection/inventory.json" '
   [to_entries[] | select(any(.value.steps[]?; (.run // "") | contains(".github/tests/test-"))) |
     .key as $id |
     select(((.value.needs != null) and (.value.needs != ["select-ci-tests"])) or
-      ((.value.if // "") | contains("needs.catalogue-scope")) or
+      ((.value.if // "") | contains("outputs.catalogue")) or
       (($inventory[0].catalogue_optional | index($id)) != null))] | length == 0
 ' >/dev/null || fail 'a required test entrypoint became scope-dependent'
 yq -o=json -I=0 '.jobs' "${ci}" | jq -e '
   [to_entries[] | select(.value.uses != null) |
-    select((.value.if // "") | contains("needs.catalogue-scope"))] | length == 0
+    select((.value.if // "") | contains("outputs.catalogue"))] | length == 0
 ' >/dev/null || fail 'a reusable workflow contract became scope-dependent'
 
 # Exercise the actual workflow shell against an isolated public-shape Git fixture.
@@ -239,5 +240,15 @@ git -C "${current}" remote set-url origin "${fixture}/missing-origin"
 : >"${output}"
 (cd "${current}" && GITHUB_EVENT_NAME=push GITHUB_REPOSITORY=devantler-tech/.github PR_NUMBER=7 BASE_SHA="${base}" HEAD_SHA="${head}" GITHUB_OUTPUT="${output}" bash "${fixture}/scope-step.sh")
 [[ "$(cat "${output}")" == catalogue=true ]] || fail 'main push narrowed the catalogue'
+
+# A broken trusted classifier must fail the preflight rather than let selection
+# inherit a successful decision. This runs the actual workflow shell.
+printf '#!/usr/bin/env bash\nexit 23\n' >"${current}/.github/scripts/classify-ci-catalogue.sh"
+git -C "${current}" remote set-url origin "${current}"
+: >"${output}"
+if (cd "${current}" && GITHUB_EVENT_NAME=pull_request GITHUB_REPOSITORY=devantler-tech/.github PR_NUMBER=7 BASE_SHA="${base}" HEAD_SHA="${head}" GITHUB_OUTPUT="${output}" bash "${fixture}/scope-step.sh"); then
+  fail 'failed trusted classifier was accepted'
+fi
+[[ ! -s "${output}" ]] || fail 'failed trusted classifier emitted a narrowing decision'
 
 echo 'CI catalogue scope: Git, read failures and actual trusted-base workflow controls passed'
