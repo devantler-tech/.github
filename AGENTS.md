@@ -91,6 +91,7 @@ for the architecture, the GitHub App credential setup, and the Observe-first ado
 | `deploy/team-repositories/` | one team-to-repository permission grant per file |
 | `deploy/labels/<repo>.yaml` | one `IssueLabels` per repo; canonical taxonomy in `labels/kustomization.yaml` |
 | `deploy/repository-permissions/<repo>.yaml` | one `RepositoryPermissions` per active (non-archived) repo; requires actions pinned to a full commit SHA |
+| `deploy/runner-groups/` | the selected-repository KSail runner group; requires Platform's namespaced controller, tenant grant and admission policy |
 | `deploy/provider-config.yaml` | the provider-upjet-github `ProviderConfig` (App credentials) |
 | `deploy/external-secret.yaml` | the `ExternalSecret` sourcing the GitHub App credentials |
 | `deploy/kustomization.yaml` | top-level kustomization wiring the above + the shared repo-settings patch |
@@ -124,6 +125,8 @@ bash tests/admin-team-policy.sh         # Admins policy invariants
 bash tests/declarative-coverage.sh      # every repo declared in every rendered dimension
 bash tests/declarative-coverage-fail-closed.sh # rendered-label reads fail closed
 bash tests/repository-update-policy.sh  # active Repository update invariants
+bash tests/runner-group-policy.sh       # KSail-only group, provider and safe lifecycle
+bash tests/runner-group-policy-blocks.sh # invalid declarations and UNKNOWN inputs
 bash tests/signing-rule-retirement.sh  # retained signing-rule identity and safe lifecycle
 bash tests/release-contract.sh          # deploy/ changes must trigger a release
 bash tests/deploy-deletions.sh          # removed deploy/ resources must be acknowledged per resource
@@ -135,7 +138,7 @@ bash tests/workflow-execution-policies.sh # reviewed execution policies are vali
 bash tests/apply-workflow-execution-policies.sh # the policy reconciler, against an offline API stand-in
 ```
 
-Those fourteen commands are the baseline checks that `ci.yaml`'s `validate-manifests` job runs; the
+Those sixteen commands are the baseline checks that `ci.yaml`'s `validate-manifests` job runs; the
 same workflow also runs the catalogue's tests (see [Actions catalogue](#actions-catalogue)). Pull requests additionally pass
 their changed paths and title through `scripts/validate-release-contract.sh` and their base/head
 renders plus the pull-request body through `scripts/validate-deploy-deletions.sh` (every managed
@@ -165,6 +168,18 @@ until trusted producer, current-head attribution and live enforcement are proven
 are well-formed; the Crossplane CRDs themselves are applied/validated **on-cluster** (the
 `github-config` tenant), not in CI — so a green build is necessary but not sufficient, and any new CR
 must be schema-checked against the provider's published CRDs (above).
+
+**KSail runner group:** the declaration uses the existing namespaced `ProviderConfig`
+explicitly and permits only repository ID `737584922`. Its management policies exclude
+deletion and late initialization; a removed declaration retains the external group.
+Platform must deploy the namespaced RunnerGroup controller, tenant grant and admission
+boundary before publishing this declaration. Before creating it, establish that the
+named group is absent; an existing group needs verified identity and Observe-first
+adoption. Before ARC activation, require the managed group's Ready condition and a
+complete live group/repository readback proving the selected repository is KSail alone.
+A manifest test, tenant readiness or credential-source mapping does not prove that live
+boundary or the App identity mounted into ARC. The group permits all workflows in KSail;
+it does not impose a workflow-type restriction.
 
 Repo-specific watch-list for the daily engineer:
 

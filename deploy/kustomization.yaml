@@ -27,3 +27,6 @@ resources:
   # active in the platform: without it these resources never become ready, and
   # the tenant's health check stalls every prod deploy behind them.
   - repository-permissions/
+  # Requires the namespaced RunnerGroup controller, tenant grant and admission
+  # boundary in Platform before publication; never enable the default group.
+  - runner-groups/

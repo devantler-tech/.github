@@ -5948,6 +5948,12 @@ jobs:
       - name: 🧪 Test repository update policy
         run: bash tests/repository-update-policy.sh
 
+      - name: 🧪 Test KSail-only runner group policy
+        run: bash tests/runner-group-policy.sh
+
+      - name: 🧪 Test runner group policy failure boundaries
+        run: bash tests/runner-group-policy-blocks.sh
+
       - name: 🧪 Test release contract
         run: bash tests/release-contract.sh
 

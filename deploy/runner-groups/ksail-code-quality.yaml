@@ -1,0 +1,20 @@
+# Platform must activate the namespaced RunnerGroup controller and admit this
+# exact group before this artifact is promoted. The provider supplies the org.
+apiVersion: actions.github.m.upbound.io/v1alpha1
+kind: RunnerGroup
+metadata:
+  name: ksail-code-quality
+spec:
+  # Keep the external group on removal; observed fields cannot widen the policy.
+  managementPolicies: [Observe, Create, Update]
+  providerConfigRef:
+    kind: ProviderConfig
+    name: default
+  forProvider:
+    name: ksail-code-quality
+    visibility: selected
+    selectedRepositoryIds: [737584922]
+    # KSail is public; selected visibility still excludes every other repo.
+    allowsPublicRepositories: true
+    restrictedToWorkflows: false
+    selectedWorkflows: []
