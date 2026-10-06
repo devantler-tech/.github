@@ -3272,6 +3272,64 @@ jobs:
         shell: bash
         run: bash .github/tests/test-workflow-readme-parity.sh
 
+  test-publish-contracts:
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: 🔒 Harden Runner
+        uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
+        with:
+          egress-policy: audit
+
+      - name: 📑 Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: 🔒 Check publish workflows require a SHA-pinned caller
+        shell: bash
+        run: bash .github/tests/test-publish-caller-pin.sh
+
+      - name: 🔏 Check publish-app signs the manifests artifact by its pushed digest
+        shell: bash
+        run: bash .github/tests/test-publish-app-signs-by-digest.sh
+
+      - name: 🧱 Check publish workflows refuse a bad release before any registry write
+        shell: bash
+        run: bash .github/tests/test-publish-preflight.sh
+
+      - name: 🔒 Refuse existing versions and unknown registry reads
+        shell: bash
+        run: bash .github/tests/test-unpublished-version.sh
+
+      - name: 🔏 Recover only the original signed manifests version
+        shell: bash
+        run: bash .github/tests/test-manifests-recovery.sh
+
+      - name: 🔏 Recover only the original signed application pair
+        shell: bash
+        run: bash .github/tests/test-app-recovery.sh
+
+      - name: ✍️ Install Cosign for disposable cryptographic publication tests
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+
+      - name: 📦 Install Flux for native recovery tagging
+        uses: fluxcd/flux2/action@dd233c4fadef306a62b7893204f8e3817fecc2b2 # v2.9.5
+
+      - name: 🔒 Exercise existing-version refusal against a disposable OCI registry
+        shell: bash
+        run: bash .github/tests/test-unpublished-version-native.sh
+
+      - name: 🔏 Check application image and manifests promotion
+        shell: bash
+        run: bash .github/tests/test-app-signed-promotion.sh
+
+      - name: 🔏 Check manifests promotion never exposes an unsigned release
+        shell: bash
+        run: bash .github/tests/test-publish-manifests-promotion.sh
+
   lint-ci-coverage-parity:
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
     runs-on: ubuntu-latest
@@ -3357,51 +3415,13 @@ jobs:
         shell: bash
         run: bash .github/tests/test-dependency-review-offline.sh
 
-      - name: 🔒 Check publish workflows require a SHA-pinned caller
-        shell: bash
-        run: bash .github/tests/test-publish-caller-pin.sh
-
       - name: 📌 Check .NET tool installs are pinned to the tracked versions
         shell: bash
         run: bash .github/tests/test-dotnet-tool-pins.sh
 
-      - name: 🔏 Check publish-app signs the manifests artifact by its pushed digest
+      - name: 🧪 Require independent blocking publication coverage
         shell: bash
-        run: bash .github/tests/test-publish-app-signs-by-digest.sh
-
-      - name: 🧱 Check publish workflows refuse a bad release before any registry write
-        shell: bash
-        run: bash .github/tests/test-publish-preflight.sh
-
-      - name: 🔒 Refuse existing versions and unknown registry reads
-        shell: bash
-        run: bash .github/tests/test-unpublished-version.sh
-
-      - name: 🔏 Recover only the original signed manifests version
-        shell: bash
-        run: bash .github/tests/test-manifests-recovery.sh
-
-      - name: 🔏 Recover only the original signed application pair
-        shell: bash
-        run: bash .github/tests/test-app-recovery.sh
-
-      - name: ✍️ Install Cosign for disposable cryptographic publication tests
-        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
-
-      - name: 📦 Install Flux for native recovery tagging
-        uses: fluxcd/flux2/action@dd233c4fadef306a62b7893204f8e3817fecc2b2 # v2.9.5
-
-      - name: 🔒 Exercise existing-version refusal against a disposable OCI registry
-        shell: bash
-        run: bash .github/tests/test-unpublished-version-native.sh
-
-      - name: 🔏 Check application image and manifests promotion
-        shell: bash
-        run: bash .github/tests/test-app-signed-promotion.sh
-
-      - name: 🔏 Check manifests promotion never exposes an unsigned release
-        shell: bash
-        run: bash .github/tests/test-publish-manifests-promotion.sh
+        run: bash .github/tests/test-publish-contract-job.sh
 
       - name: 📝 Check TODO scanner ignore-input forwarding
         shell: bash
@@ -6060,6 +6080,7 @@ jobs:
       - lint-readme-parity
       - lint-shell-pipelines
       - lint-ci-coverage-parity
+      - test-publish-contracts
       - test-zizmor
       - test-dependency-review-workflow
       - test-delete-workflow-runs-all
@@ -6194,6 +6215,7 @@ jobs:
             ${{ needs.lint-readme-parity.result }}
             ${{ needs.lint-shell-pipelines.result }}
             ${{ needs.lint-ci-coverage-parity.result }}
+            ${{ needs.test-publish-contracts.result }}
             ${{ needs.test-zizmor.result }}
             ${{ needs.test-dependency-review-workflow.result }}
             ${{ needs.test-delete-workflow-runs-all.result }}
