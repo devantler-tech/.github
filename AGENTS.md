@@ -341,6 +341,10 @@ on:
 
 #### Test jobs
 
+Publication safety fixtures run in the independent always-on `test-publish-contracts` job,
+alongside catalogue guards. Both jobs feed the required reducer; publication coverage retains
+the contents-read ceiling, synthetic credentials and disposable native registry controls.
+
 The queue observer reads jobs for the current run attempt with complete pagination.
 It retries HTTP 5xx failures at most twice, after 2 and 4 seconds, replacing failed
 output each time. Successful reads must have consistent page totals, unique job

@@ -1,5 +1,5 @@
 {
-  "always": ["lint-shell-pipelines", "lint-readme-parity", "lint-ci-coverage-parity", "validate-manifests"],
+  "always": ["lint-shell-pipelines", "lint-readme-parity", "lint-ci-coverage-parity", "test-publish-contracts", "validate-manifests"],
   "catalogue_optional": [
     "test-agent-skills-retry-env", "test-aggregate-job-checks-empty", "test-aggregate-job-checks-failure",
     "test-aggregate-job-checks-success", "test-approve-pr", "test-cleanup-ghcr-packages", "test-diagnose-flux",
