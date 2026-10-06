@@ -3948,73 +3948,6 @@ jobs:
       - name: 🧪 Hold the queue while the remaining evaluations wait
         run: sleep 10
 
-  test-enable-auto-merge-queue-results:
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && always() && needs.test-enable-auto-merge-queue.result != 'skipped' }}"
-    needs: test-enable-auto-merge-queue
-    name: "[Test] Enable Auto-Merge - All Queued Evaluations Complete"
-    runs-on: ubuntu-latest
-    permissions:
-      actions: read
-    steps:
-      - name: 🛡️ Harden runner
-        uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
-        with:
-          egress-policy: audit
-
-      - name: 🧪 Verify every slot completed in this run attempt
-        env:
-          GH_TOKEN: ${{ github.token }}
-          REPOSITORY: ${{ github.repository }}
-          RUN_ID: ${{ github.run_id }}
-          RUN_ATTEMPT: ${{ github.run_attempt }}
-        run: |
-          set -euo pipefail
-          # Retry only server failures, restarting the entire paginated read.
-          # A failed later page can already have emitted convincing partial data.
-          for attempt in 1 2 3; do
-            if gh api "repos/$REPOSITORY/actions/runs/$RUN_ID/attempts/$RUN_ATTEMPT/jobs?per_page=100" \
-              --paginate --slurp > jobs.json 2> jobs.error; then
-              break
-            fi
-            status="$(sed -nE 's/.*\(HTTP ([0-9]{3})\).*/\1/p' jobs.error | tail -1)"
-            if [[ "$attempt" == 3 || ! "$status" =~ ^5[0-9][0-9]$ ]]; then
-              cat jobs.error >&2
-              echo "::error::Could not read complete queue evidence."
-              exit 1
-            fi
-            echo "::notice::Queue evidence read failed with HTTP $status; retrying the complete read."
-            sleep "$((attempt * 2))"
-          done
-          if ! jq -se --argjson run "$RUN_ID" --argjson attempt "$RUN_ATTEMPT" '
-            length == 1 and (.[0] |
-            def integer: type == "number" and . >= 0 and floor == .;
-            type == "array" and length > 0
-            and all(.[];
-              type == "object" and (.total_count | integer)
-              and (.jobs | type == "array")
-              and all(.jobs[];
-                type == "object" and (.id | integer and . > 0)
-                and .run_id == $run and .run_attempt == $attempt
-                and (.name | type == "string")
-              )
-            )
-            and (map(.total_count) | unique | length == 1)
-            and ((map(.jobs | length) | add) == .[0].total_count)
-            and ([.[] | .jobs[].id] | length == (unique | length))
-            and (
-              [.[] | .jobs[] | select(.name | startswith("[Test] Enable Auto-Merge - Queue Slot "))]
-              | sort_by(.name)
-              | (map(.name) == [
-                  "[Test] Enable Auto-Merge - Queue Slot 1",
-                  "[Test] Enable Auto-Merge - Queue Slot 2",
-                  "[Test] Enable Auto-Merge - Queue Slot 3"
-                ]) and all(.[]; .status == "completed" and .conclusion == "success")
-            ))
-          ' jobs.json; then
-            echo "::error::Complete evidence must show all three queue slots succeeded in this run attempt. Use Re-run all jobs to repeat the burst; rerunning only this observer cannot recreate it."
-            exit 1
-          fi
-
   test-enable-auto-merge-pentad-gate:
     needs: [select-ci-tests]
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-enable-auto-merge-pentad-gate') }}"
@@ -4041,6 +3974,9 @@ jobs:
 
       - name: Reject broken queue observer guards
         run: bash .github/tests/test-queue-observer-controls.sh
+
+      - name: Reject disconnected native queue gates
+        run: bash .github/tests/test-native-queue-gate.sh
 
   test-create-release:
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
@@ -6099,7 +6035,6 @@ jobs:
       - test-enable-auto-merge-queued
       - test-enable-auto-merge-author-gate
       - test-enable-auto-merge-queue
-      - test-enable-auto-merge-queue-results
       - test-enable-auto-merge-pentad-gate
       - test-create-release
       - test-create-release-config
@@ -6162,6 +6097,12 @@ jobs:
           SELECTOR_RESULT: ${{ needs.select-ci-tests.result }}
           SELECTED_JOBS: ${{ needs.select-ci-tests.outputs.selected }}
           NEEDS_JSON: ${{ toJSON(needs) }}
+          GH_HOST: github.com
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
           JOB_RESULTS: >-
             ${{ needs.select-ci-tests.result }}
             ${{ needs.test-validate-naming.result }}
@@ -6234,7 +6175,6 @@ jobs:
             ${{ needs.test-enable-auto-merge-queued.result }}
             ${{ needs.test-enable-auto-merge-author-gate.result }}
             ${{ needs.test-enable-auto-merge-queue.result }}
-            ${{ needs.test-enable-auto-merge-queue-results.result }}
             ${{ needs.test-enable-auto-merge-pentad-gate.result }}
             ${{ needs.test-create-release.result }}
             ${{ needs.test-create-release-config.result }}
@@ -6336,5 +6276,64 @@ jobs:
             echo "❌ CI - Required Checks — incomplete selection or a selected test did not succeed."
             exit 1
           }
+
+          # Public native job reads need no Actions permission. Co-locate the
+          # observer with the gate instead of allocating another serial runner.
+          queue_result="$(jq -er '."test-enable-auto-merge-queue".result' <<< "$NEEDS_JSON")"
+          if [[ "$queue_result" == skipped ]]; then
+            echo "✅ CI - Required Checks — all jobs succeeded or were skipped."
+            exit 0
+          fi
+          if [[ "$queue_result" != success || ! "$RUN_ID" =~ ^[1-9][0-9]*$ ||
+            ! "$RUN_ATTEMPT" =~ ^[1-9][0-9]*$ || ! "$HEAD_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::Missing current-run queue identity or result."
+            exit 1
+          fi
+          # Retry only server failures, restarting the entire paginated read.
+          # A failed later page can already have emitted convincing partial data.
+          for attempt in 1 2 3; do
+            if gh api "repos/$REPOSITORY/actions/runs/$RUN_ID/attempts/$RUN_ATTEMPT/jobs?per_page=100" \
+              --paginate --slurp > jobs.json 2> jobs.error; then
+              break
+            fi
+            status="$(sed -nE 's/.*\(HTTP ([0-9]{3})\).*/\1/p' jobs.error | tail -1)"
+            if [[ "$attempt" == 3 || ! "$status" =~ ^5[0-9][0-9]$ ]]; then
+              cat jobs.error >&2
+              echo "::error::Could not read complete queue evidence."
+              exit 1
+            fi
+            echo "::notice::Queue evidence read failed with HTTP $status; retrying the complete read."
+            sleep "$((attempt * 2))"
+          done
+          if ! jq -se --argjson run "$RUN_ID" --argjson attempt "$RUN_ATTEMPT" --arg head "$HEAD_SHA" '
+            length == 1 and (.[0] |
+            def integer: type == "number" and . >= 0 and floor == .;
+            type == "array" and length > 0
+            and all(.[];
+              type == "object" and (.total_count | integer)
+              and (.jobs | type == "array")
+              and all(.jobs[];
+                type == "object" and (.id | integer and . > 0)
+                and .run_id == $run and .run_attempt == $attempt
+                and .head_sha == $head
+                and (.name | type == "string")
+              )
+            )
+            and (map(.total_count) | unique | length == 1)
+            and ((map(.jobs | length) | add) == .[0].total_count)
+            and ([.[] | .jobs[].id] | length == (unique | length))
+            and (
+              [.[] | .jobs[] | select(.name | startswith("[Test] Enable Auto-Merge - Queue Slot "))]
+              | sort_by(.name)
+              | (map(.name) == [
+                  "[Test] Enable Auto-Merge - Queue Slot 1",
+                  "[Test] Enable Auto-Merge - Queue Slot 2",
+                  "[Test] Enable Auto-Merge - Queue Slot 3"
+                ]) and all(.[]; .status == "completed" and .conclusion == "success")
+            ))
+          ' jobs.json; then
+            echo "::error::Complete evidence must show all three queue slots succeeded at this head and run attempt. Use Re-run all jobs to repeat the burst; rerunning only this gate cannot recreate it."
+            exit 1
+          fi
 
           echo "✅ CI - Required Checks — all jobs succeeded or were skipped."

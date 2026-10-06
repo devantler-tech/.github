@@ -30,7 +30,7 @@ script=$(yq -r "$gate.steps[] | select(.name == \"📊 Summarize workflow result
 run_case() {
   local label=$1 input=$2 expected=$3 needle=$4 output rc=0
 
-  output=$(JOB_RESULTS="$input" CATALOGUE_REQUIRED=true SELECTOR_RESULT=success SELECTED_JOBS='[]' NEEDS_JSON='{}' bash -c "$script" 2>&1) || rc=$?
+  output=$(JOB_RESULTS="$input" CATALOGUE_REQUIRED=true SELECTOR_RESULT=success SELECTED_JOBS='[]' NEEDS_JSON='{"test-enable-auto-merge-queue":{"result":"skipped"}}' bash -c "$script" 2>&1) || rc=$?
 
   if [ "$expected" = pass ] && [ "$rc" -ne 0 ]; then
     fail "$label should pass, got exit $rc: $output"
@@ -53,6 +53,12 @@ run_case 'empty result list' '' fail 'no job results were provided'
 # the actual reducer, not an independent model of its intended behavior.
 selection_case() {
   local label=$1 selector=$2 selected=$3 needs=$4 expected=$5 rc=0 output
+  # These unit cases omit the unselected queue. Include its actual skipped
+  # dependency result; native queue execution is exercised by the API fixtures.
+  local complete
+  if complete=$(jq -c 'if type == "object" and (has("test-enable-auto-merge-queue") | not) then . + {"test-enable-auto-merge-queue":{"result":"skipped"}} else . end' <<< "$needs" 2>/dev/null); then
+    needs=$complete
+  fi
   output=$(JOB_RESULTS='success skipped' CATALOGUE_REQUIRED="${6:-true}" SELECTOR_RESULT="$selector" SELECTED_JOBS="$selected" NEEDS_JSON="$needs" bash -c "$script" 2>&1) || rc=$?
   if [[ "$expected" == fail && "$rc" == 0 ]]; then
     fail "$label was silently accepted"

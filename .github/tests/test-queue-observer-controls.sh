@@ -10,8 +10,8 @@ count=0
 mutation() {
   local old="$1" replacement="$2" diagnostic="$3"
   jq --arg old "$old" --arg replacement "$replacement" '
-    (.jobs["test-enable-auto-merge-queue-results"].steps[]
-      | select(.name == "🧪 Verify every slot completed in this run attempt").run)
+    (.jobs["ci-required-checks"].steps[]
+      | select(.name == "📊 Summarize workflow result").run)
     |= (if contains($old) then split($old) | join($replacement) else error("missing mutation anchor") end)
   ' "$work/ci.json" >"$work/mutated.json"
   if bash "$root/.github/tests/test-queue-observer.sh" "$work/mutated.json" >"$work/result" 2>&1; then
@@ -34,4 +34,27 @@ mutation 'and ((map(.jobs | length) | add) == .[0].total_count)' \
   '' 'extra uncounted job accepted invalid evidence'
 mutation 'and ([.[] | .jobs[].id] | length == (unique | length))' \
   '' 'duplicate job identity accepted invalid evidence'
+mutation 'and .head_sha == $head' '' 'different head accepted invalid evidence'
+mutation '.status == "completed" and .conclusion == "success"' \
+  '.status == "completed"' 'failed queue slot accepted invalid evidence'
+
+# Exercise the consuming required gate too: a proof that never runs, a tolerated
+# error, or a wrong provider binding must not make its check green.
+gate_control() {
+  local diagnostic="$1"
+  if bash "$root/.github/tests/test-native-queue-gate.sh" "$work/mutated.json" > "$work/result" 2>&1; then
+    echo 'FAIL: disconnected native queue gate was accepted' >&2
+    exit 1
+  fi
+  grep -qF "$diagnostic" "$work/result" || { cat "$work/result" >&2; exit 1; }
+  count=$((count + 1))
+}
+jq '(.jobs["ci-required-checks"].steps[] | select(.name == "📊 Summarize workflow result").run) |= sub("queue_result=.*"; "queue_result=skipped")' \
+  "$work/ci.json" > "$work/mutated.json"
+gate_control 'rejects a successful matrix with missing native queue slot 2 expected fail, got exit 0'
+jq '.jobs["ci-required-checks"]["continue-on-error"] = true' "$work/ci.json" > "$work/mutated.json"
+gate_control 'required gate tolerates a native proof failure'
+jq '(.jobs["ci-required-checks"].steps[] | select(.name == "📊 Summarize workflow result").env.HEAD_SHA) = "${{ github.sha }}"' \
+  "$work/ci.json" > "$work/mutated.json"
+gate_control 'native queue proof lacks exact provider head and attempt bindings'
 echo "PASS: $count independent observer regressions rejected"

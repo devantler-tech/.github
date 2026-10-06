@@ -4,7 +4,7 @@ set -euo pipefail
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
-yq -r '.jobs.test-enable-auto-merge-queue-results.steps[] | select(.name == "🧪 Verify every slot completed in this run attempt") | .run' \
+yq -r '.jobs.ci-required-checks.steps[] | select(.name == "📊 Summarize workflow result") | .run' \
   "${1:-$repo_root/.github/workflows/ci.yaml}" >"$work/observer.sh"
 [[ -s "$work/observer.sh" && "$(cat "$work/observer.sh")" != null ]] || exit 1
 mkdir "$work/bin"
@@ -27,18 +27,7 @@ set -euo pipefail
 printf '%s\n' "$*" >>"$FIXTURE/sleeps"
 SH
 chmod +x "$work/bin/gh" "$work/bin/sleep"
-cat >"$work/good.json" <<'JSON'
-[
-  {"total_count":4,"jobs":[
-    {"id":1,"run_id":123,"run_attempt":2,"name":"[Test] Enable Auto-Merge - Queue Slot 1","status":"completed","conclusion":"success"},
-    {"id":2,"run_id":123,"run_attempt":2,"name":"[Test] Enable Auto-Merge - Queue Slot 2","status":"completed","conclusion":"success"}
-  ]},
-  {"total_count":4,"jobs":[
-    {"id":3,"run_id":123,"run_attempt":2,"name":"[Test] Enable Auto-Merge - Queue Slot 3","status":"completed","conclusion":"success"},
-    {"id":4,"run_id":123,"run_attempt":2,"name":"Unrelated check","status":"in_progress","conclusion":null}
-  ]}
-]
-JSON
+cp "$repo_root/.github/tests/fixtures/queue-slots.json" "$work/good.json"
 # Stop the suite with a diagnostic when an observer assertion fails.
 fail() {
   echo "FAIL: $*" >&2
@@ -68,6 +57,10 @@ observe() {
     cd "$work/case"
     export FIXTURE="$work/case" PATH="$work/bin:$PATH"
     export REPOSITORY=devantler-tech/fixture RUN_ID=123 RUN_ATTEMPT=2
+    export HEAD_SHA=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+    export JOB_RESULTS='success success' CATALOGUE_REQUIRED=true SELECTOR_RESULT=success
+    export SELECTED_JOBS='["test-enable-auto-merge-queue"]'
+    export NEEDS_JSON='{"select-ci-tests":{"result":"success"},"test-enable-auto-merge-queue":{"result":"success"}}'
     bash -e "$work/observer.sh"
   ) >"$work/output" 2>&1
 }
@@ -143,11 +136,14 @@ invalid_response 'fractional total count' 'map(.total_count = 4.5)'
 invalid_response 'zero job identity' '.[0].jobs[0].id = 0'
 invalid_response 'missing job name' 'del(.[0].jobs[0].name)'
 invalid_response 'different run' '.[0].jobs[0].run_id = 999'
+invalid_response 'different head' '.[0].jobs[0].head_sha = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"'
+invalid_response 'missing head identity' 'del(.[1].jobs[1].head_sha)'
 invalid_response 'different attempt' '.[1].jobs[0].run_attempt = 1'
 invalid_response 'unrelated job from a different attempt' '.[1].jobs[1].run_attempt = 1'
 invalid_response 'missing attempt identity' 'del(.[0].jobs[0].run_attempt)'
 invalid_response 'failed queue slot' '.[1].jobs[0].conclusion = "failure"'
 invalid_response 'cancelled queue slot' '.[0].jobs[1].conclusion = "cancelled"'
+invalid_response 'skipped queue slot' '.[0].jobs[1].conclusion = "skipped"'
 invalid_response 'pending queue slot' '.[0].jobs[0].status = "queued" | .[0].jobs[0].conclusion = null'
 invalid_response 'missing queue slot' '.[1].jobs[0].name = "Other job"'
 invalid_response 'duplicate queue slot name' '.[1].jobs[0].name = "[Test] Enable Auto-Merge - Queue Slot 1"'
