@@ -436,7 +436,9 @@ generated read-only projection have exact file ownership bound to all three nati
 callers; their admission stays intact, and affected callers must succeed in the
 required reducer. Shared helpers, other workflows, tests,
 fixtures, root configuration and unknown paths retain full coverage; missing Git
-evidence fails the selector. A successful trusted-base `catalogue-scope` decision
+evidence fails the selector. Classification runs from the immutable trusted base
+before candidate checkout and selection on the same read-only runner; there is
+no separate prerequisite runner assignment. A successful trusted-base scope decision
 for a deployment-only PR omits only the 48 explicitly inventoried smoke jobs; the
 separate event-gated dependency-review smoke retains its scope condition. The other
 31 selectable jobs and all independent shared guards remain available. Missing or

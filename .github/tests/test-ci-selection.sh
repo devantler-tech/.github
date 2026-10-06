@@ -6,20 +6,49 @@ work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
 ci="$root/.github/workflows/ci.yaml"
 yq -o=json . "$ci" > "$work/workflow.json"
-jq -e '
+cat > "$work/preflight.jq" <<'JQ'
   .jobs["select-ci-tests"] as $s |
-  ($s.if == "${{ github.event_name != '\''merge_group'\'' && !startsWith(github.event.head_commit.message, '\''chore(main): release '\'') }}") and
-  ($s.needs == "catalogue-scope") and
+  (.jobs | has("catalogue-scope") | not) and
+  ($s.if == "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}") and
+  ($s.needs == null) and
   ($s | has("continue-on-error") | not) and
   ($s.permissions == {"contents":"read"}) and
   ($s.outputs.selected == "${{ steps.select.outputs.selected }}") and
-  ([$s.steps[] | select((.uses // "") | startswith("actions/checkout@")) | .with] == [{"fetch-depth":0,"persist-credentials":false}]) and
+  ($s.outputs.catalogue == "${{ steps.scope.outputs.catalogue }}") and
+  ($s.steps | length == 5) and
+  ($s.steps[0].uses | startswith("step-security/harden-runner@")) and
+  ([$s.steps[1], $s.steps[3]] | all(.uses | startswith("actions/checkout@"))) and
+  ($s.steps[1].with == {"ref":"${{ github.event.pull_request.base.sha || github.sha }}","fetch-depth":0,"persist-credentials":false}) and
+  ($s.steps[3].with == {"fetch-depth":0,"persist-credentials":false}) and
+  ($s.steps[2].id == "scope") and
+  ($s.steps[4].id == "select") and
+  ([$s.steps[1:][] | .if] | all(. == null)) and
+  ([$s.steps[] | ."continue-on-error"] | all(. == null or . == false)) and
   ([$s.steps[] | select(.id == "select") | .env.GOWORK] == ["off"]) and
   ([$s.steps[] | select(.id == "select") | .env.GOFLAGS] == [""]) and
   ([$s.steps[] | select(.id == "select") | .env.GOTOOLCHAIN] == ["local"]) and
-  ([$s.steps[] | select(.id == "select") | .env.CATALOGUE_SCOPE] == ["${{ needs.catalogue-scope.outputs.catalogue }}"]) and
+  ([$s.steps[] | select(.id == "select") | .env.CATALOGUE_SCOPE] == ["${{ steps.scope.outputs.catalogue }}"]) and
   (.jobs["ci-required-checks"].needs | index("select-ci-tests") != null)
-' "$work/workflow.json" > /dev/null
+JQ
+if ! jq -e -f "$work/preflight.jq" "$work/workflow.json" > /dev/null; then
+  echo 'FAIL: classification and selection must share one runner with ordered trusted-base and candidate checkouts' >&2
+  exit 1
+fi
+for mutation in \
+  'del(.jobs["select-ci-tests"].steps[1].with.ref)' \
+  '.jobs["select-ci-tests"].steps |= [.[0], .[3], .[2], .[1], .[4]]' \
+  '.jobs["select-ci-tests"].steps[2].if = "false"' \
+  '.jobs["select-ci-tests"].steps[2]."continue-on-error" = true' \
+  '.jobs["select-ci-tests"].steps[1].with."persist-credentials" = true' \
+  '.jobs["select-ci-tests"].steps[4].env.CATALOGUE_SCOPE = "true"' \
+  '.jobs["select-ci-tests"].steps |= [.[0], .[1], .[4], .[3], .[2]]' \
+  'del(.jobs["ci-required-checks"].needs[] | select(. == "select-ci-tests"))'; do
+  jq "$mutation" "$work/workflow.json" > "$work/unsafe.json"
+  if jq -e -f "$work/preflight.jq" "$work/unsafe.json" > /dev/null; then
+    echo "FAIL: unsafe preflight mutation accepted: $mutation" >&2
+    exit 1
+  fi
+done
 go -C "$root/.github/scripts/ci-selection" test -race -count=3 ./...
 go -C "$root/.github/scripts/ci-selection" vet ./...
 touch "$work/output"

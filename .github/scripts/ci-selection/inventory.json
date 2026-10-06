@@ -1,5 +1,5 @@
 {
-  "always": ["catalogue-scope", "lint-shell-pipelines", "lint-readme-parity", "lint-ci-coverage-parity", "validate-manifests"],
+  "always": ["lint-shell-pipelines", "lint-readme-parity", "lint-ci-coverage-parity", "validate-manifests"],
   "catalogue_optional": [
     "test-agent-skills-retry-env", "test-aggregate-job-checks-empty", "test-aggregate-job-checks-failure",
     "test-aggregate-job-checks-success", "test-approve-pr", "test-cleanup-ghcr-packages", "test-diagnose-flux",
@@ -45,7 +45,7 @@
     "test-todo-scanner": {"if": "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"},
     "test-create-issues-from-todos": {"if": "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"},
     "test-upsert-issue": {"if": "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"},
-    "test-dependency-review": {"if": "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && startsWith(github.event_name, 'pull_request') && needs.catalogue-scope.outputs.catalogue == 'true' }}", "needs": "catalogue-scope"},
+    "test-dependency-review": {"if": "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && startsWith(github.event_name, 'pull_request') && needs.select-ci-tests.outputs.catalogue == 'true' }}", "needs": "select-ci-tests"},
     "test-enable-auto-merge-on-pr": {"if": "github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && startsWith(github.event_name, 'pull_request') && (\n  github.event.pull_request.user.login == 'dependabot[bot]' ||\n  github.event.pull_request.user.login == 'renovate[bot]' ||\n  github.event.pull_request.user.login == 'botantler[bot]' ||\n  github.event.pull_request.user.login == 'devantler'\n)"},
     "test-zizmor": {"if": "${{ github.event_name == 'push' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"},
     "test-run-dotnet-tests-workflow-authenticated": {"if": "${{\n  github.event_name != 'merge_group' &&\n  !startsWith(github.event.head_commit.message, 'chore(main): release ') &&\n  github.event_name == 'pull_request' &&\n  github.event.pull_request.head.repo.full_name == github.repository &&\n  github.event.pull_request.user.login == 'devantler'\n}}"},
