@@ -262,6 +262,21 @@ func TestDeletionRequiresConfirmedNoContentResponse(t *testing.T) {
 	}
 }
 
+func TestListingRequiresConfirmedCompleteResponse(t *testing.T) {
+	for _, status := range []int{201, 202, 206} {
+		t.Run(fmt.Sprint(status), func(t *testing.T) {
+			routes := append(standardRoutes(runBody(oldRun(101))), deletion(101, 204))
+			routes[2].status = status
+			f := newFixture(t, routes)
+			cfg := baseConfig()
+			cfg.minimum, cfg.dryRun = 0, false
+			if _, err := executeFixture(t, cfg, f); err == nil || len(deletions(f)) != 0 {
+				t.Fatalf("unconfirmed listing accepted or mutated: %v %v", err, deletions(f))
+			}
+		})
+	}
+}
+
 func TestPaginationFailuresBeforeMutation(t *testing.T) {
 	first := `{"total_count":2,"workflow_runs":[` + oldRun(101) + `]}`
 	for _, second := range []fixtureRoute{

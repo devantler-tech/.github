@@ -149,6 +149,9 @@ func (a api) request(ctx context.Context, method, path string) ([]byte, error) {
 			raw, readErr := io.ReadAll(io.LimitReader(response.Body, (16<<20)+1))
 			closeErr := response.Body.Close()
 			if response.StatusCode >= 200 && response.StatusCode < 300 {
+				if method == "GET" && response.StatusCode != http.StatusOK {
+					return nil, errors.New("listing was not confirmed with HTTP 200")
+				}
 				if method == "DELETE" && response.StatusCode != http.StatusNoContent {
 					return nil, errors.New("deletion was not confirmed with HTTP 204")
 				}
