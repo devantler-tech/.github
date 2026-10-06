@@ -247,19 +247,35 @@ jobs:
 
 > **Note:** The calling workflow must grant `actions: write` and `contents: read` permissions.
 
+Cleanup uses a Go driver from the reusable workflow's exact commit. It first lists
+all workflows and runs, then applies the age, minimum-run and conclusion filters.
+The newest `minimum-runs` matching old runs are retained in addition to recent runs.
+Runs whose workflow is no longer listed retain the existing orphan policy: they are
+selected independently of those filters. Workflow patterns match names or filenames
+without case sensitivity. Workflow, state and conclusion filters accept comma or
+pipe separated values.
+
+Invalid or incomplete API responses fail before deletion starts. Transient read
+failures receive at most two retries; a deletion is attempted once, requires HTTP
+204 confirmation, and stops cleanup on rejection or an unknown outcome. A rerun
+lists the current history again. `days` must be finite and nonnegative;
+`minimum-runs` must be a nonnegative integer.
+
 </details>
 
 ### 🗑️ Delete Workflow Runs (Read-Only)
 
 [.github/workflows/delete-workflow-runs-readonly.yaml](.github/workflows/delete-workflow-runs-readonly.yaml)
-executes the same pinned cleanup action with `actions: read` and `contents: read` only.
+executes the same cleanup driver with `actions: read` and `contents: read` only.
 Use it for previews and catalogue tests that must have no authority to delete workflow history.
 Deletion requires the production entrypoint above and an explicit `dry-run: false`.
 
 The read-only entrypoint is generated from the complete production wrapper by
 `bash .github/scripts/generate-cleanup-readonly.sh`. Required CI checks preserve its
 input behavior and source parity. Hosted dry-runs prove execution and the credential
-boundary; deterministic native retention and deletion fixtures are tracked in #350.
+boundary. Native HTTP fixtures exercise retention, pagination, filters, repository
+selection, command exit codes and rejected or unconfirmed deletion without live
+deletion authority.
 
 #### Inputs
 

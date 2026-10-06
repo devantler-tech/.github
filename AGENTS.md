@@ -359,7 +359,12 @@ coverage guard accepts this pair only after `.github/tests/test-cleanup-credenti
 verifies source parity, all three executed callers and their read-only permissions.
 Regenerate with `bash .github/scripts/generate-cleanup-readonly.sh`; never edit the
 projection by hand. Input behavior and credential restoration have independent
-negative controls. Native retention/deletion fixtures remain tracked in #350.
+negative controls. The owned Go driver under `.github/scripts/delete-workflow-runs/`
+completes enumeration before mutation, retries transient reads twice and never
+replays a deletion. Its real HTTP and native-command tests run through the same
+coverage guard, including retention, pagination, partial reads, ambiguous identities,
+lost mutation responses and rejected or unconfirmed deletions. Fixtures use only
+synthetic credentials; all three hosted callers retain read-only permissions.
 
 **TODO coverage:** both TODO smoke callers use the complete generated
 `scan-for-todo-comments-readonly.yaml` projection with contents-read permissions and no
