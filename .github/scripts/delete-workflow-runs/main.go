@@ -449,6 +449,7 @@ func clean(ctx context.Context, cfg config, base, token string, client *http.Cli
 	}
 	plan := []int64{}
 	orphans := map[int64]int64{}
+	runsByWorkflow := map[int64][]workflowRun{}
 	planned := map[int64]bool{}
 	appendRun := func(id int64) error {
 		if planned[id] {
@@ -465,25 +466,16 @@ func clean(ctx context.Context, cfg config, base, token string, client *http.Cli
 			if err := appendRun(r.ID); err != nil {
 				return err
 			}
+		} else {
+			runsByWorkflow[r.WorkflowID] = append(runsByWorkflow[r.WorkflowID], r)
 		}
 	}
 	for _, w := range workflows {
 		if !selected(cfg, w) {
 			continue
 		}
-		items, err := a.listRuns(ctx, fmt.Sprintf("%s/actions/workflows/%d/runs", prefix, w.ID), now)
-		if err != nil {
-			return fmt.Errorf("list workflow runs: %w", err)
-		}
-		runs, err := decodeRuns(items)
-		if err != nil {
-			return err
-		}
 		candidates := []workflowRun{}
-		for _, r := range runs {
-			if r.WorkflowID != w.ID {
-				return errors.New("workflow run belongs to another workflow")
-			}
+		for _, r := range runsByWorkflow[w.ID] {
 			created, _ := time.Parse(time.RFC3339, r.CreatedAt)
 			if r.Status == "completed" && (len(patterns(cfg.conclusions)) == 0 || allows(cfg.conclusions, r.Conclusion)) && (cfg.days == 0 || now.Sub(created).Hours()/24 >= cfg.days) {
 				candidates = append(candidates, r)

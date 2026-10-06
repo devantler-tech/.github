@@ -249,6 +249,8 @@ jobs:
 
 Cleanup uses a Go driver from the reusable workflow's exact commit. It first lists
 all workflows and runs, then applies the age, minimum-run and conclusion filters.
+Every workflow's retention decision uses that same complete repository-run snapshot,
+avoiding repeated scans of the same history through separate workflow endpoints.
 Run enumeration ends at the last complete second before cleanup starts, so new
 runs wait for the next cleanup instead of shifting pagination. Searches reaching
 GitHub's 1,000-result limit are split into disjoint creation-time ranges; a range

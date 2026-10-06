@@ -80,7 +80,6 @@ func newFixture(t *testing.T, routes []fixtureRoute) *fixtureAPI {
 const fixtureRepo = "/repos/fixture/catalogue"
 const query = "?page=1&per_page=100"
 const workflowBody = `{"total_count":1,"workflows":[{"id":11,"name":"CI","path":".github/workflows/ci.yaml","state":"active"}]}`
-const emptyRuns = `{"total_count":0,"workflow_runs":[]}`
 
 // listing supplies a literal first-page API response.
 func listing(path, body string) fixtureRoute { return fixtureRoute{"GET", path + query, body, 200} }
@@ -103,9 +102,9 @@ func runJSON(id int, date, status, conclusion string) string {
 // oldRun is eligible by age, leaving minimum-run retention to the driver.
 func oldRun(id int) string { return runJSON(id, "2000-01-01T00:00:00Z", "completed", "success") }
 
-// standardRoutes supplies complete workflow, repository and selected-workflow listings.
+// standardRoutes supplies complete workflow metadata and the shared repository-run snapshot.
 func standardRoutes(runs string) []fixtureRoute {
-	return []fixtureRoute{listing(fixtureRepo+"/actions/workflows", workflowBody), listing(fixtureRepo+"/actions/runs", emptyRuns), listing(fixtureRepo+"/actions/workflows/11/runs", runs)}
+	return []fixtureRoute{listing(fixtureRepo+"/actions/workflows", workflowBody), listing(fixtureRepo+"/actions/runs", runs)}
 }
 
 // baseConfig represents the public workflow's preview defaults.
@@ -191,7 +190,7 @@ func TestRetentionDryRunAndFilters(t *testing.T) {
 	}
 }
 
-// Even a later workflow's failed read must prevent deletion from an earlier complete one.
+// TestListingFailuresProduceNoWrites blocks partial history and late orphan-revalidation failures.
 func TestListingFailuresProduceNoWrites(t *testing.T) {
 	malformed := []string{
 		`{"total_count":1,"workflow_runs":[]}`,
@@ -215,11 +214,12 @@ func TestListingFailuresProduceNoWrites(t *testing.T) {
 			}
 		})
 	}
-	t.Run("later-workflow", func(t *testing.T) {
+	t.Run("later-orphan-revalidation", func(t *testing.T) {
 		cfg := baseConfig()
 		cfg.minimum = 0
 		cfg.dryRun = false
-		f := newFixture(t, []fixtureRoute{listing(fixtureRepo+"/actions/workflows", `{"total_count":2,"workflows":[{"id":11,"name":"CI","path":".github/workflows/ci.yaml","state":"active"},{"id":22,"name":"Other","path":".github/workflows/other.yaml","state":"active"}]}`), listing(fixtureRepo+"/actions/runs", emptyRuns), listing(fixtureRepo+"/actions/workflows/11/runs", runBody(oldRun(101))), {"GET", fixtureRepo + "/actions/workflows/22/runs" + query, `{"message":"denied"}`, 403}})
+		orphan := strings.Replace(oldRun(900), `"workflow_id":11`, `"workflow_id":99`, 1)
+		f := newFixture(t, []fixtureRoute{listing(fixtureRepo+"/actions/workflows", workflowBody), listing(fixtureRepo+"/actions/runs", runBody(oldRun(101), orphan)), {"GET", fixtureRepo + "/actions/workflows/99", `{"message":"denied"}`, 403}})
 		_, err := executeFixture(t, cfg, f)
 		if err == nil || len(deletions(f)) != 0 {
 			t.Fatalf("partial enumeration mutated history or reported success: %v %v", err, deletions(f))
@@ -233,9 +233,8 @@ func TestPaginationAndOrphans(t *testing.T) {
 	for i := 1; i <= 100; i++ {
 		first = append(first, oldRun(1000+i))
 	}
-	f := newFixture(t, []fixtureRoute{listing(fixtureRepo+"/actions/workflows", workflowBody), listing(fixtureRepo+"/actions/runs", `{"total_count":1,"workflow_runs":[{"id":900,"workflow_id":99,"created_at":"2000-01-01T00:00:00Z","status":"completed","conclusion":"success"}]}`), listing(fixtureRepo+"/actions/workflows/11/runs", `{"total_count":101,"workflow_runs":[`+strings.Join(first, ",")+`]}`), {"GET", fixtureRepo + "/actions/workflows/11/runs?page=2&per_page=100", runBody(oldRun(1200)), 200}})
-	// The second page must retain the same total, even when it contains a single item.
-	f.routes[3].body = strings.Replace(f.routes[3].body, `"total_count":1,`, `"total_count":101,`, 1)
+	orphan := strings.Replace(oldRun(900), `"workflow_id":11`, `"workflow_id":99`, 1)
+	f := newFixture(t, []fixtureRoute{listing(fixtureRepo+"/actions/workflows", workflowBody), listing(fixtureRepo+"/actions/runs", `{"total_count":102,"workflow_runs":[`+strings.Join(first, ",")+`]}`), {"GET", fixtureRepo + "/actions/runs?page=2&per_page=100", `{"total_count":102,"workflow_runs":[` + oldRun(1200) + `,` + orphan + `]}`, 200}})
 	f.routes = append(f.routes, fixtureRoute{"GET", fixtureRepo + "/actions/workflows/99", `{"message":"Not Found"}`, 404})
 	cfg := baseConfig()
 	cfg.minimum = 100
@@ -287,7 +286,7 @@ func TestOrphanWorkflowRevalidation(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			routes := standardRoutes(runBody(oldRun(101)))
-			routes[1].body = runBody(orphan)
+			routes[1].body = runBody(oldRun(101), orphan)
 			routes = append(routes, fixtureRoute{"GET", fixtureRepo + "/actions/workflows/99", tc.body, tc.status}, deletion(900, 204), deletion(101, 204))
 			f := newFixture(t, routes)
 			cfg := baseConfig()
@@ -328,7 +327,7 @@ func TestRequestEvidenceIsComplete(t *testing.T) {
 		t.Fatal(err)
 	}
 	query := "?created=" + url.QueryEscape("1970-01-01T00:00:00Z..2026-10-05T23:59:59Z") + "&page=1&per_page=100"
-	want := []string{"GET /repos/fixture/catalogue/actions/workflows?page=1&per_page=100", "GET /repos/fixture/catalogue/actions/runs" + query, "GET /repos/fixture/catalogue/actions/workflows/11/runs" + query}
+	want := []string{"GET /repos/fixture/catalogue/actions/workflows?page=1&per_page=100", "GET /repos/fixture/catalogue/actions/runs" + query}
 	if !reflect.DeepEqual(f.requests, want) {
 		t.Fatalf("conversation differs: %v", f.requests)
 	}
@@ -361,7 +360,7 @@ func TestListingRequiresConfirmedCompleteResponse(t *testing.T) {
 	for _, status := range []int{201, 202, 206} {
 		t.Run(fmt.Sprint(status), func(t *testing.T) {
 			routes := append(standardRoutes(runBody(oldRun(101))), deletion(101, 204))
-			routes[2].status = status
+			routes[1].status = status
 			f := newFixture(t, routes)
 			cfg := baseConfig()
 			cfg.minimum, cfg.dryRun = 0, false
@@ -376,10 +375,10 @@ func TestListingRequiresConfirmedCompleteResponse(t *testing.T) {
 func TestPaginationFailuresBeforeMutation(t *testing.T) {
 	first := `{"total_count":2,"workflow_runs":[` + oldRun(101) + `]}`
 	for _, second := range []fixtureRoute{
-		{"GET", fixtureRepo + "/actions/workflows/11/runs?page=2&per_page=100", `{"message":"denied"}`, 403},
-		{"GET", fixtureRepo + "/actions/workflows/11/runs?page=2&per_page=100", `{"total_count":3,"workflow_runs":[` + oldRun(102) + `]}`, 200},
-		{"GET", fixtureRepo + "/actions/workflows/11/runs?page=2&per_page=100", `{"total_count":2,"workflow_runs":[` + oldRun(101) + `]}`, 200},
-		{"GET", fixtureRepo + "/actions/workflows/11/runs?page=2&per_page=100", `{"total_count":2,"workflow_runs":[]}`, 200},
+		{"GET", fixtureRepo + "/actions/runs?page=2&per_page=100", `{"message":"denied"}`, 403},
+		{"GET", fixtureRepo + "/actions/runs?page=2&per_page=100", `{"total_count":3,"workflow_runs":[` + oldRun(102) + `]}`, 200},
+		{"GET", fixtureRepo + "/actions/runs?page=2&per_page=100", `{"total_count":2,"workflow_runs":[` + oldRun(101) + `]}`, 200},
+		{"GET", fixtureRepo + "/actions/runs?page=2&per_page=100", `{"total_count":2,"workflow_runs":[]}`, 200},
 	} {
 		t.Run(fmt.Sprint(second.status)+second.body, func(t *testing.T) {
 			cfg := baseConfig()
@@ -446,8 +445,6 @@ func TestLostDeletionResponseIsNeverReplayed(t *testing.T) {
 		case fixtureRepo + "/actions/workflows":
 			_, _ = io.WriteString(w, workflowBody)
 		case fixtureRepo + "/actions/runs":
-			_, _ = io.WriteString(w, emptyRuns)
-		case fixtureRepo + "/actions/workflows/11/runs":
 			_, _ = io.WriteString(w, runBody(oldRun(101), oldRun(102)))
 		default:
 			t.Errorf("unexpected path %s", r.URL.Path)
@@ -555,7 +552,7 @@ func TestRunEnumerationFreezesCreationTime(t *testing.T) {
 	var log bytes.Buffer
 	err := clean(context.Background(), cfg, server.URL, "offline-fixture-token", server.Client(), fixedNow, &log, delay)
 	if err != nil || writes.Load() != 1 || !strings.Contains(log.String(), "Cleanup completed:") {
-		t.Fatalf("fixed snapshot was not used for repository and workflow reads: %v writes=%d log=%q", err, writes.Load(), log.String())
+		t.Fatalf("fixed snapshot was not used for repository-run reads: %v writes=%d log=%q", err, writes.Load(), log.String())
 	}
 }
 
@@ -658,6 +655,63 @@ func TestSnapshotFailuresProduceNoWrites(t *testing.T) {
 			err := clean(context.Background(), cfg, server.URL, "offline-fixture-token", server.Client(), fixedNow, &log, delay)
 			if err == nil || writes.Load() != 0 || strings.Contains(log.String(), "Cleanup completed:") || reads.Load() > 33 {
 				t.Fatalf("uncertain snapshot accepted or unbounded: %v reads=%d writes=%d log=%q", err, reads.Load(), writes.Load(), log.String())
+			}
+		})
+	}
+}
+
+// TestSingleRepositorySnapshotDrivesEveryWorkflow refuses redundant per-workflow rescans.
+func TestSingleRepositorySnapshotDrivesEveryWorkflow(t *testing.T) {
+	var reads, writes atomic.Int64
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == "DELETE" {
+			writes.Add(1)
+			w.WriteHeader(204)
+			return
+		}
+		reads.Add(1)
+		switch r.URL.Path {
+		case fixtureRepo + "/actions/workflows":
+			_, _ = io.WriteString(w, `{"total_count":2,"workflows":[{"id":11,"name":"CI","path":".github/workflows/ci.yaml","state":"active"},{"id":22,"name":"Release","path":".github/workflows/release.yaml","state":"active"}]}`)
+		case fixtureRepo + "/actions/runs":
+			_, _ = io.WriteString(w, runBody(oldRun(101), strings.Replace(oldRun(102), `"workflow_id":11`, `"workflow_id":22`, 1)))
+		default:
+			w.WriteHeader(403)
+		}
+	}))
+	defer server.Close()
+	cfg := baseConfig()
+	cfg.minimum, cfg.dryRun = 0, false
+	var log bytes.Buffer
+	err := clean(context.Background(), cfg, server.URL, "offline-fixture-token", server.Client(), fixedNow, &log, delay)
+	if err != nil || reads.Load() != 2 || writes.Load() != 2 || !strings.Contains(log.String(), "selected=2 dry-run=false") {
+		t.Fatalf("a complete shared snapshot was discarded or rescanned: %v reads=%d writes=%d log=%q", err, reads.Load(), writes.Load(), log.String())
+	}
+}
+
+// TestSharedSnapshotRetainsMinimumForEachWorkflow separates retention and filters within one history.
+func TestSharedSnapshotRetainsMinimumForEachWorkflow(t *testing.T) {
+	workflows := `{"total_count":2,"workflows":[{"id":11,"name":"CI","path":".github/workflows/ci.yaml","state":"active"},{"id":22,"name":"Release","path":".github/workflows/release.yaml","state":"active"}]}`
+	runs := runBody(
+		runJSON(101, "2000-01-01T00:00:00Z", "completed", "success"),
+		runJSON(102, "2000-01-02T00:00:00Z", "completed", "success"),
+		strings.Replace(runJSON(103, "2000-01-01T00:00:00Z", "completed", "success"), `"workflow_id":11`, `"workflow_id":22`, 1),
+		strings.Replace(runJSON(104, "2000-01-02T00:00:00Z", "completed", "success"), `"workflow_id":11`, `"workflow_id":22`, 1),
+		runJSON(105, "2026-10-05T00:00:00Z", "completed", "success"))
+	for _, tc := range []struct {
+		name, pattern string
+		want          []string
+	}{
+		{"both-workflows", "", []string{"DELETE /repos/fixture/catalogue/actions/runs/101", "DELETE /repos/fixture/catalogue/actions/runs/103"}},
+		{"only-CI", "CI.YAML", []string{"DELETE /repos/fixture/catalogue/actions/runs/101"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f := newFixture(t, []fixtureRoute{listing(fixtureRepo+"/actions/workflows", workflows), listing(fixtureRepo+"/actions/runs", runs), deletion(101, 204), deletion(103, 204)})
+			cfg := baseConfig()
+			cfg.minimum, cfg.dryRun, cfg.pattern = 1, false, tc.pattern
+			log, err := executeFixture(t, cfg, f)
+			if err != nil || !reflect.DeepEqual(deletions(f), tc.want) {
+				t.Fatalf("shared history crossed workflow retention boundaries: %v deletes=%v log=%q", err, deletions(f), log)
 			}
 		})
 	}
