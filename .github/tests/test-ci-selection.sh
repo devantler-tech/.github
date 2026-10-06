@@ -26,7 +26,7 @@ touch "$work/output"
 EVENT_NAME=push RUN_CATALOGUE=true CATALOGUE_SCOPE=true GITHUB_OUTPUT="$work/output" \
   go -C "$root/.github/scripts/ci-selection" run . "$root" "$root/.github/scripts/ci-selection/inventory.json" "$work/workflow.json"
 selected="$(sed -n 's/^selected=//p' "$work/output")"
-[[ "$(jq 'length' <<< "$selected")" == 84 ]]
+[[ "$(jq 'length' <<< "$selected")" == 82 ]]
 # Hosted CI reports these callers as skipped because their callee jobs are
 # intentionally excluded (dry-run, repository exclusion, or dependency-bot
 # suppression). They still exercise interfaces and retain original admission;
@@ -41,12 +41,20 @@ JOB_RESULTS="$(jq -r '[.[].result] | join(" ")' <<< "$needs")" CATALOGUE_REQUIRE
   echo "FAIL: intentional interface-only caller skips incorrectly failed hosted selection" >&2
   exit 1
 }
-# A failed interface call must still fail the global reducer. Only expected
-# no-execution callers may skip; every selected execution remains mandatory.
-for caller in $(jq -r '.[]' <<< "$interface_callers"); do
+# Main's push event also intentionally excludes these two reusable callees.
+# Reproduce that hosted result map through the production selector and reducer.
+pr_only_callers='["test-dependency-review-workflow","test-apply-signed-fixes-verifies-without-a-patch"]'
+main_needs="$(jq --argjson skipped "$pr_only_callers" 'reduce $skipped[] as $id (.; .[$id].result="skipped")' <<< "$needs")"
+JOB_RESULTS="$(jq -r '[.[].result] | join(" ")' <<< "$main_needs")" CATALOGUE_REQUIRED=true SELECTOR_RESULT=success SELECTED_JOBS="$selected" NEEDS_JSON="$main_needs" bash -c "$reducer" || {
+  echo "FAIL: intentional PR-only caller skips incorrectly failed main selection" >&2
+  exit 1
+}
+# A failed preserved call must still fail the global reducer. Expected callee
+# exclusions may skip; every selected execution remains mandatory.
+for caller in $(jq -nr --argjson interface "$interface_callers" --argjson pr_only "$pr_only_callers" '$interface + $pr_only | .[]'); do
   bad_needs="$(jq --arg caller "$caller" '.[$caller].result="failure"' <<< "$needs")"
   if JOB_RESULTS="$(jq -r '[.[].result] | join(" ")' <<< "$bad_needs")" CATALOGUE_REQUIRED=true SELECTOR_RESULT=success SELECTED_JOBS="$selected" NEEDS_JSON="$bad_needs" bash -c "$reducer" > /dev/null 2>&1; then
-    echo "FAIL: failed interface caller $caller was silently accepted" >&2
+    echo "FAIL: failed preserved caller $caller was silently accepted" >&2
     exit 1
   fi
 done
