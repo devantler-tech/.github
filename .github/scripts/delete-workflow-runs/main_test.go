@@ -484,7 +484,14 @@ func TestRedirectsAndCancellationCannotReachAnotherTarget(t *testing.T) {
 // Run the shipped command, with an isolated environment and only synthetic credentials.
 func TestNativeCommandDefaultsOverridesAndFailureExit(t *testing.T) {
 	binary := filepath.Join(t.TempDir(), "cleanup")
-	build := exec.Command("go", "build", "-o", binary, "main.go")
+	source, err := filepath.Abs("main.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	build := exec.Command("go", "build", "-o", binary, source)
+	// The wrapper invokes the source file from outside its nested module. Match
+	// that workspace layout without changing the runner's selected toolchain.
+	build.Dir = t.TempDir()
 	if output, err := build.CombinedOutput(); err != nil {
 		t.Fatalf("build native command: %v\n%s", err, output)
 	}
