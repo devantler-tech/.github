@@ -3640,8 +3640,7 @@ jobs:
       actions: read
 
   test-dependency-review-workflow:
-    needs: [select-ci-tests]
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-dependency-review-workflow') }}"
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
     name: "[Test] Dependency Review - Default Settings"
     uses: ./.github/workflows/dependency-review.yaml
     permissions:
@@ -5844,8 +5843,7 @@ jobs:
   # would fail with an empty private key and take this job red. A green here therefore asserts
   # both halves at once: the check ran, and nothing privileged did.
   test-apply-signed-fixes-verifies-without-a-patch:
-    needs: [select-ci-tests]
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-apply-signed-fixes-verifies-without-a-patch') }}"
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
     name: "[Test] Apply Signed Fixes - Verifies The Tip With No Patch"
     permissions:
       contents: read
