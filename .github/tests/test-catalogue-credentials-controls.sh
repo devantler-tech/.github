@@ -79,11 +79,13 @@ conditional required summary	.github/workflows/ci.yaml	(.jobs["ci-required-check
 ignored required gate	.github/workflows/ci.yaml	.jobs["ci-required-checks"]["continue-on-error"]="${{ true }}"	1	required guard wiring
 conditional required gate	.github/workflows/ci.yaml	.jobs["ci-required-checks"].if="false"	1	required guard wiring
 unexamined guard result	.github/workflows/ci.yaml	(.jobs["ci-required-checks"].steps[]|select(.env.JOB_RESULTS != null)).run="echo \"$JOB_RESULTS\""	1	required guard wiring
+early successful summary exit	.github/workflows/ci.yaml	(.jobs["ci-required-checks"].steps[]|select(.env.JOB_RESULTS != null)).run |= "exit 0\n" + .	1	required guard wiring
+unreviewed appended summary	.github/workflows/ci.yaml	(.jobs["ci-required-checks"].steps[]|select(.env.JOB_RESULTS != null)).run += "\necho fixture\n"	1	required guard wiring
 branch repetition pattern	.github/workflows/ci.yaml	.on.push.branches=["main+"]|.jobs.new={"if":"${{ github.ref != 'refs/heads/main+' }}",permissions:{contents:"write"},steps:[{run:"echo fixture"}]}	1	write authority
 negative zero identity	.github/workflows/ci.yaml	.jobs.new={"if":"${{ fromJSON('-0') == 0 }}",permissions:{contents:"write"},steps:[{run:"echo fixture"}]}	1	write authority
 format replacement identity	.github/workflows/ci.yaml	.jobs.new={"if":"${{ format('{0}{1}', '{1}', 'x') != 'xx' }}",permissions:{contents:"write"},steps:[{run:"echo fixture"}]}	1	write authority
 unverified recovery helper	.github/workflows/validate-go-project-readonly.yaml	(.jobs.lint.steps[]|select(.id == "fixes")).if |= sub("steps.fix-exporter.outcome == 'success' && ";"")	2	UNKNOWN successful local action checkout
 unverified best-effort helper	.github/workflows/validate-go-project-readonly.yaml	del(.jobs.coverage.steps[]|select((.uses // "")|endswith("/actions/upload-coverage"))|.if)	2	UNKNOWN successful local action checkout
 CASES
-[[ "$controls" == 43 ]] || { echo 'FAIL: incomplete control set' >&2; exit 1; }
+[[ "$controls" == 45 ]] || { echo 'FAIL: incomplete control set' >&2; exit 1; }
 echo "PASS: complete source graph rejects $controls real-source credential regressions"
