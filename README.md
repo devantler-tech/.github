@@ -241,8 +241,8 @@ jobs:
 | `days`                             | Input (number)  | `30`         | No       | Days-worth of runs to keep for each workflow       |
 | `minimum-runs`                     | Input (number)  | `6`          | No       | Minimum runs to keep for each workflow             |
 | `delete-workflow-pattern`          | Input (string)  | -            | No       | Name or filename of the workflow to target         |
-| `delete-workflow-by-state-pattern` | Input (string)  | `ALL`        | No       | Filter workflows by state (comma-separated)        |
-| `delete-run-by-conclusion-pattern` | Input (string)  | `ALL`        | No       | Remove runs based on conclusion (comma-separated)  |
+| `delete-workflow-by-state-pattern` | Input (string)  | `ALL`        | No       | Filter workflows by state (comma or pipe separated) |
+| `delete-run-by-conclusion-pattern` | Input (string)  | `ALL`        | No       | Remove runs by conclusion (comma or pipe separated) |
 | `dry-run`                          | Input (boolean) | `true`       | No       | Logs simulated changes, no deletions are performed |
 
 > **Note:** The calling workflow must grant `actions: write` and `contents: read` permissions.
@@ -265,7 +265,9 @@ pipe separated values.
 
 Invalid or incomplete API responses fail before deletion starts. Transient read
 failures receive at most two retries; a deletion is attempted once, requires HTTP
-204 confirmation, and stops cleanup on rejection or an unknown outcome. A rerun
+204 confirmation, and stops cleanup on rejection or an unknown outcome. Confirmed
+deletions are spaced by at least one second; cancellation interrupts that pause.
+Previews do not wait between selected runs. A rerun
 lists the current history again. `days` must be finite and nonnegative;
 `minimum-runs` must be a nonnegative integer.
 
@@ -293,8 +295,8 @@ deletion authority.
 | `days` | Input (number) | `30` | No | Days-worth of runs to retain |
 | `minimum-runs` | Input (number) | `6` | No | Minimum runs to retain per workflow |
 | `delete-workflow-pattern` | Input (string) | - | No | Workflow name or filename to match |
-| `delete-workflow-by-state-pattern` | Input (string) | `ALL` | No | Comma-separated workflow state filters |
-| `delete-run-by-conclusion-pattern` | Input (string) | `ALL` | No | Comma-separated run conclusion filters |
+| `delete-workflow-by-state-pattern` | Input (string) | `ALL` | No | Comma or pipe separated workflow state filters |
+| `delete-run-by-conclusion-pattern` | Input (string) | `ALL` | No | Comma or pipe separated run conclusion filters |
 | `dry-run` | Input (boolean) | `true` | No | Log proposed deletions; a false value still cannot grant deletion authority |
 
 ### 🛡️ Dependency Review

@@ -156,6 +156,53 @@ func TestRejectedDeletionStopsAndFails(t *testing.T) {
 	}
 }
 
+// TestMutationPacingAndCancellation observes writes around each interruptible wait.
+func TestMutationPacingAndCancellation(t *testing.T) {
+	for _, scenario := range []string{"live", "cancelled-between-writes", "preview"} {
+		t.Run(scenario, func(t *testing.T) {
+			cfg := baseConfig()
+			cfg.minimum, cfg.dryRun = 0, scenario == "preview"
+			f := newFixture(t, append(standardRoutes(runBody(oldRun(101), oldRun(102), oldRun(103))), deletion(101, 204), deletion(102, 204), deletion(103, 204)))
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			var waits []time.Duration
+			wait := func(ctx context.Context, duration time.Duration) error {
+				waits = append(waits, duration)
+				// The first write is immediate; each later one waits after the prior confirmed write.
+				if got := len(deletions(f)); got != len(waits) {
+					t.Fatalf("wait %d followed %d writes", len(waits), got)
+				}
+				if scenario == "cancelled-between-writes" {
+					cancel()
+					return delay(ctx, duration)
+				}
+				return nil
+			}
+			var log bytes.Buffer
+			err := clean(ctx, cfg, f.server.URL, "offline-fixture-token", f.server.Client(), fixedNow, &log, wait)
+			wantWaits := []time.Duration{time.Second, time.Second}
+			wantWrites := 3
+			if scenario == "preview" {
+				wantWaits, wantWrites = nil, 0
+				if !strings.Contains(log.String(), "Would delete run 103") {
+					t.Fatal("preview omitted a selected run")
+				}
+			}
+			if scenario == "cancelled-between-writes" {
+				wantWaits, wantWrites = []time.Duration{time.Second}, 1
+				if err != context.Canceled || strings.Contains(log.String(), "Cleanup completed") {
+					t.Fatalf("interrupted pacing reported completion: err=%v log=%q", err, log.String())
+				}
+			} else if err != nil {
+				t.Fatal(err)
+			}
+			if !reflect.DeepEqual(waits, wantWaits) || len(deletions(f)) != wantWrites {
+				t.Fatalf("waits=%v writes=%v, want waits=%v writes=%d", waits, deletions(f), wantWaits, wantWrites)
+			}
+		})
+	}
+}
+
 // TestRetentionDryRunAndFilters verifies selected IDs against literal user expectations.
 func TestRetentionDryRunAndFilters(t *testing.T) {
 	sevenOld := runBody(oldRun(101), runJSON(102, "2000-01-02T00:00:00Z", "completed", "success"), runJSON(103, "2000-01-03T00:00:00Z", "completed", "success"), runJSON(104, "2000-01-04T00:00:00Z", "completed", "success"), runJSON(105, "2000-01-05T00:00:00Z", "completed", "success"), runJSON(106, "2000-01-06T00:00:00Z", "completed", "success"), runJSON(107, "2000-01-07T00:00:00Z", "completed", "success"), runJSON(108, "2026-10-05T00:00:00Z", "completed", "success"))

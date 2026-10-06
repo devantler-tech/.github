@@ -516,6 +516,7 @@ func clean(ctx context.Context, cfg config, base, token string, client *http.Cli
 		confirmed = append(confirmed, id)
 	}
 	plan = confirmed
+	deleted := 0
 	for _, id := range plan {
 		if ctx.Err() != nil {
 			return ctx.Err()
@@ -526,9 +527,16 @@ func clean(ctx context.Context, cfg config, base, token string, client *http.Cli
 			}
 			continue
 		}
+		// Space confirmed writes to respect GitHub's secondary rate-limit guidance.
+		if deleted > 0 {
+			if err := a.wait(ctx, time.Second); err != nil {
+				return err
+			}
+		}
 		if _, err := a.request(ctx, "DELETE", fmt.Sprintf("%s/actions/runs/%d", prefix, id)); err != nil {
 			return fmt.Errorf("delete run %d: %w", id, err)
 		}
+		deleted++
 		if _, err := fmt.Fprintf(out, "Deleted run %d\n", id); err != nil {
 			return err
 		}
@@ -537,7 +545,7 @@ func clean(ctx context.Context, cfg config, base, token string, client *http.Cli
 	return err
 }
 
-// delay makes retry backoff interruptible by cancellation.
+// delay makes read backoff and mutation pacing interruptible by cancellation.
 func delay(ctx context.Context, d time.Duration) error {
 	timer := time.NewTimer(d)
 	defer timer.Stop()
