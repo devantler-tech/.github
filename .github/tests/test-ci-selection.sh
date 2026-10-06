@@ -6,6 +6,18 @@ work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
 ci="$root/.github/workflows/ci.yaml"
 yq -o=json . "$ci" > "$work/workflow.json"
+# The full reducer now consumes native queue evidence in its own allocation.
+# Keep this selector integration offline while executing that same reducer.
+mkdir "$work/bin"
+cat > "$work/bin/gh" <<'SH'
+#!/usr/bin/env bash
+set -euo pipefail
+[[ "$*" == 'api repos/devantler-tech/fixture/actions/runs/123/attempts/2/jobs?per_page=100 --paginate --slurp' ]] || exit 99
+cat "$QUEUE_FIXTURE"
+SH
+chmod +x "$work/bin/gh"
+export PATH="$work/bin:$PATH" QUEUE_FIXTURE="$root/.github/tests/fixtures/queue-slots.json"
+export REPOSITORY=devantler-tech/fixture RUN_ID=123 RUN_ATTEMPT=2 HEAD_SHA=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 cat > "$work/preflight.jq" <<'JQ'
   .jobs["select-ci-tests"] as $s |
   (.jobs | has("catalogue-scope") | not) and
@@ -66,7 +78,10 @@ needs="$(jq -cn --argjson skipped "$interface_callers" --slurpfile workflow "$wo
     .[$id] = {result: (if ($skipped | index($id)) != null then "skipped" else "success" end)})
 ')"
 reducer="$(yq -r '.jobs."ci-required-checks".steps[] | select(.name == "📊 Summarize workflow result") | .run' "$ci")"
-JOB_RESULTS="$(jq -r '[.[].result] | join(" ")' <<< "$needs")" CATALOGUE_REQUIRED=true SELECTOR_RESULT=success SELECTED_JOBS="$selected" NEEDS_JSON="$needs" bash -c "$reducer" || {
+# Native evidence files belong to this offline fixture, never the checkout.
+run_reducer() { (cd "$work"; bash -c "$reducer"); }
+
+JOB_RESULTS="$(jq -r '[.[].result] | join(" ")' <<< "$needs")" CATALOGUE_REQUIRED=true SELECTOR_RESULT=success SELECTED_JOBS="$selected" NEEDS_JSON="$needs" run_reducer || {
   echo "FAIL: intentional interface-only caller skips incorrectly failed hosted selection" >&2
   exit 1
 }
@@ -74,7 +89,7 @@ JOB_RESULTS="$(jq -r '[.[].result] | join(" ")' <<< "$needs")" CATALOGUE_REQUIRE
 # Reproduce that hosted result map through the production selector and reducer.
 pr_only_callers='["test-dependency-review-workflow","test-apply-signed-fixes-verifies-without-a-patch"]'
 main_needs="$(jq --argjson skipped "$pr_only_callers" 'reduce $skipped[] as $id (.; .[$id].result="skipped")' <<< "$needs")"
-JOB_RESULTS="$(jq -r '[.[].result] | join(" ")' <<< "$main_needs")" CATALOGUE_REQUIRED=true SELECTOR_RESULT=success SELECTED_JOBS="$selected" NEEDS_JSON="$main_needs" bash -c "$reducer" || {
+JOB_RESULTS="$(jq -r '[.[].result] | join(" ")' <<< "$main_needs")" CATALOGUE_REQUIRED=true SELECTOR_RESULT=success SELECTED_JOBS="$selected" NEEDS_JSON="$main_needs" run_reducer || {
   echo "FAIL: intentional PR-only caller skips incorrectly failed main selection" >&2
   exit 1
 }
@@ -82,14 +97,14 @@ JOB_RESULTS="$(jq -r '[.[].result] | join(" ")' <<< "$main_needs")" CATALOGUE_RE
 # exclusions may skip; every selected execution remains mandatory.
 for caller in $(jq -nr --argjson interface "$interface_callers" --argjson pr_only "$pr_only_callers" '$interface + $pr_only | .[]'); do
   bad_needs="$(jq --arg caller "$caller" '.[$caller].result="failure"' <<< "$needs")"
-  if JOB_RESULTS="$(jq -r '[.[].result] | join(" ")' <<< "$bad_needs")" CATALOGUE_REQUIRED=true SELECTOR_RESULT=success SELECTED_JOBS="$selected" NEEDS_JSON="$bad_needs" bash -c "$reducer" > /dev/null 2>&1; then
+  if JOB_RESULTS="$(jq -r '[.[].result] | join(" ")' <<< "$bad_needs")" CATALOGUE_REQUIRED=true SELECTOR_RESULT=success SELECTED_JOBS="$selected" NEEDS_JSON="$bad_needs" run_reducer > /dev/null 2>&1; then
     echo "FAIL: failed preserved caller $caller was silently accepted" >&2
     exit 1
   fi
 done
 for caller in $(jq -r '.[]' <<< "$selected"); do
   bad_needs="$(jq --arg caller "$caller" '.[$caller].result="skipped"' <<< "$needs")"
-  if JOB_RESULTS="$(jq -r '[.[].result] | join(" ")' <<< "$bad_needs")" CATALOGUE_REQUIRED=true SELECTOR_RESULT=success SELECTED_JOBS="$selected" NEEDS_JSON="$bad_needs" bash -c "$reducer" > /dev/null 2>&1; then
+  if JOB_RESULTS="$(jq -r '[.[].result] | join(" ")' <<< "$bad_needs")" CATALOGUE_REQUIRED=true SELECTOR_RESULT=success SELECTED_JOBS="$selected" NEEDS_JSON="$bad_needs" run_reducer > /dev/null 2>&1; then
     echo "FAIL: selected execution $caller was silently skipped" >&2
     exit 1
   fi
@@ -125,12 +140,12 @@ EVENT_NAME=pull_request RUN_CATALOGUE=true CATALOGUE_SCOPE=true BASE_SHA="$base"
   go -C "$root/.github/scripts/ci-selection" run . "$fixture" "$root/.github/scripts/ci-selection/inventory.json" "$work/workflow.json"
 selected="$(sed -n 's/^selected=//p' "$work/output")"
 jq -e '. == ["test-delete-workflow-runs-all","test-delete-workflow-runs-minimal","test-delete-workflow-runs-specific"]' <<< "$selected" > /dev/null
-needs="$(jq -cn --argjson selected "$selected" 'reduce $selected[] as $id ({}; .[$id] = {result:"success"})')"
+needs="$(jq -cn --argjson selected "$selected" 'reduce $selected[] as $id ({"test-enable-auto-merge-queue":{result:"skipped"}}; .[$id] = {result:"success"})')"
 reducer="$(yq -r '.jobs."ci-required-checks".steps[] | select(.name == "📊 Summarize workflow result") | .run' "$ci")"
-JOB_RESULTS='success skipped' CATALOGUE_REQUIRED=true SELECTOR_RESULT=success SELECTED_JOBS="$selected" NEEDS_JSON="$needs" bash -c "$reducer"
+JOB_RESULTS='success skipped' CATALOGUE_REQUIRED=true SELECTOR_RESULT=success SELECTED_JOBS="$selected" NEEDS_JSON="$needs" run_reducer
 for caller in test-delete-workflow-runs-all test-delete-workflow-runs-minimal test-delete-workflow-runs-specific; do
   bad_needs="$(jq --arg caller "$caller" '.[$caller].result="skipped"' <<< "$needs")"
-  if JOB_RESULTS='success skipped' CATALOGUE_REQUIRED=true SELECTOR_RESULT=success SELECTED_JOBS="$selected" NEEDS_JSON="$bad_needs" bash -c "$reducer" > /dev/null 2>&1; then
+  if JOB_RESULTS='success skipped' CATALOGUE_REQUIRED=true SELECTOR_RESULT=success SELECTED_JOBS="$selected" NEEDS_JSON="$bad_needs" run_reducer > /dev/null 2>&1; then
     echo "FAIL: selected native cleanup caller $caller was skipped without rejection" >&2
     exit 1
   fi

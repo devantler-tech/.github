@@ -1178,8 +1178,9 @@ func checkWiring(w object) error {
 			if s["if"] != nil || (s["continue-on-error"] != nil && s["continue-on-error"] != false) || text(s["shell"]) != "bash" {
 				return fail()
 			}
-			// Pin the reviewed failure reducer; arbitrary Bash mentions are not result admission.
-			if fmt.Sprintf("%x", sha256.Sum256([]byte(text(s["run"])))) != "762278aed902fc6d9b607515c2dff2139b64cdc381e1128c21a4f630b3149b84" {
+			// Pin the complete reviewed reducer, including native queue proof; arbitrary
+			// Bash mentions are not result admission and must not bypass either check.
+			if fmt.Sprintf("%x", sha256.Sum256([]byte(text(s["run"])))) != "62c7d254f2998fe3861ede8fc5c356eb38defe8e8c9be211f23af062d12ac277" {
 				return fail()
 			}
 			results = true

@@ -1,0 +1,10 @@
+[
+  {"total_count":4,"jobs":[
+    {"id":1,"run_id":123,"run_attempt":2,"head_sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","name":"[Test] Enable Auto-Merge - Queue Slot 1","status":"completed","conclusion":"success"},
+    {"id":2,"run_id":123,"run_attempt":2,"head_sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","name":"[Test] Enable Auto-Merge - Queue Slot 2","status":"completed","conclusion":"success"}
+  ]},
+  {"total_count":4,"jobs":[
+    {"id":3,"run_id":123,"run_attempt":2,"head_sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","name":"[Test] Enable Auto-Merge - Queue Slot 3","status":"completed","conclusion":"success"},
+    {"id":4,"run_id":123,"run_attempt":2,"head_sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","name":"Unrelated check","status":"in_progress","conclusion":null}
+  ]}
+]
