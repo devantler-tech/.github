@@ -3,6 +3,8 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -12,12 +14,226 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 )
+
+// delayedPages records real HTTP overlap; the response order differs from page
+// order. Each request carries only the fixture credential and fixed run cutoff.
+type delayedPages struct {
+	mu                        sync.Mutex
+	active, peak, reads, done int
+	writes                    []string
+	change                    string
+	finished                  []int
+}
+
+func (f *delayedPages) serve(t *testing.T, w http.ResponseWriter, r *http.Request) {
+	t.Helper()
+	if r.Header.Get("Authorization") != "Bearer offline-fixture-token" {
+		t.Error("unexpected credential")
+		w.WriteHeader(401)
+		return
+	}
+	if r.Method == "DELETE" {
+		f.mu.Lock()
+		defer f.mu.Unlock()
+		if f.active != 0 || f.done != 9 {
+			t.Error("deletion preceded complete enumeration")
+		}
+		f.writes = append(f.writes, r.URL.Path)
+		w.WriteHeader(204)
+		return
+	}
+	if r.URL.Path == fixtureRepo+"/actions/workflows" {
+		_, _ = io.WriteString(w, workflowBody)
+		return
+	}
+	if r.Method != "GET" || r.URL.Path != fixtureRepo+"/actions/runs" || r.URL.Query().Get("created") != "1970-01-01T00:00:00Z..2026-10-05T23:59:59Z" || r.URL.Query().Get("per_page") != "100" {
+		t.Errorf("unexpected history request: %s %s", r.Method, r.URL.RequestURI())
+		w.WriteHeader(403)
+		return
+	}
+	page, err := strconv.Atoi(r.URL.Query().Get("page"))
+	if err != nil || page < 1 || page > 9 {
+		t.Error("invalid page")
+		w.WriteHeader(403)
+		return
+	}
+	f.mu.Lock()
+	f.active++
+	f.reads++
+	f.peak = max(f.peak, f.active)
+	f.mu.Unlock()
+	defer func() {
+		f.mu.Lock()
+		f.active--
+		f.done++
+		f.finished = append(f.finished, page)
+		f.mu.Unlock()
+	}()
+	// Uneven response delays exercise ordering without assuming network order.
+	if err := delay(r.Context(), time.Duration(60-page%4*10)*time.Millisecond); err != nil {
+		return
+	}
+	if f.change == "denied" && page == 4 {
+		w.WriteHeader(403)
+		return
+	}
+	if f.change == "malformed" && page == 4 {
+		_, _ = io.WriteString(w, `{"total_count":801,"workflow_runs":[`)
+		return
+	}
+	total := 801
+	if f.change == "changed-total" && page == 4 {
+		total++
+	}
+	items := []string{}
+	for id := (page-1)*100 + 1; id <= min(page*100, 801); id++ {
+		if f.change == "duplicate" && page == 4 && id == 301 {
+			items = append(items, oldRun(1))
+		} else {
+			items = append(items, oldRun(id))
+		}
+	}
+	if f.change == "empty" && page == 4 {
+		items = nil
+	}
+	_, _ = fmt.Fprintf(w, `{"total_count":%d,"workflow_runs":[%s]}`, total, strings.Join(items, ","))
+}
+
+// Sequential page reads fail this concurrency assertion while selecting the
+// same single retained-policy candidate. No fixture determines the decision.
+func TestHistoryPagesOverlapWithinBoundBeforeDeletion(t *testing.T) {
+	f := &delayedPages{}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { f.serve(t, w, r) }))
+	defer server.Close()
+	cfg := baseConfig()
+	cfg.minimum, cfg.dryRun = 800, false
+	var log bytes.Buffer
+	start := time.Now()
+	err := clean(context.Background(), cfg, server.URL, "offline-fixture-token", server.Client(), fixedNow, &log, delay)
+	elapsed := time.Since(start)
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	t.Logf("history fixture: elapsed=%s reads=%d peak=%d selected=%v", elapsed, f.reads, f.peak, f.writes)
+	if err != nil || f.reads != 9 || f.done != 9 || !reflect.DeepEqual(f.writes, []string{fixtureRepo + "/actions/runs/1"}) {
+		t.Fatalf("history or deletion decision changed: err=%v reads=%d done=%d writes=%v log=%q", err, f.reads, f.done, f.writes, log.String())
+	}
+	if f.peak <= 1 || f.peak > 4 {
+		t.Fatalf("history reads must overlap within four requests; peak=%d", f.peak)
+	}
+}
+
+func TestConcurrentHistoryFailureCannotReachDeletion(t *testing.T) {
+	for _, change := range []string{"denied", "malformed", "changed-total", "duplicate", "empty"} {
+		t.Run(change, func(t *testing.T) {
+			f := &delayedPages{change: change}
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { f.serve(t, w, r) }))
+			defer server.Close()
+			cfg := baseConfig()
+			cfg.minimum, cfg.dryRun = 800, false
+			var log bytes.Buffer
+			err := clean(context.Background(), cfg, server.URL, "offline-fixture-token", server.Client(), fixedNow, &log, delay)
+			f.mu.Lock()
+			defer f.mu.Unlock()
+			if err == nil || len(f.writes) != 0 || strings.Contains(log.String(), "Cleanup completed:") {
+				t.Fatalf("failed history read reached mutation or success: %v writes=%v", err, f.writes)
+			}
+		})
+	}
+}
+
+// Short pages are unusual but were supported by the sequential reader. Totals
+// establish only a minimum required page count, never a complete snapshot.
+func TestShortPagesContinueUntilDeclaredTotal(t *testing.T) {
+	requests := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		page, _ := strconv.Atoi(r.URL.Query().Get("page"))
+		if page < 1 || page > 3 {
+			t.Error("unexpected page")
+			w.WriteHeader(403)
+			return
+		}
+		_, _ = fmt.Fprintf(w, `{"total_count":3,"workflows":[{"id":%d}]}`, page)
+	}))
+	defer server.Close()
+	a := api{server.URL, "offline-fixture-token", server.Client(), delay}
+	items, err := a.list(context.Background(), fixtureRepo+"/actions/workflows", "workflows")
+	if err != nil || len(items) != 3 || requests != 3 {
+		t.Fatalf("short-page snapshot changed: %v items=%v requests=%d", err, items, requests)
+	}
+	for i, raw := range items {
+		var item struct{ ID int }
+		if json.Unmarshal(raw, &item) != nil || item.ID != i+1 {
+			t.Fatal("page order changed")
+		}
+	}
+}
+
+type pageTransport func(*http.Request) (*http.Response, error)
+
+func (f pageTransport) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
+
+// Cancellation must join the four in-flight client calls, rather than return
+// while a producer still uses the caller's transport. DELETE remains forbidden.
+func TestCancellationJoinsOutstandingPageReads(t *testing.T) {
+	started := make(chan struct{}, 4)
+	var active, writes atomic.Int64
+	client := &http.Client{Transport: pageTransport(func(r *http.Request) (*http.Response, error) {
+		if r.Method != "GET" {
+			writes.Add(1)
+			return nil, fmt.Errorf("unexpected mutation")
+		}
+		body := workflowBody
+		if strings.HasSuffix(r.URL.Path, "/runs") {
+			if r.URL.Query().Get("page") != "1" {
+				active.Add(1)
+				defer active.Add(-1)
+				started <- struct{}{}
+				<-r.Context().Done()
+				return nil, r.Context().Err()
+			}
+			items := []string{}
+			for id := 1; id <= 100; id++ {
+				items = append(items, oldRun(id))
+			}
+			body = fmt.Sprintf(`{"total_count":801,"workflow_runs":[%s]}`, strings.Join(items, ","))
+		}
+		return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(body)), Header: make(http.Header)}, nil
+	})}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	finished := make(chan error, 1)
+	go func() {
+		cfg := baseConfig()
+		cfg.minimum, cfg.dryRun = 800, false
+		finished <- clean(ctx, cfg, "https://offline.invalid", "offline-fixture-token", client, fixedNow, io.Discard, delay)
+	}()
+	for range 4 {
+		select {
+		case <-started:
+		case err := <-finished:
+			t.Fatalf("cleanup stopped before concurrent reads: %v", err)
+		case <-time.After(3 * time.Second):
+			t.Fatal("four page reads did not start")
+		}
+	}
+	cancel()
+	select {
+	case err := <-finished:
+		if !errors.Is(err, context.Canceled) || active.Load() != 0 || writes.Load() != 0 {
+			t.Fatalf("cancellation leaked work or reached mutation: err=%v active=%d writes=%d", err, active.Load(), writes.Load())
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("cancelled page reads were not joined")
+	}
+}
 
 type fixtureRoute struct {
 	method, target, body string

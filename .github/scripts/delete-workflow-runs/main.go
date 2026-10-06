@@ -18,6 +18,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 )
@@ -214,6 +215,8 @@ func (a api) workflowAbsent(ctx context.Context, prefix string, id int64) (bool,
 var searchCapped = errors.New("run search reaches GitHub's 1,000-result limit")
 
 // list requires stable totals, unique identities and complete item shapes on every page.
+// Page one establishes the minimum page count; up to four required pages then
+// overlap. Short pages continue sequentially until the declared total is met.
 func (a api) list(ctx context.Context, path, key string) ([]json.RawMessage, error) {
 	result := []json.RawMessage{}
 	seen := map[int64]bool{}
@@ -222,62 +225,95 @@ func (a api) list(ctx context.Context, path, key string) ([]json.RawMessage, err
 	if strings.Contains(path, "?") {
 		separator = "&"
 	}
-	for page := 1; page <= 10000; page++ {
-		raw, err := a.request(ctx, "GET", fmt.Sprintf("%s%spage=%d&per_page=100", path, separator, page))
-		if err != nil {
-			return nil, err
-		}
+	appendPage := func(raw []byte) error {
 		if err := unambiguous(raw); err != nil {
-			return nil, errors.New("ambiguous or incomplete listing JSON")
+			return errors.New("ambiguous or incomplete listing JSON")
 		}
 		var document map[string]json.RawMessage
 		if err := json.Unmarshal(raw, &document); err != nil {
-			return nil, errors.New("invalid listing object")
+			return errors.New("invalid listing object")
 		}
 		var count int
 		if value := document["total_count"]; len(value) == 0 || string(value) == "null" {
-			return nil, errors.New("missing listing total")
+			return errors.New("missing listing total")
 		}
 		if err := json.Unmarshal(document["total_count"], &count); err != nil || count < 0 {
-			return nil, errors.New("invalid listing total")
+			return errors.New("invalid listing total")
 		}
 		if total < 0 {
 			total = count
 		}
 		if count != total {
-			return nil, errors.New("listing total changed between pages")
+			return errors.New("listing total changed between pages")
 		}
 		var items []json.RawMessage
 		if value := document[key]; len(value) == 0 || string(value) == "null" {
-			return nil, errors.New("missing listing items")
+			return errors.New("missing listing items")
 		}
 		if err := json.Unmarshal(document[key], &items); err != nil {
-			return nil, errors.New("invalid listing items")
+			return errors.New("invalid listing items")
 		}
 		if len(items) > 100 || len(result)+len(items) > total {
-			return nil, errors.New("listing count exceeds declared total")
+			return errors.New("listing count exceeds declared total")
 		}
 		if key == "workflow_runs" && strings.Contains(path, "?created=") && count >= 1000 {
-			return nil, searchCapped
+			return searchCapped
 		}
 		for _, item := range items {
 			var fields map[string]json.RawMessage
 			if err := json.Unmarshal(item, &fields); err != nil {
-				return nil, errors.New("invalid listing item")
+				return errors.New("invalid listing item")
 			}
 			var id int64
 			if err := json.Unmarshal(fields["id"], &id); err != nil || id <= 0 || seen[id] {
-				return nil, errors.New("invalid or repeated listing identity")
+				return errors.New("invalid or repeated listing identity")
 			}
 			seen[id] = true
 			result = append(result, item)
 		}
-		if len(result) == total {
-			return result, nil
+		if len(items) == 0 && len(result) != total {
+			return errors.New("listing ended before its declared total")
 		}
-		if len(items) == 0 {
-			return nil, errors.New("listing ended before its declared total")
+		return nil
+	}
+	for page := 1; page <= 10000; {
+		width := 1
+		if total > 0 {
+			minimumPages := (total-1)/100 + 1
+			width = min(4, max(1, minimumPages-page+1), 10001-page)
 		}
+		bodies, failures := make([][]byte, width), make([]error, width)
+		batch, cancel := context.WithCancel(ctx)
+		var reads sync.WaitGroup
+		for i := range width {
+			reads.Add(1)
+			go func(i int) {
+				defer reads.Done()
+				bodies[i], failures[i] = a.request(batch, "GET", fmt.Sprintf("%s%spage=%d&per_page=100", path, separator, page+i))
+				if failures[i] != nil {
+					cancel()
+				}
+			}(i)
+		}
+		// Join every read before returning or inspecting the next batch. Neither
+		// a failed request nor cancellation can leave a background producer.
+		reads.Wait()
+		cancel()
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+		for i := range width {
+			if failures[i] != nil {
+				return nil, failures[i]
+			}
+			if err := appendPage(bodies[i]); err != nil {
+				return nil, err
+			}
+			if len(result) == total {
+				return result, nil
+			}
+		}
+		page += width
 	}
 	return nil, errors.New("listing exceeds pagination limit")
 }
