@@ -30,6 +30,7 @@ type fixtureAPI struct {
 	routes   []fixtureRoute
 }
 
+// newFixture records actual HTTP requests and rejects unlisted routes or real credentials.
 func newFixture(t *testing.T, routes []fixtureRoute) *fixtureAPI {
 	t.Helper()
 	f := &fixtureAPI{routes: routes}
@@ -62,32 +63,48 @@ const query = "?page=1&per_page=100"
 const workflowBody = `{"total_count":1,"workflows":[{"id":11,"name":"CI","path":".github/workflows/ci.yaml","state":"active"}]}`
 const emptyRuns = `{"total_count":0,"workflow_runs":[]}`
 
+// listing supplies a literal first-page API response.
 func listing(path, body string) fixtureRoute { return fixtureRoute{"GET", path + query, body, 200} }
+
+// deletion supplies the selected fixture deletion's HTTP outcome.
 func deletion(id int, status int) fixtureRoute {
 	return fixtureRoute{"DELETE", fmt.Sprintf("%s/actions/runs/%d", fixtureRepo, id), "", status}
 }
+
+// runBody wraps hand-selected records without calculating expected retention decisions.
 func runBody(items ...string) string {
 	return fmt.Sprintf(`{"total_count":%d,"workflow_runs":[%s]}`, len(items), strings.Join(items, ","))
 }
+
+// runJSON gives each fixture run explicit identity, age and completion evidence.
 func runJSON(id int, date, status, conclusion string) string {
 	return fmt.Sprintf(`{"id":%d,"workflow_id":11,"created_at":%q,"status":%q,"conclusion":%q}`, id, date, status, conclusion)
 }
+
+// oldRun is eligible by age, leaving minimum-run retention to the driver.
 func oldRun(id int) string { return runJSON(id, "2000-01-01T00:00:00Z", "completed", "success") }
+
+// standardRoutes supplies complete workflow, repository and selected-workflow listings.
 func standardRoutes(runs string) []fixtureRoute {
 	return []fixtureRoute{listing(fixtureRepo+"/actions/workflows", workflowBody), listing(fixtureRepo+"/actions/runs", emptyRuns), listing(fixtureRepo+"/actions/workflows/11/runs", runs)}
 }
+
+// baseConfig represents the public workflow's preview defaults.
 func baseConfig() config {
 	return config{repository: "fixture/catalogue", days: 30, minimum: 6, dryRun: true, states: "ALL", conclusions: "ALL"}
 }
 
 var fixedNow = time.Date(2026, 10, 6, 0, 0, 0, 0, time.UTC)
 
+// executeFixture exercises the real driver against synthetic HTTP history.
 func executeFixture(t *testing.T, cfg config, f *fixtureAPI) (string, error) {
 	t.Helper()
 	var log bytes.Buffer
 	err := clean(context.Background(), cfg, f.server.URL, "offline-fixture-token", f.server.Client(), fixedNow, &log, func(context.Context, time.Duration) error { return nil })
 	return log.String(), err
 }
+
+// deletions reads the recorder's mutation evidence under its concurrency guard.
 func deletions(f *fixtureAPI) []string {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -120,6 +137,7 @@ func TestRejectedDeletionStopsAndFails(t *testing.T) {
 	}
 }
 
+// TestRetentionDryRunAndFilters verifies selected IDs against literal user expectations.
 func TestRetentionDryRunAndFilters(t *testing.T) {
 	sevenOld := runBody(oldRun(101), runJSON(102, "2000-01-02T00:00:00Z", "completed", "success"), runJSON(103, "2000-01-03T00:00:00Z", "completed", "success"), runJSON(104, "2000-01-04T00:00:00Z", "completed", "success"), runJSON(105, "2000-01-05T00:00:00Z", "completed", "success"), runJSON(106, "2000-01-06T00:00:00Z", "completed", "success"), runJSON(107, "2000-01-07T00:00:00Z", "completed", "success"), runJSON(108, "2026-10-05T00:00:00Z", "completed", "success"))
 	tests := []struct {
@@ -189,6 +207,7 @@ func TestListingFailuresProduceNoWrites(t *testing.T) {
 	})
 }
 
+// TestPaginationAndOrphans verifies minimum retention across pages and confirmed orphan selection.
 func TestPaginationAndOrphans(t *testing.T) {
 	first := []string{}
 	for i := 1; i <= 100; i++ {
@@ -197,6 +216,7 @@ func TestPaginationAndOrphans(t *testing.T) {
 	f := newFixture(t, []fixtureRoute{listing(fixtureRepo+"/actions/workflows", workflowBody), listing(fixtureRepo+"/actions/runs", `{"total_count":1,"workflow_runs":[{"id":900,"workflow_id":99,"created_at":"2000-01-01T00:00:00Z","status":"completed","conclusion":"success"}]}`), listing(fixtureRepo+"/actions/workflows/11/runs", `{"total_count":101,"workflow_runs":[`+strings.Join(first, ",")+`]}`), {"GET", fixtureRepo + "/actions/workflows/11/runs?page=2&per_page=100", runBody(oldRun(1200)), 200}})
 	// The second page must retain the same total, even when it contains a single item.
 	f.routes[3].body = strings.Replace(f.routes[3].body, `"total_count":1,`, `"total_count":101,`, 1)
+	f.routes = append(f.routes, fixtureRoute{"GET", fixtureRepo + "/actions/workflows/99", `{"message":"Not Found"}`, 404})
 	cfg := baseConfig()
 	cfg.minimum = 100
 	log, err := executeFixture(t, cfg, f)
@@ -208,6 +228,7 @@ func TestPaginationAndOrphans(t *testing.T) {
 	}
 }
 
+// TestConfigRejectsInvalidInputs proves invalid caller inputs cannot start cleanup.
 func TestConfigRejectsInvalidInputs(t *testing.T) {
 	for _, entry := range []struct{ name, value string }{{"INPUT_RETAIN_DAYS", "-1"}, {"INPUT_RETAIN_DAYS", "NaN"}, {"INPUT_KEEP_MINIMUM_RUNS", "1.5"}, {"INPUT_DRY_RUN", "maybe"}, {"INPUT_REPOSITORY", "fixture/catalogue/other"}} {
 		t.Run(entry.name+entry.value, func(t *testing.T) {
@@ -230,6 +251,56 @@ func TestConfigRejectsInvalidInputs(t *testing.T) {
 	}
 }
 
+// TestOrphanWorkflowRevalidation protects workflows created between independent listings.
+func TestOrphanWorkflowRevalidation(t *testing.T) {
+	orphan := `{"id":900,"workflow_id":99,"created_at":"2026-10-05T00:00:00Z","status":"completed","conclusion":"success"}`
+	for _, tc := range []struct {
+		name, body string
+		status     int
+		failure    bool
+	}{
+		{"workflow-appeared", `{"id":99,"name":"New CI","path":".github/workflows/new.yaml","state":"active"}`, 200, false},
+		{"read-denied", `{"message":"denied"}`, 403, true},
+		{"unconfirmed-absence", `{"message":"different response"}`, 404, true},
+		{"malformed-absence", `{"message":"Not Found","message":"Not Found"}`, 404, true},
+		{"wrong-identity", `{"id":98,"name":"New CI","path":".github/workflows/new.yaml","state":"active"}`, 200, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			routes := standardRoutes(runBody(oldRun(101)))
+			routes[1].body = runBody(orphan)
+			routes = append(routes, fixtureRoute{"GET", fixtureRepo + "/actions/workflows/99", tc.body, tc.status}, deletion(900, 204), deletion(101, 204))
+			f := newFixture(t, routes)
+			cfg := baseConfig()
+			cfg.dryRun = false
+			cfg.minimum = 0
+			log, err := executeFixture(t, cfg, f)
+			want := []string{}
+			if !tc.failure {
+				want = []string{"DELETE /repos/fixture/catalogue/actions/runs/101"}
+			}
+			if (err != nil) != tc.failure || !reflect.DeepEqual(deletions(f), want) {
+				t.Fatalf("uncertain or live workflow treated as orphan: %v %q %v", err, log, deletions(f))
+			}
+		})
+	}
+}
+
+// TestConfirmedOrphansPreservePolicy verifies existing orphan selection after absence is proven.
+func TestConfirmedOrphansPreservePolicy(t *testing.T) {
+	orphan := `{"id":900,"workflow_id":99,"created_at":"2026-10-05T00:00:00Z","status":"completed","conclusion":"success"}`
+	f := newFixture(t, []fixtureRoute{listing(fixtureRepo+"/actions/workflows", workflowBody), listing(fixtureRepo+"/actions/runs", runBody(orphan)), {"GET", fixtureRepo + "/actions/workflows/99", `{"message":"Not Found"}`, 404}, deletion(900, 204)})
+	cfg := baseConfig()
+	cfg.dryRun = false
+	cfg.pattern = "release.yaml"
+	cfg.states = "disabled_manually"
+	cfg.conclusions = "failure"
+	log, err := executeFixture(t, cfg, f)
+	if err != nil || !reflect.DeepEqual(deletions(f), []string{"DELETE /repos/fixture/catalogue/actions/runs/900"}) || !strings.Contains(log, "Deleted run 900") {
+		t.Fatalf("confirmed orphan policy changed: %v %q %v", err, log, deletions(f))
+	}
+}
+
+// TestRequestEvidenceIsComplete verifies the complete read conversation for a stable workflow.
 func TestRequestEvidenceIsComplete(t *testing.T) {
 	f := newFixture(t, standardRoutes(runBody(oldRun(101))))
 	_, err := executeFixture(t, baseConfig(), f)
@@ -242,6 +313,7 @@ func TestRequestEvidenceIsComplete(t *testing.T) {
 	}
 }
 
+// TestAmbiguousRunIdentityCannotChangeDeletionTarget blocks JSON aliases from choosing another run.
 func TestAmbiguousRunIdentityCannotChangeDeletionTarget(t *testing.T) {
 	cfg := baseConfig()
 	cfg.minimum, cfg.dryRun = 0, false
@@ -252,6 +324,7 @@ func TestAmbiguousRunIdentityCannotChangeDeletionTarget(t *testing.T) {
 	}
 }
 
+// TestDeletionRequiresConfirmedNoContentResponse rejects accepted-but-unconfirmed mutations.
 func TestDeletionRequiresConfirmedNoContentResponse(t *testing.T) {
 	cfg := baseConfig()
 	cfg.minimum, cfg.dryRun = 0, false
@@ -262,6 +335,7 @@ func TestDeletionRequiresConfirmedNoContentResponse(t *testing.T) {
 	}
 }
 
+// TestListingRequiresConfirmedCompleteResponse prevents partial or asynchronous reads from authorizing deletion.
 func TestListingRequiresConfirmedCompleteResponse(t *testing.T) {
 	for _, status := range []int{201, 202, 206} {
 		t.Run(fmt.Sprint(status), func(t *testing.T) {
@@ -277,6 +351,7 @@ func TestListingRequiresConfirmedCompleteResponse(t *testing.T) {
 	}
 }
 
+// TestPaginationFailuresBeforeMutation rejects incomplete, shifting or repeated pages.
 func TestPaginationFailuresBeforeMutation(t *testing.T) {
 	first := `{"total_count":2,"workflow_runs":[` + oldRun(101) + `]}`
 	for _, second := range []fixtureRoute{
@@ -296,6 +371,7 @@ func TestPaginationFailuresBeforeMutation(t *testing.T) {
 	}
 }
 
+// TestReadRetriesAreBoundedAndOnlyForTransientFailures preserves recovery without retrying authorization failures.
 func TestReadRetriesAreBoundedAndOnlyForTransientFailures(t *testing.T) {
 	for _, tc := range []struct {
 		status, failures, attempts int
@@ -331,6 +407,7 @@ func TestReadRetriesAreBoundedAndOnlyForTransientFailures(t *testing.T) {
 	}
 }
 
+// TestLostDeletionResponseIsNeverReplayed stops after an unknown write outcome.
 func TestLostDeletionResponseIsNeverReplayed(t *testing.T) {
 	var writes atomic.Int64
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -366,6 +443,7 @@ func TestLostDeletionResponseIsNeverReplayed(t *testing.T) {
 	}
 }
 
+// TestRedirectsAndCancellationCannotReachAnotherTarget contains credentials and cancelled reads.
 func TestRedirectsAndCancellationCannotReachAnotherTarget(t *testing.T) {
 	reached := false
 	other := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { reached = true }))

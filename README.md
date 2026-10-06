@@ -250,8 +250,10 @@ jobs:
 Cleanup uses a Go driver from the reusable workflow's exact commit. It first lists
 all workflows and runs, then applies the age, minimum-run and conclusion filters.
 The newest `minimum-runs` matching old runs are retained in addition to recent runs.
-Runs whose workflow is no longer listed retain the existing orphan policy: they are
-selected independently of those filters. Workflow patterns match names or filenames
+Runs whose workflow is no longer listed are selected independently of those filters
+only after an individual workflow lookup confirms absence. Workflows that appear
+during enumeration are retained; an uncertain lookup fails before deletion.
+Workflow patterns match names or filenames
 without case sensitivity. Workflow, state and conclusion filters accept comma or
 pipe separated values.
 

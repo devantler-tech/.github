@@ -32,6 +32,7 @@ type config struct {
 
 var repositoryName = regexp.MustCompile(`^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$`)
 
+// parseConfig validates caller inputs and supplies the reusable workflow's defaults.
 func parseConfig(get func(string) string) (config, error) {
 	value := func(key, fallback string) string {
 		if v := get(key); v != "" {
@@ -129,6 +130,12 @@ type api struct {
 	wait        func(context.Context, time.Duration) error
 }
 
+type httpFailure struct{ status int }
+
+// Error reports an HTTP failure without exposing its response body or credentials.
+func (e httpFailure) Error() string { return fmt.Sprintf("HTTP %d", e.status) }
+
+// request confirms complete responses, retries transient reads and never retries writes.
 func (a api) request(ctx context.Context, method, path string) ([]byte, error) {
 	// Copy the client: redirects cannot forward credentials or change the target.
 	client := *a.client
@@ -148,6 +155,9 @@ func (a api) request(ctx context.Context, method, path string) ([]byte, error) {
 		if err == nil {
 			raw, readErr := io.ReadAll(io.LimitReader(response.Body, (16<<20)+1))
 			closeErr := response.Body.Close()
+			if readErr != nil || closeErr != nil || len(raw) > 16<<20 {
+				return nil, errors.New("incomplete or oversized API response")
+			}
 			if response.StatusCode >= 200 && response.StatusCode < 300 {
 				if method == "GET" && response.StatusCode != http.StatusOK {
 					return nil, errors.New("listing was not confirmed with HTTP 200")
@@ -155,14 +165,11 @@ func (a api) request(ctx context.Context, method, path string) ([]byte, error) {
 				if method == "DELETE" && response.StatusCode != http.StatusNoContent {
 					return nil, errors.New("deletion was not confirmed with HTTP 204")
 				}
-				if readErr != nil || closeErr != nil || len(raw) > 16<<20 {
-					return nil, errors.New("incomplete or oversized API response")
-				}
 				return raw, nil
 			}
-			err = fmt.Errorf("HTTP %d", response.StatusCode)
+			err = httpFailure{response.StatusCode}
 			if response.StatusCode < 500 || response.StatusCode > 599 || method != "GET" {
-				return nil, err
+				return raw, err
 			}
 		}
 		if method != "GET" || attempt == 2 || ctx.Err() != nil {
@@ -173,6 +180,35 @@ func (a api) request(ctx context.Context, method, path string) ([]byte, error) {
 		}
 	}
 	return nil, errors.New("API request failed")
+}
+
+// workflowAbsent revalidates an orphan's parent after observing the run. Only a
+// complete GitHub Not Found response proves absence; an existing parent is retained.
+func (a api) workflowAbsent(ctx context.Context, prefix string, id int64) (bool, error) {
+	raw, err := a.request(ctx, "GET", fmt.Sprintf("%s/actions/workflows/%d", prefix, id))
+	if err != nil {
+		var failure httpFailure
+		if !errors.As(err, &failure) || failure.status != http.StatusNotFound {
+			return false, err
+		}
+		if unambiguous(raw) != nil {
+			return false, errors.New("unconfirmed workflow absence")
+		}
+		var response map[string]json.RawMessage
+		if json.Unmarshal(raw, &response) != nil {
+			return false, errors.New("invalid workflow absence response")
+		}
+		var message string
+		if json.Unmarshal(response["message"], &message) != nil || message != "Not Found" {
+			return false, errors.New("unconfirmed workflow absence")
+		}
+		return true, nil
+	}
+	var w workflow
+	if unambiguous(raw) != nil || decodeItem(raw, []string{"id", "name", "path", "state"}, &w) != nil || w.ID != id || w.Name == "" || w.Path == "" || w.State == "" {
+		return false, errors.New("invalid workflow revalidation")
+	}
+	return false, nil
 }
 
 // Each page must keep its total, unique identities and complete item shape.
@@ -257,6 +293,7 @@ func decodeItem(item json.RawMessage, required []string, destination any) error 
 	return json.Unmarshal(item, destination)
 }
 
+// decodeRuns requires identities, status and creation time before applying retention.
 func decodeRuns(items []json.RawMessage) ([]workflowRun, error) {
 	result := []workflowRun{}
 	for _, item := range items {
@@ -272,6 +309,7 @@ func decodeRuns(items []json.RawMessage) ([]workflowRun, error) {
 	return result, nil
 }
 
+// patterns normalizes the workflow interface's comma or pipe separated filters.
 func patterns(raw string) []string {
 	result := []string{}
 	for _, part := range strings.FieldsFunc(raw, func(c rune) bool { return c == ',' || c == '|' }) {
@@ -281,6 +319,8 @@ func patterns(raw string) []string {
 	}
 	return result
 }
+
+// allows matches an exact state or conclusion, with ALL as the wildcard.
 func allows(raw, value string) bool {
 	if strings.EqualFold(raw, "ALL") {
 		return true
@@ -292,6 +332,8 @@ func allows(raw, value string) bool {
 	}
 	return false
 }
+
+// selected applies the caller's workflow name, filename and state filters.
 func selected(cfg config, w workflow) bool {
 	if !allows(cfg.states, w.State) {
 		return false
@@ -309,6 +351,7 @@ func selected(cfg config, w workflow) bool {
 	return false
 }
 
+// clean plans from complete reads, revalidates orphan parents and enacts each deletion once.
 func clean(ctx context.Context, cfg config, base, token string, client *http.Client, now time.Time, out io.Writer, wait func(context.Context, time.Duration) error) error {
 	if token == "" {
 		return errors.New("cleanup token is missing")
@@ -345,6 +388,7 @@ func clean(ctx context.Context, cfg config, base, token string, client *http.Cli
 		return err
 	}
 	plan := []int64{}
+	orphans := map[int64]int64{}
 	planned := map[int64]bool{}
 	appendRun := func(id int64) error {
 		if planned[id] {
@@ -357,6 +401,7 @@ func clean(ctx context.Context, cfg config, base, token string, client *http.Cli
 	// Orphans retain the existing policy: a run with no listed workflow is selected independently of filters.
 	for _, r := range repositoryRuns {
 		if !ids[r.WorkflowID] {
+			orphans[r.ID] = r.WorkflowID
 			if err := appendRun(r.ID); err != nil {
 				return err
 			}
@@ -399,6 +444,26 @@ func clean(ctx context.Context, cfg config, base, token string, client *http.Cli
 			}
 		}
 	}
+	// A workflow can appear between the independent workflow and run listings.
+	// Revalidate each orphan parent before any mutation, retaining live parents.
+	absent, checked := map[int64]bool{}, map[int64]bool{}
+	confirmed := []int64{}
+	for _, id := range plan {
+		if parent, orphan := orphans[id]; orphan {
+			if !checked[parent] {
+				missing, err := a.workflowAbsent(ctx, prefix, parent)
+				if err != nil {
+					return fmt.Errorf("revalidate orphan workflow: %w", err)
+				}
+				absent[parent], checked[parent] = missing, true
+			}
+			if !absent[parent] {
+				continue
+			}
+		}
+		confirmed = append(confirmed, id)
+	}
+	plan = confirmed
 	for _, id := range plan {
 		if ctx.Err() != nil {
 			return ctx.Err()
@@ -420,6 +485,7 @@ func clean(ctx context.Context, cfg config, base, token string, client *http.Cli
 	return err
 }
 
+// delay makes retry backoff interruptible by cancellation.
 func delay(ctx context.Context, d time.Duration) error {
 	timer := time.NewTimer(d)
 	defer timer.Stop()
@@ -430,6 +496,8 @@ func delay(ctx context.Context, d time.Duration) error {
 		return ctx.Err()
 	}
 }
+
+// main runs cleanup with the caller token and returns a failing exit on any uncertainty.
 func main() {
 	cfg, err := parseConfig(os.Getenv)
 	if err == nil {
