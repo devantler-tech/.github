@@ -4,19 +4,30 @@ set -euo pipefail
 phase="${1:-}"
 case "$phase" in build|test|coverage) shift ;; *) echo 'Invalid Go disk measurement phase' >&2; exit 2 ;; esac
 [[ "$#" -gt 0 ]] || { echo 'Missing measured command' >&2; exit 2; }
-scratch="$(mktemp -d "${RUNNER_TEMP:-${TMPDIR:-/tmp}}/go-disk.XXXXXX")"
+measurement_unknown=false
+scratch="$(mktemp -d "${RUNNER_TEMP:-${TMPDIR:-/tmp}}/go-disk.XXXXXX")" || { scratch=''; measurement_unknown=true; }
 monitor_pid=''
+observation_pid=''
 command_pid=''
 # Separate process groups let cancellation stop the command's children as well.
 set -m
-stop_monitor() {
-  if [[ -n "$monitor_pid" ]]; then
-    kill -TERM -- "-$monitor_pid" 2>/dev/null || true
-    wait "$monitor_pid" 2>/dev/null || true
-    monitor_pid=''
+stop_group() {
+  local pid="$1"
+  if [[ -n "$pid" ]]; then
+    kill -TERM -- "-$pid" 2>/dev/null || true
+    for _ in {1..20}; do
+      kill -0 -- "-$pid" 2>/dev/null || break
+      sleep 0.1
+    done
+    if kill -0 -- "-$pid" 2>/dev/null; then
+      measurement_unknown=true
+      kill -KILL -- "-$pid" 2>/dev/null || true
+    fi
+    wait "$pid" 2>/dev/null || measurement_unknown=true
   fi
 }
-trap 'stop_monitor; rm -rf -- "$scratch"' EXIT
+stop_monitor() { stop_group "$monitor_pid"; monitor_pid=''; }
+trap 'stop_monitor; stop_group "$observation_pid"; if [[ -n "$scratch" ]]; then rm -rf -- "$scratch" || true; fi' EXIT
 # Bash invokes this handler from the INT/TERM traps below.
 # shellcheck disable=SC2329
 cancel() {
@@ -41,47 +52,66 @@ sample() {
   # an operational failure is unknown, never an accepted partial observation.
   if ! frame="$(LC_ALL=C df -Pk . 2>/dev/null)" ||
      ! values="$(awk 'NR == 2 {print $2, $3, $4} END {if (NR != 2) exit 1}' <<< "$frame")"; then
-    touch "$scratch/unknown"
-    return
+    return 1
   fi
   if [[ ! "$values" =~ ^([0-9]{1,12})[[:space:]]([0-9]{1,12})[[:space:]]([0-9]{1,12})$ ]]; then
-    touch "$scratch/unknown"
-    return
+    return 1
   fi
   total=$((10#${BASH_REMATCH[1]})); used=$((10#${BASH_REMATCH[2]})); available=$((10#${BASH_REMATCH[3]}))
   if ((total == 0 || used > total || available > total || used + available > total)); then
-    touch "$scratch/unknown"
-    return
+    return 1
   fi
   printf '%s %s\n' "$used" "$available" >> "$scratch/samples"
 }
-sample
-(
-  trap 'exit 0' INT TERM
-  while sleep 1; do sample; done
-) 2>/dev/null &
-monitor_pid=$!
+collect_sample() {
+  # Initial/final reads also need their own bounded, cancellable group.
+  (set +m; sample) 2>/dev/null &
+  observation_pid=$!
+  for _ in {1..20}; do
+    kill -0 "$observation_pid" 2>/dev/null || break
+    sleep 0.1
+  done
+  if kill -0 "$observation_pid" 2>/dev/null; then
+    measurement_unknown=true
+    stop_group "$observation_pid"
+  else
+    wait "$observation_pid" 2>/dev/null || measurement_unknown=true
+  fi
+  observation_pid=''
+}
+if [[ -n "$scratch" ]]; then
+  collect_sample
+  (
+    # All sampler descendants must stay in the sampler's process group.
+    set +m
+    trap 'exit 0' INT TERM
+    while sleep 1; do sample || exit 1; done
+  ) 2>/dev/null &
+  monitor_pid=$!
+fi
 "$@" &
 command_pid=$!
 rc=0
 wait "$command_pid" || rc=$?
 command_pid=''
 # A sampler that stopped by itself cannot establish complete observations.
-kill -0 "$monitor_pid" 2>/dev/null || touch "$scratch/unknown"
+if [[ -n "$monitor_pid" ]]; then
+  kill -0 "$monitor_pid" 2>/dev/null || measurement_unknown=true
+fi
 stop_monitor
-sample
+if [[ -n "$scratch" ]]; then collect_sample; fi
 samples=0; initial=null; final=null; minimum=null; maximum=null
-if [[ -f "$scratch/samples" ]]; then
+if [[ -n "$scratch" && -f "$scratch/samples" ]]; then
   while read -r used available; do
     ((samples += 1))
     [[ "$initial" != null ]] || initial="$available"
     final="$available"
     if [[ "$minimum" == null ]] || ((available < minimum)); then minimum="$available"; fi
     if [[ "$maximum" == null ]] || ((used > maximum)); then maximum="$used"; fi
-  done < "$scratch/samples"
+  done < "$scratch/samples" || measurement_unknown=true
 fi
 status=measured
-if [[ -e "$scratch/unknown" ]] || ((samples < 2)); then
+if [[ "$measurement_unknown" == true ]] || ((samples < 2)); then
   status=unknown
   initial=null; final=null; minimum=null; maximum=null
 fi
@@ -94,7 +124,7 @@ receipt="$(jq -cn --arg status "$status" --arg phase "$phase" \
   echo '::warning::Go disk measurement UNKNOWN: receipt could not be encoded' >&2
   exit "$rc"
 }
-printf 'GO_DISK_USAGE %s\n' "$receipt"
+printf 'GO_DISK_USAGE %s\n' "$receipt" || true
 if [[ -n "${GITHUB_STEP_SUMMARY:-}" ]]; then
   {
     printf '### Go disk usage: %s\n\nSampled filesystem headroom (1-second interval; not an exact peak).\n\n' "$phase"

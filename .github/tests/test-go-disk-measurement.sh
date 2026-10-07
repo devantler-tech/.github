@@ -20,6 +20,9 @@ case "${DISK_CASE:-clean}" in
   empty) exit 0 ;;
   intermediate) if [[ "$n" == 2 ]]; then exit 9; fi ;;
   final) if [[ -e "$DISK_FIXTURE/finished" ]]; then exit 9; fi ;;
+  resistant) if [[ "$n" == 2 ]]; then trap '' TERM; echo $$ > "$DISK_FIXTURE/sampler-pid"; sleep 10; fi ;;
+  initial-resistant) if [[ "$n" == 1 ]]; then trap '' TERM; echo $$ > "$DISK_FIXTURE/edge-pid"; sleep 10; fi ;;
+  final-resistant) if [[ -e "$DISK_FIXTURE/finished" ]]; then trap '' TERM; echo $$ > "$DISK_FIXTURE/edge-pid"; sleep 10; fi ;;
 esac
 available=8000; used=2000
 if [[ -e "$DISK_FIXTURE/allocated" ]]; then available=3000; used=7000; fi
@@ -63,6 +66,48 @@ run_case 0 build bash -c "touch \"\$DISK_FIXTURE/allocated\"; sleep 2; rm \"\$DI
 jq -e '.status == "measured" and .initial_available_kib == 8000 and .minimum_available_kib == 3000 and .maximum_used_kib == 7000 and .final_available_kib == 8000 and .samples >= 3 and .interval_seconds == 1 and .command_exit == 0' "$scratch/receipt.json" >/dev/null || fail 'transient disk pressure was lost'
 run_case 23 test bash -c 'exit 23'
 jq -e '.command_exit == 23' "$scratch/receipt.json" >/dev/null || fail 'failed command reported success'
+for DISK_CASE in initial-resistant final-resistant; do
+  export DISK_CASE
+  rm -f "$scratch/finished"
+  edge_started=$SECONDS
+  run_case 23 test bash -c "touch \"\$DISK_FIXTURE/finished\"; exit 23"
+  ((SECONDS - edge_started <= 6)) || fail "$DISK_CASE disk read blocked the wrapped command's result"
+  ! kill -0 "$(cat "$scratch/edge-pid")" 2>/dev/null || fail "$DISK_CASE child survived collection"
+  jq -e '.status == "unknown" and .command_exit == 23 and .minimum_available_kib == null' "$scratch/receipt.json" >/dev/null || fail "$DISK_CASE left incomplete capacity evidence"
+done
+unset DISK_CASE
+rm -f "$scratch/finished"
+# A blocked df must not keep a completed command waiting indefinitely.
+shutdown_started=$SECONDS
+DISK_CASE=resistant run_case 0 test bash -c 'sleep 2'
+((SECONDS - shutdown_started <= 6)) || fail 'sampler shutdown exceeded its bounded grace period'
+! kill -0 "$(cat "$scratch/sampler-pid")" 2>/dev/null || fail 'resistant sampler child survived normal shutdown'
+jq -e '.status == "unknown" and .minimum_available_kib == null' "$scratch/receipt.json" >/dev/null || fail 'forced sampler shutdown claimed complete measurement'
+# Observation storage is optional: it must never replace the Go result.
+real_mktemp="$(command -v mktemp)"
+export REAL_MKTEMP="$real_mktemp"
+cat > "$scratch/bin/mktemp" <<'EOF'
+#!/usr/bin/env bash
+case "${DISK_STORAGE_CASE:-}" in
+  unavailable) exit 1 ;;
+  unwritable)
+    directory=$("$REAL_MKTEMP" "$@") || exit $?
+    : > "$directory/samples"
+    chmod 444 "$directory/samples"
+    printf '%s\n' "$directory"
+    ;;
+  *) exec "$REAL_MKTEMP" "$@" ;;
+esac
+EOF
+chmod +x "$scratch/bin/mktemp"
+for DISK_STORAGE_CASE in unavailable unwritable; do
+  export DISK_STORAGE_CASE
+  rm -f "$scratch/command-ran"
+  run_case 23 test bash -c "echo run >> \"\$DISK_FIXTURE/command-ran\"; exit 23"
+  [[ "$(cat "$scratch/command-ran")" == run ]] || fail 'storage failure skipped or repeated the command'
+  jq -e '.status == "unknown" and .command_exit == 23 and .initial_available_kib == null and .final_available_kib == null and .minimum_available_kib == null and .maximum_used_kib == null' "$scratch/receipt.json" >/dev/null || fail 'storage failure left misleading capacity evidence'
+done
+unset DISK_STORAGE_CASE
 for DISK_CASE in partial malformed empty intermediate; do
   export DISK_CASE
   run_case 0 coverage bash -c 'sleep 2'
@@ -109,5 +154,27 @@ rc=0; wait "$collector" || rc=$?
 ! kill -0 "$(cat "$scratch/command-pid")" 2>/dev/null || fail 'command survived cancellation'
 count=$(cat "$scratch/count"); sleep 2
 [[ "$(cat "$scratch/count")" == "$count" ]] || fail 'sampler survived cancellation'
+# Cancellation while df is blocked must stop its children too, both before
+# command admission and while the background sampler is running.
+for DISK_CASE in initial-resistant resistant; do
+  export DISK_CASE
+  rm -f "$scratch/count" "$scratch/edge-pid" "$scratch/sampler-pid" "$scratch/command-pid"
+  bash "$script" test bash -c 'trap "" TERM; echo $$ > "$DISK_FIXTURE/command-pid"; sleep 8' > "$scratch/cancel-result" 2> "$scratch/cancel-stderr" &
+  collector=$!
+  blocked_pid="$scratch/edge-pid"
+  [[ "$DISK_CASE" != resistant ]] || blocked_pid="$scratch/sampler-pid"
+  for _ in {1..40}; do [[ -s "$blocked_pid" ]] && break; sleep 0.1; done
+  [[ -s "$blocked_pid" ]] || fail "$DISK_CASE cancellation never reached the blocked observation"
+  cancel_started=$SECONDS
+  kill -TERM "$collector"
+  rc=0; wait "$collector" || rc=$?
+  [[ "$rc" == 143 ]] || fail "$DISK_CASE cancellation changed status to $rc"
+  ((SECONDS - cancel_started <= 6)) || fail "$DISK_CASE cancellation exceeded its cleanup budget"
+  ! kill -0 "$(cat "$blocked_pid")" 2>/dev/null || fail "$DISK_CASE df survived cancellation"
+  if [[ -s "$scratch/command-pid" ]]; then
+    ! kill -0 "$(cat "$scratch/command-pid")" 2>/dev/null || fail "$DISK_CASE command survived cancellation"
+  fi
+done
+unset DISK_CASE
 echo 'Go disk measurement behavior passed'
 bash "$root/.github/tests/go-disk-step-contract.sh"
