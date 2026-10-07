@@ -10,9 +10,10 @@ phase misses it. This action gathers all of that into grouped log sections in
 one step.
 
 Collection has a 120-second budget by default, with at most five seconds per
-command. Current failing or active Job Pods come first (up to 20), followed by a
+command. Current failing Pods come before healthy active Job Pods (up to 20
+combined, newest first within each group), followed by a
 snapshot from one Pod of each Flux controller Deployment and previous logs for
-the selected failing Pods. Failed Job descriptions (up to 10), resource state,
+the selected Pods. Failed Job descriptions (up to 10), resource state,
 warning events and the five newest completed Job Pod logs provide supplementary
 evidence. At most 48 `kubectl logs` commands run, even with thousands of retained
 Jobs. Each command's process group is stopped on timeout, and its command and

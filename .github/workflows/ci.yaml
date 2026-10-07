@@ -750,9 +750,6 @@ jobs:
         shell: bash
         run: echo "$GITHUB_WORKSPACE/.github/tests/diagnose-flux/bin" >> "$GITHUB_PATH"
 
-      - name: 🧪 Bound diagnostic fan-out and stalled reads without credentials
-        run: bash .github/tests/test-diagnose-flux.sh
-
       - name: 🧪 Preserve an original failed operation
         id: original-failure
         continue-on-error: true
@@ -3374,6 +3371,9 @@ jobs:
       - name: 🧪 Check deployment scope and full catalogue fallback
         shell: bash
         run: bash .github/tests/test-ci-catalogue-scope.sh
+
+      - name: 🧪 Bound diagnostic fan-out and stalled reads without credentials
+        run: bash .github/tests/test-diagnose-flux.sh
 
       - name: 🔐 Reject catalogue credential boundary regressions
         shell: bash

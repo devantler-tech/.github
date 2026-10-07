@@ -84,6 +84,15 @@ func inventory() ([]map[string]any, []map[string]any) {
 			pods = append(pods, map[string]any{"metadata": meta, "status": map[string]any{"phase": "Failed", "containerStatuses": []map[string]any{{"restartCount": 1, "state": map[string]any{"terminated": map[string]any{"exitCode": 1, "reason": "Error"}}}}}})
 		}
 	}
+	if os.Getenv("DIAG_MODE") == "mixed-current" {
+		for i := 0; i < 20; i++ {
+			name := fmt.Sprintf("active-%04d", i)
+			created := time.Unix(1800000000+int64(i), 0).UTC().Format(time.RFC3339)
+			meta := map[string]any{"namespace": "demo", "name": name, "uid": "uid-" + name, "creationTimestamp": created, "labels": map[string]any{"job-name": name}, "ownerReferences": []map[string]any{{"kind": "Job", "name": name, "uid": "job-uid-" + name}}}
+			pods = append(pods, map[string]any{"metadata": meta, "status": map[string]any{"phase": "Running", "containerStatuses": []map[string]any{{"restartCount": 0, "state": map[string]any{"running": map[string]any{}}}}}})
+			jobs = append(jobs, map[string]any{"metadata": map[string]any{"namespace": "demo", "name": name, "uid": "job-uid-" + name, "creationTimestamp": created}, "status": map[string]any{"active": 1}})
+		}
+	}
 	return pods, jobs
 }
 func stall() {
@@ -198,6 +207,35 @@ type result struct {
 	children []int
 }
 
+type process struct {
+	parent int
+	state  string
+}
+
+func processes() (map[int]process, error) {
+	data, err := exec.Command("ps", "-axo", "pid=,ppid=,stat=").Output()
+	if err != nil {
+		return nil, err
+	}
+	all := map[int]process{}
+	for _, line := range strings.Split(strings.TrimSpace(string(data)), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) != 3 {
+			return nil, fmt.Errorf("invalid process observation")
+		}
+		pid, pidErr := strconv.Atoi(fields[0])
+		parent, parentErr := strconv.Atoi(fields[1])
+		if pidErr != nil || parentErr != nil || pid <= 0 || parent < 0 {
+			return nil, fmt.Errorf("invalid process identity")
+		}
+		all[pid] = process{parent, fields[2]}
+	}
+	if _, present := all[os.Getpid()]; !present {
+		return nil, fmt.Errorf("incomplete process observation")
+	}
+	return all, nil
+}
+
 func run(source, mode string, history int, failures bool, request, deadline string, kustomizations string) result {
 	dir, err := os.MkdirTemp("", "diagnose-contract-")
 	if err != nil {
@@ -237,24 +275,21 @@ func run(source, mode string, history int, failures bool, request, deadline stri
 	// abandoned watchdog sleeps as well as the deliberately stalled API helper.
 	observed := map[int]bool{}
 	var mu sync.Mutex
+	var observationErr error
 	stop := make(chan struct{})
 	joined := make(chan struct{})
 	go func() {
 		defer close(joined)
 		for {
-			data, _ := exec.Command("ps", "-axo", "pid=,ppid=").Output()
-			parents := map[int]int{}
-			for _, line := range strings.Split(string(data), "\n") {
-				fields := strings.Fields(line)
-				if len(fields) == 2 {
-					pid, _ := strconv.Atoi(fields[0])
-					ppid, _ := strconv.Atoi(fields[1])
-					parents[pid] = ppid
-				}
-			}
+			all, readErr := processes()
 			mu.Lock()
-			for pid := range parents {
-				for parent, depth := parents[pid], 0; parent > 1 && depth < 32; parent, depth = parents[parent], depth+1 {
+			if readErr != nil {
+				observationErr = readErr
+				mu.Unlock()
+				return
+			}
+			for pid := range all {
+				for parent, depth := all[pid].parent, 0; parent > 1 && depth < 32; parent, depth = all[parent].parent, depth+1 {
 					if parent == cmd.Process.Pid || observed[parent] {
 						observed[pid] = true
 						break
@@ -300,16 +335,23 @@ func run(source, mode string, history int, failures bool, request, deadline stri
 		r.children = append(r.children, pid)
 	}
 	data, _ = os.ReadFile(unexpected)
-	check(len(data) == 0, "unexpected commands: %s", data)
+	all, readErr := processes()
+	if readErr != nil || observationErr != nil {
+		for _, pid := range r.children {
+			_ = syscall.Kill(pid, syscall.SIGKILL)
+		}
+		fail("process observation unavailable: observer=%v final=%v", observationErr, readErr)
+	}
 	alive := []int{}
 	for _, pid := range r.children {
-		state, _ := exec.Command("ps", "-o", "stat=", "-p", strconv.Itoa(pid)).Output()
-		if len(bytes.TrimSpace(state)) > 0 && !strings.HasPrefix(strings.TrimSpace(string(state)), "Z") {
+		state, present := all[pid]
+		if present && !strings.HasPrefix(state.state, "Z") {
 			_ = syscall.Kill(pid, syscall.SIGKILL)
 			alive = append(alive, pid)
 		}
 	}
 	check(len(alive) == 0, "diagnostic children still running after action returned: %v", alive)
+	check(len(data) == 0, "unexpected commands: %s", data)
 	return r
 }
 func logs(r result) []call {
@@ -350,6 +392,7 @@ func main() {
 			count                            int
 		}
 		mutations := []mutation{
+			{"failure priority", "sort_by(if failing then 1 else 0 end,\n                .metadata.creationTimestamp", "sort_by(.metadata.creationTimestamp", "priority", "new healthy Jobs crowded actual failures out of the Pod cap", 1},
 			{"historical cap", "(.[:5][] | [.metadata.namespace,.metadata.name] | @tsv)", "(.[] | [.metadata.namespace,.metadata.name] | @tsv)", "fanout", "unbounded retained Job fan-out", 1},
 			{"current Pod cap", "pods: .[:20]", "pods: .", "many-failures", "current-failure fan-out unbounded", 1},
 			{"failed Job cap", "(.[:10][] | if", "(.[] | if", "many-failures", "failed Job descriptions or omission reporting unbounded", 1},
@@ -380,6 +423,26 @@ func main() {
 			fmt.Println("PASS rejects mutation: " + m.name)
 		}
 		return
+	}
+	if selected == "all" {
+		dir, err := os.MkdirTemp("", "diagnose-observer-control-")
+		if err != nil {
+			panic(err)
+		}
+		defer os.RemoveAll(dir)
+		if err = os.WriteFile(filepath.Join(dir, "ps"), []byte("#!/usr/bin/env bash\nexit 29\n"), 0700); err != nil {
+			panic(err)
+		}
+		exe, err := os.Executable()
+		if err != nil {
+			panic(err)
+		}
+		child := exec.Command(exe, os.Args[1], "stalled")
+		child.Env = append(os.Environ(), "PATH="+dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+		output, err := child.CombinedOutput()
+		var exit *exec.ExitError
+		check(errors.As(err, &exit) && exit.ExitCode() == 1 && strings.Contains(string(output), "process observation unavailable"), "unavailable process observer accepted cleanup proof: %s (%v)", output, err)
+		fmt.Println("PASS unavailable process observation cannot prove cleanup")
 	}
 	if selected == "baseline" {
 		for _, sample := range [][2]int{{0, 3}, {100, 103}, {1000, 1003}} {
@@ -447,6 +510,22 @@ func main() {
 		}
 		check(jobDescribes <= 10 && strings.Contains(strings.ToLower(r.output), "omitted"), "failed Job descriptions or omission reporting unbounded")
 		fmt.Printf("PASS large failure set logs=%d job_descriptions=%d\n", len(logs(r)), jobDescribes)
+	}
+	if selected == "all" || selected == "priority" {
+		r := run(source, "mixed-current", 1000, true, "1", "5", "infrastructure apps")
+		check(r.code == 0 && has(r, "demo/crasher") && has(r, "demo/failed-job"), "new healthy Jobs crowded actual failures out of the Pod cap")
+		check(has(r, "demo/active-0019") && !has(r, "demo/active-0000"), "active Jobs not ordered newest-first within their secondary class")
+		firstFailure, firstActive := len(r.calls), len(r.calls)
+		for i, c := range r.calls {
+			if c.Verb == "logs" && (c.Target == "demo/crasher" || c.Target == "demo/failed-job") && i < firstFailure {
+				firstFailure = i
+			}
+			if c.Verb == "logs" && strings.Contains(c.Target, "demo/active-") && i < firstActive {
+				firstActive = i
+			}
+		}
+		check(firstFailure < firstActive && len(logs(r)) <= 48 && strings.Contains(strings.ToLower(r.output), "omitted"), "failure-first ordering, cap or omission report missing")
+		fmt.Println("PASS older failures outrank newer healthy active Jobs")
 	}
 	if selected == "all" || selected == "stalled" {
 		r := run(source, "stall-controller", 0, true, "1", "3", "infrastructure apps")

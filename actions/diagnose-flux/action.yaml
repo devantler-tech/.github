@@ -115,7 +115,8 @@ runs:
               any(.items[]; (named | not)) then error("invalid Pod inventory") else . end |
             [.items[] | select(failing or (job and .status.phase != "Succeeded"))] |
               unique_by([.metadata.namespace,.metadata.name]) |
-              sort_by(.metadata.creationTimestamp // "", .metadata.namespace, .metadata.name) | reverse |
+              sort_by(if failing then 1 else 0 end,
+                .metadata.creationTimestamp // "", .metadata.namespace, .metadata.name) | reverse |
               {omitted: ((length - 20) | if . < 0 then 0 else . end), pods: .[:20]} |
               .omitted, (.pods[] | [.metadata.namespace,.metadata.name] | @tsv)
           ' "$scratch/pods"; then
