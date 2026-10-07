@@ -27,6 +27,11 @@ on:
         type: string
         default: "8GiB"
         description: "Soft Go heap limit for deadcode and vulnerability analysis. Lower it for smaller runners; decimal Go units are bounded to 8GiB. It does not cap total runner memory."
+      measure-disk-usage:
+        required: false
+        type: boolean
+        default: false
+        description: "Record sampled filesystem headroom during build, test and race coverage. Opt-in measurement only: cleanup and Go results are unchanged. Unreadable samples are UNKNOWN; a 1-second sample interval can miss shorter peaks. Rollout and retirement: devantler-tech/.github#527."
       test-default-branch:
         required: false
         type: boolean
@@ -72,7 +77,7 @@ on:
 # Adding a discriminator only ever splits groups further; it cannot merge two that were
 # separate, so this direction of change cannot reintroduce #587.
 concurrency:
-  group: "validate-go-project-${{ github.repository }}-${{ github.ref }}-${{ github.ref == format('refs/heads/{0}', github.event.repository.default_branch) && github.run_id || '' }}-${{ github.workflow }}-${{ inputs.pr-owner }}-${{ inputs.working-directory }}-${{ inputs.test-default-branch }}-${{ inputs.maintenance-default-branch }}-${{ inputs.apply-signed-fixes }}-${{ inputs.manual-workflow-fixes }}-${{ inputs.go-memory-limit }}"
+  group: "validate-go-project-${{ github.repository }}-${{ github.ref }}-${{ github.ref == format('refs/heads/{0}', github.event.repository.default_branch) && github.run_id || '' }}-${{ github.workflow }}-${{ inputs.pr-owner }}-${{ inputs.working-directory }}-${{ inputs.test-default-branch }}-${{ inputs.maintenance-default-branch }}-${{ inputs.apply-signed-fixes }}-${{ inputs.manual-workflow-fixes }}-${{ inputs.go-memory-limit }}-${{ inputs.measure-disk-usage }}"
   cancel-in-progress: true
 
 permissions: {}
@@ -889,8 +894,35 @@ jobs:
           go-version-file: ${{ inputs.working-directory || '.' }}/go.mod
           cache: true
 
+      - name: Checkout disk measurement helper
+        if: ${{ inputs.measure-disk-usage == true }}
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ${{ job.workflow_repository }}
+          ref: ${{ job.workflow_sha }}
+          path: .devantler-tech-go-disk
+          persist-credentials: false
+          sparse-checkout: .github/scripts/measure-go-disk.sh
+          sparse-checkout-cone-mode: false
+
+      - name: Prepare disk measurement outside the consumer workspace
+        if: ${{ inputs.measure-disk-usage == true }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          install -m 700 "$GITHUB_WORKSPACE/.devantler-tech-go-disk/.github/scripts/measure-go-disk.sh" "$RUNNER_TEMP/measure-go-disk.sh"
+          rm -rf -- "$GITHUB_WORKSPACE/.devantler-tech-go-disk"
+
       - name: 🛠️ Build
-        run: go build -v ./...
+        env:
+          MEASURE_DISK_USAGE: ${{ inputs.measure-disk-usage }}
+          GO_DISK_WORKFLOW_SHA: ${{ job.workflow_sha }}
+        run: |
+          if [[ "$MEASURE_DISK_USAGE" == true ]]; then
+            bash "$RUNNER_TEMP/measure-go-disk.sh" build go build -v ./...
+          else
+            go build -v ./...
+          fi
 
   test:
     name: 🧪 Test
@@ -1016,9 +1048,35 @@ jobs:
           restore-keys: |
             kubeconform-schema-cache-v1-${{ github.job }}-
 
-      - name: 🧪 Test
+      - name: Checkout disk measurement helper
+        if: ${{ inputs.measure-disk-usage == true }}
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ${{ job.workflow_repository }}
+          ref: ${{ job.workflow_sha }}
+          path: .devantler-tech-go-disk
+          persist-credentials: false
+          sparse-checkout: .github/scripts/measure-go-disk.sh
+          sparse-checkout-cone-mode: false
+
+      - name: Prepare disk measurement outside the consumer workspace
+        if: ${{ inputs.measure-disk-usage == true }}
+        shell: bash
         run: |
-          go test ./...
+          set -euo pipefail
+          install -m 700 "$GITHUB_WORKSPACE/.devantler-tech-go-disk/.github/scripts/measure-go-disk.sh" "$RUNNER_TEMP/measure-go-disk.sh"
+          rm -rf -- "$GITHUB_WORKSPACE/.devantler-tech-go-disk"
+
+      - name: 🧪 Test
+        env:
+          MEASURE_DISK_USAGE: ${{ inputs.measure-disk-usage }}
+          GO_DISK_WORKFLOW_SHA: ${{ job.workflow_sha }}
+        run: |
+          if [[ "$MEASURE_DISK_USAGE" == true ]]; then
+            bash "$RUNNER_TEMP/measure-go-disk.sh" test go test ./...
+          else
+            go test ./...
+          fi
 
       - name: Save Go compilation cache
         if: success() && steps.go-build-cache.outputs.cache-hit != 'true'
@@ -1123,9 +1181,35 @@ jobs:
       - name: 👨🏻‍🔧 Enable covdata (temp) see https://github.com/golang/go/issues/75031
         run: go env -w GOTOOLCHAIN=go1.26.0+auto
 
-      - name: 📄 Generate coverage
+      - name: Checkout disk measurement helper
+        if: ${{ inputs.measure-disk-usage == true }}
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ${{ job.workflow_repository }}
+          ref: ${{ job.workflow_sha }}
+          path: .devantler-tech-go-disk
+          persist-credentials: false
+          sparse-checkout: .github/scripts/measure-go-disk.sh
+          sparse-checkout-cone-mode: false
+
+      - name: Prepare disk measurement outside the consumer workspace
+        if: ${{ inputs.measure-disk-usage == true }}
+        shell: bash
         run: |
-          go test -race -coverprofile=coverage.txt -covermode=atomic ./...
+          set -euo pipefail
+          install -m 700 "$GITHUB_WORKSPACE/.devantler-tech-go-disk/.github/scripts/measure-go-disk.sh" "$RUNNER_TEMP/measure-go-disk.sh"
+          rm -rf -- "$GITHUB_WORKSPACE/.devantler-tech-go-disk"
+
+      - name: 📄 Generate coverage
+        env:
+          MEASURE_DISK_USAGE: ${{ inputs.measure-disk-usage }}
+          GO_DISK_WORKFLOW_SHA: ${{ job.workflow_sha }}
+        run: |
+          if [[ "$MEASURE_DISK_USAGE" == true ]]; then
+            bash "$RUNNER_TEMP/measure-go-disk.sh" coverage go test -race -coverprofile=coverage.txt -covermode=atomic ./...
+          else
+            go test -race -coverprofile=coverage.txt -covermode=atomic ./...
+          fi
 
       - name: Save Go compilation cache
         if: success() && steps.go-build-cache.outputs.cache-hit != 'true'
