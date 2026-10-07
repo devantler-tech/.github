@@ -27,6 +27,28 @@ printf 'Filesystem 1024-blocks Used Available Capacity Mounted on\nfixture 10000
 EOF
 chmod +x "$scratch/bin/df"
 export DISK_FIXTURE="$scratch" PATH="$scratch/bin:$PATH"
+# Refuse a consumer-owned checkout path before checkout can replace its files.
+mkdir "$scratch/collision"
+for job in build test coverage; do
+  JOB_ID="$job" yq -o=json '.jobs[strenv(JOB_ID)].steps' "$workflow" | jq -e '
+    [to_entries[] | select(.value.name == "Reserve disk measurement checkout path")] as $guards |
+    [to_entries[] | select(.value.name == "Checkout disk measurement helper")] as $checkouts |
+    ($guards | length) == 1 and ($checkouts | length) == 1 and
+    $guards[0].key < $checkouts[0].key and
+    $guards[0].value.if == $checkouts[0].value.if' >/dev/null || fail "$job must guard before its same-condition checkout"
+  yq -r ".jobs.$job.steps[] | select(.name == \"Reserve disk measurement checkout path\") | .run" "$workflow" > "$scratch/reserve"
+  [[ -s "$scratch/reserve" ]] || fail "$job has no checkout collision guard"
+  GITHUB_WORKSPACE="$scratch/collision" bash -euo pipefail "$scratch/reserve"
+  mkdir "$scratch/collision/.devantler-tech-go-disk"
+  printf 'consumer\n' > "$scratch/collision/.devantler-tech-go-disk/subject"
+  if GITHUB_WORKSPACE="$scratch/collision" bash -euo pipefail "$scratch/reserve"; then fail "$job accepted a consumer-owned directory"; fi
+  [[ "$(cat "$scratch/collision/.devantler-tech-go-disk/subject")" == consumer ]] || fail "$job changed existing consumer files"
+  rm -rf "$scratch/collision/.devantler-tech-go-disk"
+  ln -s missing "$scratch/collision/.devantler-tech-go-disk"
+  if GITHUB_WORKSPACE="$scratch/collision" bash -euo pipefail "$scratch/reserve"; then fail "$job accepted a dangling consumer symlink"; fi
+  [[ -L "$scratch/collision/.devantler-tech-go-disk" ]] || fail "$job changed the existing symlink"
+  rm "$scratch/collision/.devantler-tech-go-disk"
+done
 run_case() {
   rm -f "$scratch/count" "$scratch/allocated"
   local want="$1"; shift

@@ -894,6 +894,12 @@ jobs:
           go-version-file: ${{ inputs.working-directory || '.' }}/go.mod
           cache: true
 
+      - name: Reserve disk measurement checkout path
+        if: ${{ inputs.measure-disk-usage == true }}
+        shell: bash
+        run: |
+          [[ ! -e "$GITHUB_WORKSPACE/.devantler-tech-go-disk" && ! -L "$GITHUB_WORKSPACE/.devantler-tech-go-disk" ]]
+
       - name: Checkout disk measurement helper
         if: ${{ inputs.measure-disk-usage == true }}
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -1048,6 +1054,12 @@ jobs:
           restore-keys: |
             kubeconform-schema-cache-v1-${{ github.job }}-
 
+      - name: Reserve disk measurement checkout path
+        if: ${{ inputs.measure-disk-usage == true }}
+        shell: bash
+        run: |
+          [[ ! -e "$GITHUB_WORKSPACE/.devantler-tech-go-disk" && ! -L "$GITHUB_WORKSPACE/.devantler-tech-go-disk" ]]
+
       - name: Checkout disk measurement helper
         if: ${{ inputs.measure-disk-usage == true }}
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -1180,6 +1192,12 @@ jobs:
 
       - name: 👨🏻‍🔧 Enable covdata (temp) see https://github.com/golang/go/issues/75031
         run: go env -w GOTOOLCHAIN=go1.26.0+auto
+
+      - name: Reserve disk measurement checkout path
+        if: ${{ inputs.measure-disk-usage == true }}
+        shell: bash
+        run: |
+          [[ ! -e "$GITHUB_WORKSPACE/.devantler-tech-go-disk" && ! -L "$GITHUB_WORKSPACE/.devantler-tech-go-disk" ]]
 
       - name: Checkout disk measurement helper
         if: ${{ inputs.measure-disk-usage == true }}
