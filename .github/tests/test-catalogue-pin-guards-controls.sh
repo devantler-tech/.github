@@ -111,5 +111,8 @@ for file in validate-go-project lint ci; do
   reject parity ".github/workflows/$file.yaml" ".jobs.$job.steps += [.jobs.$job.steps[] | select(.id == \"ml\")]" 'exactly one full-SHA'
 done
 reject parity .github/workflows/validate-go-project.yaml '(.jobs.test.steps[] | select(.name == "🧪 Test")).run = "# go test ./...\ntrue"' 'production test role'
+reject parity .github/workflows/validate-go-project.yaml "(.jobs.test.steps[] | select(.name == \"🧪 Test\")).run = \"if [[ \\\"\$MEASURE_DISK_USAGE\\\" == true ]]; then go test ./wrong; else go test ./...; fi\"" 'production test role'
+reject parity .github/workflows/validate-go-project.yaml "(.jobs.test.steps[] | select(.name == \"🧪 Test\")).run = \"if [[ \\\"\$MEASURE_DISK_USAGE\\\" == false ]]; then go test ./wrong; else go test ./...; fi\"" 'production test role'
+reject parity .github/workflows/validate-go-project.yaml '(.jobs.test.steps[] | select(.name == "🧪 Test")).run = "go test ./... || true"' 'production test role'
 reject parity .github/workflows/ci.yaml '(.jobs.test-validate-go-test-blocks.steps[] | select(.id == "gotest")).run = "# go test ./...\ntrue"' 'real test command'
 echo 'PASS: pin updates remain maintainable; identity, full SHA, role, credential and independent-fixture checks fail closed'

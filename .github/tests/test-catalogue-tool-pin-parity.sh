@@ -35,9 +35,12 @@ if [[ "$scope" == all || "$scope" == golangci ]]; then
   [[ -n "$gate_version" && "$gate_version" == "$fixture_version" ]] ||
     fail 'production and failure-fixture golangci tool versions differ or are missing'
   # The command is a behavioral contract, rather than a dependency version.
+  # Execute both optional measurement states instead of comparing wrapper text.
   yq -o=json '.' "$go_gate" | jq -e '
     [.jobs.test.steps[]? | select(.name == "🧪 Test")] as $test |
-    ($test | length) == 1 and ($test[0].run | rtrimstr("\n")) == "go test ./..."' >/dev/null ||
+    ($test | length) == 1 and ($test[0].run | type) == "string"' >/dev/null ||
+    fail 'production test role must execute go test ./...'
+  bash "$(dirname "$0")/go-disk-step-contract.sh" "$go_gate" ||
     fail 'production test role must execute go test ./...'
   yq -o=json '.' "$ci" | jq -e '
     [.jobs["test-validate-go-test-blocks"].steps[]? | select(.id == "gotest")] as $test |
