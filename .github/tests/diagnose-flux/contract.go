@@ -39,8 +39,11 @@ func appendLine(path, line string) {
 	if err != nil {
 		panic(err)
 	}
-	defer f.Close()
 	if _, err := fmt.Fprintln(f, line); err != nil {
+		_ = f.Close()
+		panic(err)
+	}
+	if err := f.Close(); err != nil {
 		panic(err)
 	}
 }
