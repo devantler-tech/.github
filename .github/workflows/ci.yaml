@@ -750,6 +750,11 @@ jobs:
         shell: bash
         run: echo "$GITHUB_WORKSPACE/.github/tests/diagnose-flux/bin" >> "$GITHUB_PATH"
 
+      - name: 🧪 Preserve an original failed operation
+        id: original-failure
+        continue-on-error: true
+        run: exit 17
+
       - name: 🧪 Run diagnose-flux against the fake cluster
         uses: ./actions/diagnose-flux
 
@@ -770,6 +775,11 @@ jobs:
             echo "::error::healthy pod was dumped — the failing-pod selection is too broad"; cat "$logged"; exit 1
           fi
           echo "diagnose-flux dumped crasher + jobpod and skipped healthy — OK"
+
+      - name: ✅ Assert diagnostics preserved the original failure
+        env:
+          ORIGINAL_OUTCOME: ${{ steps.original-failure.outcome }}
+        run: test "$ORIGINAL_OUTCOME" = failure
   # ── enable-auto-merge-on-pr ─────────────────────────────────
   test-enable-auto-merge-on-pr:
     runs-on: ubuntu-latest
@@ -3361,6 +3371,9 @@ jobs:
       - name: 🧪 Check deployment scope and full catalogue fallback
         shell: bash
         run: bash .github/tests/test-ci-catalogue-scope.sh
+
+      - name: 🧪 Bound diagnostic fan-out and stalled reads without credentials
+        run: bash .github/tests/test-diagnose-flux.sh
 
       - name: 🔐 Reject catalogue credential boundary regressions
         shell: bash

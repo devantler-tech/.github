@@ -6,89 +6,195 @@ inputs:
     description: Space-separated Flux Kustomization names (in flux-system) to `describe` on failure.
     required: false
     default: infrastructure-controllers infrastructure apps
+  request-timeout-seconds:
+    description: Maximum time for each diagnostic command, from 1 to 30 seconds.
+    required: false
+    default: '5'
+  collection-timeout-seconds:
+    description: Overall collection budget, from 1 to 120 seconds; omitted evidence is reported.
+    required: false
+    default: '120'
 runs:
   using: composite
   steps:
     - name: 🩺 Diagnose Flux on failure
       shell: bash
-      # Best-effort diagnostics (`set +e`): never fail the calling step itself —
-      # the caller gates this with `if: failure()`, so a kubectl/jq hiccup here
-      # must not mask the original failure. CrashLoopBackOff pods stay in
-      # phase=Running with waiting.reason=CrashLoopBackOff, so we inspect
-      # containerStatuses (not just phase) to find pods worth dumping.
+      # Best-effort, bounded reads preserve the caller's original failure.
       env:
         KUSTOMIZATIONS: ${{ inputs.kustomizations }}
+        REQUEST_TIMEOUT_SECONDS: ${{ inputs.request-timeout-seconds }}
+        COLLECTION_TIMEOUT_SECONDS: ${{ inputs.collection-timeout-seconds }}
       run: |
         set +e
-        echo "::group::Nodes"
-        kubectl get nodes -o wide
-        echo "::endgroup::"
-        echo "::group::Flux Kustomizations"
-        kubectl get kustomizations.kustomize.toolkit.fluxcd.io -A -o wide
-        echo "::endgroup::"
-        echo "::group::Flux HelmReleases"
-        kubectl get helmreleases.helm.toolkit.fluxcd.io -A -o wide
-        echo "::endgroup::"
-        echo "::group::Flux OCIRepositories"
-        kubectl get ocirepositories.source.toolkit.fluxcd.io -A -o wide
-        echo "::endgroup::"
-        echo "::group::Failing Kustomizations describe"
-        for k in $KUSTOMIZATIONS; do
-          echo "--- $k ---"
-          kubectl describe kustomizations.kustomize.toolkit.fluxcd.io "$k" -n flux-system 2>&1 | tail -80
+        if [[ ! "$REQUEST_TIMEOUT_SECONDS" =~ ^([1-9]|[12][0-9]|30)$ ]] ||
+           [[ ! "$COLLECTION_TIMEOUT_SECONDS" =~ ^[1-9][0-9]{0,2}$ ]] ||
+           (( COLLECTION_TIMEOUT_SECONDS > 120 )); then
+          echo "::warning::Diagnostic evidence unavailable: invalid collection/request bounds."
+          exit 0
+        fi
+        scratch=$(mktemp -d)
+        if [[ ! -d "$scratch" ]]; then
+          echo "::warning::Diagnostic evidence unavailable: cannot create private scratch directory."
+          exit 0
+        fi
+        # Monitor mode gives each asynchronous command and watchdog its own
+        # process group. Kill the whole group, including credential helpers;
+        # join both children before starting another read or returning.
+        set -m
+        active_pid=""; timer_pid=""
+        cleanup_children() {
+          if [[ -n "$active_pid" ]]; then
+            kill -KILL -- "-$active_pid" 2>/dev/null
+            wait "$active_pid" 2>/dev/null
+            active_pid=""
+          fi
+          if [[ -n "$timer_pid" ]]; then
+            kill -KILL -- "-$timer_pid" 2>/dev/null
+            wait "$timer_pid" 2>/dev/null
+            timer_pid=""
+          fi
+        }
+        trap 'cleanup_children; rm -rf -- "$scratch"' EXIT
+        trap 'exit 130' INT
+        trap 'exit 143' TERM
+        trap 'exit 129' HUP
+        started=$SECONDS
+        bounded() {
+          local output=$1 label=$2 remaining budget status
+          shift 2
+          remaining=$(( COLLECTION_TIMEOUT_SECONDS - (SECONDS - started) ))
+          if (( remaining <= 0 )); then
+            echo "::warning::$label unavailable: collection deadline reached; evidence omitted."
+            return 1
+          fi
+          budget=$REQUEST_TIMEOUT_SECONDS
+          (( budget > remaining )) && budget=$remaining
+          "$@" > "$output" 2>&1 & active_pid=$!
+          (sleep "$budget"; kill -KILL -- "-$active_pid" 2>/dev/null) & timer_pid=$!
+          wait "$active_pid" 2>/dev/null; status=$?
+          cleanup_children
+          if (( status != 0 )); then
+            echo "::warning::$label unavailable: command failed or timed out (status $status)."
+            tail -10 "$output"
+            return 1
+          fi
+          return 0
+        }
+        read_kubectl() {
+          local output=$1 label=$2
+          shift 2
+          bounded "$output" "$label" kubectl "$@" --request-timeout="${REQUEST_TIMEOUT_SECONDS}s"
+        }
+        show() {
+          local label=$1
+          shift
+          echo "::group::$label"
+          if read_kubectl "$scratch/output" "$label" "$@"; then
+            tail -100 "$scratch/output"
+          fi
+          echo "::endgroup::"
+        }
+        pod_inventory=false
+        if read_kubectl "$scratch/pods" "Pod inventory" get pods -A -o json; then
+          # The complete inventory must be valid before selection. A failed
+          # read or malformed JSON is unavailable evidence, never an empty set.
+          if bounded "$scratch/selection" "Pod selection" jq -er '
+            def named:
+              (.metadata.namespace | type == "string" and test("^[a-z0-9][a-z0-9.-]*$")) and
+              (.metadata.name | type == "string" and test("^[a-z0-9][a-z0-9.-]*$"));
+            def job: (.metadata.labels["job-name"] // "") != "" or
+              any((.metadata.ownerReferences // [])[]; .kind == "Job");
+            def failing:
+              .status.phase != "Succeeded" and (
+                .status.phase != "Running" or
+                any((.status.containerStatuses // [])[];
+                  (.restartCount // 0) > 0 or
+                  (.state.waiting.reason // "" | test("CrashLoopBackOff|Error|ImagePullBackOff|ErrImagePull|CreateContainerError")) or
+                  (.state.terminated.exitCode // 0) != 0));
+            if type != "object" or (.items | type) != "array" or
+              any(.items[]; (named | not)) then error("invalid Pod inventory") else . end |
+            [.items[] | select(failing or (job and .status.phase != "Succeeded"))] |
+              unique_by([.metadata.namespace,.metadata.name]) |
+              sort_by(if failing then 1 else 0 end,
+                .metadata.creationTimestamp // "", .metadata.namespace, .metadata.name) | reverse |
+              {omitted: ((length - 20) | if . < 0 then 0 else . end), pods: .[:20]} |
+              .omitted, (.pods[] | [.metadata.namespace,.metadata.name] | @tsv)
+          ' "$scratch/pods"; then
+            pod_inventory=true
+            { read -r omitted; (( omitted > 0 )) && echo "::warning::$omitted current Pod diagnostics omitted by the 20-Pod limit."
+              while IFS=$'\t' read -r ns name; do
+                [[ -z "$ns" ]] && continue
+                show "Current logs $ns/$name" logs -n "$ns" "$name" --all-containers --tail=200
+              done
+            } < "$scratch/selection"
+          fi
+        fi
+        # TYPE/NAME snapshots select one Pod by default; a label selector can
+        # fan out across every replica. This remains useful if inventory fails.
+        echo "Controller snapshots cover one Pod per Deployment; other replicas omitted."
+        for controller in kustomize-controller helm-controller source-controller; do
+          show "$controller logs" logs -n flux-system "deployment/$controller" --all-containers --tail=300
         done
-        echo "::endgroup::"
-        echo "::group::Flux controller pods"
-        kubectl get pods -n flux-system -o wide
-        echo "::endgroup::"
-        echo "::group::kustomize-controller logs"
-        kubectl logs -n flux-system -l app=kustomize-controller --tail=300
-        echo "::endgroup::"
-        echo "::group::helm-controller logs"
-        kubectl logs -n flux-system -l app=helm-controller --tail=300
-        echo "::endgroup::"
-        echo "::group::source-controller logs"
-        kubectl logs -n flux-system -l app=source-controller --tail=200
-        echo "::endgroup::"
-        echo "::group::All pods"
-        kubectl get pods -A -o wide
-        echo "::endgroup::"
-        echo "::group::Recent events (warnings)"
-        kubectl get events -A --field-selector type=Warning --sort-by=.lastTimestamp | tail -100
-        echo "::endgroup::"
-        echo "::group::Failed/CrashLooping pod logs"
-        # Dump previous + current logs from any pod that's not Running OR
-        # has containers in a waiting/terminated-error state. CrashLoopBackOff
-        # pods stay in phase=Running with waiting.reason=CrashLoopBackOff,
-        # so we must inspect containerStatuses, not just phase.
-        pods_to_dump=$(kubectl get pods -A -o json 2>/dev/null | jq -r '
-          .items[]
-          | select(
-              .status.phase != "Running" and .status.phase != "Succeeded"
-              or ((.status.containerStatuses // [])[]? | (.restartCount // 0) > 0)
-              or ((.status.containerStatuses // [])[]? | (.state.waiting.reason // "") | test("CrashLoopBackOff|Error|ImagePullBackOff|ErrImagePull|CreateContainerError"))
-              or ((.status.containerStatuses // [])[]? | (.state.terminated.reason // "") == "Error")
-            )
-          | "\(.metadata.namespace)\t\(.metadata.name)"
-        ' | sort -u)
-        while IFS=$'\t' read -r ns name; do
-          [ -z "$ns" ] && continue
-          echo "--- $ns/$name (previous + current) ---"
-          kubectl logs -n "$ns" "$name" --all-containers --previous --tail=200 2>&1 | sed 's/^/  /'
-          echo "  --- current ---"
-          kubectl logs -n "$ns" "$name" --all-containers --tail=200 2>&1 | sed 's/^/  /'
-        done <<< "$pods_to_dump"
-        # Also dump logs from any Job pods (these often complete then disappear from "not Running")
-        while IFS=$'\t' read -r ns name; do
-          [ -z "$ns" ] && continue
-          echo "--- Job pod $ns/$name ---"
-          kubectl logs -n "$ns" "$name" --all-containers --tail=200 2>&1 | sed 's/^/  /'
-        done < <(kubectl get pods -A -l job-name -o jsonpath='{range .items[*]}{.metadata.namespace}{"\t"}{.metadata.name}{"\n"}{end}' 2>/dev/null)
-        echo "::endgroup::"
-        echo "::group::Failing Jobs describe"
-        kubectl get jobs -A -o json 2>/dev/null | jq -r '.items[] | select(.status.failed > 0 or (.status.conditions // [])[]?.type == "Failed") | "\(.metadata.namespace)/\(.metadata.name)"' | while read -r job; do
-          ns="${job%%/*}"; name="${job##*/}"
-          echo "--- $ns/$name ---"
-          kubectl describe job -n "$ns" "$name" 2>&1 | tail -50
+        if [[ "$pod_inventory" == true ]]; then
+          # Previous logs are supplementary; collect all selected current logs first.
+          { read -r omitted
+            while IFS=$'\t' read -r ns name; do
+              [[ -z "$ns" ]] && continue
+              show "Previous logs $ns/$name" logs -n "$ns" "$name" --all-containers --previous --tail=200
+            done
+          } < "$scratch/selection"
+        fi
+        show "Flux Kustomizations" get kustomizations.kustomize.toolkit.fluxcd.io -A -o wide
+        show "Flux HelmReleases" get helmreleases.helm.toolkit.fluxcd.io -A -o wide
+        show "Flux OCIRepositories" get ocirepositories.source.toolkit.fluxcd.io -A -o wide
+        read -r -a requested_names <<< "${KUSTOMIZATIONS//$'\n'/ }"
+        (( ${#requested_names[@]} > 10 )) && echo "::warning::Kustomization descriptions beyond the first 10 omitted."
+        for k in "${requested_names[@]:0:10}"; do
+          if [[ "$k" =~ ^[a-z0-9][a-z0-9.-]*$ ]]; then
+            show "Kustomization $k" describe kustomizations.kustomize.toolkit.fluxcd.io "$k" -n flux-system
+          else
+            echo "::warning::Kustomization description unavailable: invalid resource name."
+          fi
         done
-        echo "::endgroup::"
+        if read_kubectl "$scratch/jobs" "Job inventory" get jobs -A -o json; then
+          if bounded "$scratch/failed-jobs" "Failed Job selection" jq -er '
+            if type != "object" or (.items | type) != "array" then error("invalid Job inventory") else . end |
+            [.items[] | select((.status.failed // 0) > 0 or
+              any((.status.conditions // [])[]; .type == "Failed" and .status == "True"))] |
+              sort_by(.metadata.creationTimestamp // "") | reverse |
+              ((length - 10) | if . < 0 then 0 else . end),
+              (.[:10][] | if (.metadata.namespace | type == "string" and test("^[a-z0-9][a-z0-9.-]*$")) and
+                (.metadata.name | type == "string" and test("^[a-z0-9][a-z0-9.-]*$")) then
+                [.metadata.namespace,.metadata.name] | @tsv else error("invalid Job name") end)
+          ' "$scratch/jobs"; then
+            { read -r omitted; (( omitted > 0 )) && echo "::warning::$omitted failing Job descriptions omitted by the 10-Job limit."
+              while IFS=$'\t' read -r ns name; do
+                [[ -z "$ns" ]] && continue
+                show "Failed Job $ns/$name" describe job -n "$ns" "$name"
+              done
+            } < "$scratch/failed-jobs"
+          fi
+        fi
+        show "Nodes" get nodes -o wide
+        show "All pods" get pods -A -o wide
+        show "Recent warning events" get events -A --field-selector type=Warning --sort-by=.lastTimestamp
+        if [[ "$pod_inventory" == true ]]; then
+          if bounded "$scratch/history" "Recent completed Job selection" jq -er '
+            [.items[] | select(.status.phase == "Succeeded" and
+              ((.metadata.labels["job-name"] // "") != "" or
+               any((.metadata.ownerReferences // [])[]; .kind == "Job")))] |
+              unique_by([.metadata.namespace,.metadata.name]) |
+              sort_by(.metadata.creationTimestamp // "", .metadata.namespace, .metadata.name) | reverse |
+              ((length - 5) | if . < 0 then 0 else . end),
+              (.[:5][] | [.metadata.namespace,.metadata.name] | @tsv)
+          ' "$scratch/pods"; then
+            { read -r omitted; (( omitted > 0 )) && echo "::warning::$omitted completed Job Pod logs omitted; retaining the five newest."
+              while IFS=$'\t' read -r ns name; do
+                [[ -z "$ns" ]] && continue
+                show "Recent completed Job logs $ns/$name" logs -n "$ns" "$name" --all-containers --tail=200
+              done
+            } < "$scratch/history"
+          fi
+        fi
+        echo "Diagnostics finished; unavailable or omitted evidence does not change the caller's failure."
+        exit 0

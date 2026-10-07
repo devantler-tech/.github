@@ -9,6 +9,19 @@ whatever pod is actually crash-looping — and a `CrashLoopBackOff` pod stays in
 phase misses it. This action gathers all of that into grouped log sections in
 one step.
 
+Collection has a 120-second budget by default, with at most five seconds per
+command. Current failing Pods come before healthy active Job Pods (up to 20
+combined, newest first within each group), followed by a
+snapshot from one Pod of each Flux controller Deployment and previous logs for
+the selected Pods. Failed Job descriptions (up to 10), resource state,
+warning events and the five newest completed Job Pod logs provide supplementary
+evidence. At most 48 `kubectl logs` commands run, even with thousands of retained
+Jobs. Each command's process group is stopped on timeout, and its command and
+watchdog are joined before collection continues or returns.
+
+Unavailable reads, invalid inventories, expired budgets and omitted evidence are
+reported explicitly. A completed collection does not imply a healthy cluster.
+
 It is **best-effort** (`set +e`): it never fails the calling step itself, so a
 transient `kubectl`/`jq` hiccup can't mask the original failure. Gate it with
 `if: failure()` on the caller so it only runs when the deploy/test step failed.
@@ -22,6 +35,12 @@ transient `kubectl`/`jq` hiccup can't mask the original failure. Gate it with
 | Name | Description | Required | Default |
 |------|-------------|----------|---------|
 | `kustomizations` | Space-separated Flux Kustomization names (in `flux-system`) to `describe` on failure | ❌ | `infrastructure-controllers infrastructure apps` |
+| `request-timeout-seconds` | Maximum time for each command, from 1 to 30 seconds | ❌ | `5` |
+| `collection-timeout-seconds` | Overall collection budget, from 1 to 120 seconds | ❌ | `120` |
+
+Only the first 10 Kustomization names are described. Invalid bounds report
+unavailable diagnostics and perform no cluster reads; the caller's original
+failure is preserved.
 
 ## Usage
 

@@ -15,13 +15,14 @@ case "${1:-}" in
       cat <<'JSON'
 {"items":[
   {"metadata":{"namespace":"demo","name":"crasher"},"status":{"phase":"Running","containerStatuses":[{"restartCount":5,"state":{"waiting":{"reason":"CrashLoopBackOff"}}}]}},
-  {"metadata":{"namespace":"demo","name":"healthy"},"status":{"phase":"Running","containerStatuses":[{"restartCount":0,"state":{"running":{}}}]}}
+  {"metadata":{"namespace":"demo","name":"healthy"},"status":{"phase":"Running","containerStatuses":[{"restartCount":0,"state":{"running":{}}}]}},
+  {"metadata":{"namespace":"demo","name":"jobpod","creationTimestamp":"2026-10-07T00:00:00Z","labels":{"job-name":"fixture-job"},"ownerReferences":[{"kind":"Job","name":"fixture-job","uid":"fixture-job-uid"}]},"status":{"phase":"Succeeded","containerStatuses":[{"restartCount":0,"state":{"terminated":{"exitCode":0,"reason":"Completed"}}}]}}
 ]}
 JSON
     elif [[ "$*" == *"pods -A -l job-name"* ]]; then
       printf 'demo\tjobpod\n'
     elif [[ "$*" == *"jobs -A -o json"* ]]; then
-      echo '{"items":[]}'
+      echo '{"items":[{"metadata":{"namespace":"demo","name":"fixture-job","uid":"fixture-job-uid"},"status":{"succeeded":1,"conditions":[{"type":"Complete","status":"True"}]}}]}'
     fi
     # all other `get` reads (nodes, kustomizations, helmreleases, ocirepositories,
     # events, controller pods) are benign — emit nothing, exit 0.
