@@ -1,0 +1,16 @@
+apiVersion: team.github.m.upbound.io/v1alpha1
+kind: TeamRepository
+metadata:
+  name: admins-business-site
+spec:
+  managementPolicies: ["Observe", "Create", "Update", "LateInitialize"]
+  forProvider:
+    teamIdRef:
+      name: admins
+      policy:
+        resolve: Always
+    repository: business-site
+    permission: admin
+  providerConfigRef:
+    kind: ProviderConfig
+    name: default

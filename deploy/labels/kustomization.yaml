@@ -41,6 +41,7 @@ resources:
   - actions.yaml
   - cloudflare.yaml
   - data-product-controller.yaml
+  - business-site.yaml
   # Private repos.
   - ascoachingogvaner.yaml
   - wedding-app.yaml
