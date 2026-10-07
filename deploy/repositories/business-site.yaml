@@ -1,0 +1,36 @@
+apiVersion: repo.github.m.upbound.io/v1alpha1
+kind: Repository
+metadata:
+  name: business-site
+  annotations:
+    # One-time creation must supply the five required org custom properties,
+    # which this provider CRD cannot represent. See issue #530.
+    # Type=Application; AutomaticallyRequestCopilotCodeReview=false.
+    crossplane.io/external-name: business-site
+spec:
+  # Adopt Observe-first. Promotion follows verified production observation;
+  # never allow Delete or pair active Update with LateInitialize.
+  managementPolicies: ["Observe", "LateInitialize"]
+  forProvider:
+    name: business-site
+    description: "Devantler Tech's public business website, journal and reusable-product showcase."
+    visibility: public
+    hasIssues: true
+    homepageUrl: "https://devantler.tech"
+  providerConfigRef:
+    kind: ProviderConfig
+    name: default
+---
+apiVersion: repo.github.m.upbound.io/v1alpha1
+kind: DefaultBranch
+metadata:
+  name: business-site
+  annotations:
+    crossplane.io/external-name: business-site
+spec:
+  managementPolicies: ["Observe", "Create", "Update", "LateInitialize"]
+  forProvider:
+    branch: main
+  providerConfigRef:
+    kind: ProviderConfig
+    name: default

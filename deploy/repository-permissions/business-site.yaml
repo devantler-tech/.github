@@ -1,0 +1,14 @@
+# Adopt the existing allowed-actions policy and enforce shared SHA pinning.
+apiVersion: actions.github.m.upbound.io/v1alpha1
+kind: RepositoryPermissions
+metadata:
+  name: business-site
+  annotations:
+    crossplane.io/external-name: business-site
+spec:
+  managementPolicies: ["Observe", "Create", "Update", "LateInitialize"]
+  forProvider:
+    repository: business-site
+  providerConfigRef:
+    kind: ProviderConfig
+    name: default
