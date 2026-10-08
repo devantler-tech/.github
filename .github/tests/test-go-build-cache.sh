@@ -38,15 +38,17 @@ cat > "$work/cache.jq" <<'JQ'
     ([$setup[0],$path[0],$restore[0],$save[0]] | all(."continue-on-error" == null or ."continue-on-error" == false)) and
     ([ $job.steps[] | select(.name == "🧪 Test" or .name == "📄 Generate coverage") ] | length == 1) and
     ([ $job.steps[] | select(.name == "🧪 Test" or .name == "📄 Generate coverage") ] | all(.if == null and (."continue-on-error" == null or ."continue-on-error" == false))) and
-    ([ $job.steps[] | select(.name == "🧪 Test" or .name == "📄 Generate coverage") | .run | gsub("[[:space:]]+";" ") ] ==
-      [if $id == "test" then "go test ./... " else "go test -race -coverprofile=coverage.txt -covermode=atomic ./... " end]) and
     (($order|index("setup-go")) < ($order|index("go-build-cache-path"))) and
     (($order|index("go-build-cache-path")) < ($order|index("go-build-cache"))) and
     (($order|index("go-build-cache")) < ($order|index(if $id == "test" then "🧪 Test" else "📄 Generate coverage" end))) and
     (($order|index(if $id == "test" then "🧪 Test" else "📄 Generate coverage" end)) < ($order|index("Save Go compilation cache")))
   )
 JQ
-if ! jq -en --slurpfile workflow "$work/workflow.json" -f "$work/cache.jq" > /dev/null; then
+check_contract() {
+  jq -en --slurpfile workflow "$1" -f "$work/cache.jq" > /dev/null &&
+    bash "$root/.github/tests/go-disk-step-contract.sh" "$1"
+}
+if ! check_contract "$work/workflow.json"; then
   echo 'FAIL: both test modes need distinct compiler cache identities, restore-before-test and save-after-success' >&2
   exit 1
 fi
@@ -63,7 +65,7 @@ for mutation in \
   '(.jobs.test.steps[] | select(.name == "🧪 Test") | .if) = "false"' \
   '(.jobs.coverage.steps[] | select(.name == "📄 Generate coverage") | .run) = "go test ./..."'; do
   jq "$mutation" "$work/workflow.json" > "$work/unsafe.json"
-  if jq -en --slurpfile workflow "$work/unsafe.json" -f "$work/cache.jq" > /dev/null; then
+  if check_contract "$work/unsafe.json" > /dev/null 2>&1; then
     echo "FAIL: unsafe compiler cache mutation accepted: $mutation" >&2
     exit 1
   fi
