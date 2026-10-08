@@ -6,11 +6,19 @@ source="${1:-$root/.github/workflows/validate-go-project.yaml}"
 destination="${2:-$root/.github/workflows/validate-go-project-readonly.yaml}"
 work="$(mktemp)"
 trap 'rm -f "$work"' EXIT
+# Selected catalogue fixtures must exercise Go on workflow-only changes too.
+# Other read-only consumers keep the production path-filter result.
+GO_FIXTURE_ADMISSION="$(cat <<'EXPR'
+${{ (github.repository == 'devantler-tech/.github' && inputs.working-directory == '.github/tests/go-valid-fixture') && 'true' || steps.filter.outputs.go }}
+EXPR
+)"
+export GO_FIXTURE_ADMISSION
 yq '
   .name = "✅ Validate Go Project (Read-Only)" |
   del(.on.pull_request, .on.merge_group, .on.workflow_call.secrets) |
   del(.jobs.apply-tidy-fixes, .jobs.apply-golangci-lint-fixes, .jobs.apply-fixes) |
   .jobs.changes.outputs.signed-fixes = "false" |
+  .jobs.changes.outputs.go = strenv(GO_FIXTURE_ADMISSION) |
   .on.workflow_call.inputs.apply-signed-fixes.default = false |
   .on.workflow_call.inputs.apply-signed-fixes.description = "Ignored: this entrypoint never exports or applies signed fixes." |
   .on.workflow_call.inputs.manual-workflow-fixes.description = "Prepare workflow-file fixes even after lint errors; patch upload is disabled and lint errors still fail." |

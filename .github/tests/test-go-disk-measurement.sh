@@ -135,7 +135,7 @@ exit "${GO_FIXTURE_EXIT:-0}"
 EOF
 chmod +x "$scratch/bin/go"
 for job in build test coverage; do
-  yq -r ".jobs.$job.steps[] | select(.env.MEASURE_DISK_USAGE != null) | .run" "$workflow" > "$scratch/step"
+  yq -r ".jobs.$job.steps[] | select(.name == \"🛠️ Build\" or .name == \"🧪 Test\" or .name == \"📄 Generate coverage\") | .run" "$workflow" > "$scratch/step"
   [[ -s "$scratch/step" ]] || fail "$job lacks the measurement switch"
   MEASURE_DISK_USAGE=false RUNNER_TEMP="$scratch/missing" bash -euo pipefail "$scratch/step"
 done
@@ -176,5 +176,29 @@ for DISK_CASE in initial-resistant resistant; do
   fi
 done
 unset DISK_CASE
+# Incomplete cleanup observations cannot justify skipping the production cleanup.
+for phase in cleanup-build cleanup-test cleanup-coverage; do
+  DISK_CASE=partial run_case 23 "$phase" bash -c 'exit 23'
+  jq -e '.status == "unknown" and .command_exit == 23 and .initial_available_kib == null and .final_available_kib == null' "$scratch/receipt.json" >/dev/null || fail "$phase accepted a failed cleanup observation"
+done
+bash "$root/.github/tests/go-disk-step-contract.sh" "$root/.github/workflows/validate-go-project-readonly.yaml"
+# Missing observers, missing identities and preparation after cleanup must be rejected.
+for mutation in late-preparation missing-identity missing-invocation; do
+  case "$mutation" in
+    late-preparation)
+      expression='.jobs.build.steps |= (map(select(.name != "Prepare disk measurement outside the consumer workspace")) + map(select(.name == "Prepare disk measurement outside the consumer workspace")))'
+      ;;
+    missing-identity)
+      expression='(.jobs.build.steps[] | select(.name == "🧹 Free disk space") | .env) |= del(.GO_DISK_WORKFLOW_SHA)'
+      ;;
+    missing-invocation)
+      expression='(.jobs.build.steps[] | select(.name == "🧹 Free disk space") | .run) |= sub("bash.*measure-go-disk.sh.*cleanup-build.*", "cleanup_disk")'
+      ;;
+  esac
+  yq "$expression" "$workflow" > "$scratch/mutant.yaml"
+  if bash "$root/.github/tests/go-disk-step-contract.sh" "$scratch/mutant.yaml" > "$scratch/mutant-result" 2>&1; then
+    fail "$mutation regression went undetected"
+  fi
+done
 echo 'Go disk measurement behavior passed'
 bash "$root/.github/tests/go-disk-step-contract.sh"
