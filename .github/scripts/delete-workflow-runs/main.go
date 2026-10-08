@@ -160,11 +160,20 @@ func rateLimitRetryDelay(response *http.Response, raw []byte, now time.Time) (ti
 		return 0, false, nil
 	}
 	if value := strings.TrimSpace(response.Header.Get("Retry-After")); value != "" {
-		seconds, err := strconv.ParseUint(value, 10, 32)
-		if err != nil || seconds == 0 {
+		seconds, secondsErr := strconv.ParseUint(value, 10, 32)
+		var delay time.Duration
+		if secondsErr == nil {
+			delay = time.Duration(seconds) * time.Second
+		} else {
+			retryAt, dateErr := http.ParseTime(value)
+			if dateErr != nil {
+				return 0, false, errors.New("invalid rate-limit retry delay")
+			}
+			delay = retryAt.Sub(now)
+		}
+		if delay <= 0 {
 			return 0, false, errors.New("invalid rate-limit retry delay")
 		}
-		delay := time.Duration(seconds) * time.Second
 		if delay > maxRateLimitRetryDelay {
 			return 0, false, errors.New("rate-limit retry delay exceeds bound")
 		}
@@ -199,8 +208,10 @@ func (a api) request(ctx context.Context, method, path string) ([]byte, error) {
 	if client.Timeout == 0 {
 		client.Timeout = 30 * time.Second
 	}
+	rateLimitWait := time.Duration(0)
 	for attempt := 0; attempt < 3; attempt++ {
 		retryDelay := time.Duration(0)
+		rateLimitedWait := false
 		req, err := http.NewRequestWithContext(ctx, method, a.base+path, nil)
 		if err != nil {
 			return nil, errors.New("invalid API request")
@@ -233,7 +244,11 @@ func (a api) request(ctx context.Context, method, path string) ([]byte, error) {
 				return raw, delayErr
 			}
 			if rateLimited {
+				if rateLimitWait >= maxRateLimitRetryDelay || delay > maxRateLimitRetryDelay-rateLimitWait {
+					return raw, err
+				}
 				retryDelay = delay
+				rateLimitedWait = true
 			} else if response.StatusCode < 500 || response.StatusCode > 599 {
 				return raw, err
 			}
@@ -246,6 +261,9 @@ func (a api) request(ctx context.Context, method, path string) ([]byte, error) {
 		}
 		if err := a.wait(ctx, retryDelay); err != nil {
 			return nil, err
+		}
+		if rateLimitedWait {
+			rateLimitWait += retryDelay
 		}
 	}
 	return nil, errors.New("API request failed")

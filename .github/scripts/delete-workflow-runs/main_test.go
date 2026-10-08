@@ -672,9 +672,9 @@ func TestReadRetriesAreBoundedAndOnlyForTransientFailures(t *testing.T) {
 		{"primary-rate-limit-missing-reset", 403, 4, 1, "", "", "0", "", false, []time.Duration{}},
 		{"primary-rate-limit-invalid-reset", 403, 4, 1, "", "", "0", "later", false, []time.Duration{}},
 		{"primary-rate-limit-reset-exceeds-bound", 403, 4, 1, "", "", "0", "9999999999", false, []time.Duration{}},
-		{"secondary-rate-limit-message-recovers", 403, 2, 3, "", `{"message":"You have exceeded a secondary rate limit."}`, "", "", true, []time.Duration{60 * time.Second, 60 * time.Second}},
+		{"secondary-rate-limit-message-stops-at-wait-bound", 403, 2, 2, "", `{"message":"You have exceeded a secondary rate limit."}`, "", "", false, []time.Duration{60 * time.Second}},
 		{"too-many-requests-recovers", 429, 2, 3, "5", "", "", "", true, []time.Duration{5 * time.Second, 5 * time.Second}},
-		{"too-many-requests-without-delay-recovers", 429, 2, 3, "", "", "", "", true, []time.Duration{60 * time.Second, 60 * time.Second}},
+		{"too-many-requests-without-delay-stops-at-wait-bound", 429, 2, 2, "", "", "", "", false, []time.Duration{60 * time.Second}},
 		{"malformed-rate-limit-delay", 403, 4, 1, "later", "", "", "", false, []time.Duration{}},
 		{"unbounded-rate-limit-delay", 403, 4, 1, "61", "", "", "", false, []time.Duration{}},
 	} {
@@ -721,6 +721,30 @@ func TestPrimaryRateLimitResetDelay(t *testing.T) {
 	delay, limited, err := rateLimitRetryDelay(response, nil, now)
 	if err != nil || !limited || delay != 7*time.Second {
 		t.Fatalf("primary rate-limit delay=%s limited=%t err=%v", delay, limited, err)
+	}
+}
+
+func TestRetryAfterHTTPDateDelay(t *testing.T) {
+	now := time.Unix(1_000, 0).UTC()
+	for _, tc := range []struct {
+		name      string
+		offset    time.Duration
+		wantDelay time.Duration
+		wantError bool
+	}{
+		{"bounded", 30 * time.Second, 30 * time.Second, false},
+		{"not-positive", 0, 0, true},
+		{"exceeds-bound", 61 * time.Second, 0, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			response := &http.Response{StatusCode: http.StatusTooManyRequests, Header: http.Header{
+				"Retry-After": []string{now.Add(tc.offset).Format(http.TimeFormat)},
+			}}
+			delay, limited, err := rateLimitRetryDelay(response, nil, now)
+			if (err != nil) != tc.wantError || (!tc.wantError && (!limited || delay != tc.wantDelay)) {
+				t.Fatalf("HTTP-date retry delay=%s limited=%t err=%v", delay, limited, err)
+			}
+		})
 	}
 }
 
