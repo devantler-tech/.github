@@ -5,8 +5,8 @@ set -euo pipefail
 # The live configuration caller must opt in only through a SHA-pinned publisher.
 validate_caller() {
   yq -e '
-  (.jobs["publish-manifests"].uses |
-    test("^devantler-tech/actions/\\.github/workflows/publish-manifests\\.yaml@[0-9a-f]{40}$")) and
+  (.jobs["publish-manifests"].uses ==
+    "devantler-tech/.github/.github/workflows/publish-manifests.yaml@2fa404276b0ce5c0527683b080e39045045c4e42") and
   (.jobs["publish-manifests"].with["enable-caller-pin"] == true) and
   (.jobs["publish-manifests"].with["enable-signed-promotion"] == true) and
   (.jobs["publish-manifests"].with["oci-name"] == "devantler-tech/github-config")
@@ -168,7 +168,7 @@ echo 'ok default-off preserves existing callers; opted-in malformed identities f
 echo 'ok default manifests latest is signed, stable-only and bound to the produced digest'
 
 # Keep these controls in required CI, using the same predicate as the real caller.
-for mutation in promotion pin moving family; do
+for mutation in promotion pin moving family revision; do
   fixture="$scratch/caller-$mutation.yaml"
   cp .github/workflows/cd.yaml "$fixture"
   case "$mutation" in
@@ -176,6 +176,7 @@ for mutation in promotion pin moving family; do
     pin) yq -i '.jobs["publish-manifests"].with["enable-caller-pin"] = false' "$fixture" ;;
     moving) yq -i '.jobs["publish-manifests"].uses |= sub("@[0-9a-f]{40}$"; "@main")' "$fixture" ;;
     family) yq -i '.jobs["publish-manifests"].uses |= sub("publish-manifests"; "publish-app")' "$fixture" ;;
+    revision) yq -i '.jobs["publish-manifests"].uses |= sub("@[0-9a-f]{40}$"; "@0000000000000000000000000000000000000000")' "$fixture" ;;
   esac
   if validate_caller "$fixture" 2>/dev/null; then
     fail "configuration caller accepted the $mutation regression"
