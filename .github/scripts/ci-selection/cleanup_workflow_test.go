@@ -10,20 +10,14 @@ import (
 
 func cleanupSelectionFixture(t *testing.T) (inventory, workflow) {
 	t.Helper()
-	i := fixtureInventory()
+	i, w := dotnetSelectionFixture(t)
 	i.Jobs["test-workflow"] = []string{
 		".github/workflows/delete-workflow-runs.yaml",
 		".github/workflows/delete-workflow-runs-readonly.yaml",
 		cleanupImplementation,
 		cleanupModule,
 	}
-	i.Preserved = map[string]job{"test-workflow": {If: "${{ " + scheduling + " }}"}}
-	w := workflow{Jobs: map[string]job{
-		"select-ci-tests": {}, "ci-required-checks": {}, "lint-ci-coverage-parity": {},
-	}}
-	for _, id := range []string{"test-one", "test-one-wrapper", "test-two"} {
-		w.Jobs[id] = job{If: selectionGuard(id), Needs: []any{"select-ci-tests"}}
-	}
+	i.Preserved["test-workflow"] = job{If: "${{ " + scheduling + " }}"}
 	// Decode the native workflow shape so an absent caller binding cannot be
 	// hidden by constructing only the fields that the old validator examined.
 	var caller job
@@ -78,7 +72,7 @@ func TestCleanupWorkflowCallerInventoryFailsClosed(t *testing.T) {
 
 func TestCleanupWorkflowPathsRequireExactMatches(t *testing.T) {
 	i, _ := cleanupSelectionFixture(t)
-	full := []string{"test-one", "test-one-wrapper", "test-two", "test-workflow"}
+	full := []string{"test-one", "test-one-wrapper", "test-run-dotnet-tests-gate-lockstep", "test-run-dotnet-tests-mtp", "test-run-dotnet-tests-workflow", "test-run-dotnet-tests-workflow-authenticated", "test-two", "test-workflow"}
 	for _, path := range []string{
 		".github/workflows/delete-workflow-runs.yaml.bak",
 		".github/workflows/delete-workflow-runs-readonly.yaml/extra",

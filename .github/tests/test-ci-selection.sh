@@ -63,11 +63,24 @@ for mutation in \
 done
 go -C "$root/.github/scripts/ci-selection" test -race -count=3 ./...
 go -C "$root/.github/scripts/ci-selection" vet ./...
+# Remove every .NET owner from both production inputs. This must fail before
+# selection, even though the remaining inventory still matches the workflow.
+dotnet_owners='["test-run-dotnet-tests-gate-lockstep","test-run-dotnet-tests-mtp","test-run-dotnet-tests-workflow","test-run-dotnet-tests-workflow-authenticated"]'
+jq --argjson owners "$dotnet_owners" 'del(.jobs[$owners[]])' "$work/workflow.json" > "$work/ownerless-workflow.json"
+jq --argjson owners "$dotnet_owners" 'del(.jobs[$owners[]], .preserved[$owners[]])' "$root/.github/scripts/ci-selection/inventory.json" > "$work/ownerless-inventory.json"
+if EVENT_NAME=push RUN_CATALOGUE=true CATALOGUE_SCOPE=true GITHUB_OUTPUT="$work/ownerless-output" \
+  go -C "$root/.github/scripts/ci-selection" run . "$root" "$work/ownerless-inventory.json" "$work/ownerless-workflow.json" > "$work/ownerless.log" 2>&1; then
+  echo 'FAIL: production entrypoint accepted removal of every required .NET owner' >&2
+  exit 1
+fi
+grep -q 'incomplete or unbound .NET workflow owner' "$work/ownerless.log"
+[[ ! -e "$work/ownerless-output" ]]
 touch "$work/output"
 EVENT_NAME=push RUN_CATALOGUE=true CATALOGUE_SCOPE=true GITHUB_OUTPUT="$work/output" \
   go -C "$root/.github/scripts/ci-selection" run . "$root" "$root/.github/scripts/ci-selection/inventory.json" "$work/workflow.json"
 selected="$(sed -n 's/^selected=//p' "$work/output")"
 [[ "$(jq 'length' <<< "$selected")" == 82 ]]
+full_selected="$selected"
 # Hosted CI reports these callers as skipped because their callee jobs are
 # intentionally excluded (dry-run, repository exclusion, or dependency-bot
 # suppression). They still exercise interfaces and retain original admission;
@@ -150,7 +163,6 @@ for caller in test-delete-workflow-runs-all test-delete-workflow-runs-minimal te
     exit 1
   fi
 done
-
 # The exact Go production files belong only to the three cleanup fixtures. Keep
 # tests unclassified so test-only changes retain complete catalogue coverage.
 source_fixture="$work/cleanup-source"
@@ -181,6 +193,45 @@ test_head="$(git -C "$source_fixture" rev-parse HEAD)"
 EVENT_NAME=pull_request RUN_CATALOGUE=true CATALOGUE_SCOPE=true BASE_SHA="$source_head" HEAD_SHA="$test_head" GITHUB_OUTPUT="$work/output" \
   go -C "$root/.github/scripts/ci-selection" run . "$source_fixture" "$root/.github/scripts/ci-selection/inventory.json" "$work/workflow.json"
 test_selected="$(sed -n 's/^selected=//p' "$work/output")"
-jq -e --argjson selected "$test_selected" '$selected == (.jobs | keys)' \
-  "$root/.github/scripts/ci-selection/inventory.json" > /dev/null
+jq -en --argjson selected "$test_selected" --argjson expected "$full_selected" \
+  '$selected == $expected' > /dev/null
+
+# The same exact Git diff formerly selected every gated job. Its four reviewed
+# dependencies include two native callers and two inline controls; the authenticated
+# caller retains independent admission and is not promised as a mandatory execution.
+dotnet="$work/dotnet"
+mkdir -p "$dotnet/.github/workflows"
+git init -q "$dotnet"
+git -C "$dotnet" config user.name 'CI fixture'
+git -C "$dotnet" config user.email 'fixture@example.invalid'
+git -C "$dotnet" config commit.gpgsign false
+printf 'base\n' > "$dotnet/.github/workflows/run-dotnet-tests.yaml"
+git -C "$dotnet" add -- .github/workflows/run-dotnet-tests.yaml
+git -C "$dotnet" commit -qm 'test: dotnet baseline'
+base="$(git -C "$dotnet" rev-parse HEAD)"
+printf 'changed\n' > "$dotnet/.github/workflows/run-dotnet-tests.yaml"
+git -C "$dotnet" add -- .github/workflows/run-dotnet-tests.yaml
+git -C "$dotnet" commit -qm 'test: dotnet change'
+head="$(git -C "$dotnet" rev-parse HEAD)"
+: > "$work/output"
+EVENT_NAME=pull_request RUN_CATALOGUE=true CATALOGUE_SCOPE=true BASE_SHA="$base" HEAD_SHA="$head" GITHUB_OUTPUT="$work/output" \
+  go -C "$root/.github/scripts/ci-selection" run . "$dotnet" "$root/.github/scripts/ci-selection/inventory.json" "$work/workflow.json"
+selected="$(sed -n 's/^selected=//p' "$work/output")"
+jq -e '. == ["test-run-dotnet-tests-gate-lockstep","test-run-dotnet-tests-mtp","test-run-dotnet-tests-workflow"]' <<< "$selected" >/dev/null
+needs="$(jq -cn --argjson selected "$selected" 'reduce $selected[] as $id ({"test-run-dotnet-tests-workflow-authenticated":{result:"skipped"},"test-enable-auto-merge-queue":{result:"skipped"}}; .[$id] = {result:"success"})')"
+JOB_RESULTS='success skipped' CATALOGUE_REQUIRED=true SELECTOR_RESULT=success SELECTED_JOBS="$selected" NEEDS_JSON="$needs" run_reducer
+for caller in $(jq -r '.[]' <<< "$selected"); do
+  for outcome in skipped failure; do
+    bad_needs="$(jq --arg caller "$caller" --arg outcome "$outcome" '.[$caller].result=$outcome' <<< "$needs")"
+    if JOB_RESULTS="$(jq -r '[.[].result] | join(" ")' <<< "$bad_needs")" CATALOGUE_REQUIRED=true SELECTOR_RESULT=success SELECTED_JOBS="$selected" NEEDS_JSON="$bad_needs" run_reducer >/dev/null 2>&1; then
+      echo "FAIL: selected .NET execution $caller was $outcome without rejection" >&2
+      exit 1
+    fi
+  done
+done
+bad_needs="$(jq '."test-run-dotnet-tests-workflow-authenticated".result="failure"' <<< "$needs")"
+if JOB_RESULTS='success failure' CATALOGUE_REQUIRED=true SELECTOR_RESULT=success SELECTED_JOBS="$selected" NEEDS_JSON="$bad_needs" run_reducer >/dev/null 2>&1; then
+  echo 'FAIL: independently admitted authenticated caller failure was concealed' >&2
+  exit 1
+fi
 echo 'PASS: complete job inventory, owner coverage and preserved scheduling'
