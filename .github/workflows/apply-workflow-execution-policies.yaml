@@ -17,6 +17,7 @@ on:
       - workflow-execution-policies/**
       - scripts/apply-workflow-execution-policies.sh
       - scripts/validate-workflow-execution-policies.sh
+      - scripts/workflow-policy-selectors.jq
       - .github/workflows/apply-workflow-execution-policies.yaml
   schedule:
     - cron: "43 5 * * *"
