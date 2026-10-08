@@ -298,7 +298,7 @@ platform_tenant_management_policies="$(
 # These repositories completed Observe-first adoption. An Observe-only
 # declaration leaves the shared merge policy unapplied while Crossplane still
 # reports success, so each must keep writing.
-for adopted in dot-github monorepo cloudflare data-product-controller; do
+for adopted in dot-github monorepo cloudflare data-product-controller business-site; do
   adopted_policies="$(
     yq -N "
       select(
