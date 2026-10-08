@@ -163,7 +163,7 @@ func TestShortPagesContinueUntilDeclaredTotal(t *testing.T) {
 		_, _ = fmt.Fprintf(w, `{"total_count":3,"workflows":[{"id":%d}]}`, page)
 	}))
 	defer server.Close()
-	a := api{server.URL, "offline-fixture-token", server.Client(), delay}
+	a := api{base: server.URL, token: "offline-fixture-token", client: server.Client(), wait: delay, budget: &rateLimitWaitBudget{}}
 	items, err := a.list(context.Background(), fixtureRepo+"/actions/workflows", "workflows")
 	if err != nil || len(items) != 3 || requests != 3 {
 		t.Fatalf("short-page snapshot changed: %v items=%v requests=%d", err, items, requests)
@@ -700,7 +700,7 @@ func TestReadRetriesAreBoundedAndOnlyForTransientFailures(t *testing.T) {
 			}))
 			defer server.Close()
 			waits := []time.Duration{}
-			a := api{server.URL, "offline-fixture-token", server.Client(), func(_ context.Context, d time.Duration) error { waits = append(waits, d); return nil }}
+			a := api{base: server.URL, token: "offline-fixture-token", client: server.Client(), wait: func(_ context.Context, d time.Duration) error { waits = append(waits, d); return nil }, budget: &rateLimitWaitBudget{}}
 			_, err := a.list(context.Background(), fixtureRepo+"/actions/workflows", "workflows")
 			if (err == nil) != tc.succeeds || calls != tc.attempts {
 				t.Fatalf("retry outcome err=%v attempts=%d; want %d success=%t", err, calls, tc.attempts, tc.succeeds)
@@ -709,6 +709,89 @@ func TestReadRetriesAreBoundedAndOnlyForTransientFailures(t *testing.T) {
 				t.Fatalf("retry delays=%v want=%v", waits, tc.waits)
 			}
 		})
+	}
+}
+
+// TestRateLimitWaitBudgetSpansPagination prevents each page from resetting the cleanup-wide bound.
+func TestRateLimitWaitBudgetSpansPagination(t *testing.T) {
+	calls := map[int]int{}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		page, err := strconv.Atoi(r.URL.Query().Get("page"))
+		if err != nil || page < 1 || page > 2 {
+			t.Errorf("unexpected page %q", r.URL.Query().Get("page"))
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		calls[page]++
+		if calls[page] == 1 {
+			w.WriteHeader(http.StatusTooManyRequests)
+			return
+		}
+		count, start := 100, 1
+		if page == 2 {
+			count, start = 1, 101
+		}
+		items := make([]string, count)
+		for i := range count {
+			items[i] = fmt.Sprintf(`{"id":%d}`, start+i)
+		}
+		_, _ = fmt.Fprintf(w, `{"total_count":101,"workflows":[%s]}`, strings.Join(items, ","))
+	}))
+	defer server.Close()
+	waits := []time.Duration{}
+	a := api{base: server.URL, token: "offline-fixture-token", client: server.Client(), wait: func(_ context.Context, d time.Duration) error {
+		waits = append(waits, d)
+		return nil
+	}, budget: &rateLimitWaitBudget{}}
+	_, err := a.list(context.Background(), fixtureRepo+"/actions/workflows", "workflows")
+	if err == nil || calls[1] != 2 || calls[2] != 1 {
+		t.Fatalf("pagination reset rate-limit budget: err=%v calls=%v", err, calls)
+	}
+	if !reflect.DeepEqual(waits, []time.Duration{maxRateLimitRetryDelay}) {
+		t.Fatalf("pagination waits=%v want one cleanup-wide wait", waits)
+	}
+}
+
+// TestRateLimitWaitBudgetIsAtomicAcrossConcurrentReads keeps overlapping pages inside one bound.
+func TestRateLimitWaitBudgetIsAtomicAcrossConcurrentReads(t *testing.T) {
+	var calls, waits atomic.Int64
+	var attempts sync.Map
+	firstAttempts := make(chan struct{}, 2)
+	release := make(chan struct{})
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
+		value, _ := attempts.LoadOrStore(r.URL.Path, &atomic.Int64{})
+		if value.(*atomic.Int64).Add(1) == 1 {
+			firstAttempts <- struct{}{}
+			<-release
+			w.WriteHeader(http.StatusTooManyRequests)
+			return
+		}
+		_, _ = io.WriteString(w, workflowBody)
+	}))
+	defer server.Close()
+	a := api{base: server.URL, token: "offline-fixture-token", client: server.Client(), wait: func(context.Context, time.Duration) error {
+		waits.Add(1)
+		return nil
+	}, budget: &rateLimitWaitBudget{}}
+	results := make(chan error, 2)
+	for _, path := range []string{"/first", "/second"} {
+		go func() {
+			_, err := a.request(context.Background(), "GET", path)
+			results <- err
+		}()
+	}
+	<-firstAttempts
+	<-firstAttempts
+	close(release)
+	successes := 0
+	for range 2 {
+		if <-results == nil {
+			successes++
+		}
+	}
+	if successes != 1 || calls.Load() != 3 || waits.Load() != 1 {
+		t.Fatalf("concurrent budget was not atomic: successes=%d calls=%d waits=%d", successes, calls.Load(), waits.Load())
 	}
 }
 
@@ -791,7 +874,7 @@ func TestRedirectsAndCancellationCannotReachAnotherTarget(t *testing.T) {
 		http.Redirect(w, r, other.URL, http.StatusTemporaryRedirect)
 	}))
 	defer server.Close()
-	a := api{server.URL, "offline-fixture-token", server.Client(), delay}
+	a := api{base: server.URL, token: "offline-fixture-token", client: server.Client(), wait: delay, budget: &rateLimitWaitBudget{}}
 	if _, err := a.list(context.Background(), fixtureRepo+"/actions/workflows", "workflows"); err == nil || reached {
 		t.Fatalf("redirect followed or accepted: %v reached=%t", err, reached)
 	}

@@ -129,6 +129,7 @@ type api struct {
 	base, token string
 	client      *http.Client
 	wait        func(context.Context, time.Duration) error
+	budget      *rateLimitWaitBudget
 }
 
 type httpFailure struct{ status int }
@@ -137,6 +138,25 @@ type httpFailure struct{ status int }
 func (e httpFailure) Error() string { return fmt.Sprintf("HTTP %d", e.status) }
 
 const maxRateLimitRetryDelay = time.Minute
+
+type rateLimitWaitBudget struct {
+	mu   sync.Mutex
+	used time.Duration
+}
+
+// reserve atomically charges a rate-limit wait to the cleanup-wide budget.
+func (b *rateLimitWaitBudget) reserve(delay time.Duration) bool {
+	if b == nil {
+		return false
+	}
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if delay <= 0 || b.used >= maxRateLimitRetryDelay || delay > maxRateLimitRetryDelay-b.used {
+		return false
+	}
+	b.used += delay
+	return true
+}
 
 func secondaryRateLimitMessage(raw []byte) bool {
 	if len(raw) == 0 || unambiguous(raw) != nil {
@@ -208,10 +228,8 @@ func (a api) request(ctx context.Context, method, path string) ([]byte, error) {
 	if client.Timeout == 0 {
 		client.Timeout = 30 * time.Second
 	}
-	rateLimitWait := time.Duration(0)
 	for attempt := 0; attempt < 3; attempt++ {
 		retryDelay := time.Duration(0)
-		rateLimitedWait := false
 		req, err := http.NewRequestWithContext(ctx, method, a.base+path, nil)
 		if err != nil {
 			return nil, errors.New("invalid API request")
@@ -244,11 +262,10 @@ func (a api) request(ctx context.Context, method, path string) ([]byte, error) {
 				return raw, delayErr
 			}
 			if rateLimited {
-				if rateLimitWait >= maxRateLimitRetryDelay || delay > maxRateLimitRetryDelay-rateLimitWait {
+				if !a.budget.reserve(delay) {
 					return raw, err
 				}
 				retryDelay = delay
-				rateLimitedWait = true
 			} else if response.StatusCode < 500 || response.StatusCode > 599 {
 				return raw, err
 			}
@@ -261,9 +278,6 @@ func (a api) request(ctx context.Context, method, path string) ([]byte, error) {
 		}
 		if err := a.wait(ctx, retryDelay); err != nil {
 			return nil, err
-		}
-		if rateLimitedWait {
-			rateLimitWait += retryDelay
 		}
 	}
 	return nil, errors.New("API request failed")
@@ -545,7 +559,13 @@ func clean(ctx context.Context, cfg config, base, token string, client *http.Cli
 	if !repositoryName.MatchString(cfg.repository) {
 		return errors.New("invalid repository")
 	}
-	a := api{strings.TrimRight(base, "/"), token, client, wait}
+	a := api{
+		base:   strings.TrimRight(base, "/"),
+		token:  token,
+		client: client,
+		wait:   wait,
+		budget: &rateLimitWaitBudget{},
+	}
 	prefix := "/repos/" + cfg.repository
 	items, err := a.list(ctx, prefix+"/actions/workflows", "workflows")
 	if err != nil {
