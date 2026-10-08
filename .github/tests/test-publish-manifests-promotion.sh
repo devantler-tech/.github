@@ -6,7 +6,7 @@ set -euo pipefail
 validate_caller() {
   yq -e '
   (.jobs["publish-manifests"].uses |
-    test("^devantler-tech/actions/\\.github/workflows/publish-manifests\\.yaml@[0-9a-f]{40}$")) and
+    test("^devantler-tech/\\.github/\\.github/workflows/publish-manifests\\.yaml@[0-9a-f]{40}$")) and
   (.jobs["publish-manifests"].with["enable-caller-pin"] == true) and
   (.jobs["publish-manifests"].with["enable-signed-promotion"] == true) and
   (.jobs["publish-manifests"].with["oci-name"] == "devantler-tech/github-config")
