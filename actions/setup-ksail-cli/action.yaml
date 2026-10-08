@@ -9,7 +9,7 @@ runs:
       # Pinned to a branch commit, not a tag: Homebrew/actions publishes no tags
       # or releases (main-tracked only), so the comment names the branch + why
       # rather than a `# v<version>` — see CONTRIBUTING.md "External action pinning".
-      uses: Homebrew/actions/setup-homebrew@dc7099b3e807f1e2ecc61f3ecabc840eedd5586a # main (no upstream releases)
+      uses: Homebrew/actions/setup-homebrew@9ffcbcc2c89631400988e8d4b1e3ac17dbbe3fe9 # main (no upstream releases)
       with:
         # Install with released Homebrew, rather than checking out its moving
         # development branch on every consumer run.
