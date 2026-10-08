@@ -64,8 +64,8 @@ for scenario in satisfied stale failed-producer; do
   bash "$scratch/source/ensure-gh-skill.sh" > "$scratch/result" 2>&1 || rc=$?
   [[ -e "$OBS_COMPLETE" ]] || fail "installed $scenario did not consume the complete version output"
   case "$scenario" in
-    satisfied) if [[ "$rc" != 0 ]] || ! rg -q 'already supports' "$scratch/result"; then fail 'current CLI did not return normally'; fi ;;
-    stale) if [[ "$rc" != 1 ]] || ! rg -q 'Unsupported arch' "$scratch/result"; then fail 'stale CLI did not require installation'; fi ;;
+    satisfied) if [[ "$rc" != 0 ]] || ! grep -q 'already supports' "$scratch/result"; then fail 'current CLI did not return normally'; fi ;;
+    stale) if [[ "$rc" != 1 ]] || ! grep -q 'Unsupported arch' "$scratch/result"; then fail 'stale CLI did not require installation'; fi ;;
     failed-producer) [[ "$rc" == 23 ]] || fail 'plausible installed version concealed producer failure' ;;
   esac
   [[ ! -s "$GITHUB_PATH" && ! -e "$RUNNER_TEMP/$scenario/bin/gh" ]] || fail 'installed probe published an archive'
@@ -97,7 +97,7 @@ for scenario in downloaded-satisfied downloaded-stale downloaded-failed; do
       [[ "$(cat "$GITHUB_PATH")" == "$RUNNER_TEMP/$scenario/bin" ]] || fail 'valid candidate was not published once'
       ;;
     downloaded-stale)
-      if [[ "$rc" != 1 ]] || ! rg -q 'older than the requested' "$scratch/result"; then fail 'older candidate was not rejected'; fi
+      if [[ "$rc" != 1 ]] || ! grep -q 'older than the requested' "$scratch/result"; then fail 'older candidate was not rejected'; fi
       ;;
     downloaded-failed) [[ "$rc" == 23 ]] || fail 'plausible downloaded version concealed producer failure' ;;
   esac
