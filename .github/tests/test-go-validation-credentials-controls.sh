@@ -53,6 +53,9 @@ workflow	.jobs.lint.if="true"	read-only lint admission
 workflow	.jobs.changes.outputs["signed-fixes"]="${{ inputs.apply-signed-fixes == true }}"	signed-fix admission
 workflow	.jobs.lint.steps |= map(if .id=="fixes" then .with["upload-enabled"]="true" else . end)	both entrypoints must execute the same lint and fixer steps
 workflow	.jobs.coverage.permissions["code-quality"]="read"	coverage upload permission missing
+workflow	.jobs.changes.outputs.go="${{ steps.filter.outputs.go }}"	fixture validation admission
+workflow	.jobs.changes.outputs.go="true"	fixture validation admission
+workflow	.jobs.changes.outputs.go="${{ inputs.working-directory == '.github/tests/go-valid-fixture' && 'true' || steps.filter.outputs.go }}"	fixture validation admission
 CASES
 jq '.jobs.lint.env.SAMPLE_VALIDATION_SETTING="retained"' "$work/production.json" >"$work/with-env.json"
 bash "$root/.github/scripts/generate-go-readonly.sh" "$work/with-env.json" "$work/with-env.yaml"

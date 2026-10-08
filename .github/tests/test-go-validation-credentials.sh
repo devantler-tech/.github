@@ -68,6 +68,19 @@ const evaluate = (expr, values) => {
   for (const key of Object.keys(values).sort((a,b) => b.length-a.length)) code = code.split(key).join(JSON.stringify(values[key]));
   return Function(`"use strict"; return (${code});`)();
 };
+// A selected self-test must reach its real commands on workflow-only diffs.
+// Production and all other callers retain the original path-filter result.
+for (const go of ['true', 'false']) {
+  assert.equal(evaluate(production.jobs.changes.outputs.go, {'steps.filter.outputs.go': go}), go, 'production Go filter changed');
+  for (const repository of ['devantler-tech/.github', 'devantler-tech/ksail']) {
+    for (const directory of ['.github/tests/go-valid-fixture', '', 'another-module']) {
+      const fixture = repository === 'devantler-tech/.github' && directory === '.github/tests/go-valid-fixture';
+      assert.equal(evaluate(w.jobs.changes.outputs.go, {
+        'steps.filter.outputs.go': go, 'github.repository': repository, 'inputs.working-directory': directory
+      }), fixture ? 'true' : go, 'fixture validation admission');
+    }
+  }
+}
 for (const event of ['pull_request', 'push', 'merge_group']) {
   assert.equal(evaluate(production.jobs.changes.if, {'inputs.working-directory': '', 'github.repository': 'devantler-tech/.github', 'github.event_name': event}), false, 'production interface became executable');
 }
