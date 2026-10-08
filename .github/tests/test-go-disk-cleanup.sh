@@ -84,6 +84,9 @@ yq -o=json '.' "$trial" | jq -e '
   .jobs.measure.strategy.matrix.phase == ["build","coverage"] and
   ([.jobs.measure.steps[]|select((.uses//"")|startswith("actions/checkout@"))|.with."persist-credentials"] == [false,false]) and
   ([.jobs.measure.steps[]|select(.with.repository == "devantler-tech/ksail")|.with.ref]|length) == 1' >/dev/null || fail 'unsafe large-consumer measurement boundary'
-diff -u <(yq -r '.jobs.build.steps[] | select(.name == "🧹 Free disk space") | .run' "$workflow") \
-  <(yq -r '.jobs.measure.steps[] | select(.name == "🧹 Free disk space") | .run' "$trial") || fail 'native evaluation does not exercise production cleanup'
+for job in build test coverage; do
+  JOB_ID="$job" yq -r '.jobs[strenv(JOB_ID)].steps[] | select(.name == "🧹 Free disk space") | .run' "$workflow" > "$scratch/production-cleanup"
+  yq -r '.jobs.measure.steps[] | select(.name == "🧹 Free disk space") | .run' "$trial" > "$scratch/trial-cleanup"
+  diff -u "$scratch/production-cleanup" "$scratch/trial-cleanup" || fail "native evaluation does not exercise production $job cleanup"
+done
 printf 'Go disk cleanup: capacity, default, timeout, failure and invalid-input controls passed\n'
