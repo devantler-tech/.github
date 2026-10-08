@@ -192,7 +192,7 @@ for mutation in late-preparation missing-identity missing-invocation; do
       expression='(.jobs.build.steps[] | select(.name == "🧹 Free disk space") | .env) |= del(.GO_DISK_WORKFLOW_SHA)'
       ;;
     missing-invocation)
-      expression='(.jobs.build.steps[] | select(.name == "🧹 Free disk space") | .run) |= sub("bash.*measure-go-disk.sh.*cleanup-build.*", "cleanup_disk")'
+      expression='(.jobs.build.steps[] | select(.name == "🧹 Free disk space") | .run) |= sub("bash.*measure-go-disk.sh.*", "cleanup_disk")'
       ;;
   esac
   yq "$expression" "$workflow" > "$scratch/mutant.yaml"
