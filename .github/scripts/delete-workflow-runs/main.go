@@ -155,7 +155,7 @@ func secondaryRateLimitMessage(raw []byte) bool {
 // from an ordinary authorization failure. A server delay is honoured only when
 // it fits the workflow's bounded read-retry envelope; an invalid or longer delay
 // fails closed instead of retrying early or waiting without a bound.
-func rateLimitRetryDelay(response *http.Response, raw []byte) (time.Duration, bool, error) {
+func rateLimitRetryDelay(response *http.Response, raw []byte, now time.Time) (time.Duration, bool, error) {
 	if response.StatusCode != http.StatusForbidden && response.StatusCode != http.StatusTooManyRequests {
 		return 0, false, nil
 	}
@@ -167,6 +167,21 @@ func rateLimitRetryDelay(response *http.Response, raw []byte) (time.Duration, bo
 		delay := time.Duration(seconds) * time.Second
 		if delay > maxRateLimitRetryDelay {
 			return 0, false, errors.New("rate-limit retry delay exceeds bound")
+		}
+		return delay, true, nil
+	}
+	if strings.TrimSpace(response.Header.Get("X-RateLimit-Remaining")) == "0" {
+		value := strings.TrimSpace(response.Header.Get("X-RateLimit-Reset"))
+		reset, err := strconv.ParseInt(value, 10, 64)
+		if err != nil || reset <= 0 {
+			return 0, false, errors.New("invalid primary rate-limit reset")
+		}
+		delay := time.Unix(reset, 0).Sub(now)
+		if delay <= 0 {
+			delay = time.Second
+		}
+		if delay > maxRateLimitRetryDelay {
+			return 0, false, errors.New("primary rate-limit reset exceeds bound")
 		}
 		return delay, true, nil
 	}
@@ -213,7 +228,7 @@ func (a api) request(ctx context.Context, method, path string) ([]byte, error) {
 			if method != "GET" {
 				return raw, err
 			}
-			delay, rateLimited, delayErr := rateLimitRetryDelay(response, raw)
+			delay, rateLimited, delayErr := rateLimitRetryDelay(response, raw, time.Now())
 			if delayErr != nil {
 				return raw, delayErr
 			}

@@ -660,18 +660,23 @@ func TestReadRetriesAreBoundedAndOnlyForTransientFailures(t *testing.T) {
 		name                       string
 		status, failures, attempts int
 		retryAfter, failureBody    string
+		rateRemaining, rateReset   string
 		succeeds                   bool
 		waits                      []time.Duration
 	}{
-		{"server-errors-recover", 503, 2, 3, "", "", true, []time.Duration{2 * time.Second, 4 * time.Second}},
-		{"server-errors-stop", 503, 4, 3, "", "", false, []time.Duration{2 * time.Second, 4 * time.Second}},
-		{"authorization-denial", 403, 4, 1, "", `{"message":"Resource not accessible by integration"}`, false, []time.Duration{}},
-		{"rate-limited-forbidden-recovers", 403, 2, 3, "7", "", true, []time.Duration{7 * time.Second, 7 * time.Second}},
-		{"secondary-rate-limit-message-recovers", 403, 2, 3, "", `{"message":"You have exceeded a secondary rate limit."}`, true, []time.Duration{60 * time.Second, 60 * time.Second}},
-		{"too-many-requests-recovers", 429, 2, 3, "5", "", true, []time.Duration{5 * time.Second, 5 * time.Second}},
-		{"too-many-requests-without-delay-recovers", 429, 2, 3, "", "", true, []time.Duration{60 * time.Second, 60 * time.Second}},
-		{"malformed-rate-limit-delay", 403, 4, 1, "later", "", false, []time.Duration{}},
-		{"unbounded-rate-limit-delay", 403, 4, 1, "61", "", false, []time.Duration{}},
+		{"server-errors-recover", 503, 2, 3, "", "", "", "", true, []time.Duration{2 * time.Second, 4 * time.Second}},
+		{"server-errors-stop", 503, 4, 3, "", "", "", "", false, []time.Duration{2 * time.Second, 4 * time.Second}},
+		{"authorization-denial", 403, 4, 1, "", `{"message":"Resource not accessible by integration"}`, "", "", false, []time.Duration{}},
+		{"rate-limited-forbidden-recovers", 403, 2, 3, "7", "", "", "", true, []time.Duration{7 * time.Second, 7 * time.Second}},
+		{"primary-rate-limited-installation-recovers", 403, 2, 3, "", `{"message":"API rate limit exceeded for installation"}`, "0", "1", true, []time.Duration{time.Second, time.Second}},
+		{"primary-rate-limit-missing-reset", 403, 4, 1, "", "", "0", "", false, []time.Duration{}},
+		{"primary-rate-limit-invalid-reset", 403, 4, 1, "", "", "0", "later", false, []time.Duration{}},
+		{"primary-rate-limit-reset-exceeds-bound", 403, 4, 1, "", "", "0", "9999999999", false, []time.Duration{}},
+		{"secondary-rate-limit-message-recovers", 403, 2, 3, "", `{"message":"You have exceeded a secondary rate limit."}`, "", "", true, []time.Duration{60 * time.Second, 60 * time.Second}},
+		{"too-many-requests-recovers", 429, 2, 3, "5", "", "", "", true, []time.Duration{5 * time.Second, 5 * time.Second}},
+		{"too-many-requests-without-delay-recovers", 429, 2, 3, "", "", "", "", true, []time.Duration{60 * time.Second, 60 * time.Second}},
+		{"malformed-rate-limit-delay", 403, 4, 1, "later", "", "", "", false, []time.Duration{}},
+		{"unbounded-rate-limit-delay", 403, 4, 1, "61", "", "", "", false, []time.Duration{}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			calls := 0
@@ -680,6 +685,12 @@ func TestReadRetriesAreBoundedAndOnlyForTransientFailures(t *testing.T) {
 				if calls <= tc.failures {
 					if tc.retryAfter != "" {
 						w.Header().Set("Retry-After", tc.retryAfter)
+					}
+					if tc.rateRemaining != "" {
+						w.Header().Set("X-RateLimit-Remaining", tc.rateRemaining)
+					}
+					if tc.rateReset != "" {
+						w.Header().Set("X-RateLimit-Reset", tc.rateReset)
 					}
 					w.WriteHeader(tc.status)
 					_, _ = io.WriteString(w, tc.failureBody)
@@ -698,6 +709,18 @@ func TestReadRetriesAreBoundedAndOnlyForTransientFailures(t *testing.T) {
 				t.Fatalf("retry delays=%v want=%v", waits, tc.waits)
 			}
 		})
+	}
+}
+
+func TestPrimaryRateLimitResetDelay(t *testing.T) {
+	now := time.Unix(1_000, 0)
+	response := &http.Response{StatusCode: http.StatusForbidden, Header: http.Header{
+		"X-Ratelimit-Remaining": []string{"0"},
+		"X-Ratelimit-Reset":     []string{"1007"},
+	}}
+	delay, limited, err := rateLimitRetryDelay(response, nil, now)
+	if err != nil || !limited || delay != 7*time.Second {
+		t.Fatalf("primary rate-limit delay=%s limited=%t err=%v", delay, limited, err)
 	}
 }
 
