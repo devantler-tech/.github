@@ -42,7 +42,8 @@ state="$GH_STATE"
 # store <id> <method>: an update that omits workflow_path keeps the policy's existing workflow
 # targeting, as GitHub documents for PUT; a create stores only what was sent.
 store() {
-  jq --argjson id "$1" --arg method "$2" --slurpfile body "$input" --arg mangle "${MANGLE_PATHS-}" '
+  jq --argjson id "$1" --arg method "$2" --slurpfile body "$input" --arg mangle "${MANGLE_PATHS-}" \
+    --arg property_source "${MANGLE_PROPERTY_SOURCE-}" --arg protected "${MANGLE_PROTECTED-}" '
     (map(select(.id == $id)) | first // {}) as $old
     | ($body[0] + {id: $id, source_type: "Organization", target: "actions"}
       | if $method == "PUT" and .conditions.workflow_path == null and $old.conditions.workflow_path != null then
@@ -50,6 +51,12 @@ store() {
         else . end
       | if $mangle == "1" and .conditions.workflow_path then
           .conditions.workflow_path.include |= map("example/" + .)
+        else . end
+      | if $property_source == "1" and .conditions.repository_property then
+          .conditions.repository_property.include[0].source = "system"
+        else . end
+      | if $protected == "1" and .conditions.repository_name then
+          .conditions.repository_name.protected = true
         else . end) as $p
     | if any(.[]; .id == $id) then map(if .id == $id then $p else . end) else . + [$p] end' \
     "$state" >"$state.next"
@@ -185,6 +192,129 @@ case=in-sync
 : >"$log"
 run_apply 0 --dir "$policies"
 expect_out 'IN-SYNC  events.json'
+expect_out 'IN-SYNC  starters.json'
+expect_writes 0
+
+# Property sources are different selectors, even when their names and values match.
+property_dir="$tmp/property-policies"
+mkdir "$property_dir"
+jq 'del(.exception) | .name = "Property targeting"
+  | .conditions = {repository_property: {include: [{name: "classification", source: "custom", property_values: ["app"]}], exclude: []}}' \
+  "$policies/starters.json" >"$property_dir/property.json"
+property_live="$(jq '. + {id: 3, source_type: "Organization"} | [. ]' "$property_dir/property.json")"
+case=property-source-drift
+reset "$(jq '.[0].conditions.repository_property.include[0].source = "system"' <<<"$property_live")"
+run_apply 1 --dir "$property_dir" --check
+expect_out 'DRIFT    property.json'
+expect_writes 0
+
+case=property-source-update
+run_apply 0 --dir "$property_dir"
+expect_out 'UPDATED  property.json (id 3)'
+expect_writes 1
+jq -e '.[0].conditions.repository_property.include[0].source == "custom"' "$state" >/dev/null || fail "$case: property source was not restored"
+
+# Omission has the documented custom default in both request and response.
+case=property-source-default-live
+reset "$(jq 'del(.[0].conditions.repository_property.include[0].source)' <<<"$property_live")"
+run_apply 0 --dir "$property_dir"
+expect_out 'IN-SYNC  property.json'
+expect_writes 0
+case=property-source-default-desired
+jq 'del(.conditions.repository_property.include[0].source)' "$property_dir/property.json" >"$tmp/property.next"
+mv "$tmp/property.next" "$property_dir/property.json"
+reset "$property_live"
+run_apply 0 --dir "$property_dir"
+expect_out 'IN-SYNC  property.json'
+expect_writes 0
+
+case=property-source-readback-mismatch
+reset '[]'
+MANGLE_PROPERTY_SOURCE=1 run_apply 1 --dir "$property_dir"
+expect_out 'MISMATCH property.json'
+expect_writes 1
+
+# Compare the exclusion side too, while preserving unordered member/value semantics.
+jq '.conditions.repository_property.exclude = [{name: "tier", source: "system", property_values: ["prod", "test"]}, {name: "kind", property_values: ["internal"]}]' \
+  "$property_dir/property.json" >"$tmp/property.next"
+mv "$tmp/property.next" "$property_dir/property.json"
+property_live="$(jq '. + {id: 3, source_type: "Organization"} | [. ]' "$property_dir/property.json")"
+case=property-member-order
+reset "$(jq '.[0].conditions.repository_property.exclude |= (reverse | map(.property_values |= reverse))' <<<"$property_live")"
+run_apply 0 --dir "$property_dir"
+expect_out 'IN-SYNC  property.json'
+expect_writes 0
+case=property-exclude-source-drift
+reset "$(jq '.[0].conditions.repository_property.exclude[0].source = "custom"' <<<"$property_live")"
+run_apply 1 --dir "$property_dir" --check
+expect_out 'DRIFT    property.json'
+expect_writes 0
+
+# Bad live targeting prevents the whole batch from writing, even an earlier drifted policy.
+combined_dir="$tmp/combined-policies"
+mkdir "$combined_dir"
+cp "$policies/events.json" "$property_dir/property.json" "$combined_dir/"
+combined_live="$(jq --argjson property "$(jq '.[0]' <<<"$property_live")" '.[0:1] + [$property] | .[0].enforcement = "active"' <<<"$in_sync")"
+for edit in \
+  '.[1].conditions.repository_property.include[0].source = "other"' \
+  '.[1].conditions.repository_property.exclude[0].source = null' \
+  '.[1].conditions.repository_property.include[0].soruce = "custom"' \
+  '.[1].conditions.repository_property.exclude = "broken"' \
+  '.[1].conditions.repository_property.include[0].property_values = []' \
+  '.[1].conditions.unknown = null'; do
+  case=malformed-live-selector
+  reset "$(jq "$edit" <<<"$combined_live")"
+  run_apply 2 --dir "$combined_dir"
+  expect_out 'UNKNOWN  property.json'
+  expect_out 'nothing was applied'
+  expect_writes 0
+done
+
+case=repository-name-protection-drift
+jq '.conditions.repository_name.protected = true' "$policies/starters.json" >"$tmp/starters.next"
+mv "$tmp/starters.next" "$policies/starters.json"
+reset "$(jq '.[1].conditions.repository_name.protected = false' <<<"$in_sync")"
+run_apply 1 --dir "$policies" --check
+expect_out 'DRIFT    starters.json'
+expect_writes 0
+case=repository-name-protection-update
+run_apply 0 --dir "$policies"
+expect_out 'UPDATED  starters.json (id 2)'
+expect_writes 1
+jq -e '.conditions.repository_name.protected == true' "$bodies" >/dev/null || fail "$case: update omitted the declared protection"
+case=repository-name-protection-false
+jq '.conditions.repository_name.protected = false' "$policies/starters.json" >"$tmp/starters.next"
+mv "$tmp/starters.next" "$policies/starters.json"
+reset "$(jq '.[1].conditions.repository_name.protected = false' <<<"$in_sync")"
+run_apply 0 --dir "$policies"
+expect_out 'IN-SYNC  starters.json'
+expect_writes 0
+case=repository-name-protection-readback-mismatch
+reset '[]'
+MANGLE_PROTECTED=1 run_apply 1 --dir "$policies"
+expect_out 'MISMATCH starters.json'
+
+jq 'del(.conditions.repository_name.protected)' "$policies/starters.json" >"$tmp/starters.next"
+mv "$tmp/starters.next" "$policies/starters.json"
+case=undeclared-repository-name-protection
+reset "$(jq '.[1].conditions.repository_name.protected = true' <<<"$in_sync")"
+run_apply 0 --dir "$policies"
+expect_out 'IN-SYNC  starters.json'
+expect_writes 0
+
+for edit in '.[1].conditions.repository_name.protected = "false"' \
+  '.[1].conditions.repository_name.incldue = ["example"]'; do
+  case=malformed-live-name-selector
+  reset "$(jq "$edit | .[0].enforcement = \"active\"" <<<"$in_sync")"
+  run_apply 2 --dir "$policies"
+  expect_out 'UNKNOWN  starters.json'
+  expect_writes 0
+done
+
+# Known absent conditions may be null in an API response; unknown ones may not.
+case=nullable-unused-condition
+reset "$(jq '.[1].conditions.repository_property = null' <<<"$in_sync")"
+run_apply 0 --dir "$policies"
 expect_out 'IN-SYNC  starters.json'
 expect_writes 0
 
@@ -353,7 +483,7 @@ run_apply 1 --dir "$dup"
 expect_out 'more than one file is named "Allow observed events"'
 [ ! -s "$log" ] || fail "$case: GitHub was called: $(cat "$log")"
 
-case=invalid-file
+case="invalid-file"
 invalid="$tmp/invalid"
 mkdir "$invalid"
 jq '.enforcement = "active"' "$policies/events.json" >"$invalid/events.json"
