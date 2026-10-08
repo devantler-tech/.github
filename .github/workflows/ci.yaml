@@ -1819,6 +1819,9 @@ jobs:
       - name: 🧪 Check the reviewed digest updater boundary
         run: bash .github/tests/test-gh-digest-updater.sh
 
+      - name: 🧪 Drain complete CLI version observations
+        run: bash .github/tests/test-gh-version-observation.sh
+
       - name: 🔒 Prepare real release digests without write authority
         id: digest-candidate
         run: |
@@ -2401,7 +2404,7 @@ jobs:
         run: |
           set -euo pipefail
           test "$(command -v gh)" = "$RUNNER_TEMP/$INSTALL_NAMESPACE/bin/gh"
-          test "$(gh --version | awk '/^gh version /{print $3; exit}')" = "$EXPECTED_GH_VERSION"
+          test "$(gh --version | awk '/^gh version / && !seen { print $3; seen=1 }')" = "$EXPECTED_GH_VERSION"
           gh skill --help
 
   # ── .scripts/gh-skill-install.sh (shared idempotent install helper) ─
