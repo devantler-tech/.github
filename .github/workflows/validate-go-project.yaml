@@ -40,8 +40,8 @@ on:
       maintenance-default-branch:
         required: false
         type: boolean
-        default: false
-        description: "Also run go mod tidy and dead-code analysis on default-branch pushes that change Go files. Opt-in and read-only: findings fail validation without pushing fixes to the default branch. Rollout and flag retirement: devantler-tech/actions#1170."
+        default: true
+        description: "Run go mod tidy and dead-code analysis on default-branch pushes that change Go files. On by default and read-only: findings fail validation without pushing fixes to the default branch. Pass false to opt out during rollout. Flag retirement: devantler-tech/.github#276."
     secrets:
       APP_PRIVATE_KEY:
         description: "GitHub App Private Key"
