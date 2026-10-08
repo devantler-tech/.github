@@ -84,7 +84,7 @@ jobs:
       contents: read
       pull-requests: read
     outputs:
-      go: ${{ steps.filter.outputs.go }}
+      go: ${{ (github.repository == 'devantler-tech/.github' && inputs.working-directory == '.github/tests/go-valid-fixture') && 'true' || steps.filter.outputs.go }}
       govulncheck: ${{ steps.filter.outputs.govulncheck }}
       lintable: ${{ steps.filter.outputs.lintable }}
       # One decision, read by every fixer lane and every apply job: are signed auto-fix commits

@@ -424,7 +424,9 @@ test and race coverage emit separate cleanup and Go-command receipts, including
 capacity before and after cleanup and 1-second sampled headroom. Cleanup stays
 enabled and command results are unchanged. Failed or incomplete observations make every capacity
 field null with status `unknown`. The helper checkout is removed before consumer
-commands run; cancellation stops the command process group and sampler. Keep
+commands run; cancellation stops the command process group and sampler. The
+read-only projection admits Go for selected catalogue fixture callers even on
+workflow-only diffs; production and other consumers retain their Go path filter. Keep
 `test-go-disk-measurement.sh` and the generated read-only projection passing.
 Rollout, representative-consumer measurement and retirement remain in #527.
 
