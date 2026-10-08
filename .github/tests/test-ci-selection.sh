@@ -150,4 +150,42 @@ for caller in test-delete-workflow-runs-all test-delete-workflow-runs-minimal te
     exit 1
   fi
 done
+# The same exact Git diff formerly selected every gated job. Its four reviewed
+# dependencies include two native callers and two inline controls; the authenticated
+# caller retains independent admission and is not promised as a mandatory execution.
+dotnet="$work/dotnet"
+mkdir -p "$dotnet/.github/workflows"
+git init -q "$dotnet"
+git -C "$dotnet" config user.name 'CI fixture'
+git -C "$dotnet" config user.email 'fixture@example.invalid'
+git -C "$dotnet" config commit.gpgsign false
+printf 'base\n' > "$dotnet/.github/workflows/run-dotnet-tests.yaml"
+git -C "$dotnet" add -- .github/workflows/run-dotnet-tests.yaml
+git -C "$dotnet" commit -qm 'test: dotnet baseline'
+base="$(git -C "$dotnet" rev-parse HEAD)"
+printf 'changed\n' > "$dotnet/.github/workflows/run-dotnet-tests.yaml"
+git -C "$dotnet" add -- .github/workflows/run-dotnet-tests.yaml
+git -C "$dotnet" commit -qm 'test: dotnet change'
+head="$(git -C "$dotnet" rev-parse HEAD)"
+: > "$work/output"
+EVENT_NAME=pull_request RUN_CATALOGUE=true CATALOGUE_SCOPE=true BASE_SHA="$base" HEAD_SHA="$head" GITHUB_OUTPUT="$work/output" \
+  go -C "$root/.github/scripts/ci-selection" run . "$dotnet" "$root/.github/scripts/ci-selection/inventory.json" "$work/workflow.json"
+selected="$(sed -n 's/^selected=//p' "$work/output")"
+jq -e '. == ["test-run-dotnet-tests-gate-lockstep","test-run-dotnet-tests-mtp","test-run-dotnet-tests-workflow"]' <<< "$selected" >/dev/null
+needs="$(jq -cn --argjson selected "$selected" 'reduce $selected[] as $id ({"test-run-dotnet-tests-workflow-authenticated":{result:"skipped"},"test-enable-auto-merge-queue":{result:"skipped"}}; .[$id] = {result:"success"})')"
+JOB_RESULTS='success skipped' CATALOGUE_REQUIRED=true SELECTOR_RESULT=success SELECTED_JOBS="$selected" NEEDS_JSON="$needs" run_reducer
+for caller in $(jq -r '.[]' <<< "$selected"); do
+  for outcome in skipped failure; do
+    bad_needs="$(jq --arg caller "$caller" --arg outcome "$outcome" '.[$caller].result=$outcome' <<< "$needs")"
+    if JOB_RESULTS="$(jq -r '[.[].result] | join(" ")' <<< "$bad_needs")" CATALOGUE_REQUIRED=true SELECTOR_RESULT=success SELECTED_JOBS="$selected" NEEDS_JSON="$bad_needs" run_reducer >/dev/null 2>&1; then
+      echo "FAIL: selected .NET execution $caller was $outcome without rejection" >&2
+      exit 1
+    fi
+  done
+done
+bad_needs="$(jq '."test-run-dotnet-tests-workflow-authenticated".result="failure"' <<< "$needs")"
+if JOB_RESULTS='success failure' CATALOGUE_REQUIRED=true SELECTOR_RESULT=success SELECTED_JOBS="$selected" NEEDS_JSON="$bad_needs" run_reducer >/dev/null 2>&1; then
+  echo 'FAIL: independently admitted authenticated caller failure was concealed' >&2
+  exit 1
+fi
 echo 'PASS: complete job inventory, owner coverage and preserved scheduling'

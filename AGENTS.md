@@ -453,7 +453,14 @@ gated test jobs. Recognized action-owned paths narrow that set, including review
 transitive caller and inline-lockstep ownership. The cleanup workflow and its
 generated read-only projection have exact file ownership bound to all three native
 callers; their admission stays intact, and affected callers must succeed in the
-required reducer. Shared helpers, other workflows, tests,
+required reducer. Ordinary regular-file modifications to `run-dotnet-tests.yaml`
+select its normal native caller, hosted helper-checkout proof and credential
+lockstep control. All four reviewed dependencies must retain exact ownership,
+including the separately admitted authenticated caller; an unreviewed caller or
+missing owner fails validation. Additions, deletions, type changes and unclassified
+rename destinations keep full coverage. The authenticated caller's original
+event/author admission remains outside mandatory execution selection.
+Shared helpers, other workflows, tests,
 fixtures, root configuration and unknown paths retain full coverage; missing Git
 evidence fails the selector. Classification runs from the immutable trusted base
 before candidate checkout and selection on the same read-only runner; there is
