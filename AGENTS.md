@@ -412,6 +412,13 @@ credential, and a scenario set that no longer covers every comment mode and resu
 the action. A bump of the action pin that changes its conversation or its messages fails the
 affected leg: read what changed in the job log before updating the scenario file.
 
+**Default-branch Go maintenance:** `maintenance-default-branch` defaults to true
+after the KSail pilot and complete caller inventory. Explicit false remains the
+rollout rollback. Tidy and dead-code findings fail read-only validation without
+default-branch writes. Keep inherited-default and explicit-opt-out callers,
+renamed branches, PR/feature routing, merge-queue exclusions and actual finding
+rejection covered. Final input and concurrency-discriminator removal remain #276.
+
 **Go compilation caches:** Test and race coverage retain separate `GOCACHE` archives,
 keyed by job, runner OS/architecture, installed Go version, working directory and that
 module's `go.mod`/`go.sum`. The existing setup-go module cache stays enabled. An exact

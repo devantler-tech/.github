@@ -1152,7 +1152,7 @@ jobs:
 | `measure-disk-usage` | Input (boolean) | `false` | No | Record sampled filesystem headroom during build, test and race coverage; cleanup and Go results stay unchanged. |
 | `manual-workflow-fixes` | Input (boolean) | `false` | No | Opt in to complete workflow-file patches for manual application, including after lint errors; existing upload eligibility still applies |
 | `test-default-branch` | Input (boolean) | `true`  | No       | Run the Go test suite on every default-branch run, not just when the diff touched a Go file. On by default: a test can take a non-Go file as its subject, so a diff-only gate leaves the default branch reporting green over a suite it never ran. Set to `false` to accept a default branch that can report green without the suite having run          |
-| `maintenance-default-branch` | Input (boolean) | `false` | No | Also run tidy and dead-code analysis on default-branch pushes that change Go files. Findings fail validation without committing fixes to the default branch. Uses the repository's configured default branch name. |
+| `maintenance-default-branch` | Input (boolean) | `true` | No | Run tidy and dead-code analysis on default-branch pushes that change Go files. Findings fail validation without committing fixes to the default branch. Uses the repository's configured default branch name; pass false to opt out during rollout. |
 
 ### ✅ Validate Go Project (Read-Only)
 
@@ -1181,11 +1181,12 @@ generator and regenerate it; CI checks the complete projection and credential bo
 | `apply-signed-fixes` | Input (boolean) | `false` | No | Ignored: signed fixes are always disabled |
 | `manual-workflow-fixes` | Input (boolean) | `false` | No | Prepare workflow-file fixes even after lint errors; patch upload is disabled and lint errors still fail |
 | `test-default-branch` | Input (boolean) | `true` | No | Run the suite on default-branch invocations |
-| `maintenance-default-branch` | Input (boolean) | `false` | No | Run tidy and dead-code analysis for Go changes on the default branch |
+| `maintenance-default-branch` | Input (boolean) | `true` | No | Run tidy and dead-code analysis for Go changes on the default branch; pass false to opt out during rollout |
 
-To enable default-branch maintenance validation, pass `maintenance-default-branch: true`
-in a caller that runs on pushes to its default branch. Pull-request checks remain
-enabled without this input. Tidy also preserves checks on other branches; its
+Default-branch maintenance validation is enabled for callers that run on pushes
+to their default branch. Pass `maintenance-default-branch: false` to opt out
+during rollout; final input removal remains tracked in [#276](https://github.com/devantler-tech/.github/issues/276).
+Pull-request checks remain enabled in either state. Tidy also preserves checks on other branches; its
 default-branch exclusion uses the repository's configured name rather than
 assuming `main` or `master`. Go path filtering and merge-queue exclusions still apply.
 
