@@ -163,7 +163,7 @@ func TestShortPagesContinueUntilDeclaredTotal(t *testing.T) {
 		_, _ = fmt.Fprintf(w, `{"total_count":3,"workflows":[{"id":%d}]}`, page)
 	}))
 	defer server.Close()
-	a := api{server.URL, "offline-fixture-token", server.Client(), delay}
+	a := api{base: server.URL, token: "offline-fixture-token", client: server.Client(), wait: delay, budget: &rateLimitWaitBudget{}}
 	items, err := a.list(context.Background(), fixtureRepo+"/actions/workflows", "workflows")
 	if err != nil || len(items) != 3 || requests != 3 {
 		t.Fatalf("short-page snapshot changed: %v items=%v requests=%d", err, items, requests)
@@ -657,34 +657,175 @@ func TestPaginationFailuresBeforeMutation(t *testing.T) {
 // TestReadRetriesAreBoundedAndOnlyForTransientFailures preserves recovery without retrying authorization failures.
 func TestReadRetriesAreBoundedAndOnlyForTransientFailures(t *testing.T) {
 	for _, tc := range []struct {
+		name                       string
 		status, failures, attempts int
+		retryAfter, failureBody    string
+		rateRemaining, rateReset   string
 		succeeds                   bool
+		waits                      []time.Duration
 	}{
-		{503, 2, 3, true}, {503, 4, 3, false}, {403, 4, 1, false},
+		{"server-errors-recover", 503, 2, 3, "", "", "", "", true, []time.Duration{2 * time.Second, 4 * time.Second}},
+		{"server-errors-stop", 503, 4, 3, "", "", "", "", false, []time.Duration{2 * time.Second, 4 * time.Second}},
+		{"authorization-denial", 403, 4, 1, "", `{"message":"Resource not accessible by integration"}`, "", "", false, []time.Duration{}},
+		{"rate-limited-forbidden-recovers", 403, 2, 3, "7", "", "", "", true, []time.Duration{7 * time.Second, 7 * time.Second}},
+		{"primary-rate-limited-installation-recovers", 403, 2, 3, "", `{"message":"API rate limit exceeded for installation"}`, "0", "1", true, []time.Duration{time.Second, time.Second}},
+		{"primary-rate-limit-missing-reset", 403, 4, 1, "", "", "0", "", false, []time.Duration{}},
+		{"primary-rate-limit-invalid-reset", 403, 4, 1, "", "", "0", "later", false, []time.Duration{}},
+		{"primary-rate-limit-reset-exceeds-bound", 403, 4, 1, "", "", "0", "9999999999", false, []time.Duration{}},
+		{"secondary-rate-limit-message-stops-at-wait-bound", 403, 2, 2, "", `{"message":"You have exceeded a secondary rate limit."}`, "", "", false, []time.Duration{60 * time.Second}},
+		{"too-many-requests-recovers", 429, 2, 3, "5", "", "", "", true, []time.Duration{5 * time.Second, 5 * time.Second}},
+		{"too-many-requests-without-delay-stops-at-wait-bound", 429, 2, 2, "", "", "", "", false, []time.Duration{60 * time.Second}},
+		{"malformed-rate-limit-delay", 403, 4, 1, "later", "", "", "", false, []time.Duration{}},
+		{"unbounded-rate-limit-delay", 403, 4, 1, "61", "", "", "", false, []time.Duration{}},
 	} {
-		t.Run(fmt.Sprint(tc), func(t *testing.T) {
+		t.Run(tc.name, func(t *testing.T) {
 			calls := 0
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				calls++
 				if calls <= tc.failures {
+					if tc.retryAfter != "" {
+						w.Header().Set("Retry-After", tc.retryAfter)
+					}
+					if tc.rateRemaining != "" {
+						w.Header().Set("X-RateLimit-Remaining", tc.rateRemaining)
+					}
+					if tc.rateReset != "" {
+						w.Header().Set("X-RateLimit-Reset", tc.rateReset)
+					}
 					w.WriteHeader(tc.status)
+					_, _ = io.WriteString(w, tc.failureBody)
 					return
 				}
 				_, _ = io.WriteString(w, workflowBody)
 			}))
 			defer server.Close()
 			waits := []time.Duration{}
-			a := api{server.URL, "offline-fixture-token", server.Client(), func(_ context.Context, d time.Duration) error { waits = append(waits, d); return nil }}
+			a := api{base: server.URL, token: "offline-fixture-token", client: server.Client(), wait: func(_ context.Context, d time.Duration) error { waits = append(waits, d); return nil }, budget: &rateLimitWaitBudget{}}
 			_, err := a.list(context.Background(), fixtureRepo+"/actions/workflows", "workflows")
 			if (err == nil) != tc.succeeds || calls != tc.attempts {
 				t.Fatalf("retry outcome err=%v attempts=%d; want %d success=%t", err, calls, tc.attempts, tc.succeeds)
 			}
-			want := []time.Duration{}
-			if tc.attempts == 3 {
-				want = []time.Duration{2 * time.Second, 4 * time.Second}
+			if !reflect.DeepEqual(waits, tc.waits) {
+				t.Fatalf("retry delays=%v want=%v", waits, tc.waits)
 			}
-			if !reflect.DeepEqual(waits, want) {
-				t.Fatalf("retry delays=%v want=%v", waits, want)
+		})
+	}
+}
+
+// TestRateLimitWaitBudgetSpansPagination prevents each page from resetting the cleanup-wide bound.
+func TestRateLimitWaitBudgetSpansPagination(t *testing.T) {
+	calls := map[int]int{}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		page, err := strconv.Atoi(r.URL.Query().Get("page"))
+		if err != nil || page < 1 || page > 2 {
+			t.Errorf("unexpected page %q", r.URL.Query().Get("page"))
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		calls[page]++
+		if calls[page] == 1 {
+			w.WriteHeader(http.StatusTooManyRequests)
+			return
+		}
+		count, start := 100, 1
+		if page == 2 {
+			count, start = 1, 101
+		}
+		items := make([]string, count)
+		for i := range count {
+			items[i] = fmt.Sprintf(`{"id":%d}`, start+i)
+		}
+		_, _ = fmt.Fprintf(w, `{"total_count":101,"workflows":[%s]}`, strings.Join(items, ","))
+	}))
+	defer server.Close()
+	waits := []time.Duration{}
+	a := api{base: server.URL, token: "offline-fixture-token", client: server.Client(), wait: func(_ context.Context, d time.Duration) error {
+		waits = append(waits, d)
+		return nil
+	}, budget: &rateLimitWaitBudget{}}
+	_, err := a.list(context.Background(), fixtureRepo+"/actions/workflows", "workflows")
+	if err == nil || calls[1] != 2 || calls[2] != 1 {
+		t.Fatalf("pagination reset rate-limit budget: err=%v calls=%v", err, calls)
+	}
+	if !reflect.DeepEqual(waits, []time.Duration{maxRateLimitRetryDelay}) {
+		t.Fatalf("pagination waits=%v want one cleanup-wide wait", waits)
+	}
+}
+
+// TestRateLimitWaitBudgetIsAtomicAcrossConcurrentReads keeps overlapping pages inside one bound.
+func TestRateLimitWaitBudgetIsAtomicAcrossConcurrentReads(t *testing.T) {
+	var calls, waits atomic.Int64
+	var attempts sync.Map
+	firstAttempts := make(chan struct{}, 2)
+	release := make(chan struct{})
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
+		value, _ := attempts.LoadOrStore(r.URL.Path, &atomic.Int64{})
+		if value.(*atomic.Int64).Add(1) == 1 {
+			firstAttempts <- struct{}{}
+			<-release
+			w.WriteHeader(http.StatusTooManyRequests)
+			return
+		}
+		_, _ = io.WriteString(w, workflowBody)
+	}))
+	defer server.Close()
+	a := api{base: server.URL, token: "offline-fixture-token", client: server.Client(), wait: func(context.Context, time.Duration) error {
+		waits.Add(1)
+		return nil
+	}, budget: &rateLimitWaitBudget{}}
+	results := make(chan error, 2)
+	for _, path := range []string{"/first", "/second"} {
+		go func() {
+			_, err := a.request(context.Background(), "GET", path)
+			results <- err
+		}()
+	}
+	<-firstAttempts
+	<-firstAttempts
+	close(release)
+	successes := 0
+	for range 2 {
+		if <-results == nil {
+			successes++
+		}
+	}
+	if successes != 1 || calls.Load() != 3 || waits.Load() != 1 {
+		t.Fatalf("concurrent budget was not atomic: successes=%d calls=%d waits=%d", successes, calls.Load(), waits.Load())
+	}
+}
+
+func TestPrimaryRateLimitResetDelay(t *testing.T) {
+	now := time.Unix(1_000, 0)
+	response := &http.Response{StatusCode: http.StatusForbidden, Header: http.Header{
+		"X-Ratelimit-Remaining": []string{"0"},
+		"X-Ratelimit-Reset":     []string{"1007"},
+	}}
+	delay, limited, err := rateLimitRetryDelay(response, nil, now)
+	if err != nil || !limited || delay != 7*time.Second {
+		t.Fatalf("primary rate-limit delay=%s limited=%t err=%v", delay, limited, err)
+	}
+}
+
+func TestRetryAfterHTTPDateDelay(t *testing.T) {
+	now := time.Unix(1_000, 0).UTC()
+	for _, tc := range []struct {
+		name      string
+		offset    time.Duration
+		wantDelay time.Duration
+		wantError bool
+	}{
+		{"bounded", 30 * time.Second, 30 * time.Second, false},
+		{"not-positive", 0, 0, true},
+		{"exceeds-bound", 61 * time.Second, 0, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			response := &http.Response{StatusCode: http.StatusTooManyRequests, Header: http.Header{
+				"Retry-After": []string{now.Add(tc.offset).Format(http.TimeFormat)},
+			}}
+			delay, limited, err := rateLimitRetryDelay(response, nil, now)
+			if (err != nil) != tc.wantError || (!tc.wantError && (!limited || delay != tc.wantDelay)) {
+				t.Fatalf("HTTP-date retry delay=%s limited=%t err=%v", delay, limited, err)
 			}
 		})
 	}
@@ -733,7 +874,7 @@ func TestRedirectsAndCancellationCannotReachAnotherTarget(t *testing.T) {
 		http.Redirect(w, r, other.URL, http.StatusTemporaryRedirect)
 	}))
 	defer server.Close()
-	a := api{server.URL, "offline-fixture-token", server.Client(), delay}
+	a := api{base: server.URL, token: "offline-fixture-token", client: server.Client(), wait: delay, budget: &rateLimitWaitBudget{}}
 	if _, err := a.list(context.Background(), fixtureRepo+"/actions/workflows", "workflows"); err == nil || reached {
 		t.Fatalf("redirect followed or accepted: %v reached=%t", err, reached)
 	}

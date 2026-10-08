@@ -80,6 +80,7 @@ EVENT_NAME=push RUN_CATALOGUE=true CATALOGUE_SCOPE=true GITHUB_OUTPUT="$work/out
   go -C "$root/.github/scripts/ci-selection" run . "$root" "$root/.github/scripts/ci-selection/inventory.json" "$work/workflow.json"
 selected="$(sed -n 's/^selected=//p' "$work/output")"
 [[ "$(jq 'length' <<< "$selected")" == 82 ]]
+full_selected="$selected"
 # Hosted CI reports these callers as skipped because their callee jobs are
 # intentionally excluded (dry-run, repository exclusion, or dependency-bot
 # suppression). They still exercise interfaces and retain original admission;
@@ -162,6 +163,39 @@ for caller in test-delete-workflow-runs-all test-delete-workflow-runs-minimal te
     exit 1
   fi
 done
+# The exact Go production files belong only to the three cleanup fixtures. Keep
+# tests unclassified so test-only changes retain complete catalogue coverage.
+source_fixture="$work/cleanup-source"
+mkdir -p "$source_fixture/.github/scripts/delete-workflow-runs"
+git init -q "$source_fixture"
+git -C "$source_fixture" config user.name 'CI fixture'
+git -C "$source_fixture" config user.email 'fixture@example.invalid'
+git -C "$source_fixture" config commit.gpgsign false
+printf 'package main\n' > "$source_fixture/.github/scripts/delete-workflow-runs/main.go"
+printf 'package main\n' > "$source_fixture/.github/scripts/delete-workflow-runs/main_test.go"
+git -C "$source_fixture" add -- .github/scripts/delete-workflow-runs/main.go .github/scripts/delete-workflow-runs/main_test.go
+git -C "$source_fixture" commit -qm 'test: cleanup source baseline'
+source_base="$(git -C "$source_fixture" rev-parse HEAD)"
+printf 'package main\n// changed\n' > "$source_fixture/.github/scripts/delete-workflow-runs/main.go"
+git -C "$source_fixture" add -- .github/scripts/delete-workflow-runs/main.go
+git -C "$source_fixture" commit -qm 'test: cleanup source change'
+source_head="$(git -C "$source_fixture" rev-parse HEAD)"
+: > "$work/output"
+EVENT_NAME=pull_request RUN_CATALOGUE=true CATALOGUE_SCOPE=true BASE_SHA="$source_base" HEAD_SHA="$source_head" GITHUB_OUTPUT="$work/output" \
+  go -C "$root/.github/scripts/ci-selection" run . "$source_fixture" "$root/.github/scripts/ci-selection/inventory.json" "$work/workflow.json"
+source_selected="$(sed -n 's/^selected=//p' "$work/output")"
+jq -e '. == ["test-delete-workflow-runs-all","test-delete-workflow-runs-minimal","test-delete-workflow-runs-specific"]' <<< "$source_selected" > /dev/null
+printf 'package main\n// changed\n' > "$source_fixture/.github/scripts/delete-workflow-runs/main_test.go"
+git -C "$source_fixture" add -- .github/scripts/delete-workflow-runs/main_test.go
+git -C "$source_fixture" commit -qm 'test: cleanup test change'
+test_head="$(git -C "$source_fixture" rev-parse HEAD)"
+: > "$work/output"
+EVENT_NAME=pull_request RUN_CATALOGUE=true CATALOGUE_SCOPE=true BASE_SHA="$source_head" HEAD_SHA="$test_head" GITHUB_OUTPUT="$work/output" \
+  go -C "$root/.github/scripts/ci-selection" run . "$source_fixture" "$root/.github/scripts/ci-selection/inventory.json" "$work/workflow.json"
+test_selected="$(sed -n 's/^selected=//p' "$work/output")"
+jq -en --argjson selected "$test_selected" --argjson expected "$full_selected" \
+  '$selected == $expected' > /dev/null
+
 # The same exact Git diff formerly selected every gated job. Its four reviewed
 # dependencies include two native callers and two inline controls; the authenticated
 # caller retains independent admission and is not promised as a mandatory execution.
