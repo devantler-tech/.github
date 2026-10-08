@@ -420,10 +420,13 @@ validates their inputs. Save only after success on a cache miss, without broad r
 prefixes. Keep `test-go-build-cache.sh` and the read-only workflow projection passing.
 
 **Go disk measurement:** `measure-disk-usage` defaults to false. Opted-in build,
-test and race coverage emit 1-second sampled filesystem headroom without changing
-cleanup or command results. Failed or incomplete observations make every capacity
+test and race coverage emit separate cleanup and Go-command receipts, including
+capacity before and after cleanup and 1-second sampled headroom. Measurement
+does not change the selected cleanup policy or command results. Failed or incomplete observations make every capacity
 field null with status `unknown`. The helper checkout is removed before consumer
-commands run; cancellation stops the command process group and sampler. Keep
+commands run; cancellation stops the command process group and sampler. The
+read-only projection admits Go for selected catalogue fixture callers even on
+workflow-only diffs; production and other consumers retain their Go path filter. Keep
 `test-go-disk-measurement.sh` and the generated read-only projection passing.
 The optional `minimum-free-disk-gib` budget defaults to zero (unconditional cleanup).
 A complete bounded capacity read can retain toolchains only when the opted-in budget

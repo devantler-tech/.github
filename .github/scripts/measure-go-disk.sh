@@ -2,7 +2,7 @@
 # Sample filesystem headroom while preserving the wrapped command's result.
 set -euo pipefail
 phase="${1:-}"
-case "$phase" in build|test|coverage) shift ;; *) echo 'Invalid Go disk measurement phase' >&2; exit 2 ;; esac
+case "$phase" in build|test|coverage|cleanup-build|cleanup-test|cleanup-coverage) shift ;; *) echo 'Invalid Go disk measurement phase' >&2; exit 2 ;; esac
 [[ "$#" -gt 0 ]] || { echo 'Missing measured command' >&2; exit 2; }
 measurement_unknown=false
 scratch="$(mktemp -d "${RUNNER_TEMP:-${TMPDIR:-/tmp}}/go-disk.XXXXXX")" || { scratch=''; measurement_unknown=true; }

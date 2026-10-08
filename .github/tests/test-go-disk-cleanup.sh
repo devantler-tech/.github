@@ -9,6 +9,10 @@ mkdir "$scratch/bin"
 export DISK_FIXTURE="$scratch"
 cat > "$scratch/bin/df" <<'DF'
 #!/usr/bin/env bash
+if [[ "$*" == '-Pk .' ]]; then
+  printf 'Filesystem 1024-blocks Used Available Capacity Mounted on\nfixture 104857600 10485760 94371840 10%% /\n'
+  exit 0
+fi
 case "${DISK_CASE:-high}" in
   empty) exit 0 ;;
   partial) printf 'Filesystem 1024-blocks Used Available Capacity Mounted on\nfixture 104857600 10485760 94371840 10%% /\n'; exit 7 ;;
@@ -37,7 +41,12 @@ SUDO
 chmod +x "$scratch/bin/df" "$scratch/bin/sudo"
 export PATH="$scratch/bin:$PATH"
 fail() { echo "FAIL: $*" >&2; exit 1; }
-for job in build test coverage; do
+cp "$root/.github/scripts/measure-go-disk.sh" "$scratch/measure-go-disk.sh"
+export RUNNER_TEMP="$scratch"
+for enabled in false true; do
+ export MEASURE_DISK_USAGE="$enabled"
+ for job in build test coverage; do
+  export GO_DISK_CLEANUP_PHASE="cleanup-$job"
   yq -r ".jobs.$job.steps[] | select(.name == \"🧹 Free disk space\") | .run" "$workflow" > "$scratch/step"
   [[ -s "$scratch/step" ]] || fail "missing $job cleanup"
   for budget in 32 0; do
@@ -74,6 +83,7 @@ for job in build test coverage; do
     [[ "$rc" == 2 && ! -s "$scratch/deletions" ]] || fail "$job accepted invalid input '$budget'"
   done
   MINIMUM_FREE_DISK_GIB=0 DELETE_EXIT=1 bash -euo pipefail "$scratch/step" > /dev/null || fail 'cleanup stopped being best-effort'
+ done
 done
 # Native large-consumer observations must run from reviewed main without write authority.
 trial="$root/.github/workflows/measure-go-disk.yaml"
