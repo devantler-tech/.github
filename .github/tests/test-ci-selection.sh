@@ -150,4 +150,27 @@ for caller in test-delete-workflow-runs-all test-delete-workflow-runs-minimal te
     exit 1
   fi
 done
+
+# The Go implementation belongs only to the three cleanup fixtures. Keep that
+# source path classified so a focused reliability fix does not allocate the
+# complete catalogue matrix merely to prove those same three callers.
+source_fixture="$work/cleanup-source"
+mkdir -p "$source_fixture/.github/scripts/delete-workflow-runs"
+git init -q "$source_fixture"
+git -C "$source_fixture" config user.name 'CI fixture'
+git -C "$source_fixture" config user.email 'fixture@example.invalid'
+git -C "$source_fixture" config commit.gpgsign false
+printf 'package main\n' > "$source_fixture/.github/scripts/delete-workflow-runs/main.go"
+git -C "$source_fixture" add -- .github/scripts/delete-workflow-runs/main.go
+git -C "$source_fixture" commit -qm 'test: cleanup source baseline'
+source_base="$(git -C "$source_fixture" rev-parse HEAD)"
+printf 'package main\n// changed\n' > "$source_fixture/.github/scripts/delete-workflow-runs/main.go"
+git -C "$source_fixture" add -- .github/scripts/delete-workflow-runs/main.go
+git -C "$source_fixture" commit -qm 'test: cleanup source change'
+source_head="$(git -C "$source_fixture" rev-parse HEAD)"
+: > "$work/output"
+EVENT_NAME=pull_request RUN_CATALOGUE=true CATALOGUE_SCOPE=true BASE_SHA="$source_base" HEAD_SHA="$source_head" GITHUB_OUTPUT="$work/output" \
+  go -C "$root/.github/scripts/ci-selection" run . "$source_fixture" "$root/.github/scripts/ci-selection/inventory.json" "$work/workflow.json"
+source_selected="$(sed -n 's/^selected=//p' "$work/output")"
+jq -e '. == ["test-delete-workflow-runs-all","test-delete-workflow-runs-minimal","test-delete-workflow-runs-specific"]' <<< "$source_selected" > /dev/null
 echo 'PASS: complete job inventory, owner coverage and preserved scheduling'

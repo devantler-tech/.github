@@ -136,6 +136,46 @@ type httpFailure struct{ status int }
 // Error reports an HTTP failure without exposing its response body or credentials.
 func (e httpFailure) Error() string { return fmt.Sprintf("HTTP %d", e.status) }
 
+const maxRateLimitRetryDelay = time.Minute
+
+func secondaryRateLimitMessage(raw []byte) bool {
+	if len(raw) == 0 || unambiguous(raw) != nil {
+		return false
+	}
+	var response struct {
+		Message string `json:"message"`
+	}
+	if json.Unmarshal(raw, &response) != nil {
+		return false
+	}
+	return strings.Contains(strings.ToLower(response.Message), "secondary rate limit")
+}
+
+// rateLimitRetryDelay distinguishes a documented GitHub rate-limit response
+// from an ordinary authorization failure. A server delay is honoured only when
+// it fits the workflow's bounded read-retry envelope; an invalid or longer delay
+// fails closed instead of retrying early or waiting without a bound.
+func rateLimitRetryDelay(response *http.Response, raw []byte) (time.Duration, bool, error) {
+	if response.StatusCode != http.StatusForbidden && response.StatusCode != http.StatusTooManyRequests {
+		return 0, false, nil
+	}
+	if value := strings.TrimSpace(response.Header.Get("Retry-After")); value != "" {
+		seconds, err := strconv.ParseUint(value, 10, 32)
+		if err != nil || seconds == 0 {
+			return 0, false, errors.New("invalid rate-limit retry delay")
+		}
+		delay := time.Duration(seconds) * time.Second
+		if delay > maxRateLimitRetryDelay {
+			return 0, false, errors.New("rate-limit retry delay exceeds bound")
+		}
+		return delay, true, nil
+	}
+	if response.StatusCode == http.StatusTooManyRequests || secondaryRateLimitMessage(raw) {
+		return maxRateLimitRetryDelay, true, nil
+	}
+	return 0, false, nil
+}
+
 // request confirms complete responses, retries transient reads and never retries writes.
 func (a api) request(ctx context.Context, method, path string) ([]byte, error) {
 	// Copy the client: redirects cannot forward credentials or change the target.
@@ -145,6 +185,7 @@ func (a api) request(ctx context.Context, method, path string) ([]byte, error) {
 		client.Timeout = 30 * time.Second
 	}
 	for attempt := 0; attempt < 3; attempt++ {
+		retryDelay := time.Duration(0)
 		req, err := http.NewRequestWithContext(ctx, method, a.base+path, nil)
 		if err != nil {
 			return nil, errors.New("invalid API request")
@@ -169,14 +210,26 @@ func (a api) request(ctx context.Context, method, path string) ([]byte, error) {
 				return raw, nil
 			}
 			err = httpFailure{response.StatusCode}
-			if response.StatusCode < 500 || response.StatusCode > 599 || method != "GET" {
+			if method != "GET" {
+				return raw, err
+			}
+			delay, rateLimited, delayErr := rateLimitRetryDelay(response, raw)
+			if delayErr != nil {
+				return raw, delayErr
+			}
+			if rateLimited {
+				retryDelay = delay
+			} else if response.StatusCode < 500 || response.StatusCode > 599 {
 				return raw, err
 			}
 		}
 		if method != "GET" || attempt == 2 || ctx.Err() != nil {
 			return nil, errors.New("API request failed or outcome is unknown")
 		}
-		if err := a.wait(ctx, time.Duration(2<<attempt)*time.Second); err != nil {
+		if retryDelay == 0 {
+			retryDelay = time.Duration(2<<attempt) * time.Second
+		}
+		if err := a.wait(ctx, retryDelay); err != nil {
 			return nil, err
 		}
 	}

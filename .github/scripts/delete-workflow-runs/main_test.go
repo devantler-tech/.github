@@ -657,17 +657,32 @@ func TestPaginationFailuresBeforeMutation(t *testing.T) {
 // TestReadRetriesAreBoundedAndOnlyForTransientFailures preserves recovery without retrying authorization failures.
 func TestReadRetriesAreBoundedAndOnlyForTransientFailures(t *testing.T) {
 	for _, tc := range []struct {
+		name                       string
 		status, failures, attempts int
+		retryAfter, failureBody    string
 		succeeds                   bool
+		waits                      []time.Duration
 	}{
-		{503, 2, 3, true}, {503, 4, 3, false}, {403, 4, 1, false},
+		{"server-errors-recover", 503, 2, 3, "", "", true, []time.Duration{2 * time.Second, 4 * time.Second}},
+		{"server-errors-stop", 503, 4, 3, "", "", false, []time.Duration{2 * time.Second, 4 * time.Second}},
+		{"authorization-denial", 403, 4, 1, "", `{"message":"Resource not accessible by integration"}`, false, []time.Duration{}},
+		{"rate-limited-forbidden-recovers", 403, 2, 3, "7", "", true, []time.Duration{7 * time.Second, 7 * time.Second}},
+		{"secondary-rate-limit-message-recovers", 403, 2, 3, "", `{"message":"You have exceeded a secondary rate limit."}`, true, []time.Duration{60 * time.Second, 60 * time.Second}},
+		{"too-many-requests-recovers", 429, 2, 3, "5", "", true, []time.Duration{5 * time.Second, 5 * time.Second}},
+		{"too-many-requests-without-delay-recovers", 429, 2, 3, "", "", true, []time.Duration{60 * time.Second, 60 * time.Second}},
+		{"malformed-rate-limit-delay", 403, 4, 1, "later", "", false, []time.Duration{}},
+		{"unbounded-rate-limit-delay", 403, 4, 1, "61", "", false, []time.Duration{}},
 	} {
-		t.Run(fmt.Sprint(tc), func(t *testing.T) {
+		t.Run(tc.name, func(t *testing.T) {
 			calls := 0
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				calls++
 				if calls <= tc.failures {
+					if tc.retryAfter != "" {
+						w.Header().Set("Retry-After", tc.retryAfter)
+					}
 					w.WriteHeader(tc.status)
+					_, _ = io.WriteString(w, tc.failureBody)
 					return
 				}
 				_, _ = io.WriteString(w, workflowBody)
@@ -679,12 +694,8 @@ func TestReadRetriesAreBoundedAndOnlyForTransientFailures(t *testing.T) {
 			if (err == nil) != tc.succeeds || calls != tc.attempts {
 				t.Fatalf("retry outcome err=%v attempts=%d; want %d success=%t", err, calls, tc.attempts, tc.succeeds)
 			}
-			want := []time.Duration{}
-			if tc.attempts == 3 {
-				want = []time.Duration{2 * time.Second, 4 * time.Second}
-			}
-			if !reflect.DeepEqual(waits, want) {
-				t.Fatalf("retry delays=%v want=%v", waits, want)
+			if !reflect.DeepEqual(waits, tc.waits) {
+				t.Fatalf("retry delays=%v want=%v", waits, tc.waits)
 			}
 		})
 	}

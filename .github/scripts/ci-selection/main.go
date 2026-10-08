@@ -20,6 +20,7 @@ const scheduling = "github.event_name != 'merge_group' && !startsWith(github.eve
 
 const cleanupWorkflow = ".github/workflows/delete-workflow-runs.yaml"
 const cleanupProjection = ".github/workflows/delete-workflow-runs-readonly.yaml"
+const cleanupImplementation = ".github/scripts/delete-workflow-runs/"
 
 type inventory struct {
 	Always            []string            `json:"always"`
@@ -46,8 +47,12 @@ func validateInventory(i inventory, w workflow) ([]string, error) {
 	for id, j := range w.Jobs {
 		if j.Uses == "./"+cleanupProjection {
 			paths := i.Jobs[id]
-			if len(paths) != 2 || !((paths[0] == cleanupWorkflow && paths[1] == cleanupProjection) ||
-				(paths[1] == cleanupWorkflow && paths[0] == cleanupProjection)) {
+			owners := map[string]bool{}
+			for _, path := range paths {
+				owners[path] = true
+			}
+			if len(paths) != 3 || len(owners) != 3 || !owners[cleanupWorkflow] ||
+				!owners[cleanupProjection] || !owners[cleanupImplementation] {
 				return nil, fmt.Errorf("incomplete cleanup workflow owners for %s", id)
 			}
 		}
@@ -75,7 +80,7 @@ func validateInventory(i inventory, w workflow) ([]string, error) {
 		seen[id] = true
 		for _, p := range paths {
 			if !regexp.MustCompile(`^actions/[a-z0-9-]+/$`).MatchString(p) &&
-				!((p == cleanupWorkflow || p == cleanupProjection) && j.Uses == "./"+cleanupProjection) {
+				!((p == cleanupWorkflow || p == cleanupProjection || p == cleanupImplementation) && j.Uses == "./"+cleanupProjection) {
 				return nil, fmt.Errorf("invalid selective owner %q", p)
 			}
 		}
