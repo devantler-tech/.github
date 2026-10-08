@@ -15,6 +15,7 @@ func cleanupSelectionFixture(t *testing.T) (inventory, workflow) {
 		".github/workflows/delete-workflow-runs.yaml",
 		".github/workflows/delete-workflow-runs-readonly.yaml",
 		cleanupImplementation,
+		cleanupModule,
 	}
 	i.Preserved = map[string]job{"test-workflow": {If: "${{ " + scheduling + " }}"}}
 	w := workflow{Jobs: map[string]job{
@@ -41,7 +42,8 @@ func TestCleanupWorkflowSelectsItsPreservedCallers(t *testing.T) {
 	for _, path := range []string{
 		".github/workflows/delete-workflow-runs.yaml",
 		".github/workflows/delete-workflow-runs-readonly.yaml",
-		cleanupImplementation + "main.go",
+		cleanupImplementation,
+		cleanupModule,
 	} {
 		if got := selectJobs(i, "pull_request", []string{path}); !reflect.DeepEqual(got, []string{"test-workflow"}) {
 			t.Fatalf("cleanup-only change allocated unrelated catalogue jobs: %v", got)
@@ -50,7 +52,7 @@ func TestCleanupWorkflowSelectsItsPreservedCallers(t *testing.T) {
 }
 
 func TestCleanupWorkflowCallerInventoryFailsClosed(t *testing.T) {
-	for _, mutation := range []string{"wrong caller", "missing production", "missing projection", "missing implementation", "unclassified workflow"} {
+	for _, mutation := range []string{"wrong caller", "missing production", "missing projection", "missing implementation", "missing module", "unclassified workflow"} {
 		t.Run(mutation, func(t *testing.T) {
 			i, w := cleanupSelectionFixture(t)
 			switch mutation {
@@ -59,9 +61,11 @@ func TestCleanupWorkflowCallerInventoryFailsClosed(t *testing.T) {
 			case "missing production":
 				i.Jobs["test-workflow"] = i.Jobs["test-workflow"][1:]
 			case "missing projection":
-				i.Jobs["test-workflow"] = []string{i.Jobs["test-workflow"][0], cleanupImplementation}
+				i.Jobs["test-workflow"] = []string{i.Jobs["test-workflow"][0], cleanupImplementation, cleanupModule}
 			case "missing implementation":
-				i.Jobs["test-workflow"] = i.Jobs["test-workflow"][:2]
+				i.Jobs["test-workflow"] = []string{i.Jobs["test-workflow"][0], i.Jobs["test-workflow"][1], cleanupModule}
+			case "missing module":
+				i.Jobs["test-workflow"] = i.Jobs["test-workflow"][:3]
 			case "unclassified workflow":
 				i.Jobs["test-workflow"] = []string{".github/workflows/publish-app.yaml"}
 			}
@@ -81,6 +85,7 @@ func TestCleanupWorkflowPathsRequireExactMatches(t *testing.T) {
 		".github/workflows/publish-app.yaml",
 		".github/workflows/ci.yaml",
 		".github/scripts/generate-cleanup-readonly.sh",
+		".github/scripts/delete-workflow-runs/main_test.go",
 		".github/scripts/delete-workflow-runs-other/main.go",
 	} {
 		if got := selectJobs(i, "pull_request", []string{path}); !reflect.DeepEqual(got, full) {

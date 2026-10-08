@@ -20,7 +20,8 @@ const scheduling = "github.event_name != 'merge_group' && !startsWith(github.eve
 
 const cleanupWorkflow = ".github/workflows/delete-workflow-runs.yaml"
 const cleanupProjection = ".github/workflows/delete-workflow-runs-readonly.yaml"
-const cleanupImplementation = ".github/scripts/delete-workflow-runs/"
+const cleanupImplementation = ".github/scripts/delete-workflow-runs/main.go"
+const cleanupModule = ".github/scripts/delete-workflow-runs/go.mod"
 
 type inventory struct {
 	Always            []string            `json:"always"`
@@ -42,8 +43,9 @@ func selectionGuard(id string) string {
 }
 
 func validateInventory(i inventory, w workflow) ([]string, error) {
-	// All native cleanup callers depend on both the production source and its
-	// generated read-only projection. Their event-specific admission stays intact.
+	// All native cleanup callers depend on the exact production source, module,
+	// and generated read-only projection. Test files remain unclassified so their
+	// changes retain complete catalogue coverage.
 	for id, j := range w.Jobs {
 		if j.Uses == "./"+cleanupProjection {
 			paths := i.Jobs[id]
@@ -51,8 +53,8 @@ func validateInventory(i inventory, w workflow) ([]string, error) {
 			for _, path := range paths {
 				owners[path] = true
 			}
-			if len(paths) != 3 || len(owners) != 3 || !owners[cleanupWorkflow] ||
-				!owners[cleanupProjection] || !owners[cleanupImplementation] {
+			if len(paths) != 4 || len(owners) != 4 || !owners[cleanupWorkflow] ||
+				!owners[cleanupProjection] || !owners[cleanupImplementation] || !owners[cleanupModule] {
 				return nil, fmt.Errorf("incomplete cleanup workflow owners for %s", id)
 			}
 		}
@@ -80,7 +82,8 @@ func validateInventory(i inventory, w workflow) ([]string, error) {
 		seen[id] = true
 		for _, p := range paths {
 			if !regexp.MustCompile(`^actions/[a-z0-9-]+/$`).MatchString(p) &&
-				!((p == cleanupWorkflow || p == cleanupProjection || p == cleanupImplementation) && j.Uses == "./"+cleanupProjection) {
+				!((p == cleanupWorkflow || p == cleanupProjection || p == cleanupImplementation || p == cleanupModule) &&
+					j.Uses == "./"+cleanupProjection) {
 				return nil, fmt.Errorf("invalid selective owner %q", p)
 			}
 		}

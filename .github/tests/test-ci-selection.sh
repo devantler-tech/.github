@@ -151,9 +151,8 @@ for caller in test-delete-workflow-runs-all test-delete-workflow-runs-minimal te
   fi
 done
 
-# The Go implementation belongs only to the three cleanup fixtures. Keep that
-# source path classified so a focused reliability fix does not allocate the
-# complete catalogue matrix merely to prove those same three callers.
+# The exact Go production files belong only to the three cleanup fixtures. Keep
+# tests unclassified so test-only changes retain complete catalogue coverage.
 source_fixture="$work/cleanup-source"
 mkdir -p "$source_fixture/.github/scripts/delete-workflow-runs"
 git init -q "$source_fixture"
@@ -161,7 +160,8 @@ git -C "$source_fixture" config user.name 'CI fixture'
 git -C "$source_fixture" config user.email 'fixture@example.invalid'
 git -C "$source_fixture" config commit.gpgsign false
 printf 'package main\n' > "$source_fixture/.github/scripts/delete-workflow-runs/main.go"
-git -C "$source_fixture" add -- .github/scripts/delete-workflow-runs/main.go
+printf 'package main\n' > "$source_fixture/.github/scripts/delete-workflow-runs/main_test.go"
+git -C "$source_fixture" add -- .github/scripts/delete-workflow-runs/main.go .github/scripts/delete-workflow-runs/main_test.go
 git -C "$source_fixture" commit -qm 'test: cleanup source baseline'
 source_base="$(git -C "$source_fixture" rev-parse HEAD)"
 printf 'package main\n// changed\n' > "$source_fixture/.github/scripts/delete-workflow-runs/main.go"
@@ -173,4 +173,14 @@ EVENT_NAME=pull_request RUN_CATALOGUE=true CATALOGUE_SCOPE=true BASE_SHA="$sourc
   go -C "$root/.github/scripts/ci-selection" run . "$source_fixture" "$root/.github/scripts/ci-selection/inventory.json" "$work/workflow.json"
 source_selected="$(sed -n 's/^selected=//p' "$work/output")"
 jq -e '. == ["test-delete-workflow-runs-all","test-delete-workflow-runs-minimal","test-delete-workflow-runs-specific"]' <<< "$source_selected" > /dev/null
+printf 'package main\n// changed\n' > "$source_fixture/.github/scripts/delete-workflow-runs/main_test.go"
+git -C "$source_fixture" add -- .github/scripts/delete-workflow-runs/main_test.go
+git -C "$source_fixture" commit -qm 'test: cleanup test change'
+test_head="$(git -C "$source_fixture" rev-parse HEAD)"
+: > "$work/output"
+EVENT_NAME=pull_request RUN_CATALOGUE=true CATALOGUE_SCOPE=true BASE_SHA="$source_head" HEAD_SHA="$test_head" GITHUB_OUTPUT="$work/output" \
+  go -C "$root/.github/scripts/ci-selection" run . "$source_fixture" "$root/.github/scripts/ci-selection/inventory.json" "$work/workflow.json"
+test_selected="$(sed -n 's/^selected=//p' "$work/output")"
+jq -e --argjson selected "$test_selected" '$selected == (.jobs | keys)' \
+  "$root/.github/scripts/ci-selection/inventory.json" > /dev/null
 echo 'PASS: complete job inventory, owner coverage and preserved scheduling'
