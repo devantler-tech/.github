@@ -8,9 +8,9 @@ metadata:
     # Type=Application; AutomaticallyRequestCopilotCodeReview=false.
     crossplane.io/external-name: business-site
 spec:
-  # Adopt Observe-first. Promotion follows verified production observation;
-  # never allow Delete or pair active Update with LateInitialize.
-  managementPolicies: ["Observe", "LateInitialize"]
+  # Reconcile the adopted repository's declared settings without Delete or
+  # LateInitialize. Production observation is recorded on issue #300.
+  managementPolicies: ["Observe", "Create", "Update"]
   forProvider:
     name: business-site
     description: "Devantler Tech's public business website, journal and reusable-product showcase."

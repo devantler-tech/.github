@@ -28,7 +28,7 @@ resources:
   - fleet-gitops.yaml
   - cloudflare.yaml
   - data-product-controller.yaml
-  # New website repository: Observe-first adoption (#530).
+  # Adopted public business website: managed settings (#300).
   - business-site.yaml
   # Adopted with Observe + LateInitialize, then promoted once their live
   # settings had been copied into forProvider (#115).
