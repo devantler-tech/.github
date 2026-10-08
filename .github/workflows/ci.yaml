@@ -3471,6 +3471,9 @@ jobs:
       - name: Check opt-in Go disk observations and failure controls
         run: bash .github/tests/test-go-disk-measurement.sh
 
+      - name: Check capacity-based Go disk cleanup and failure controls
+        run: bash .github/tests/test-go-disk-cleanup.sh
+
       - name: 🔐 Check every eligible step-bearing CI job hardens the runner first
         shell: bash
         run: bash .github/tests/test-ci-harden-runner-first.sh
@@ -3738,6 +3741,7 @@ jobs:
     with:
       go-memory-limit: 4GiB
       measure-disk-usage: true
+      minimum-free-disk-gib: 32
       working-directory: .github/tests/go-valid-fixture
       # The OFF state, passed explicitly now that the input defaults to true: the read-only path
       # must still run the fixers and reject an unexpected dirty tree without committing to the
@@ -3758,6 +3762,7 @@ jobs:
       apply-signed-fixes: false
       manual-workflow-fixes: true
       measure-disk-usage: true
+      minimum-free-disk-gib: 32
     permissions:
       contents: read
       pull-requests: read
@@ -3811,18 +3816,19 @@ jobs:
       pull-requests: read
       code-quality: write # callers must grant this for the coverage upload (GitHub Code Quality)
 
-  # The ordinary fixture call above omits maintenance-default-branch (OFF).
-  # This call instantiates ON; trigger fixtures cover actual default-branch refs,
+  # The ordinary fixture call above inherits maintenance-default-branch (ON).
+  # This call preserves explicit OFF; trigger fixtures cover actual default-branch refs,
   # which cannot be selected by a pull-request-triggered reusable-workflow call.
   test-validate-go-project-maintenance-default-branch:
     needs: [select-ci-tests]
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-validate-go-project-maintenance-default-branch') }}"
-    name: "[Test] Validate Go Project - Default-Branch Maintenance Opted In"
+    name: "[Test] Validate Go Project - Default-Branch Maintenance Opted Out"
     uses: ./.github/workflows/validate-go-project-readonly.yaml
     with:
       working-directory: .github/tests/go-valid-fixture
-      maintenance-default-branch: true
+      maintenance-default-branch: false
       measure-disk-usage: true
+      minimum-free-disk-gib: 32
       apply-signed-fixes: false
     permissions:
       contents: read

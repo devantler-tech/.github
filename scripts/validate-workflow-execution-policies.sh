@@ -39,7 +39,8 @@
 # Exit codes: 0 every file passes · 1 at least one file fails · 2 invalid usage or no files.
 set -euo pipefail
 
-dir="${1:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/workflow-execution-policies}"
+repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+dir="${1:-$repo_root/workflow-execution-policies}"
 [ -d "$dir" ] || { echo "validate-workflow-execution-policies: no directory $dir" >&2; exit 2; }
 
 shopt -s nullglob
@@ -64,8 +65,9 @@ approved_active='["restrict-deploy-starters-go-template.json","restrict-deploy-s
 failed=0
 for f in "${files[@]}"; do
   # One problem per line; an empty result means the file passes.
-  problems="$(jq -r --argjson events "$events" --argjson actor_types "$actor_types" \
+  problems="$(jq -L "$repo_root/scripts" -r --argjson events "$events" --argjson actor_types "$actor_types" \
     --argjson approved_active "$approved_active" --arg file "${f##*/}" '
+    include "workflow-policy-selectors";
     def privileged: ["pull_request_target", "workflow_run"];
     if type != "object" then "not a JSON object" else
       ( if (.name | type) != "string" or .name == "" then "name must be a non-empty string" else empty end ),
@@ -133,6 +135,8 @@ for f in "${files[@]}"; do
                 and (.include | length) + (.exclude | length) == 0
             then "workflow_path needs at least one include or exclude pattern" else empty end )
         end ),
+      ( if (.conditions | valid_workflow_selectors) then empty
+        else "conditions contain unsupported or malformed selector fields" end ),
       ( (.conditions.workflow_path.include // []) as $inc
         | if ($inc | index("~ALL")) != null and ($inc | length) > 1
           then "workflow_path include mixes ~ALL with other patterns" else empty end ),

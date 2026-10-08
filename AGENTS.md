@@ -412,6 +412,13 @@ credential, and a scenario set that no longer covers every comment mode and resu
 the action. A bump of the action pin that changes its conversation or its messages fails the
 affected leg: read what changed in the job log before updating the scenario file.
 
+**Default-branch Go maintenance:** `maintenance-default-branch` defaults to true
+after the KSail pilot and complete caller inventory. Explicit false remains the
+rollout rollback. Tidy and dead-code findings fail read-only validation without
+default-branch writes. Keep inherited-default and explicit-opt-out callers,
+renamed branches, PR/feature routing, merge-queue exclusions and actual finding
+rejection covered. Final input and concurrency-discriminator removal remain #276.
+
 **Go compilation caches:** Test and race coverage retain separate `GOCACHE` archives,
 keyed by job, runner OS/architecture, installed Go version, working directory and that
 module's `go.mod`/`go.sum`. The existing setup-go module cache stays enabled. An exact
@@ -421,14 +428,18 @@ prefixes. Keep `test-go-build-cache.sh` and the read-only workflow projection pa
 
 **Go disk measurement:** `measure-disk-usage` defaults to false. Opted-in build,
 test and race coverage emit separate cleanup and Go-command receipts, including
-capacity before and after cleanup and 1-second sampled headroom. Cleanup stays
-enabled and command results are unchanged. Failed or incomplete observations make every capacity
+capacity before and after cleanup and 1-second sampled headroom. Measurement
+does not change the selected cleanup policy or command results. Failed or incomplete observations make every capacity
 field null with status `unknown`. The helper checkout is removed before consumer
 commands run; cancellation stops the command process group and sampler. The
 read-only projection admits Go for selected catalogue fixture callers even on
 workflow-only diffs; production and other consumers retain their Go path filter. Keep
 `test-go-disk-measurement.sh` and the generated read-only projection passing.
-Rollout, representative-consumer measurement and retirement remain in #527.
+The optional `minimum-free-disk-gib` budget defaults to zero (unconditional cleanup).
+A complete bounded capacity read can retain toolchains only when the opted-in budget
+is met; unknown capacity retains reclamation. Keep `test-go-disk-cleanup.sh` passing.
+The default-off, reviewed-main `measure-go-disk.yaml` evaluation uses a pinned public
+KSail baseline with read-only authority. Production budgets and broader rollout remain in #527.
 
 Every `.github/tests/test-*.sh` is a test entrypoint and must have an explicit invocation in a
 `ci.yaml` step's `run:` block. Put `bash .github/tests/test-name.sh` (or the executable path) in a
