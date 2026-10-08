@@ -425,7 +425,11 @@ cleanup or command results. Failed or incomplete observations make every capacit
 field null with status `unknown`. The helper checkout is removed before consumer
 commands run; cancellation stops the command process group and sampler. Keep
 `test-go-disk-measurement.sh` and the generated read-only projection passing.
-Rollout, representative-consumer measurement and retirement remain in #527.
+The optional `minimum-free-disk-gib` budget defaults to zero (unconditional cleanup).
+A complete bounded capacity read can retain toolchains only when the opted-in budget
+is met; unknown capacity retains reclamation. Keep `test-go-disk-cleanup.sh` passing.
+The default-off, reviewed-main `measure-go-disk.yaml` evaluation uses a pinned public
+KSail baseline with read-only authority. Production budgets and broader rollout remain in #527.
 
 Every `.github/tests/test-*.sh` is a test entrypoint and must have an explicit invocation in a
 `ci.yaml` step's `run:` block. Put `bash .github/tests/test-name.sh` (or the executable path) in a

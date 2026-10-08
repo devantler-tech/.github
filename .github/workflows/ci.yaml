@@ -3471,6 +3471,9 @@ jobs:
       - name: Check opt-in Go disk observations and failure controls
         run: bash .github/tests/test-go-disk-measurement.sh
 
+      - name: Check capacity-based Go disk cleanup and failure controls
+        run: bash .github/tests/test-go-disk-cleanup.sh
+
       - name: 🔐 Check every eligible step-bearing CI job hardens the runner first
         shell: bash
         run: bash .github/tests/test-ci-harden-runner-first.sh
@@ -3738,6 +3741,7 @@ jobs:
     with:
       go-memory-limit: 4GiB
       measure-disk-usage: true
+      minimum-free-disk-gib: 32
       working-directory: .github/tests/go-valid-fixture
       # The OFF state, passed explicitly now that the input defaults to true: the read-only path
       # must still run the fixers and reject an unexpected dirty tree without committing to the
@@ -3758,6 +3762,7 @@ jobs:
       apply-signed-fixes: false
       manual-workflow-fixes: true
       measure-disk-usage: true
+      minimum-free-disk-gib: 32
     permissions:
       contents: read
       pull-requests: read
@@ -3823,6 +3828,7 @@ jobs:
       working-directory: .github/tests/go-valid-fixture
       maintenance-default-branch: true
       measure-disk-usage: true
+      minimum-free-disk-gib: 32
       apply-signed-fixes: false
     permissions:
       contents: read
