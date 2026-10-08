@@ -88,6 +88,60 @@ func TestCleanupWorkflowPathsRequireExactMatches(t *testing.T) {
 	}
 }
 
+func TestCleanupProductionSourceGitStatusRetainsFullFallback(t *testing.T) {
+	for _, subject := range []string{cleanupImplementation, cleanupModule} {
+		for _, kind := range []string{"modified", "added", "deleted", "symlink"} {
+			t.Run(filepath.Base(subject)+"/"+kind, func(t *testing.T) {
+				dir, _, git := gitFixture(t)
+				path := filepath.Join(dir, subject)
+				if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+					t.Fatal(err)
+				}
+				if kind != "added" {
+					if err := os.WriteFile(path, []byte("base\n"), 0600); err != nil {
+						t.Fatal(err)
+					}
+					git("add", "--", subject)
+					git("commit", "-qm", "cleanup source baseline")
+				}
+				base := git("rev-parse", "HEAD")
+				switch kind {
+				case "modified", "added":
+					if err := os.WriteFile(path, []byte("changed\n"), 0600); err != nil {
+						t.Fatal(err)
+					}
+				case "deleted":
+					if err := os.Remove(path); err != nil {
+						t.Fatal(err)
+					}
+				case "symlink":
+					if err := os.Remove(path); err != nil {
+						t.Fatal(err)
+					}
+					if err := os.Symlink("missing", path); err != nil {
+						t.Fatal(err)
+					}
+				}
+				git("add", "--", subject)
+				git("commit", "-qm", "cleanup source change")
+				paths, err := changedPaths(dir, base, git("rev-parse", "HEAD"))
+				if err != nil {
+					t.Fatal(err)
+				}
+				i, _ := cleanupSelectionFixture(t)
+				got := selectJobs(i, "pull_request", paths)
+				if kind == "modified" {
+					if !reflect.DeepEqual(got, []string{"test-workflow"}) {
+						t.Fatalf("ordinary modification lost cleanup selection: %v", got)
+					}
+				} else if len(got) != len(i.Jobs) {
+					t.Fatalf("%s incorrectly narrowed coverage: %v", kind, got)
+				}
+			})
+		}
+	}
+}
+
 func TestCleanupWorkflowEntrypointRequiresNativeCallerSuccess(t *testing.T) {
 	dir, _, git := gitFixture(t)
 	path := filepath.Join(dir, ".github/workflows/delete-workflow-runs.yaml")

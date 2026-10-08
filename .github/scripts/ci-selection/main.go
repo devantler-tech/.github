@@ -24,6 +24,12 @@ const cleanupImplementation = ".github/scripts/delete-workflow-runs/main.go"
 const cleanupModule = ".github/scripts/delete-workflow-runs/go.mod"
 const dotnetWorkflow = ".github/workflows/run-dotnet-tests.yaml"
 
+var ordinarySelectiveFiles = map[string]bool{
+	cleanupImplementation: true,
+	cleanupModule:         true,
+	dotnetWorkflow:        true,
+}
+
 // These include inline hosted and credential controls, not just reusable callers.
 var dotnetOwners = map[string]bool{
 	"test-run-dotnet-tests-gate-lockstep":          false,
@@ -238,18 +244,18 @@ func changedPaths(root, base, head string) ([]string, error) {
 	}
 	paths := strings.Split(string(out[:len(out)-1]), "\x00")
 	for _, p := range paths {
-		if p != dotnetWorkflow {
+		if !ordinarySelectiveFiles[p] {
 			continue
 		}
-		// New/deleted files and type changes are not an ordinary modification of
-		// the reviewed workflow. Keep full coverage instead of trusting name-only
+		// New/deleted files and type changes are not ordinary modifications of an
+		// exact selective owner. Keep full coverage instead of trusting name-only
 		// evidence. Disable renames and require both complete regular-file blobs.
-		raw, err := git("diff", "--raw", "--no-abbrev", "--no-renames", "-z", mergeBase, head, "--", dotnetWorkflow)
+		raw, err := git("diff", "--raw", "--no-abbrev", "--no-renames", "-z", mergeBase, head, "--", p)
 		if err != nil {
 			return nil, err
 		}
 		record := strings.Split(string(raw), "\x00")
-		valid := len(record) == 3 && record[1] == dotnetWorkflow && record[2] == ""
+		valid := len(record) == 3 && record[1] == p && record[2] == ""
 		if valid {
 			fields := strings.Fields(record[0])
 			valid = len(fields) == 5 && fields[0] == ":100644" && fields[1] == "100644" &&
@@ -258,8 +264,8 @@ func changedPaths(root, base, head string) ([]string, error) {
 		if !valid {
 			// An unclassified marker deliberately invokes the existing full fallback.
 			paths = append(paths, ".ci-selection-unproven-workflow-change")
+			break
 		}
-		break
 	}
 	return paths, nil
 }
