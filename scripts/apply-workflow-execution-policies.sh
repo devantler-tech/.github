@@ -64,13 +64,8 @@ tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
 
 # One comparable shape for a file and for GitHub's copy of it.
-normalize='
-  def members: map({name, property_values: (.property_values // [] | sort)}) | sort;
-  def condition:
-    if .key == "repository_id" then .value = {repository_ids: (.value.repository_ids // [] | sort)}
-    elif .key == "repository_property" then
-      .value = {include: (.value.include // [] | members), exclude: (.value.exclude // [] | members)}
-    else .value = {include: (.value.include // [] | sort), exclude: (.value.exclude // [] | sort)} end;
+normalize="$(cat <<'JQ'
+  include "workflow-policy-selectors";
   def rule:
     if .type == "restrict_actions_actors" then
       {type, parameters: {allowed_actors: (.parameters.allowed_actors // [] | map({id, type}) | sort_by(.type, .id))}}
@@ -80,9 +75,18 @@ normalize='
   {
     name,
     enforcement,
-    conditions: (.conditions // {} | with_entries(select(.value != null) | condition)),
+    conditions: (.conditions
+      | if type == "object" and (keys - ["repository_name", "repository_id", "repository_property", "workflow_path"] | length) == 0
+        then with_entries(select(.value != null)) else . end
+      | if valid_workflow_selectors then normalize_workflow_selectors
+        else error("unsupported or malformed workflow policy selectors") end
+      # Protection has no documented default; manage it only when declared.
+      | if ($wanted[0].conditions.repository_name // {} | has("protected")) then .
+        else del(.repository_name.protected) end),
     rules: (.rules // [] | map(rule) | sort_by(.type))
-  }'
+  }
+JQ
+)"
 
 shopt -s nullglob
 files=("$dir"/*.json)
@@ -92,7 +96,10 @@ names="$tmp/names"
 : >"$names"
 for f in "${files[@]}"; do
   base="${f##*/}"
-  jq 'del(.exception)' "$f" >"$desired/$base"
+  # Send the same explicit defaults we compare, rather than relying on PUT
+  # to reset an omitted selector parameter to its creation-time default.
+  jq -L "$repo_root/scripts" 'include "workflow-policy-selectors";
+    del(.exception) | .conditions |= normalize_workflow_selectors' "$f" >"$desired/$base"
   printf '%s\t%s\n' "$(jq -r .name "$f")" "$base" >>"$names"
 done
 # The name is what ties a file to its live policy, so two files may not share one.
@@ -178,7 +185,7 @@ while IFS=$'\t' read -r name base; do
   fi
   # Normalizing here, not in the write pass, means a shape the comparison cannot handle stops
   # the run before the first write rather than midway through it.
-  if ! have="$(jq -c "$normalize" 2>/dev/null <<<"$policy")" || [ -z "$have" ]; then
+  if ! have="$(jq -L "$repo_root/scripts" --slurpfile wanted "$desired/$base" -c "$normalize" 2>/dev/null <<<"$policy")" || [ -z "$have" ]; then
     echo "UNKNOWN  $base: policy $live_id's full read could not be compared" >&2
     unreadable=1
     continue
@@ -193,7 +200,7 @@ fi
 
 failed=0
 while IFS=$'\t' read -r name base; do
-  want="$(jq -c "$normalize" "$desired/$base")"
+  want="$(jq -L "$repo_root/scripts" --slurpfile wanted "$desired/$base" -c "$normalize" "$desired/$base")"
   live_id=""
   have=""
   if [ -f "$full/$base.id" ]; then
@@ -240,7 +247,7 @@ while IFS=$'\t' read -r name base; do
     failed=1
     continue
   fi
-  got="$(jq -c "$normalize" <<<"$stored" 2>/dev/null || true)"
+  got="$(jq -L "$repo_root/scripts" --slurpfile wanted "$desired/$base" -c "$normalize" <<<"$stored" 2>/dev/null || true)"
   if [ "$got" != "$want" ]; then
     echo "MISMATCH $base: policy $id was stored differently"
     echo "         sent:   $want"
