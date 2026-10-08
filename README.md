@@ -1149,6 +1149,7 @@ jobs:
 | `apply-signed-fixes`  | Input (boolean) | `true`  | No       | Commit each fixer lane's auto-fixes back to the pull request branch as a signed commit (on by default; the org-required direct run is opted in by its workflow ref). Pass false to keep a caller read-only. Forks, Dependabot/Renovate branches and non-PR events are always read-only and fail with their diff if changes remain; other same-repository automation branches (release, bot-authored) do receive fixer commits like any contributor branch                                                                                                               |
 | `working-directory`   | Input (string)  | `""`    | No       | Go module directory to validate. Empty means the repository root                                                                                                                                                                |
 | `go-memory-limit` | Input (string) | `8GiB` | No | Soft Go heap limit for deadcode and vulnerability analysis; lower it for smaller runners. Decimal Go units are accepted up to 8GiB; total runner memory is not capped. |
+| `minimum-free-disk-gib` | Input (number) | `0` | No | Opt in to retaining toolchains when a complete root-filesystem observation meets a measured whole-number GiB budget (1–1024). Zero and unknown capacity retain cleanup. |
 | `measure-disk-usage` | Input (boolean) | `false` | No | Record sampled filesystem headroom around cleanup and during build, test and race coverage; cleanup and Go results stay unchanged. |
 | `manual-workflow-fixes` | Input (boolean) | `false` | No | Opt in to complete workflow-file patches for manual application, including after lint errors; existing upload eligibility still applies |
 | `test-default-branch` | Input (boolean) | `true`  | No       | Run the Go test suite on every default-branch run, not just when the diff touched a Go file. On by default: a test can take a non-Go file as its subject, so a diff-only gate leaves the default branch reporting green over a suite it never ran. Set to `false` to accept a default branch that can report green without the suite having run          |
@@ -1177,6 +1178,7 @@ generator and regenerate it; CI checks the complete projection and credential bo
 | `pr-owner` | Input (string) | - | No | Pull request author login |
 | `working-directory` | Input (string) | `""` | No | Go module directory; empty selects the repository root |
 | `go-memory-limit` | Input (string) | `8GiB` | No | Soft Go heap limit for analysis; lower it for smaller runners, up to the 8GiB ceiling |
+| `minimum-free-disk-gib` | Input (number) | `0` | No | Opt in to retaining toolchains when a complete root-filesystem observation meets a measured whole-number GiB budget (1–1024). Zero and unknown capacity retain cleanup. |
 | `measure-disk-usage` | Input (boolean) | `false` | No | Record sampled filesystem headroom around cleanup and during build, test and race coverage; cleanup stays enabled |
 | `apply-signed-fixes` | Input (boolean) | `false` | No | Ignored: signed fixes are always disabled |
 | `manual-workflow-fixes` | Input (boolean) | `false` | No | Prepare workflow-file fixes even after lint errors; patch upload is disabled and lint errors still fail |
@@ -1190,6 +1192,17 @@ Pull-request checks remain enabled in either state. Tidy also preserves checks o
 default-branch exclusion uses the repository's configured name rather than
 assuming `main` or `master`. Go path filtering and merge-queue exclusions still apply.
 
+The tiny CI fixtures request a 32 GiB budget; other fixture scenarios retain unconditional
+cleanup. This budget is deliberately conservative for the small module and is not a
+production default. Choose a consumer budget only after measuring its build and race
+coverage, including cache restoration. Cleanup receipts report capacity before the
+decision, its outcome and capacity afterwards; an unreadable observation never permits
+a bypass. The default-off `Measure Go disk capacity` workflow runs only on reviewed
+main and measures a pinned KSail build and race coverage on separate cold runners.
+It changes no KSail workflow or production setting. Broader rollout remains in #527.
+
+Pass `measure-disk-usage: true` to collect disk headroom while the original Go
+commands run. Each measured command logs a `GO_DISK_USAGE` JSON record and adds
 Pass `measure-disk-usage: true` to collect disk headroom before and after runner
 cleanup and while the original Go commands run. Cleanup records use the phases
 `cleanup-build`, `cleanup-test` and `cleanup-coverage`; the Go records retain
@@ -1199,7 +1212,7 @@ use KiB on the working directory's filesystem. The minimum available and maximum
 used values are sampled once per second and can miss shorter peaks; unrelated
 filesystem activity can also affect them. Any failed or malformed disk read marks
 the entire measurement `unknown` and leaves its capacity fields null. Command
-failures still fail validation. Existing cleanup remains enabled in both states;
+failures still fail validation. Measurement does not change the selected cleanup policy;
 these observations alone never authorize skipping it. Measurement rollout and
 retirement, representative-consumer evidence and cleanup policy remain in [#527](https://github.com/devantler-tech/.github/issues/527).
 Rollout and flag retirement are tracked in [devantler-tech/actions#1170](https://github.com/devantler-tech/actions/issues/1170).
