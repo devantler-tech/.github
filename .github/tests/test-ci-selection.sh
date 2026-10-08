@@ -63,6 +63,18 @@ for mutation in \
 done
 go -C "$root/.github/scripts/ci-selection" test -race -count=3 ./...
 go -C "$root/.github/scripts/ci-selection" vet ./...
+# Remove every .NET owner from both production inputs. This must fail before
+# selection, even though the remaining inventory still matches the workflow.
+dotnet_owners='["test-run-dotnet-tests-gate-lockstep","test-run-dotnet-tests-mtp","test-run-dotnet-tests-workflow","test-run-dotnet-tests-workflow-authenticated"]'
+jq --argjson owners "$dotnet_owners" 'del(.jobs[$owners[]])' "$work/workflow.json" > "$work/ownerless-workflow.json"
+jq --argjson owners "$dotnet_owners" 'del(.jobs[$owners[]], .preserved[$owners[]])' "$root/.github/scripts/ci-selection/inventory.json" > "$work/ownerless-inventory.json"
+if EVENT_NAME=push RUN_CATALOGUE=true CATALOGUE_SCOPE=true GITHUB_OUTPUT="$work/ownerless-output" \
+  go -C "$root/.github/scripts/ci-selection" run . "$root" "$work/ownerless-inventory.json" "$work/ownerless-workflow.json" > "$work/ownerless.log" 2>&1; then
+  echo 'FAIL: production entrypoint accepted removal of every required .NET owner' >&2
+  exit 1
+fi
+grep -q 'incomplete or unbound .NET workflow owner' "$work/ownerless.log"
+[[ ! -e "$work/ownerless-output" ]]
 touch "$work/output"
 EVENT_NAME=push RUN_CATALOGUE=true CATALOGUE_SCOPE=true GITHUB_OUTPUT="$work/output" \
   go -C "$root/.github/scripts/ci-selection" run . "$root" "$root/.github/scripts/ci-selection/inventory.json" "$work/workflow.json"

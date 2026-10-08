@@ -177,14 +177,7 @@ func TestCrissCrossMergeBasesAreNotPartialEvidence(t *testing.T) {
 }
 
 func TestJobInventoryFailsClosed(t *testing.T) {
-	i := fixtureInventory()
-	w := workflow{Jobs: map[string]job{
-		"select-ci-tests": {}, "ci-required-checks": {}, "lint-ci-coverage-parity": {},
-		"test-one":         {If: selectionGuard("test-one"), Needs: []any{"select-ci-tests"}},
-		"test-one-wrapper": {If: selectionGuard("test-one-wrapper"), Needs: []any{"select-ci-tests"}},
-		"test-two":         {If: selectionGuard("test-two"), Needs: []any{"select-ci-tests"}},
-		"test-workflow":    {If: selectionGuard("test-workflow"), Needs: []any{"select-ci-tests"}},
-	}}
+	i, w := dotnetSelectionFixture(t)
 	if _, err := validateInventory(i, w); err != nil {
 		t.Fatal(err)
 	}
@@ -192,7 +185,7 @@ func TestJobInventoryFailsClosed(t *testing.T) {
 	if _, err := validateInventory(i, w); err == nil {
 		t.Fatal("accepted dropped job inventory")
 	}
-	i = fixtureInventory()
+	i, _ = dotnetSelectionFixture(t)
 	w.Jobs["new-test"] = job{}
 	if _, err := validateInventory(i, w); err == nil {
 		t.Fatal("accepted unclassified new CI job")
@@ -224,13 +217,7 @@ func TestEntrypointBindsGitEvidenceAndSelectedOutput(t *testing.T) {
 	git("add", "actions/one/action.yaml")
 	git("commit", "-qm", "isolated action")
 	head := git("rev-parse", "HEAD")
-	i := fixtureInventory()
-	w := workflow{Jobs: map[string]job{
-		"select-ci-tests": {}, "ci-required-checks": {}, "lint-ci-coverage-parity": {},
-	}}
-	for id := range i.Jobs {
-		w.Jobs[id] = job{If: selectionGuard(id), Needs: []any{"select-ci-tests"}}
-	}
+	i, w := dotnetSelectionFixture(t)
 	writeJSON := func(name string, value any) string {
 		t.Helper()
 		data, err := json.Marshal(value)
@@ -252,7 +239,7 @@ func TestEntrypointBindsGitEvidenceAndSelectedOutput(t *testing.T) {
 		fails                             bool
 	}{
 		{"selective PR", "pull_request", "true", head, "selected=[\"test-one\",\"test-one-wrapper\"]\n", false},
-		{"main retains complete inventory", "push", "true", "", "selected=[\"test-one\",\"test-one-wrapper\",\"test-two\",\"test-workflow\"]\n", false},
+		{"main retains complete inventory", "push", "true", "", "selected=[\"test-one\",\"test-one-wrapper\",\"test-run-dotnet-tests-gate-lockstep\",\"test-run-dotnet-tests-mtp\",\"test-run-dotnet-tests-workflow\",\"test-two\",\"test-workflow\"]\n", false},
 		{"excluded event", "merge_group", "false", "", "selected=[]\n", false},
 		{"missing immutable head", "pull_request", "true", strings.Repeat("a", 40), "", true},
 		{"unknown eligibility", "push", "", "", "", true},
@@ -298,11 +285,7 @@ func TestDeploymentCatalogueScopeComposesWithSelection(t *testing.T) {
 	git("add", "deploy/example.yaml")
 	git("commit", "-qm", "deployment change")
 	head := git("rev-parse", "HEAD")
-	i := fixtureInventory()
-	w := workflow{Jobs: map[string]job{"select-ci-tests": {}, "ci-required-checks": {}, "lint-ci-coverage-parity": {}}}
-	for id := range i.Jobs {
-		w.Jobs[id] = job{If: selectionGuard(id), Needs: []any{"select-ci-tests"}}
-	}
+	i, w := dotnetSelectionFixture(t)
 	writeJSON := func(name string, value any) string {
 		t.Helper()
 		data, err := json.Marshal(value)
@@ -315,7 +298,7 @@ func TestDeploymentCatalogueScopeComposesWithSelection(t *testing.T) {
 		}
 		return file
 	}
-	inventoryJSON := map[string]any{"always": i.Always, "jobs": i.Jobs, "catalogue_optional": []string{"test-one", "test-two"}}
+	inventoryJSON := map[string]any{"always": i.Always, "jobs": i.Jobs, "preserved": i.Preserved, "catalogue_optional": []string{"test-one", "test-two"}}
 	args := os.Args
 	os.Args = []string{"ci-selection", dir, writeJSON("inventory.json", inventoryJSON), writeJSON("workflow.json", w)}
 	t.Cleanup(func() { os.Args = args })
@@ -324,8 +307,8 @@ func TestDeploymentCatalogueScopeComposesWithSelection(t *testing.T) {
 		name, event, eligible, scope, want string
 		fails                              bool
 	}{
-		{"deployment smoke omission only", "pull_request", "true", "false", "selected=[\"test-one-wrapper\",\"test-workflow\"]\n", false},
-		{"full scope", "pull_request", "true", "true", "selected=[\"test-one\",\"test-one-wrapper\",\"test-two\",\"test-workflow\"]\n", false},
+		{"deployment smoke omission only", "pull_request", "true", "false", "selected=[\"test-one-wrapper\",\"test-run-dotnet-tests-gate-lockstep\",\"test-run-dotnet-tests-mtp\",\"test-run-dotnet-tests-workflow\",\"test-workflow\"]\n", false},
+		{"full scope", "pull_request", "true", "true", "selected=[\"test-one\",\"test-one-wrapper\",\"test-run-dotnet-tests-gate-lockstep\",\"test-run-dotnet-tests-mtp\",\"test-run-dotnet-tests-workflow\",\"test-two\",\"test-workflow\"]\n", false},
 		{"missing scope", "pull_request", "true", "", "", true},
 		{"malformed scope", "pull_request", "true", "unknown", "", true},
 		{"push cannot omit smoke", "push", "true", "false", "", true},

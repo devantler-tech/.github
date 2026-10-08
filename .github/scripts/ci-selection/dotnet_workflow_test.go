@@ -48,6 +48,17 @@ func TestDotnetWorkflowSelectsEveryReviewedDependency(t *testing.T) {
 }
 
 func TestDotnetWorkflowOwnershipCannotOmitOrInventDependencies(t *testing.T) {
+	t.Run("every owner removed", func(t *testing.T) {
+		i, w := dotnetSelectionFixture(t)
+		for _, id := range dotnetSubjects {
+			delete(i.Jobs, id)
+			delete(i.Preserved, id)
+			delete(w.Jobs, id)
+		}
+		if _, err := validateInventory(i, w); err == nil {
+			t.Fatal("accepted removal of every required .NET owner")
+		}
+	})
 	for _, id := range dotnetSubjects {
 		t.Run("missing "+id, func(t *testing.T) {
 			i, w := dotnetSelectionFixture(t)

@@ -137,16 +137,10 @@ func hasDotnetOwner(id string) bool {
 }
 
 func validateDotnetOwners(i inventory, w workflow) error {
-	present := false
 	for id, j := range w.Jobs {
-		present = present || hasDotnetOwner(id)
 		if j.Uses == "./"+dotnetWorkflow && !dotnetOwners[id] {
 			return fmt.Errorf("unreviewed .NET workflow caller %s", id)
 		}
-	}
-	// Small independent fixtures need not contain this catalogue surface.
-	if !present {
-		return nil
 	}
 	for id, caller := range dotnetOwners {
 		j, ok := w.Jobs[id]
