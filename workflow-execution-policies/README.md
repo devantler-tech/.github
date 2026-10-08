@@ -22,10 +22,16 @@ Moving the policies into `deploy/` once the provider supports them is tracked in
 
 Each `*.json` file is the request body of
 [`POST /orgs/{org}/actions/policies`](https://docs.github.com/en/rest/actions/policies), so it can
-be sent as-is. The one addition is an optional `exception` object, which is our review record and
-must be removed before sending: a policy may allow `pull_request_target` or `workflow_run` only when
+be validated before sending. The reconciler makes selector defaults explicit, including the
+documented `custom` property source, and removes the optional `exception` review record:
+a policy may allow `pull_request_target` or `workflow_run` only when
 `exception` lists the `workflow_paths` it covers and a `threat_model` saying why they are safe, and
 the policy itself targets only those paths.
+
+Selector comparison includes property source in both inclusion and exclusion lists. The optional
+repository-name `protected` setting is managed only when the file declares it; its omission does not
+grant ownership of that setting. Unknown or malformed selector fields stop the entire reconciliation
+before any write. Ordering and documented server metadata do not count as drift.
 
 Moving a policy to `active` is the maintainer's call. See [Testing a policy before it
 blocks](#testing-a-policy-before-it-blocks) for how that step is made safely.

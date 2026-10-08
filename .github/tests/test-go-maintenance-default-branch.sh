@@ -3,14 +3,22 @@
 # deliberately to prove the matrix detects the original and adjacent regressions.
 set -euo pipefail
 workflow="${1:-.github/workflows/validate-go-project.yaml}"
+ci="${2:-.github/workflows/ci.yaml}"
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
 yq -o=json '.' "$workflow" > "$tmp/workflow.json"
-node - "$tmp/workflow.json" <<'JS'
+yq -o=json '.' "$ci" > "$tmp/ci.json"
+node - "$tmp/workflow.json" "$tmp/ci.json" <<'JS'
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const workflow = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
+const ci = JSON.parse(fs.readFileSync(process.argv[3], 'utf8'));
 const flag = 'maintenance-default-branch';
+
+assert.equal(ci.jobs['test-validate-go-project'].with[flag], undefined,
+  'ordinary fixture must exercise the inherited maintenance default');
+assert.equal(ci.jobs['test-validate-go-project-maintenance-default-branch'].with[flag], false,
+  'the opt-out fixture must preserve explicit false through rollout');
 
 // This deliberately supports only the primitive comparisons, boolean groups and
 // format call used by these gates. Reject unfamiliar syntax instead of claiming
@@ -21,7 +29,8 @@ function evaluate(gate, fixture) {
     'needs.changes.outputs.go': fixture.go,
     'github.event_name': fixture.event,
     'github.ref': fixture.ref,
-    [`inputs.${flag}`]: fixture.input ?? '',
+    [`inputs.${flag}`]: fixture.input === undefined && fixture.invocation !== 'direct'
+      ? workflow.on.workflow_call.inputs[flag].default : fixture.input ?? '',
   };
   let expression = gate.trim().replace(/^\$\{\{\s*|\s*\}\}$/g, '');
   expression = expression.replace(/format\('refs\/heads\/\{0\}',\s*github\.event\.repository\.default_branch\)/g,
@@ -45,7 +54,9 @@ for (const branch of ['main', 'master', 'trunk']) {
       for (const event of ['push', 'pull_request', 'merge_group', 'workflow_dispatch', 'schedule']) {
         for (const ref of [`refs/heads/${branch}`, 'refs/heads/feature', 'refs/tags/v1', 'refs/pull/12/merge']) {
           const onDefault = ref === `refs/heads/${branch}`;
-          const optedIn = input === true || String(input).toLowerCase() === 'true';
+          // Omitted workflow_call inputs inherit the enabled default. An
+          // explicit false remains the supported rollback throughout rollout.
+          const optedIn = input === undefined || input === true || String(input).toLowerCase() === 'true';
           const defaultPush = event === 'push' && onDefault && optedIn;
           fixtures.push({branch, input, go, event, ref, expected: {
             tidy: go === 'true' && event !== 'merge_group' && (!onDefault || defaultPush),
@@ -53,6 +64,19 @@ for (const branch of ['main', 'master', 'trunk']) {
           }});
         }
       }
+    }
+  }
+}
+
+// Required direct runs have an empty inputs context; workflow_call defaults
+// never populate it. Their PR and merge-group behavior must stay unchanged.
+for (const branch of ['main', 'master', 'trunk']) {
+  for (const event of ['push', 'pull_request', 'merge_group']) {
+    for (const ref of [`refs/heads/${branch}`, 'refs/heads/feature', 'refs/pull/12/merge']) {
+      fixtures.push({branch, event, ref, go: 'true', invocation: 'direct', expected: {
+        tidy: event !== 'merge_group' && ref !== `refs/heads/${branch}`,
+        deadcode: event === 'pull_request',
+      }});
     }
   }
 }
@@ -69,7 +93,7 @@ for (const job of ['tidy', 'deadcode']) {
   console.log(`PASS: ${job}, ${fixtures.length} event/branch/input combinations`);
 }
 assert.equal(workflow.on.workflow_call.inputs[flag].type, 'boolean');
-assert.equal(workflow.on.workflow_call.inputs[flag].default, false, 'new behavior must remain opt-in');
+assert.equal(workflow.on.workflow_call.inputs[flag].default, true, 'validated maintenance must run for callers that omit the input');
 assert.ok(workflow.concurrency.group.includes(`inputs.${flag}`), 'both flag states must have distinct concurrency groups');
 
 const mutations = [

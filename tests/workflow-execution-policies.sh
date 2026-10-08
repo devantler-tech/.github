@@ -38,6 +38,19 @@ expect() {
 }
 
 expect valid 0 '.'
+expect repository-name-protected-boolean 0 '.conditions.repository_name.protected = true'
+expect repository-name-invalid-protected 1 '.conditions.repository_name.protected = "false"' 'unsupported or malformed selector'
+expect unknown-selector-member 1 '.conditions.repository_name.incldue = ["~ALL"]' 'unsupported or malformed selector'
+property='del(.conditions.repository_name) | .conditions.repository_property = {"include": [{"name": "tier", "property_values": ["prod"]}], "exclude": []}'
+expect property-source-custom 0 "$property | .conditions.repository_property.include[0].source = \"custom\""
+expect property-source-system 0 "$property | .conditions.repository_property.include[0].source = \"system\""
+expect property-source-invalid 1 "$property | .conditions.repository_property.include[0].source = \"other\"" 'unsupported or malformed selector'
+expect property-source-null 1 "$property | .conditions.repository_property.include[0].source = null" 'unsupported or malformed selector'
+expect property-source-exclude-invalid 1 "$property | .conditions.repository_property.exclude = [{\"name\": \"tier\", \"source\": false, \"property_values\": [\"dev\"]}]" 'unsupported or malformed selector'
+expect property-source-unknown-key 1 "$property | .conditions.repository_property.include[0].soruce = \"system\"" 'unsupported or malformed selector'
+expect repository-id-unknown-key 1 'del(.conditions.repository_name) | .conditions.repository_id = {"repository_ids": [1], "exclude": [2]}' 'unsupported or malformed selector'
+expect workflow-path-unknown-key 1 '.conditions.workflow_path = {"include": ["~ALL"], "exclude": [], "protected": true}' 'unsupported or malformed selector'
+expect selector-exclude-null 1 '.conditions.repository_name.exclude = null' 'unsupported or malformed selector'
 expect evaluate 1 '.enforcement = "evaluate"' 'evaluate needs GitHub Enterprise Cloud'
 expect active 1 '.enforcement = "active"' 'active needs maintainer approval'
 expect unknown-enforcement 1 '.enforcement = "enforce"' 'is not disabled'
