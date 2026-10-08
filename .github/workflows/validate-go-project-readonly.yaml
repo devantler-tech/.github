@@ -31,7 +31,7 @@ on:
         required: false
         type: boolean
         default: false
-        description: "Record sampled filesystem headroom during build, test and race coverage. Opt-in measurement only: cleanup and Go results are unchanged. Unreadable samples are UNKNOWN; a 1-second sample interval can miss shorter peaks. Rollout and retirement: devantler-tech/.github#527."
+        description: "Record sampled filesystem headroom around runner cleanup and during build, test and race coverage. Opt-in measurement only: cleanup and Go results are unchanged. Unreadable samples are UNKNOWN; a 1-second sample interval can miss shorter peaks. Rollout and retirement: devantler-tech/.github#527."
       test-default-branch:
         required: false
         type: boolean
@@ -723,33 +723,6 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - name: "\U0001F9F9 Free disk space"
-        # Reclaim ~11+ GB by removing large preinstalled toolchains a Go
-        # build/test never uses (Android SDK, .NET, GHC, …). A large consumer
-        # module's `go build`/`go test ./...` build cache (and the coverage
-        # job's `-race` binaries) can otherwise exhaust the runner disk —
-        # observed as a hard "No space left on device" failure. Targeted
-        # `rm -rf` only (avoids the slow apt-remove path); best-effort.
-        run: |
-          set -euo pipefail
-          before=$(df --output=avail -BG / | tail -1 | tr -dc '0-9')
-          sudo rm -rf \
-            /usr/local/lib/android \
-            /usr/share/dotnet \
-            /opt/ghc \
-            /usr/local/share/boost \
-            /usr/share/swift \
-            /opt/hostedtoolcache/CodeQL \
-            /opt/hostedtoolcache/PyPy \
-            /usr/local/share/powershell \
-            /usr/share/miniconda || true
-          after=$(df --output=avail -BG / | tail -1 | tr -dc '0-9')
-          echo "Free disk on /: ${before}G -> ${after}G (gained $((after - before))G)"
-      - name: ⚙️ Setup Go
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        with:
-          go-version-file: ${{ inputs.working-directory || '.' }}/go.mod
-          cache: true
       - name: Reserve disk measurement checkout path
         if: ${{ inputs.measure-disk-usage == true }}
         shell: bash
@@ -772,6 +745,45 @@ jobs:
           set -euo pipefail
           install -m 700 "$GITHUB_WORKSPACE/.devantler-tech-go-disk/.github/scripts/measure-go-disk.sh" "$RUNNER_TEMP/measure-go-disk.sh"
           rm -rf -- "$GITHUB_WORKSPACE/.devantler-tech-go-disk"
+      - name: "\U0001F9F9 Free disk space"
+        # Reclaim ~11+ GB by removing large preinstalled toolchains a Go
+        # build/test never uses (Android SDK, .NET, GHC, …). A large consumer
+        # module's `go build`/`go test ./...` build cache (and the coverage
+        # job's `-race` binaries) can otherwise exhaust the runner disk —
+        # observed as a hard "No space left on device" failure. Targeted
+        # `rm -rf` only (avoids the slow apt-remove path); best-effort.
+        shell: bash
+        env:
+          MEASURE_DISK_USAGE: ${{ inputs.measure-disk-usage }}
+          GO_DISK_WORKFLOW_SHA: ${{ job.workflow_sha }}
+        run: |
+          set -euo pipefail
+          cleanup_disk() {
+            before=$(df --output=avail -BG / | tail -1 | tr -dc '0-9')
+            sudo rm -rf \
+              /usr/local/lib/android \
+              /usr/share/dotnet \
+              /opt/ghc \
+              /usr/local/share/boost \
+              /usr/share/swift \
+              /opt/hostedtoolcache/CodeQL \
+              /opt/hostedtoolcache/PyPy \
+              /usr/local/share/powershell \
+              /usr/share/miniconda || true
+            after=$(df --output=avail -BG / | tail -1 | tr -dc '0-9')
+            echo "Free disk on /: ${before}G -> ${after}G (gained $((after - before))G)"
+          }
+          if [[ "$MEASURE_DISK_USAGE" == true ]]; then
+            export -f cleanup_disk
+            bash "$RUNNER_TEMP/measure-go-disk.sh" cleanup-build bash -euo pipefail -c cleanup_disk
+          else
+            cleanup_disk
+          fi
+      - name: ⚙️ Setup Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: ${{ inputs.working-directory || '.' }}/go.mod
+          cache: true
       - name: "\U0001F6E0️ Build"
         env:
           MEASURE_DISK_USAGE: ${{ inputs.measure-disk-usage }}
@@ -834,6 +846,28 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - name: Reserve disk measurement checkout path
+        if: ${{ inputs.measure-disk-usage == true }}
+        shell: bash
+        run: |
+          [[ ! -e "$GITHUB_WORKSPACE/.devantler-tech-go-disk" && ! -L "$GITHUB_WORKSPACE/.devantler-tech-go-disk" ]]
+      - name: Checkout disk measurement helper
+        if: ${{ inputs.measure-disk-usage == true }}
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ${{ job.workflow_repository }}
+          ref: ${{ job.workflow_sha }}
+          path: .devantler-tech-go-disk
+          persist-credentials: false
+          sparse-checkout: .github/scripts/measure-go-disk.sh
+          sparse-checkout-cone-mode: false
+      - name: Prepare disk measurement outside the consumer workspace
+        if: ${{ inputs.measure-disk-usage == true }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          install -m 700 "$GITHUB_WORKSPACE/.devantler-tech-go-disk/.github/scripts/measure-go-disk.sh" "$RUNNER_TEMP/measure-go-disk.sh"
+          rm -rf -- "$GITHUB_WORKSPACE/.devantler-tech-go-disk"
       - name: "\U0001F9F9 Free disk space"
         # Reclaim ~11+ GB by removing large preinstalled toolchains a Go
         # build/test never uses (Android SDK, .NET, GHC, …). A large consumer
@@ -841,21 +875,33 @@ jobs:
         # job's `-race` binaries) can otherwise exhaust the runner disk —
         # observed as a hard "No space left on device" failure. Targeted
         # `rm -rf` only (avoids the slow apt-remove path); best-effort.
+        shell: bash
+        env:
+          MEASURE_DISK_USAGE: ${{ inputs.measure-disk-usage }}
+          GO_DISK_WORKFLOW_SHA: ${{ job.workflow_sha }}
         run: |
           set -euo pipefail
-          before=$(df --output=avail -BG / | tail -1 | tr -dc '0-9')
-          sudo rm -rf \
-            /usr/local/lib/android \
-            /usr/share/dotnet \
-            /opt/ghc \
-            /usr/local/share/boost \
-            /usr/share/swift \
-            /opt/hostedtoolcache/CodeQL \
-            /opt/hostedtoolcache/PyPy \
-            /usr/local/share/powershell \
-            /usr/share/miniconda || true
-          after=$(df --output=avail -BG / | tail -1 | tr -dc '0-9')
-          echo "Free disk on /: ${before}G -> ${after}G (gained $((after - before))G)"
+          cleanup_disk() {
+            before=$(df --output=avail -BG / | tail -1 | tr -dc '0-9')
+            sudo rm -rf \
+              /usr/local/lib/android \
+              /usr/share/dotnet \
+              /opt/ghc \
+              /usr/local/share/boost \
+              /usr/share/swift \
+              /opt/hostedtoolcache/CodeQL \
+              /opt/hostedtoolcache/PyPy \
+              /usr/local/share/powershell \
+              /usr/share/miniconda || true
+            after=$(df --output=avail -BG / | tail -1 | tr -dc '0-9')
+            echo "Free disk on /: ${before}G -> ${after}G (gained $((after - before))G)"
+          }
+          if [[ "$MEASURE_DISK_USAGE" == true ]]; then
+            export -f cleanup_disk
+            bash "$RUNNER_TEMP/measure-go-disk.sh" cleanup-test bash -euo pipefail -c cleanup_disk
+          else
+            cleanup_disk
+          fi
       - name: ⚙️ Setup Go
         id: setup-go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
@@ -899,28 +945,6 @@ jobs:
           key: kubeconform-schema-cache-v1-${{ github.job }}-${{ github.run_id }}
           restore-keys: |
             kubeconform-schema-cache-v1-${{ github.job }}-
-      - name: Reserve disk measurement checkout path
-        if: ${{ inputs.measure-disk-usage == true }}
-        shell: bash
-        run: |
-          [[ ! -e "$GITHUB_WORKSPACE/.devantler-tech-go-disk" && ! -L "$GITHUB_WORKSPACE/.devantler-tech-go-disk" ]]
-      - name: Checkout disk measurement helper
-        if: ${{ inputs.measure-disk-usage == true }}
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          repository: ${{ job.workflow_repository }}
-          ref: ${{ job.workflow_sha }}
-          path: .devantler-tech-go-disk
-          persist-credentials: false
-          sparse-checkout: .github/scripts/measure-go-disk.sh
-          sparse-checkout-cone-mode: false
-      - name: Prepare disk measurement outside the consumer workspace
-        if: ${{ inputs.measure-disk-usage == true }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          install -m 700 "$GITHUB_WORKSPACE/.devantler-tech-go-disk/.github/scripts/measure-go-disk.sh" "$RUNNER_TEMP/measure-go-disk.sh"
-          rm -rf -- "$GITHUB_WORKSPACE/.devantler-tech-go-disk"
       - name: "\U0001F9EA Test"
         env:
           MEASURE_DISK_USAGE: ${{ inputs.measure-disk-usage }}
@@ -967,6 +991,28 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - name: Reserve disk measurement checkout path
+        if: ${{ inputs.measure-disk-usage == true }}
+        shell: bash
+        run: |
+          [[ ! -e "$GITHUB_WORKSPACE/.devantler-tech-go-disk" && ! -L "$GITHUB_WORKSPACE/.devantler-tech-go-disk" ]]
+      - name: Checkout disk measurement helper
+        if: ${{ inputs.measure-disk-usage == true }}
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ${{ job.workflow_repository }}
+          ref: ${{ job.workflow_sha }}
+          path: .devantler-tech-go-disk
+          persist-credentials: false
+          sparse-checkout: .github/scripts/measure-go-disk.sh
+          sparse-checkout-cone-mode: false
+      - name: Prepare disk measurement outside the consumer workspace
+        if: ${{ inputs.measure-disk-usage == true }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          install -m 700 "$GITHUB_WORKSPACE/.devantler-tech-go-disk/.github/scripts/measure-go-disk.sh" "$RUNNER_TEMP/measure-go-disk.sh"
+          rm -rf -- "$GITHUB_WORKSPACE/.devantler-tech-go-disk"
       - name: "\U0001F9F9 Free disk space"
         # Reclaim ~11+ GB by removing large preinstalled toolchains a Go
         # build/test never uses (Android SDK, .NET, GHC, …). A large consumer
@@ -974,21 +1020,33 @@ jobs:
         # job's `-race` binaries) can otherwise exhaust the runner disk —
         # observed as a hard "No space left on device" failure. Targeted
         # `rm -rf` only (avoids the slow apt-remove path); best-effort.
+        shell: bash
+        env:
+          MEASURE_DISK_USAGE: ${{ inputs.measure-disk-usage }}
+          GO_DISK_WORKFLOW_SHA: ${{ job.workflow_sha }}
         run: |
           set -euo pipefail
-          before=$(df --output=avail -BG / | tail -1 | tr -dc '0-9')
-          sudo rm -rf \
-            /usr/local/lib/android \
-            /usr/share/dotnet \
-            /opt/ghc \
-            /usr/local/share/boost \
-            /usr/share/swift \
-            /opt/hostedtoolcache/CodeQL \
-            /opt/hostedtoolcache/PyPy \
-            /usr/local/share/powershell \
-            /usr/share/miniconda || true
-          after=$(df --output=avail -BG / | tail -1 | tr -dc '0-9')
-          echo "Free disk on /: ${before}G -> ${after}G (gained $((after - before))G)"
+          cleanup_disk() {
+            before=$(df --output=avail -BG / | tail -1 | tr -dc '0-9')
+            sudo rm -rf \
+              /usr/local/lib/android \
+              /usr/share/dotnet \
+              /opt/ghc \
+              /usr/local/share/boost \
+              /usr/share/swift \
+              /opt/hostedtoolcache/CodeQL \
+              /opt/hostedtoolcache/PyPy \
+              /usr/local/share/powershell \
+              /usr/share/miniconda || true
+            after=$(df --output=avail -BG / | tail -1 | tr -dc '0-9')
+            echo "Free disk on /: ${before}G -> ${after}G (gained $((after - before))G)"
+          }
+          if [[ "$MEASURE_DISK_USAGE" == true ]]; then
+            export -f cleanup_disk
+            bash "$RUNNER_TEMP/measure-go-disk.sh" cleanup-coverage bash -euo pipefail -c cleanup_disk
+          else
+            cleanup_disk
+          fi
       - name: ⚙️ Setup Go
         id: setup-go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
@@ -1024,28 +1082,6 @@ jobs:
             kubeconform-schema-cache-v1-${{ github.job }}-
       - name: "\U0001F468\U0001F3FB‍\U0001F527 Enable covdata (temp) see https://github.com/golang/go/issues/75031"
         run: go env -w GOTOOLCHAIN=go1.26.0+auto
-      - name: Reserve disk measurement checkout path
-        if: ${{ inputs.measure-disk-usage == true }}
-        shell: bash
-        run: |
-          [[ ! -e "$GITHUB_WORKSPACE/.devantler-tech-go-disk" && ! -L "$GITHUB_WORKSPACE/.devantler-tech-go-disk" ]]
-      - name: Checkout disk measurement helper
-        if: ${{ inputs.measure-disk-usage == true }}
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          repository: ${{ job.workflow_repository }}
-          ref: ${{ job.workflow_sha }}
-          path: .devantler-tech-go-disk
-          persist-credentials: false
-          sparse-checkout: .github/scripts/measure-go-disk.sh
-          sparse-checkout-cone-mode: false
-      - name: Prepare disk measurement outside the consumer workspace
-        if: ${{ inputs.measure-disk-usage == true }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          install -m 700 "$GITHUB_WORKSPACE/.devantler-tech-go-disk/.github/scripts/measure-go-disk.sh" "$RUNNER_TEMP/measure-go-disk.sh"
-          rm -rf -- "$GITHUB_WORKSPACE/.devantler-tech-go-disk"
       - name: "\U0001F4C4 Generate coverage"
         env:
           MEASURE_DISK_USAGE: ${{ inputs.measure-disk-usage }}

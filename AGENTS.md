@@ -420,8 +420,9 @@ validates their inputs. Save only after success on a cache miss, without broad r
 prefixes. Keep `test-go-build-cache.sh` and the read-only workflow projection passing.
 
 **Go disk measurement:** `measure-disk-usage` defaults to false. Opted-in build,
-test and race coverage emit 1-second sampled filesystem headroom without changing
-cleanup or command results. Failed or incomplete observations make every capacity
+test and race coverage emit separate cleanup and Go-command receipts, including
+capacity before and after cleanup and 1-second sampled headroom. Cleanup stays
+enabled and command results are unchanged. Failed or incomplete observations make every capacity
 field null with status `unknown`. The helper checkout is removed before consumer
 commands run; cancellation stops the command process group and sampler. Keep
 `test-go-disk-measurement.sh` and the generated read-only projection passing.
