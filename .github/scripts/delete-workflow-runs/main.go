@@ -129,12 +129,96 @@ type api struct {
 	base, token string
 	client      *http.Client
 	wait        func(context.Context, time.Duration) error
+	budget      *rateLimitWaitBudget
 }
 
 type httpFailure struct{ status int }
 
 // Error reports an HTTP failure without exposing its response body or credentials.
 func (e httpFailure) Error() string { return fmt.Sprintf("HTTP %d", e.status) }
+
+const maxRateLimitRetryDelay = time.Minute
+
+type rateLimitWaitBudget struct {
+	mu   sync.Mutex
+	used time.Duration
+}
+
+// reserve atomically charges a rate-limit wait to the cleanup-wide budget.
+func (b *rateLimitWaitBudget) reserve(delay time.Duration) bool {
+	if b == nil {
+		return false
+	}
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if delay <= 0 || b.used >= maxRateLimitRetryDelay || delay > maxRateLimitRetryDelay-b.used {
+		return false
+	}
+	b.used += delay
+	return true
+}
+
+func secondaryRateLimitMessage(raw []byte) bool {
+	if len(raw) == 0 || unambiguous(raw) != nil {
+		return false
+	}
+	var response struct {
+		Message string `json:"message"`
+	}
+	if json.Unmarshal(raw, &response) != nil {
+		return false
+	}
+	return strings.Contains(strings.ToLower(response.Message), "secondary rate limit")
+}
+
+// rateLimitRetryDelay distinguishes a documented GitHub rate-limit response
+// from an ordinary authorization failure. A server delay is honoured only when
+// it fits the workflow's bounded read-retry envelope; an invalid or longer delay
+// fails closed instead of retrying early or waiting without a bound.
+func rateLimitRetryDelay(response *http.Response, raw []byte, now time.Time) (time.Duration, bool, error) {
+	if response.StatusCode != http.StatusForbidden && response.StatusCode != http.StatusTooManyRequests {
+		return 0, false, nil
+	}
+	if value := strings.TrimSpace(response.Header.Get("Retry-After")); value != "" {
+		seconds, secondsErr := strconv.ParseUint(value, 10, 32)
+		var delay time.Duration
+		if secondsErr == nil {
+			delay = time.Duration(seconds) * time.Second
+		} else {
+			retryAt, dateErr := http.ParseTime(value)
+			if dateErr != nil {
+				return 0, false, errors.New("invalid rate-limit retry delay")
+			}
+			delay = retryAt.Sub(now)
+		}
+		if delay <= 0 {
+			return 0, false, errors.New("invalid rate-limit retry delay")
+		}
+		if delay > maxRateLimitRetryDelay {
+			return 0, false, errors.New("rate-limit retry delay exceeds bound")
+		}
+		return delay, true, nil
+	}
+	if strings.TrimSpace(response.Header.Get("X-RateLimit-Remaining")) == "0" {
+		value := strings.TrimSpace(response.Header.Get("X-RateLimit-Reset"))
+		reset, err := strconv.ParseInt(value, 10, 64)
+		if err != nil || reset <= 0 {
+			return 0, false, errors.New("invalid primary rate-limit reset")
+		}
+		delay := time.Unix(reset, 0).Sub(now)
+		if delay <= 0 {
+			delay = time.Second
+		}
+		if delay > maxRateLimitRetryDelay {
+			return 0, false, errors.New("primary rate-limit reset exceeds bound")
+		}
+		return delay, true, nil
+	}
+	if response.StatusCode == http.StatusTooManyRequests || secondaryRateLimitMessage(raw) {
+		return maxRateLimitRetryDelay, true, nil
+	}
+	return 0, false, nil
+}
 
 // request confirms complete responses, retries transient reads and never retries writes.
 func (a api) request(ctx context.Context, method, path string) ([]byte, error) {
@@ -145,6 +229,7 @@ func (a api) request(ctx context.Context, method, path string) ([]byte, error) {
 		client.Timeout = 30 * time.Second
 	}
 	for attempt := 0; attempt < 3; attempt++ {
+		retryDelay := time.Duration(0)
 		req, err := http.NewRequestWithContext(ctx, method, a.base+path, nil)
 		if err != nil {
 			return nil, errors.New("invalid API request")
@@ -169,14 +254,29 @@ func (a api) request(ctx context.Context, method, path string) ([]byte, error) {
 				return raw, nil
 			}
 			err = httpFailure{response.StatusCode}
-			if response.StatusCode < 500 || response.StatusCode > 599 || method != "GET" {
+			if method != "GET" {
+				return raw, err
+			}
+			delay, rateLimited, delayErr := rateLimitRetryDelay(response, raw, time.Now())
+			if delayErr != nil {
+				return raw, delayErr
+			}
+			if rateLimited {
+				if !a.budget.reserve(delay) {
+					return raw, err
+				}
+				retryDelay = delay
+			} else if response.StatusCode < 500 || response.StatusCode > 599 {
 				return raw, err
 			}
 		}
 		if method != "GET" || attempt == 2 || ctx.Err() != nil {
 			return nil, errors.New("API request failed or outcome is unknown")
 		}
-		if err := a.wait(ctx, time.Duration(2<<attempt)*time.Second); err != nil {
+		if retryDelay == 0 {
+			retryDelay = time.Duration(2<<attempt) * time.Second
+		}
+		if err := a.wait(ctx, retryDelay); err != nil {
 			return nil, err
 		}
 	}
@@ -459,7 +559,13 @@ func clean(ctx context.Context, cfg config, base, token string, client *http.Cli
 	if !repositoryName.MatchString(cfg.repository) {
 		return errors.New("invalid repository")
 	}
-	a := api{strings.TrimRight(base, "/"), token, client, wait}
+	a := api{
+		base:   strings.TrimRight(base, "/"),
+		token:  token,
+		client: client,
+		wait:   wait,
+		budget: &rateLimitWaitBudget{},
+	}
 	prefix := "/repos/" + cfg.repository
 	items, err := a.list(ctx, prefix+"/actions/workflows", "workflows")
 	if err != nil {

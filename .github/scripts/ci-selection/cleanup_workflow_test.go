@@ -14,6 +14,8 @@ func cleanupSelectionFixture(t *testing.T) (inventory, workflow) {
 	i.Jobs["test-workflow"] = []string{
 		".github/workflows/delete-workflow-runs.yaml",
 		".github/workflows/delete-workflow-runs-readonly.yaml",
+		cleanupImplementation,
+		cleanupModule,
 	}
 	i.Preserved["test-workflow"] = job{If: "${{ " + scheduling + " }}"}
 	// Decode the native workflow shape so an absent caller binding cannot be
@@ -34,6 +36,8 @@ func TestCleanupWorkflowSelectsItsPreservedCallers(t *testing.T) {
 	for _, path := range []string{
 		".github/workflows/delete-workflow-runs.yaml",
 		".github/workflows/delete-workflow-runs-readonly.yaml",
+		cleanupImplementation,
+		cleanupModule,
 	} {
 		if got := selectJobs(i, "pull_request", []string{path}); !reflect.DeepEqual(got, []string{"test-workflow"}) {
 			t.Fatalf("cleanup-only change allocated unrelated catalogue jobs: %v", got)
@@ -42,7 +46,7 @@ func TestCleanupWorkflowSelectsItsPreservedCallers(t *testing.T) {
 }
 
 func TestCleanupWorkflowCallerInventoryFailsClosed(t *testing.T) {
-	for _, mutation := range []string{"wrong caller", "missing production", "missing projection", "unclassified workflow"} {
+	for _, mutation := range []string{"wrong caller", "missing production", "missing projection", "missing implementation", "missing module", "unclassified workflow"} {
 		t.Run(mutation, func(t *testing.T) {
 			i, w := cleanupSelectionFixture(t)
 			switch mutation {
@@ -51,7 +55,11 @@ func TestCleanupWorkflowCallerInventoryFailsClosed(t *testing.T) {
 			case "missing production":
 				i.Jobs["test-workflow"] = i.Jobs["test-workflow"][1:]
 			case "missing projection":
-				i.Jobs["test-workflow"] = i.Jobs["test-workflow"][:1]
+				i.Jobs["test-workflow"] = []string{i.Jobs["test-workflow"][0], cleanupImplementation, cleanupModule}
+			case "missing implementation":
+				i.Jobs["test-workflow"] = []string{i.Jobs["test-workflow"][0], i.Jobs["test-workflow"][1], cleanupModule}
+			case "missing module":
+				i.Jobs["test-workflow"] = i.Jobs["test-workflow"][:3]
 			case "unclassified workflow":
 				i.Jobs["test-workflow"] = []string{".github/workflows/publish-app.yaml"}
 			}
@@ -71,9 +79,65 @@ func TestCleanupWorkflowPathsRequireExactMatches(t *testing.T) {
 		".github/workflows/publish-app.yaml",
 		".github/workflows/ci.yaml",
 		".github/scripts/generate-cleanup-readonly.sh",
+		".github/scripts/delete-workflow-runs/main_test.go",
+		".github/scripts/delete-workflow-runs-other/main.go",
 	} {
 		if got := selectJobs(i, "pull_request", []string{path}); !reflect.DeepEqual(got, full) {
 			t.Fatalf("unclassified path %q lost complete coverage: %v", path, got)
+		}
+	}
+}
+
+func TestCleanupProductionSourceGitStatusRetainsFullFallback(t *testing.T) {
+	for _, subject := range []string{cleanupImplementation, cleanupModule} {
+		for _, kind := range []string{"modified", "added", "deleted", "symlink"} {
+			t.Run(filepath.Base(subject)+"/"+kind, func(t *testing.T) {
+				dir, _, git := gitFixture(t)
+				path := filepath.Join(dir, subject)
+				if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+					t.Fatal(err)
+				}
+				if kind != "added" {
+					if err := os.WriteFile(path, []byte("base\n"), 0600); err != nil {
+						t.Fatal(err)
+					}
+					git("add", "--", subject)
+					git("commit", "-qm", "cleanup source baseline")
+				}
+				base := git("rev-parse", "HEAD")
+				switch kind {
+				case "modified", "added":
+					if err := os.WriteFile(path, []byte("changed\n"), 0600); err != nil {
+						t.Fatal(err)
+					}
+				case "deleted":
+					if err := os.Remove(path); err != nil {
+						t.Fatal(err)
+					}
+				case "symlink":
+					if err := os.Remove(path); err != nil {
+						t.Fatal(err)
+					}
+					if err := os.Symlink("missing", path); err != nil {
+						t.Fatal(err)
+					}
+				}
+				git("add", "--", subject)
+				git("commit", "-qm", "cleanup source change")
+				paths, err := changedPaths(dir, base, git("rev-parse", "HEAD"))
+				if err != nil {
+					t.Fatal(err)
+				}
+				i, _ := cleanupSelectionFixture(t)
+				got := selectJobs(i, "pull_request", paths)
+				if kind == "modified" {
+					if !reflect.DeepEqual(got, []string{"test-workflow"}) {
+						t.Fatalf("ordinary modification lost cleanup selection: %v", got)
+					}
+				} else if len(got) != len(i.Jobs) {
+					t.Fatalf("%s incorrectly narrowed coverage: %v", kind, got)
+				}
+			})
 		}
 	}
 }

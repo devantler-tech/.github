@@ -20,7 +20,15 @@ const scheduling = "github.event_name != 'merge_group' && !startsWith(github.eve
 
 const cleanupWorkflow = ".github/workflows/delete-workflow-runs.yaml"
 const cleanupProjection = ".github/workflows/delete-workflow-runs-readonly.yaml"
+const cleanupImplementation = ".github/scripts/delete-workflow-runs/main.go"
+const cleanupModule = ".github/scripts/delete-workflow-runs/go.mod"
 const dotnetWorkflow = ".github/workflows/run-dotnet-tests.yaml"
+
+var ordinarySelectiveFiles = map[string]bool{
+	cleanupImplementation: true,
+	cleanupModule:         true,
+	dotnetWorkflow:        true,
+}
 
 // These include inline hosted and credential controls, not just reusable callers.
 var dotnetOwners = map[string]bool{
@@ -53,13 +61,18 @@ func validateInventory(i inventory, w workflow) ([]string, error) {
 	if err := validateDotnetOwners(i, w); err != nil {
 		return nil, err
 	}
-	// All native cleanup callers depend on both the production source and its
-	// generated read-only projection. Their event-specific admission stays intact.
+	// All native cleanup callers depend on the exact production source, module,
+	// and generated read-only projection. Test files remain unclassified so their
+	// changes retain complete catalogue coverage.
 	for id, j := range w.Jobs {
 		if j.Uses == "./"+cleanupProjection {
 			paths := i.Jobs[id]
-			if len(paths) != 2 || !((paths[0] == cleanupWorkflow && paths[1] == cleanupProjection) ||
-				(paths[1] == cleanupWorkflow && paths[0] == cleanupProjection)) {
+			owners := map[string]bool{}
+			for _, path := range paths {
+				owners[path] = true
+			}
+			if len(paths) != 4 || len(owners) != 4 || !owners[cleanupWorkflow] ||
+				!owners[cleanupProjection] || !owners[cleanupImplementation] || !owners[cleanupModule] {
 				return nil, fmt.Errorf("incomplete cleanup workflow owners for %s", id)
 			}
 		}
@@ -87,7 +100,8 @@ func validateInventory(i inventory, w workflow) ([]string, error) {
 		seen[id] = true
 		for _, p := range paths {
 			if !regexp.MustCompile(`^actions/[a-z0-9-]+/$`).MatchString(p) &&
-				!((p == cleanupWorkflow || p == cleanupProjection) && j.Uses == "./"+cleanupProjection) &&
+				!((p == cleanupWorkflow || p == cleanupProjection || p == cleanupImplementation || p == cleanupModule) &&
+					j.Uses == "./"+cleanupProjection) &&
 				!(p == dotnetWorkflow && hasDotnetOwner(id)) {
 				return nil, fmt.Errorf("invalid selective owner %q", p)
 			}
@@ -230,18 +244,18 @@ func changedPaths(root, base, head string) ([]string, error) {
 	}
 	paths := strings.Split(string(out[:len(out)-1]), "\x00")
 	for _, p := range paths {
-		if p != dotnetWorkflow {
+		if !ordinarySelectiveFiles[p] {
 			continue
 		}
-		// New/deleted files and type changes are not an ordinary modification of
-		// the reviewed workflow. Keep full coverage instead of trusting name-only
+		// New/deleted files and type changes are not ordinary modifications of an
+		// exact selective owner. Keep full coverage instead of trusting name-only
 		// evidence. Disable renames and require both complete regular-file blobs.
-		raw, err := git("diff", "--raw", "--no-abbrev", "--no-renames", "-z", mergeBase, head, "--", dotnetWorkflow)
+		raw, err := git("diff", "--raw", "--no-abbrev", "--no-renames", "-z", mergeBase, head, "--", p)
 		if err != nil {
 			return nil, err
 		}
 		record := strings.Split(string(raw), "\x00")
-		valid := len(record) == 3 && record[1] == dotnetWorkflow && record[2] == ""
+		valid := len(record) == 3 && record[1] == p && record[2] == ""
 		if valid {
 			fields := strings.Fields(record[0])
 			valid = len(fields) == 5 && fields[0] == ":100644" && fields[1] == "100644" &&
@@ -250,8 +264,8 @@ func changedPaths(root, base, head string) ([]string, error) {
 		if !valid {
 			// An unclassified marker deliberately invokes the existing full fallback.
 			paths = append(paths, ".ci-selection-unproven-workflow-change")
+			break
 		}
-		break
 	}
 	return paths, nil
 }
