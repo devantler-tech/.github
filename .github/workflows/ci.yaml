@@ -3403,6 +3403,12 @@ jobs:
         shell: bash
         run: bash .github/tests/test-ci-catalogue-scope.sh
 
+      - name: Set up the declared validator Go toolchain
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: actions/validate-retired-repo-links/go.mod
+          cache: false
+
       - name: Exercise source output and failure paths from the real composite body
         shell: bash
         env:
