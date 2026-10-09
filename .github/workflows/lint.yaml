@@ -32,7 +32,7 @@ on:
         required: false
         type: string
         default: ""
-        description: "Path to a go.mod. When set, Go is installed before linting so MegaLinter's Go linters run against the module's own toolchain instead of the container's (which lags patched releases). Leave empty when the consumer disables the Go linters or has no Go code."
+        description: "Path to a go.mod. When set, MegaLinter selects the exact declared Go toolchain inside its container, downloading that fixed version if needed. Leave empty when the consumer disables the Go linters or has no Go code."
       apply-fixes:
         required: false
         type: boolean
@@ -92,6 +92,7 @@ jobs:
           persist-credentials: false
 
       - name: ⚙️ Setup Go
+        id: setup-go
         if: ${{ inputs.go-version-file != '' }}
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
@@ -105,6 +106,7 @@ jobs:
         uses: oxsecurity/megalinter/flavors/go@9949bad031045f366be2467e00e8371a7328a2e2 # v10.1.0
         env:
           DEFAULT_WORKSPACE: ${{ inputs.working-directory || '.' }}
+          GOTOOLCHAIN: ${{ inputs.go-version-file != '' && format('go{0}', steps.setup-go.outputs.go-version) || 'local' }}
           MEGALINTER_CONFIG: ${{ github.workspace }}/.mega-linter.yml
           VALIDATE_ALL_CODEBASE: true
           APPLY_FIXES: ${{ inputs.apply-fixes && github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork != true && 'all' || 'none' }}

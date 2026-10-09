@@ -3417,6 +3417,9 @@ jobs:
           GOTOOLCHAIN: local
         run: bash .github/tests/test-retired-repo-links-source.sh
 
+      - name: Guard the declared compiler inside both MegaLinter entrypoints
+        run: bash .github/tests/test-megalinter-go-toolchain.sh
+
       - name: 🧪 Bound diagnostic fan-out and stalled reads without credentials
         run: bash .github/tests/test-diagnose-flux.sh
 
@@ -5558,7 +5561,8 @@ jobs:
       contents: read
     uses: ./.github/workflows/lint.yaml
     with:
-      working-directory: .github/tests/megalinter-clean-fixture
+      working-directory: .github/tests/go-valid-fixture
+      go-version-file: .github/tests/go-valid-fixture/go.mod
       apply-fixes: false
 
   test-lint-workflow-manual-fixes:
