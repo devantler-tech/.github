@@ -610,7 +610,7 @@ patch-application job can access it.
 |---------------------|-----------------|---------|----------|----------------------------------------------------------------------------------------------------------------------|
 | `APP_PRIVATE_KEY`   | Secret          | -       | No       | GitHub App private key. Needed only to commit auto-fixes; without it a fixable finding fails the build instead        |
 | `working-directory` | Input           | `""`    | No       | Directory to lint. Empty lints the whole repository                                                                   |
-| `go-version-file`   | Input           | `""`    | No       | Path to a `go.mod`. When set, Go is installed first so the Go linters use the module's toolchain, not the container's |
+| `go-version-file`   | Input           | `""`    | No       | Path to a `go.mod`. When set, the container selects the exact declared Go toolchain, downloading that fixed version if needed |
 | `apply-fixes`       | Input (boolean) | `true`  | No       | Auto-fix and commit back to the pull request. Set `false` for a read-only gate                                        |
 | `manual-workflow-fixes` | Input (boolean) | `false` | No | Opt in to complete workflow-file patches for manual application, including after lint errors; existing upload eligibility still applies |
 | `pr-owner`          | Input           | `""`    | No       | Pull request author login. Auto-fix commits are suppressed for dependency-bot pull requests                           |

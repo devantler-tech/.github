@@ -18,6 +18,9 @@ outputs:
   validated:
     description: The string true after a complete successful scan; empty when disabled or unsuccessful.
     value: ${{ steps.validate.outputs.validated }}
+  source-directory:
+    description: Exact downloaded action module directory, usable in the same job after a successful scan; empty otherwise.
+    value: ${{ steps.validate.outputs.source-directory }}
 runs:
   using: composite
   steps:
@@ -58,3 +61,4 @@ runs:
         go -C "$ACTION_PATH" build -mod=readonly -trimpath -o "$temporary/validate-retired-repo-links" .
         "$temporary/validate-retired-repo-links" --root "$WORKING_DIRECTORY" --config "$CONFIG_FILE"
         echo "validated=true" >> "$GITHUB_OUTPUT"
+        printf 'source-directory=%s\n' "$ACTION_PATH" >> "$GITHUB_OUTPUT"
