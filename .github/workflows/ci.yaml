@@ -165,13 +165,6 @@ jobs:
           cat "$RUNNER_TEMP/retired-links.log"
           test "$result" -eq 1
           grep -F 'docs/history.md:3: link targets retired repository example/retired' "$RUNNER_TEMP/retired-links.log"
-      - name: Exercise source output and failure paths from the real composite body
-        shell: bash
-        env:
-          GOWORK: "off"
-          GOFLAGS: ""
-          GOTOOLCHAIN: local
-        run: bash .github/tests/test-retired-repo-links-source.sh
 
   test-validate-retired-repo-links-disabled:
     needs: [select-ci-tests]
@@ -3409,6 +3402,14 @@ jobs:
       - name: 🧪 Check deployment scope and full catalogue fallback
         shell: bash
         run: bash .github/tests/test-ci-catalogue-scope.sh
+
+      - name: Exercise source output and failure paths from the real composite body
+        shell: bash
+        env:
+          GOWORK: "off"
+          GOFLAGS: ""
+          GOTOOLCHAIN: local
+        run: bash .github/tests/test-retired-repo-links-source.sh
 
       - name: 🧪 Bound diagnostic fan-out and stalled reads without credentials
         run: bash .github/tests/test-diagnose-flux.sh
