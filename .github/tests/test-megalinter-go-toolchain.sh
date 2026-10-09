@@ -28,6 +28,7 @@ and (.readonly.jobs.lint.steps | map(.id) | index("setup-go") < index("ml"))
 and (.go.jobs.lint.steps | map(.id) | index("setup-go") < index("ml"))
 and (.lint.jobs.lint.steps | map(.id) | index("setup-go") < index("ml"))
 JQ
+# Accepts only the declared compiler bindings and ordering in the supplied workflow snapshot.
 admit() { jq -e -f "$scratch/admit.jq" "$1" >/dev/null; }
 if ! admit "$scratch/actual.json"; then
   echo 'TEST FAIL -- MegaLinter container does not use its declared setup-go compiler' >&2

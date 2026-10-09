@@ -8,6 +8,7 @@ module="$root/actions/validate-retired-repo-links"
 yq -o=json '.' "$module/action.yaml" >"$scratch/action.json"
 jq -er '.runs.steps[] | select(.id == "validate") | .run' "$scratch/action.json" >"$scratch/run.sh"
 
+# Runs the real composite scan, checks its expected exit status, and retains outputs for assertions.
 scan() {
   local config=$1 expected=$2 status=0
   : >"$scratch/outputs"
