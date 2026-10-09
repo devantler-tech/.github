@@ -7,7 +7,8 @@ scratch="$(mktemp -d)"
 trap 'rm -rf "$scratch"' EXIT
 yq -o=json '.' "$root/.github/workflows/lint.yaml" >"$scratch/lint.json"
 yq -o=json '.' "$root/.github/workflows/validate-go-project.yaml" >"$scratch/go.json"
-jq -s '{lint:.[0],go:.[1]}' "$scratch/lint.json" "$scratch/go.json" >"$scratch/actual.json"
+yq -o=json '.' "$root/.github/workflows/validate-go-project-readonly.yaml" >"$scratch/readonly.json"
+jq -s '{lint:.[0],go:.[1],readonly:.[2]}' "$scratch/lint.json" "$scratch/go.json" "$scratch/readonly.json" >"$scratch/actual.json"
 cat >"$scratch/admit.jq" <<'JQ'
 def setup: [.jobs.lint.steps[] | select(.id == "setup-go")];
 def ml: [.jobs.lint.steps[] | select(.id == "ml")];
@@ -20,6 +21,10 @@ and all([$go[0],$lint[0]][]; .with | keys == ["go-version-file"])
 and (.go | ml | length) == 1 and (.lint | ml | length) == 1
 and (.go | ml | .[0].env.GOTOOLCHAIN) == "go${{ steps.setup-go.outputs.go-version }}"
 and (.lint | ml | .[0].env.GOTOOLCHAIN) == "${{ inputs.go-version-file != '' && format('go{0}', steps.setup-go.outputs.go-version) || 'local' }}"
+and (.readonly | setup) == $go
+and (.readonly | ml | length) == 1
+and (.readonly | ml | .[0].env.GOTOOLCHAIN) == (.go | ml | .[0].env.GOTOOLCHAIN)
+and (.readonly.jobs.lint.steps | map(.id) | index("setup-go") < index("ml"))
 and (.go.jobs.lint.steps | map(.id) | index("setup-go") < index("ml"))
 and (.lint.jobs.lint.steps | map(.id) | index("setup-go") < index("ml"))
 JQ
@@ -37,6 +42,8 @@ for mutation in \
   '(.go.jobs.lint.steps[] | select(.id == "setup-go") | .id)="other-go"' \
   '(.go.jobs.lint.steps[] | select(.id == "setup-go") | .if)="false"' \
   '(.go.jobs.lint.steps[] | select(.id == "setup-go") | .with["go-version"])="1.26.3"' \
+  '(.readonly.jobs.lint.steps[] | select(.id == "ml") | .env.GOTOOLCHAIN)="local"' \
+  '(.readonly.jobs.lint.steps[] | select(.id == "setup-go") | .with["go-version"])="1.26.3"' \
   '(.lint.jobs.lint.steps[] | select(.id == "ml") | .env.GOTOOLCHAIN)="local"' \
   '(.lint.jobs.lint.steps[] | select(.id == "ml") | .env.GOTOOLCHAIN)="auto"' \
   '(.lint.jobs.lint.steps[] | select(.id == "setup-go") | .if)="true"' \
