@@ -1,0 +1,14 @@
+# Observe-first adoption; settings activation follows verified live adoption (#556).
+apiVersion: repo.github.m.upbound.io/v1alpha1
+kind: Repository
+metadata:
+  name: client-orders
+  annotations:
+    crossplane.io/external-name: client-orders
+spec:
+  managementPolicies: ["Observe"]
+  forProvider:
+    name: client-orders
+  providerConfigRef:
+    kind: ProviderConfig
+    name: default

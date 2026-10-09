@@ -30,6 +30,8 @@ resources:
   - grant-maintainers-on-cloudflare.yaml
   - grant-maintainers-on-data-product-controller.yaml
   - grant-maintainers-on-business-site.yaml
+  - grant-maintainers-on-client-orders.yaml
+  - grant-maintainers-on-client-portal.yaml
   # Active Admins policy (one admin grant per active repository).
   - grant-admins-on-dot-github.yaml
   - grant-admins-on-actions.yaml
@@ -55,3 +57,5 @@ resources:
   - grant-admins-on-cloudflare.yaml
   - grant-admins-on-data-product-controller.yaml
   - grant-admins-on-business-site.yaml
+  - grant-admins-on-client-orders.yaml
+  - grant-admins-on-client-portal.yaml
