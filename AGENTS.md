@@ -589,6 +589,10 @@ malformed scans. An invalid scope must fail without a `validated` output.
 **Retired repository links:** `validate-retired-repo-links` is a default-off,
 read-only Go validator with no module dependencies. Keep both flag states, real
 good/bad action fixtures on Linux/macOS, and the required-check wiring covered.
+Successful calls expose their exact action module directory for same-job consumer
+refusal controls; disabled and failed calls expose neither validation nor source
+outputs. Keep the native usable-source assertions and
+`.github/tests/test-retired-repo-links-source.sh` passing when changing this boundary.
 Configuration belongs to each consumer; never hard-code retired portfolio names
 or blanket historical exemptions in the action. Exceptions require an exact
 file, repository and reason. Consumer adoption and flag retirement are in devantler-tech/actions#1350.

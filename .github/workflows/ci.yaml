@@ -120,31 +120,59 @@ jobs:
           enabled: "true"
           working-directory: .github/fixtures/retired-repo-links
           config-file: invalid.json
+      - name: Reject missing configuration without exposing successful outputs
+        id: missing_config
+        continue-on-error: true
+        uses: ./actions/validate-retired-repo-links # zizmor: ignore[self-repository]
+        with:
+          enabled: "true"
+          working-directory: .github/fixtures/retired-repo-links
+          config-file: missing.json
       - name: Assert action results
         shell: bash
         env:
           VALIDATED: ${{ steps.valid.outputs.validated }}
           VIOLATION: ${{ steps.violation.outcome }}
           INVALID_VALIDATED: ${{ steps.violation.outputs.validated }}
+          SOURCE: ${{ steps.valid.outputs.source-directory }}
+          INVALID_SOURCE: ${{ steps.violation.outputs.source-directory }}
+          MISSING_CONFIG: ${{ steps.missing_config.outcome }}
+          MISSING_VALIDATED: ${{ steps.missing_config.outputs.validated }}
+          MISSING_SOURCE: ${{ steps.missing_config.outputs.source-directory }}
         run: |
           test "$VALIDATED" = true
           test "$VIOLATION" = failure
           test -z "$INVALID_VALIDATED"
+          test -z "$INVALID_SOURCE"
+          test "$MISSING_CONFIG" = failure
+          test -z "$MISSING_VALIDATED"
+          test -z "$MISSING_SOURCE"
+          test -n "$SOURCE"
+          test "$(cd "$SOURCE" && pwd -P)" = "$(cd actions/validate-retired-repo-links && pwd -P)"
       - name: Test consumer behavior and verify the negative fixture finding
         shell: bash
         env:
           GOWORK: "off"
           GOFLAGS: ""
           GOTOOLCHAIN: local
+          SOURCE: ${{ steps.valid.outputs.source-directory }}
         run: |
           go -C actions/validate-retired-repo-links test -race -cover ./...
           go -C actions/validate-retired-repo-links vet ./...
-          go -C actions/validate-retired-repo-links build -mod=readonly -o "$RUNNER_TEMP/retired-repo-links" .
+          go -C "$SOURCE" build -mod=readonly -o "$RUNNER_TEMP/retired-repo-links" .
           result=0
           "$RUNNER_TEMP/retired-repo-links" --root .github/fixtures/retired-repo-links --config invalid.json > "$RUNNER_TEMP/retired-links.log" 2>&1 || result=$?
           cat "$RUNNER_TEMP/retired-links.log"
           test "$result" -eq 1
           grep -F 'docs/history.md:3: link targets retired repository example/retired' "$RUNNER_TEMP/retired-links.log"
+      - name: Exercise source output and failure paths from the real composite body
+        if: matrix.os == 'ubuntu-latest'
+        shell: bash
+        env:
+          GOWORK: "off"
+          GOFLAGS: ""
+          GOTOOLCHAIN: local
+        run: bash .github/tests/test-retired-repo-links-source.sh
 
   test-validate-retired-repo-links-disabled:
     needs: [select-ci-tests]
@@ -187,10 +215,18 @@ jobs:
           OMITTED: ${{ steps.omitted.outputs.validated }}
           DISABLED: ${{ steps.disabled.outputs.validated }}
           INVALID: ${{ steps.invalid.outcome }}
+          OMITTED_SOURCE: ${{ steps.omitted.outputs.source-directory }}
+          DISABLED_SOURCE: ${{ steps.disabled.outputs.source-directory }}
+          INVALID_SOURCE: ${{ steps.invalid.outputs.source-directory }}
+          INVALID_VALIDATED: ${{ steps.invalid.outputs.validated }}
         run: |
           test -z "$OMITTED"
           test -z "$DISABLED"
           test "$INVALID" = failure
+          test -z "$OMITTED_SOURCE"
+          test -z "$DISABLED_SOURCE"
+          test -z "$INVALID_SOURCE"
+          test -z "$INVALID_VALIDATED"
 
   test-validate-shell-pipelines:
     needs: [select-ci-tests]
