@@ -18,6 +18,14 @@ does not call GitHub, follow links, or infer retirement from a repository name.
 | Name | Description |
 |------|-------------|
 | `validated` | `true` after a complete successful scan; empty when disabled or unsuccessful. |
+| `source-directory` | Exact downloaded action module directory after a complete successful scan; empty otherwise. |
+
+Use `source-directory` in later steps of the same job to build refusal controls
+from the very validator revision that completed the scan. It points directly to
+the module containing `go.mod` and `main.go`, so build with `go -C "$SOURCE"`.
+Pass the output through an environment variable and quote it in shell commands.
+The runner-local path is not an artifact or a path usable by another job. Keep
+`GOWORK=off`, `GOFLAGS=""` and `GOTOOLCHAIN=local` when building consumer controls.
 
 ## Usage
 

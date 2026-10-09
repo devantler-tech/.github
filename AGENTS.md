@@ -589,6 +589,10 @@ malformed scans. An invalid scope must fail without a `validated` output.
 **Retired repository links:** `validate-retired-repo-links` is a default-off,
 read-only Go validator with no module dependencies. Keep both flag states, real
 good/bad action fixtures on Linux/macOS, and the required-check wiring covered.
+Successful calls expose their exact action module directory for same-job consumer
+refusal controls; disabled and failed calls expose neither validation nor source
+outputs. Keep the native usable-source assertions and
+`.github/tests/test-retired-repo-links-source.sh` passing when changing this boundary.
 Configuration belongs to each consumer; never hard-code retired portfolio names
 or blanket historical exemptions in the action. Exceptions require an exact
 file, repository and reason. Consumer adoption and flag retirement are in devantler-tech/actions#1350.
@@ -636,6 +640,8 @@ unclassified sources and partial expression evidence fail closed as UNKNOWN. Kee
 `test-catalogue-credentials.sh` and its real-source mutation controls unconditional within
 `lint-ci-coverage-parity`, whose result gates the required check. This admission guard does not
 prove the cleanup selector behavior still tracked in #350 or replace individual user-path tests.
+
+**MegaLinter Go toolchain:** host-side setup does not replace the Docker action’s compiler. The production Go workflow, its generated read-only projection, and the whole-repository lint workflow select the exact `setup-go` output through a fixed named `GOTOOLCHAIN`, without `+auto`. The whole-repository workflow keeps `local` when no Go declaration is supplied. `test-megalinter-go-toolchain.sh` rejects binding substitutions; native positive Go and whole-repository fixtures prove real scanner analysis. Preserve the enabled scanners and fixer credential boundary.
 
 **Fixer-lane credential boundary (tested invariant):** `validate-go-project.yaml`'s three fixer lanes (`tidy`, `golangci-lint`, `lint` — every job that exports `fixes-created`) run tooling configured by the pull request under review, so they hold no credential that can write to the branch: `contents: read`, no App-token step, no App private key, no secret other than `GITHUB_TOKEN` (every expression spelling, case-insensitively, matched on complete scalars, and including the workflow-level `env:` every job inherits), and `persist-credentials: false` on every checkout. The commit is made on a fresh runner by `apply-signed-fixes.yaml`. `ci.yaml` asserts this with `.github/tests/test-fixer-credential-boundary.sh` (workflow- and job-scoped, so `lint.yaml` reuses it) and proves each assertion fires for its own reason with `test-fixer-credential-boundary-ablation.sh`; the lane list is derived from the workflow, so a new fixer lane is covered by construction. **A lane reshape must keep that guard green** — never move a write credential back into a fixer lane to make a step simpler.
 

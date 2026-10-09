@@ -690,6 +690,7 @@ jobs:
           persist-credentials: false
 
       - name: ⚙️ Setup Go
+        id: setup-go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: ${{ inputs.working-directory || '.' }}/go.mod
@@ -701,6 +702,7 @@ jobs:
         uses: oxsecurity/megalinter/flavors/go@9949bad031045f366be2467e00e8371a7328a2e2 # v10.1.0
         env:
           DEFAULT_WORKSPACE: ${{ inputs.working-directory || '.' }}
+          GOTOOLCHAIN: go${{ steps.setup-go.outputs.go-version }}
           MEGALINTER_CONFIG: ${{ github.workspace }}/.mega-linter.yml
           VALIDATE_ALL_CODEBASE: true
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -806,7 +808,7 @@ jobs:
     name: 📦 Tidy - apply fixes
     needs: [changes, tidy]
     if: ${{ needs.changes.outputs.signed-fixes == 'true' }}
-    uses: devantler-tech/.github/.github/workflows/apply-signed-fixes.yaml@50a5a7a4e9a7b9731be07277bd37bee61a141b71 # v7.8.4
+    uses: devantler-tech/.github/.github/workflows/apply-signed-fixes.yaml@63c59062489edbee907d2a4d5d06f01c57b7d58c # v7.9.0
     permissions:
       contents: read
     with:
@@ -821,7 +823,7 @@ jobs:
     name: 🧹 Lint - golangci-lint - apply fixes
     needs: [changes, golangci-lint, apply-tidy-fixes]
     if: ${{ !cancelled() && needs.changes.outputs.signed-fixes == 'true' && needs.golangci-lint.result == 'success' && (needs.apply-tidy-fixes.result == 'success' || needs.apply-tidy-fixes.result == 'skipped') }}
-    uses: devantler-tech/.github/.github/workflows/apply-signed-fixes.yaml@50a5a7a4e9a7b9731be07277bd37bee61a141b71 # v7.8.4
+    uses: devantler-tech/.github/.github/workflows/apply-signed-fixes.yaml@63c59062489edbee907d2a4d5d06f01c57b7d58c # v7.9.0
     permissions:
       contents: read
     with:
@@ -836,7 +838,7 @@ jobs:
     name: 🧹 Lint - apply fixes
     needs: [changes, lint, apply-golangci-lint-fixes]
     if: ${{ !cancelled() && needs.changes.outputs.signed-fixes == 'true' && needs.lint.result == 'success' && (needs.apply-golangci-lint-fixes.result == 'success' || needs.apply-golangci-lint-fixes.result == 'skipped') }}
-    uses: devantler-tech/.github/.github/workflows/apply-signed-fixes.yaml@50a5a7a4e9a7b9731be07277bd37bee61a141b71 # v7.8.4
+    uses: devantler-tech/.github/.github/workflows/apply-signed-fixes.yaml@63c59062489edbee907d2a4d5d06f01c57b7d58c # v7.9.0
     permissions:
       contents: read
     with:
