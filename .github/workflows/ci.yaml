@@ -166,7 +166,6 @@ jobs:
           test "$result" -eq 1
           grep -F 'docs/history.md:3: link targets retired repository example/retired' "$RUNNER_TEMP/retired-links.log"
       - name: Exercise source output and failure paths from the real composite body
-        if: matrix.os == 'ubuntu-latest'
         shell: bash
         env:
           GOWORK: "off"
