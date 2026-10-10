@@ -23,3 +23,5 @@ kind: Kustomization
 resources:
   - doggy-countdown.yaml
   - reusable-workflows.yaml
+  # Archived the day it was adopted; never left Observe-only (#300).
+  - client-portal.yaml
