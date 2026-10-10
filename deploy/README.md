@@ -119,14 +119,16 @@ Issue [#95](https://github.com/devantler-tech/.github/issues/95) and PR
 the separate `Admins` team, its explicit maintainer membership, and its
 repository grants in both disabled and enabled states. Issue
 [#102](https://github.com/devantler-tech/.github/issues/102) activates that
-policy; it covers the 26 active portfolio repositories, including
+policy; it covers the 25 active portfolio repositories, including
 `kyverno-policies`, `world-at-ruin`, `cloudflare` and `data-product-controller`.
 The archived `reusable-workflows` repository remains excluded.
 
-The two client repositories start with Observe-only repository settings and
-labels (#556). Team ownership and Actions SHA pinning follow the existing
-organization policies; activating settings or authoritative labels requires
-verified adoption first.
+`client-orders` starts with Observe-only repository settings and labels (#556).
+Team ownership and Actions SHA pinning follow the existing organization
+policies; activating settings or authoritative labels requires verified adoption
+first. `client-portal` was archived on GitHub the day it was adopted, so it is
+an Observe-only mirror in `archived-repositories/` and has no labels, permission
+or team grants (#300).
 
 The active policy is fully declarative and omits both `Delete` management and
 external names, so it cannot delete teams, memberships, or grants. Validate the

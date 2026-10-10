@@ -48,7 +48,6 @@ resources:
   - wedding-app.yaml
   - fleet-gitops.yaml
   - client-orders.yaml
-  - client-portal.yaml
 # Require every action to be pinned to a full-length commit SHA on each repo above
 # (single source of truth). Org-wide — every repo added to this directory inherits
 # it. Reusable workflows can still be referenced by tag (GitHub exempts them).
