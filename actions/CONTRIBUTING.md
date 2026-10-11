@@ -1,5 +1,9 @@
 # Contributing
 
+This guide covers composite actions and reusable workflows. For a first documentation change,
+checkout, local checks and PR submission, start with the [repository contribution guide](../CONTRIBUTING.md).
+Keep this guide for catalogue-specific conventions rather than duplicating that setup.
+
 ## Naming Conventions
 
 ### Action Directories
