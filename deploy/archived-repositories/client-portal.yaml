@@ -1,0 +1,19 @@
+# Adopted Observe-first on 2026-10-09 (#556) and archived on GitHub the same
+# day, before any setting was activated. GitHub makes an archived repository
+# read-only for settings, so this stays an Observe-only mirror: the shared merge
+# policy in ../repositories/ can never be applied to it, and declaring it there
+# fails the drift check for good (#300).
+apiVersion: repo.github.m.upbound.io/v1alpha1
+kind: Repository
+metadata:
+  name: client-portal
+  annotations:
+    crossplane.io/external-name: client-portal
+spec:
+  managementPolicies: ["Observe"]
+  forProvider:
+    name: client-portal
+    archived: true
+  providerConfigRef:
+    kind: ProviderConfig
+    name: default

@@ -98,13 +98,19 @@ declarative-only (never `gh api` writes or UI changes to managed config),
 **Observe-first** adoption of live objects (`crossplane.io/external-name` +
 a management policy excluding `Delete`), team-based ownership, and
 `IssueLabels` declared as a complete superset of a repo's live labels. Validate
-before every PR with exactly what CI runs:
+the following credential-free local checkpoint from the repository root:
 
 ```sh
 kubectl kustomize deploy/ > /dev/null
 bash tests/admin-team-policy.sh
 bash tests/declarative-coverage.sh
 ```
+
+These commands render manifests and check two policy invariants; they do not apply resources or
+prove live reconciliation. They require `kubectl`, Bash and Mike Farah's `yq` v4. The
+[CI workflow](../.github/workflows/ci.yaml) runs additional governance, release, deletion and
+credential-boundary regressions; this is not its full matrix. For checkout and submission, use the
+[repository contribution guide](../CONTRIBUTING.md).
 
 See the platform repo's
 [`docs/github-management.md`](https://github.com/devantler-tech/platform/blob/main/docs/github-management.md)
@@ -119,9 +125,16 @@ Issue [#95](https://github.com/devantler-tech/.github/issues/95) and PR
 the separate `Admins` team, its explicit maintainer membership, and its
 repository grants in both disabled and enabled states. Issue
 [#102](https://github.com/devantler-tech/.github/issues/102) activates that
-policy; it covers the 23 active portfolio repositories, including
+policy; it covers the 25 active portfolio repositories, including
 `kyverno-policies`, `world-at-ruin`, `cloudflare` and `data-product-controller`.
 The archived `reusable-workflows` repository remains excluded.
+
+`client-orders` starts with Observe-only repository settings and labels (#556).
+Team ownership and Actions SHA pinning follow the existing organization
+policies; activating settings or authoritative labels requires verified adoption
+first. `client-portal` was archived on GitHub the day it was adopted, so it is
+an Observe-only mirror in `archived-repositories/` and has no labels, permission
+or team grants (#300).
 
 The active policy is fully declarative and omits both `Delete` management and
 external names, so it cannot delete teams, memberships, or grants. Validate the

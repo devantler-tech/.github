@@ -1,0 +1,15 @@
+# Observe existing labels before activating the authoritative taxonomy (#556).
+apiVersion: repo.github.m.upbound.io/v1alpha1
+kind: IssueLabels
+metadata:
+  name: client-orders
+  annotations:
+    crossplane.io/external-name: client-orders
+spec:
+  managementPolicies: ["Observe"]
+  forProvider:
+    repository: client-orders
+    label: []
+  providerConfigRef:
+    kind: ProviderConfig
+    name: default

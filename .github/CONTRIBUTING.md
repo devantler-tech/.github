@@ -2,9 +2,17 @@
 
 Thank you for your interest in contributing! Here are some guidelines to help you get started.
 
+These are organization defaults. Start with the affected repository's README and its specific
+contribution guide for prerequisites, a safe first change and local checks. For the shared
+automation repository itself, use its
+[first-contribution guide](https://github.com/devantler-tech/.github/blob/main/CONTRIBUTING.md).
+
 ## Reporting Issues
 
 If you've found a problem or have a feature idea, please create an issue. This allows me to discuss the problem or feature before you start working on it.
+
+Sensitive vulnerabilities are the exception: follow the affected repository's security policy
+and use private reporting, never a public issue or PR containing vulnerability details.
 
 ## Making Changes
 
@@ -16,6 +24,11 @@ Here are the steps:
 2. Create a new branch in your fork with a name that describes your change.
 3. Make your changes in this branch.
 4. Submit a pull request from this branch.
+
+Use the target repository's PR template and required commit-signing, title, attribution and
+review conventions. Describe the problem and outcome, link the issue for substantial work,
+and record the checks you actually ran. Do not include credentials, personal data or private
+operational details in commits or public artifacts.
 
 ## Code Standards
 
