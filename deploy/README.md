@@ -107,7 +107,7 @@ bash tests/declarative-coverage.sh
 ```
 
 These commands render manifests and check two policy invariants; they do not apply resources or
-prove live reconciliation. They require `kubectl`, Bash, `jq` and Mike Farah's `yq` v4. The
+prove live reconciliation. They require `kubectl`, Bash and Mike Farah's `yq` v4. The
 [CI workflow](../.github/workflows/ci.yaml) runs additional governance, release, deletion and
 credential-boundary regressions; this is not its full matrix. For checkout and submission, use the
 [repository contribution guide](../CONTRIBUTING.md).

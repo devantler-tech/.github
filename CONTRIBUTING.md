@@ -62,6 +62,14 @@ not your organization's live settings. Every command
 must succeed. The documentation checkpoint helps you start, but does not waive this baseline or
 the broader required CI.
 
+Changes under `deploy/`, including its documentation, must pass the release-driving subject
+guard. Use a `fix`, `feat`, `perf`, `revert`, or breaking Conventional Commit subject appropriate
+to the outcome. With one commit, GitHub uses that commit's subject for the squash; with multiple
+commits, it uses the PR title. Retitling a one-commit PR alone will not repair this gate. The
+[release-contract validator](scripts/validate-release-contract.sh) enforces this so a deployment
+artifact change cannot merge without a corresponding release. The first README-only example above
+does not change `deploy/`.
+
 ## Submit your change
 
 Review the diff and stage only your changed paths. Configure commit signing and use a Conventional
@@ -74,8 +82,9 @@ git push -u origin docs/first-contribution
 ```
 
 Open a **draft** PR from your fork's branch to `devantler-tech/.github:main`. Use the
-[PR template](.github/PULL_REQUEST_TEMPLATE.md), explain the reader problem and outcome, link the
-issue for substantial work, and record the checks actually run. Disclose AI assistance when used.
+[PR template](.github/PULL_REQUEST_TEMPLATE.md), keep Why/What focused on the reader problem and
+outcome, and link the issue for substantial work. Put detailed validation evidence in a PR comment
+or check summary, not those sections. Disclose AI assistance when used.
 Respond to findings; required CI and substantive review of the exact current head must pass before
 merge. Follow the [code of conduct](.github/CODE_OF_CONDUCT.md) and preserve the
 [Apache-2.0 license](LICENSE) and third-party attribution.
