@@ -98,13 +98,19 @@ declarative-only (never `gh api` writes or UI changes to managed config),
 **Observe-first** adoption of live objects (`crossplane.io/external-name` +
 a management policy excluding `Delete`), team-based ownership, and
 `IssueLabels` declared as a complete superset of a repo's live labels. Validate
-before every PR with exactly what CI runs:
+the following credential-free local checkpoint from the repository root:
 
 ```sh
 kubectl kustomize deploy/ > /dev/null
 bash tests/admin-team-policy.sh
 bash tests/declarative-coverage.sh
 ```
+
+These commands render manifests and check two policy invariants; they do not apply resources or
+prove live reconciliation. They require `kubectl`, Bash and Mike Farah's `yq` v4. The
+[CI workflow](../.github/workflows/ci.yaml) runs additional governance, release, deletion and
+credential-boundary regressions; this is not its full matrix. For checkout and submission, use the
+[repository contribution guide](../CONTRIBUTING.md).
 
 See the platform repo's
 [`docs/github-management.md`](https://github.com/devantler-tech/platform/blob/main/docs/github-management.md)
