@@ -419,6 +419,16 @@ default-branch writes. Keep inherited-default and explicit-opt-out callers,
 renamed branches, PR/feature routing, merge-queue exclusions and actual finding
 rejection covered. Final input and concurrency-discriminator removal remain #276.
 
+**Go module selection:** Validation reads one complete tracked-file inventory.
+Explicit `working-directory` calls keep their selected module; empty called inputs
+select the repository root. Input-free required runs prefer a tracked root module,
+otherwise require exactly one tracked nested module. Missing, conflicted, linked,
+unsafe and ambiguous selections fail without publishing a directory. All eight
+validation jobs, toolchain readers and cache identities use the same resolved
+directory. The resolver comes from the workflow's immutable source and is removed
+before consumer validation. Existing non-Go skips remain skips. Keep
+`test-go-module-resolution.sh` and the generated read-only projection passing.
+
 **Go compilation caches:** Test and race coverage retain separate `GOCACHE` archives,
 keyed by job, runner OS/architecture, installed Go version, working directory and that
 module's `go.mod`/`go.sum`. An exact compiler-cache hit reuses build outputs; both

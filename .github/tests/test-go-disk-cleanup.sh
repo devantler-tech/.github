@@ -49,6 +49,13 @@ for enabled in false true; do
   export GO_DISK_CLEANUP_PHASE="cleanup-$job"
   yq -r ".jobs.$job.steps[] | select(.name == \"🧹 Free disk space\") | .run" "$workflow" > "$scratch/step"
   [[ -s "$scratch/step" ]] || fail "missing $job cleanup"
+  # A direct required invocation has no inputs object: exercise its actual env binding,
+  # not a fixture-supplied zero that would hide a missing default.
+  binding="$(JOB_ID="$job" yq -r '.jobs[strenv(JOB_ID)].steps[] | select(.name == "🧹 Free disk space") | .env.MINIMUM_FREE_DISK_GIB' "$workflow")"
+  direct_budget="$(BUDGET_BINDING="$binding" node -e 'const s=process.env.BUDGET_BINDING.replace(/^\s*\$\{\{\s*|\s*\}\}\s*$/g, "").replace(/inputs\.minimum-free-disk-gib/g,"null"); const n=Function("return (" + s + ");")(); process.stdout.write(n == null ? "" : String(n));')"
+  : > "$scratch/deletions"
+  MINIMUM_FREE_DISK_GIB="$direct_budget" DISK_CASE=high bash -euo pipefail "$scratch/step" > "$scratch/result" || fail "$job rejects absent direct-run budget"
+  [[ "$(wc -l < "$scratch/deletions" | tr -d ' ')" == 1 ]] || fail "$job absent budget does not retain unconditional cleanup"
   for budget in 32 0; do
     for scenario in high boundary low empty partial malformed extra inconsistent; do
       : > "$scratch/deletions"

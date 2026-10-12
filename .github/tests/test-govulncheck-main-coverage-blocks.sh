@@ -96,7 +96,7 @@ check govulncheck-output-not-consumed.yaml \
 check missing-govulncheck-output.yaml \
   "does not expose a 'govulncheck' output"
 check allow-file-not-working-dir-relative.yaml \
-  "'allow-file' is not composed from 'inputs.working-directory'"
+  "'allow-file' is not composed from the resolved module directory"
 
 # ── Controls: the guard must accept correct input ────────────────────────────────
 passes() {

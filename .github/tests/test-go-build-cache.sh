@@ -29,8 +29,8 @@ cat > "$work/cache.jq" <<'JQ'
     ($restore[0].with.key | contains("${{ runner.os }}")) and
     ($restore[0].with.key | contains("${{ runner.arch }}")) and
     ($restore[0].with.key | contains("${{ steps.setup-go.outputs.go-version }}")) and
-    ($restore[0].with.key | contains("${{ inputs.working-directory || '.' }}")) and
-    ($restore[0].with.key | contains("hashFiles(format('{0}/go.mod', inputs.working-directory || '.'), format('{0}/go.sum', inputs.working-directory || '.'))")) and
+    ($restore[0].with.key | contains("${{ needs.changes.outputs.module-directory }}")) and
+    ($restore[0].with.key | contains("hashFiles(format('{0}/go.mod', needs.changes.outputs.module-directory), format('{0}/go.sum', needs.changes.outputs.module-directory))")) and
     ($restore[0].with["restore-keys"] == null) and
     ($save[0].with.path == $restore[0].with.path) and
     ($save[0].with.key == "${{ steps.go-build-cache.outputs.cache-primary-key }}") and
