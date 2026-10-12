@@ -39,10 +39,10 @@ GOOD_OUTPUTS="      go: \${{ steps.filter.outputs.go }}
 
 # The scanner has to be pointed at the allowlist the trigger fired on. The action resolves
 # its path inputs from the checkout root rather than from `work-dir`, so the value must be
-# composed from `inputs.working-directory`: a bare literal reaches the ROOT allowlist while
+# composed from the resolved module directory: a bare literal reaches the ROOT allowlist while
 # the detection step — a `run:` step, so it honours defaults.run.working-directory — reports
 # the NESTED one as present.
-GOOD_ALLOW_FILE="\${{ steps.govulncheck-allow.outputs.present == 'true' && format('{0}/.govulncheck-allow.txt', inputs.working-directory || '.') || '' }}"
+GOOD_ALLOW_FILE="\${{ steps.govulncheck-allow.outputs.present == 'true' && format('{0}/.govulncheck-allow.txt', needs.changes.outputs.module-directory) || '' }}"
 ROOT_ONLY_ALLOW_FILE="\${{ steps.govulncheck-allow.outputs.present == 'true' && '.govulncheck-allow.txt' || '' }}"
 
 # emit <file> <defect-description> <go-filter> <vuln-filter> <outputs> <gate> [allow-file]
@@ -256,7 +256,7 @@ event_constraint="github.event_name == 'push' && needs.changes.outputs.go != ''"
 emit default-arm-event-gated.yaml \
   "an additional event gate skips default-branch dispatches and schedules." \
   "$GOOD_GO_FILTER" "$GOOD_VULN_FILTER" "$GOOD_OUTPUTS" \
-  "${GOOD_GATE/$ran_proof/$event_constraint}"
+  "${GOOD_GATE/$ran_proof/"$event_constraint"}"
 
 # Remove only retired input fixtures; all behavior controls remain generated.
 rm -f -- flag-not-referenced.yaml flag-and-ed-at-top-level.yaml flag-gates-wrong-arm.yaml flag-defaults-false.yaml direct-input-default-missing.yaml allowlist-trigger-not-flag-gated.yaml unflagged-arm-not-pr-gated.yaml

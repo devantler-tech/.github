@@ -40,7 +40,7 @@ cat > "$work/policy.jq" <<'JQ'
   ([ $workflow[0].jobs | to_entries[]
      | select(any((.value.steps // [])[];(.uses // "") | startswith("actions/setup-go@"))) | .key ] | sort) as $go_jobs |
   ($go_jobs == ["build","coverage","deadcode","golangci-lint","lint","test","tidy"]) and
-  all($go_jobs[]; . as $id | restores($workflow[0].jobs[$id].steps; "inputs.working-directory || '.'")) and
+  all($go_jobs[]; . as $id | restores($workflow[0].jobs[$id].steps; "needs.changes.outputs.module-directory")) and
   restores($action[0].runs.steps; "inputs.work-dir") and
   # The scanner is the eighth Go setup: it must stay behind the composite action checked above.
   ([ $workflow[0].jobs.govulncheck.steps[] | select((.uses // "") | endswith("/.github/actions/govulncheck")) ] | length >= 1) and

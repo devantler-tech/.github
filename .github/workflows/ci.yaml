@@ -3520,6 +3520,10 @@ jobs:
         shell: bash
         run: bash .github/tests/test-go-module-cache-policy.sh
 
+      - name: Check tracked Go module selection and direct required invocations
+        shell: bash
+        run: bash .github/tests/test-go-module-resolution.sh
+
       - name: Check opt-in Go disk observations and failure controls
         run: bash .github/tests/test-go-disk-measurement.sh
 
