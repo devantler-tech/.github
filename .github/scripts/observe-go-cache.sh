@@ -148,8 +148,15 @@ observe() {
   gh api --paginate --slurp "repos/devantler-tech/.github/actions/runs/$run/attempts/$attempt/jobs?per_page=100" >"$scratch/jobs.json" || fail 'complete current-attempt job read failed'
   jobs="$scratch/jobs.json"
   validate_jobs
+  # Older gh versions print log bytes directly and do not accept this option.
+  # Newer versions refuse escape-bearing action logs without the explicit flag.
+  gh api --help >"$scratch/gh-api-help" || fail 'cannot determine supported log download interface'
+  log_args=()
+  if grep -Eq '^[[:space:]]+--allow-escape-sequences([[:space:]]|$)' "$scratch/gh-api-help"; then
+    log_args+=(--allow-escape-sequences)
+  fi
   while IFS= read -r id; do
-    gh api "repos/devantler-tech/.github/actions/jobs/$id/logs" >"$scratch/logs/$id.log" || fail 'Go job log read failed'
+    gh api "${log_args[@]}" "repos/devantler-tech/.github/actions/jobs/$id/logs" >"$scratch/logs/$id.log" || fail 'Go job log read failed'
   done < <(jq -r --arg prefix "$prefix" '.[].jobs[] | select((.name | startswith($prefix)) and .name != ($prefix + "🔍 Detect Changes")) | .id' "$jobs")
   printf '[]\n' >"$scratch/caches.json"
   if [[ "$mode" == main ]]; then
