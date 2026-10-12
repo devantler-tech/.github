@@ -15,7 +15,7 @@ cat > "$work/cache.jq" <<'JQ'
     ($job.steps | map(select(.name == "Save Go compilation cache"))) as $save |
     ($job.steps | map(.id // .name)) as $order |
     ($setup|length==1) and ($path|length==1) and ($restore|length==1) and ($save|length==1) and
-    ($setup[0].with.cache == true) and
+    ($setup[0].with.cache == false) and
     ($setup[0].if == null and $path[0].if == null and $restore[0].if == null) and
     ($path[0].shell == "bash") and
     ($path[0].run | contains("cache_path=\"$(go env GOCACHE)\"")) and
@@ -34,7 +34,7 @@ cat > "$work/cache.jq" <<'JQ'
     ($restore[0].with["restore-keys"] == null) and
     ($save[0].with.path == $restore[0].with.path) and
     ($save[0].with.key == "${{ steps.go-build-cache.outputs.cache-primary-key }}") and
-    ($save[0].if == "success() && steps.go-build-cache.outputs.cache-hit != 'true'") and
+    ($save[0].if == "success() && github.ref == format('refs/heads/{0}', github.event.repository.default_branch) && steps.go-build-cache.outputs.cache-hit != 'true'") and
     ([$setup[0],$path[0],$restore[0],$save[0]] | all(."continue-on-error" == null or ."continue-on-error" == false)) and
     ([ $job.steps[] | select(.name == "🧪 Test" or .name == "📄 Generate coverage") ] | length == 1) and
     ([ $job.steps[] | select(.name == "🧪 Test" or .name == "📄 Generate coverage") ] | all(.if == null and (."continue-on-error" == null or ."continue-on-error" == false))) and

@@ -421,10 +421,19 @@ rejection covered. Final input and concurrency-discriminator removal remain #276
 
 **Go compilation caches:** Test and race coverage retain separate `GOCACHE` archives,
 keyed by job, runner OS/architecture, installed Go version, working directory and that
-module's `go.mod`/`go.sum`. The existing setup-go module cache stays enabled. An exact
-compiler-cache hit reuses build outputs; both original test commands still run and Go
-validates their inputs. Save only after success on a cache miss, without broad restore
-prefixes. Keep `test-go-build-cache.sh` and the read-only workflow projection passing.
+module's `go.mod`/`go.sum`. An exact compiler-cache hit reuses build outputs; both
+original test commands still run and Go validates their inputs. Save only on the default
+branch, after success on a cache miss, without broad restore prefixes. Keep
+`test-go-build-cache.sh` and the read-only workflow projection passing.
+
+**Go module cache:** setup-go's own cache is off in every Go job and in the internal
+`govulncheck` action, because it saves a multi-gigabyte archive from any ref whose key
+misses. Each job restores one module archive keyed by runner OS/architecture, working
+directory and that module's `go.sum`; the default branch's Test job is its only writer.
+A pull request falls back to the default branch's newest archive and never writes one.
+The default branch restores an exact match only, so its archive cannot accumulate retired
+module versions. A new job that sets up Go needs the same two restore steps and no save.
+Keep `test-go-module-cache-policy.sh` passing (#565).
 
 **Go disk measurement:** `measure-disk-usage` defaults to false. Opted-in build,
 test and race coverage emit separate cleanup and Go-command receipts, including

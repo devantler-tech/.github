@@ -3516,6 +3516,10 @@ jobs:
         shell: bash
         run: bash .github/tests/test-go-build-cache.sh
 
+      - name: 🧪 Check the Go module cache is restored everywhere and written once
+        shell: bash
+        run: bash .github/tests/test-go-module-cache-policy.sh
+
       - name: Check opt-in Go disk observations and failure controls
         run: bash .github/tests/test-go-disk-measurement.sh
 

@@ -238,6 +238,25 @@ jobs:
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: ${{ inputs.working-directory || '.' }}/go.mod
+          cache: false
+      # Module downloads come from the default branch's archive. Only the default branch's
+      # Test job writes one, and it starts from an exact match so the archive cannot
+      # accumulate retired module versions (devantler-tech/.github#565).
+      - name: Identify Go module cache
+        id: go-mod-cache-path
+        shell: bash
+        run: |
+          set -euo pipefail
+          cache_path="$(go env GOMODCACHE)"
+          [[ "$cache_path" == /* && "$cache_path" != *$'\n'* ]]
+          printf 'path=%s\n' "$cache_path" >> "$GITHUB_OUTPUT"
+      - name: Restore Go module cache
+        id: go-mod-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ steps.go-mod-cache-path.outputs.path }}
+          key: go-mod-v1-${{ runner.os }}-${{ runner.arch }}-${{ inputs.working-directory || '.' }}-${{ hashFiles(format('{0}/go.sum', inputs.working-directory || '.')) }}
+          restore-keys: ${{ github.ref != format('refs/heads/{0}', github.event.repository.default_branch) && format('go-mod-v1-{0}-{1}-{2}-', runner.os, runner.arch, inputs.working-directory || '.') || '' }}
       - name: "\U0001F9F9 go mod tidy"
         run: go mod tidy
       # Anchored at the repository ROOT: `git add .` is cwd-scoped and this job's
@@ -301,6 +320,25 @@ jobs:
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: ${{ inputs.working-directory || '.' }}/go.mod
+          cache: false
+      # Module downloads come from the default branch's archive. Only the default branch's
+      # Test job writes one, and it starts from an exact match so the archive cannot
+      # accumulate retired module versions (devantler-tech/.github#565).
+      - name: Identify Go module cache
+        id: go-mod-cache-path
+        shell: bash
+        run: |
+          set -euo pipefail
+          cache_path="$(go env GOMODCACHE)"
+          [[ "$cache_path" == /* && "$cache_path" != *$'\n'* ]]
+          printf 'path=%s\n' "$cache_path" >> "$GITHUB_OUTPUT"
+      - name: Restore Go module cache
+        id: go-mod-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ steps.go-mod-cache-path.outputs.path }}
+          key: go-mod-v1-${{ runner.os }}-${{ runner.arch }}-${{ inputs.working-directory || '.' }}-${{ hashFiles(format('{0}/go.sum', inputs.working-directory || '.')) }}
+          restore-keys: ${{ github.ref != format('refs/heads/{0}', github.event.repository.default_branch) && format('go-mod-v1-{0}-{1}-{2}-', runner.os, runner.arch, inputs.working-directory || '.') || '' }}
       - name: "\U0001F9F9 Run golangci-lint"
         id: golangci-lint
         uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
@@ -407,7 +445,25 @@ jobs:
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: ${{ inputs.working-directory || '.' }}/go.mod
-          cache: true
+          cache: false
+      # Module downloads come from the default branch's archive. Only the default branch's
+      # Test job writes one, and it starts from an exact match so the archive cannot
+      # accumulate retired module versions (devantler-tech/.github#565).
+      - name: Identify Go module cache
+        id: go-mod-cache-path
+        shell: bash
+        run: |
+          set -euo pipefail
+          cache_path="$(go env GOMODCACHE)"
+          [[ "$cache_path" == /* && "$cache_path" != *$'\n'* ]]
+          printf 'path=%s\n' "$cache_path" >> "$GITHUB_OUTPUT"
+      - name: Restore Go module cache
+        id: go-mod-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ steps.go-mod-cache-path.outputs.path }}
+          key: go-mod-v1-${{ runner.os }}-${{ runner.arch }}-${{ inputs.working-directory || '.' }}-${{ hashFiles(format('{0}/go.sum', inputs.working-directory || '.')) }}
+          restore-keys: ${{ github.ref != format('refs/heads/{0}', github.event.repository.default_branch) && format('go-mod-v1-{0}-{1}-{2}-', runner.os, runner.arch, inputs.working-directory || '.') || '' }}
       - name: "\U0001F4E5 Install deadcode"
         # Bounded retry so a transient module-proxy 5xx / network blip on this
         # required-check path can't red the gate (reliability invariant — #305).
@@ -641,6 +697,25 @@ jobs:
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: ${{ inputs.working-directory || '.' }}/go.mod
+          cache: false
+      # Module downloads come from the default branch's archive. Only the default branch's
+      # Test job writes one, and it starts from an exact match so the archive cannot
+      # accumulate retired module versions (devantler-tech/.github#565).
+      - name: Identify Go module cache
+        id: go-mod-cache-path
+        shell: bash
+        run: |
+          set -euo pipefail
+          cache_path="$(go env GOMODCACHE)"
+          [[ "$cache_path" == /* && "$cache_path" != *$'\n'* ]]
+          printf 'path=%s\n' "$cache_path" >> "$GITHUB_OUTPUT"
+      - name: Restore Go module cache
+        id: go-mod-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ steps.go-mod-cache-path.outputs.path }}
+          key: go-mod-v1-${{ runner.os }}-${{ runner.arch }}-${{ inputs.working-directory || '.' }}-${{ hashFiles(format('{0}/go.sum', inputs.working-directory || '.')) }}
+          restore-keys: ${{ github.ref != format('refs/heads/{0}', github.event.repository.default_branch) && format('go-mod-v1-{0}-{1}-{2}-', runner.os, runner.arch, inputs.working-directory || '.') || '' }}
       # Keep this `uses:` in lockstep with lint.yaml's MegaLinter step so both consumers run
       # the same image and the failure-mode self-test always exercises the real gate.
       - name: "\U0001F9F9 Lint"
@@ -817,7 +892,25 @@ jobs:
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: ${{ inputs.working-directory || '.' }}/go.mod
-          cache: true
+          cache: false
+      # Module downloads come from the default branch's archive. Only the default branch's
+      # Test job writes one, and it starts from an exact match so the archive cannot
+      # accumulate retired module versions (devantler-tech/.github#565).
+      - name: Identify Go module cache
+        id: go-mod-cache-path
+        shell: bash
+        run: |
+          set -euo pipefail
+          cache_path="$(go env GOMODCACHE)"
+          [[ "$cache_path" == /* && "$cache_path" != *$'\n'* ]]
+          printf 'path=%s\n' "$cache_path" >> "$GITHUB_OUTPUT"
+      - name: Restore Go module cache
+        id: go-mod-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ steps.go-mod-cache-path.outputs.path }}
+          key: go-mod-v1-${{ runner.os }}-${{ runner.arch }}-${{ inputs.working-directory || '.' }}-${{ hashFiles(format('{0}/go.sum', inputs.working-directory || '.')) }}
+          restore-keys: ${{ github.ref != format('refs/heads/{0}', github.event.repository.default_branch) && format('go-mod-v1-{0}-{1}-{2}-', runner.os, runner.arch, inputs.working-directory || '.') || '' }}
       - name: "\U0001F6E0️ Build"
         env:
           MEASURE_DISK_USAGE: ${{ inputs.measure-disk-usage }}
@@ -968,8 +1061,26 @@ jobs:
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: ${{ inputs.working-directory || '.' }}/go.mod
-          cache: true
-      # setup-go's shared immutable cache cannot retain both ordinary and race builds.
+          cache: false
+      # Module downloads come from the default branch's archive. Only the default branch's
+      # Test job writes one, and it starts from an exact match so the archive cannot
+      # accumulate retired module versions (devantler-tech/.github#565).
+      - name: Identify Go module cache
+        id: go-mod-cache-path
+        shell: bash
+        run: |
+          set -euo pipefail
+          cache_path="$(go env GOMODCACHE)"
+          [[ "$cache_path" == /* && "$cache_path" != *$'\n'* ]]
+          printf 'path=%s\n' "$cache_path" >> "$GITHUB_OUTPUT"
+      - name: Restore Go module cache
+        id: go-mod-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ steps.go-mod-cache-path.outputs.path }}
+          key: go-mod-v1-${{ runner.os }}-${{ runner.arch }}-${{ inputs.working-directory || '.' }}-${{ hashFiles(format('{0}/go.sum', inputs.working-directory || '.')) }}
+          restore-keys: ${{ github.ref != format('refs/heads/{0}', github.event.repository.default_branch) && format('go-mod-v1-{0}-{1}-{2}-', runner.os, runner.arch, inputs.working-directory || '.') || '' }}
+      # One shared archive cannot retain both ordinary and race builds.
       # Keep each test mode's compilation outputs separately; Go still validates inputs.
       - name: Identify Go compilation cache
         id: go-build-cache-path
@@ -1016,8 +1127,15 @@ jobs:
           else
             go test ./...
           fi
+      # The one module-cache writer: a pull request restores this archive and never writes its own.
+      - name: Save Go module cache
+        if: success() && github.ref == format('refs/heads/{0}', github.event.repository.default_branch) && steps.go-mod-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ steps.go-mod-cache-path.outputs.path }}
+          key: ${{ steps.go-mod-cache.outputs.cache-primary-key }}
       - name: Save Go compilation cache
-        if: success() && steps.go-build-cache.outputs.cache-hit != 'true'
+        if: success() && github.ref == format('refs/heads/{0}', github.event.repository.default_branch) && steps.go-build-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ steps.go-build-cache-path.outputs.path }}
@@ -1140,8 +1258,26 @@ jobs:
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: ${{ inputs.working-directory || '.' }}/go.mod
-          cache: true
-      # setup-go's shared immutable cache cannot retain both ordinary and race builds.
+          cache: false
+      # Module downloads come from the default branch's archive. Only the default branch's
+      # Test job writes one, and it starts from an exact match so the archive cannot
+      # accumulate retired module versions (devantler-tech/.github#565).
+      - name: Identify Go module cache
+        id: go-mod-cache-path
+        shell: bash
+        run: |
+          set -euo pipefail
+          cache_path="$(go env GOMODCACHE)"
+          [[ "$cache_path" == /* && "$cache_path" != *$'\n'* ]]
+          printf 'path=%s\n' "$cache_path" >> "$GITHUB_OUTPUT"
+      - name: Restore Go module cache
+        id: go-mod-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ steps.go-mod-cache-path.outputs.path }}
+          key: go-mod-v1-${{ runner.os }}-${{ runner.arch }}-${{ inputs.working-directory || '.' }}-${{ hashFiles(format('{0}/go.sum', inputs.working-directory || '.')) }}
+          restore-keys: ${{ github.ref != format('refs/heads/{0}', github.event.repository.default_branch) && format('go-mod-v1-{0}-{1}-{2}-', runner.os, runner.arch, inputs.working-directory || '.') || '' }}
+      # One shared archive cannot retain both ordinary and race builds.
       # Keep each test mode's compilation outputs separately; Go still validates inputs.
       - name: Identify Go compilation cache
         id: go-build-cache-path
@@ -1181,7 +1317,7 @@ jobs:
             go test -race -coverprofile=coverage.txt -covermode=atomic ./...
           fi
       - name: Save Go compilation cache
-        if: success() && steps.go-build-cache.outputs.cache-hit != 'true'
+        if: success() && github.ref == format('refs/heads/{0}', github.event.repository.default_branch) && steps.go-build-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ steps.go-build-cache-path.outputs.path }}
