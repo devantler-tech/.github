@@ -72,7 +72,7 @@ func TestCleanupWorkflowCallerInventoryFailsClosed(t *testing.T) {
 
 func TestCleanupWorkflowPathsRequireExactMatches(t *testing.T) {
 	i, _ := cleanupSelectionFixture(t)
-	full := []string{"test-one", "test-one-wrapper", "test-run-dotnet-tests-gate-lockstep", "test-run-dotnet-tests-mtp", "test-run-dotnet-tests-workflow", "test-run-dotnet-tests-workflow-authenticated", "test-two", "test-workflow"}
+	full := []string{"test-go-cache-native-observer", "test-one", "test-one-wrapper", "test-run-dotnet-tests-gate-lockstep", "test-run-dotnet-tests-mtp", "test-run-dotnet-tests-workflow", "test-run-dotnet-tests-workflow-authenticated", "test-two", "test-validate-go-postgresql-fixture", "test-workflow"}
 	for _, path := range []string{
 		".github/workflows/delete-workflow-runs.yaml.bak",
 		".github/workflows/delete-workflow-runs-readonly.yaml/extra",

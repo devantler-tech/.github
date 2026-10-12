@@ -239,7 +239,7 @@ func TestEntrypointBindsGitEvidenceAndSelectedOutput(t *testing.T) {
 		fails                             bool
 	}{
 		{"selective PR", "pull_request", "true", head, "selected=[\"test-one\",\"test-one-wrapper\"]\n", false},
-		{"main retains complete inventory", "push", "true", "", "selected=[\"test-one\",\"test-one-wrapper\",\"test-run-dotnet-tests-gate-lockstep\",\"test-run-dotnet-tests-mtp\",\"test-run-dotnet-tests-workflow\",\"test-two\",\"test-workflow\"]\n", false},
+		{"main retains complete inventory", "push", "true", "", "selected=[\"test-go-cache-native-observer\",\"test-one\",\"test-one-wrapper\",\"test-run-dotnet-tests-gate-lockstep\",\"test-run-dotnet-tests-mtp\",\"test-run-dotnet-tests-workflow\",\"test-two\",\"test-validate-go-postgresql-fixture\",\"test-workflow\"]\n", false},
 		{"excluded event", "merge_group", "false", "", "selected=[]\n", false},
 		{"missing immutable head", "pull_request", "true", strings.Repeat("a", 40), "", true},
 		{"unknown eligibility", "push", "", "", "", true},
@@ -307,8 +307,8 @@ func TestDeploymentCatalogueScopeComposesWithSelection(t *testing.T) {
 		name, event, eligible, scope, want string
 		fails                              bool
 	}{
-		{"deployment smoke omission only", "pull_request", "true", "false", "selected=[\"test-one-wrapper\",\"test-run-dotnet-tests-gate-lockstep\",\"test-run-dotnet-tests-mtp\",\"test-run-dotnet-tests-workflow\",\"test-workflow\"]\n", false},
-		{"full scope", "pull_request", "true", "true", "selected=[\"test-one\",\"test-one-wrapper\",\"test-run-dotnet-tests-gate-lockstep\",\"test-run-dotnet-tests-mtp\",\"test-run-dotnet-tests-workflow\",\"test-two\",\"test-workflow\"]\n", false},
+		{"deployment smoke omission only", "pull_request", "true", "false", "selected=[\"test-go-cache-native-observer\",\"test-one-wrapper\",\"test-run-dotnet-tests-gate-lockstep\",\"test-run-dotnet-tests-mtp\",\"test-run-dotnet-tests-workflow\",\"test-validate-go-postgresql-fixture\",\"test-workflow\"]\n", false},
+		{"full scope", "pull_request", "true", "true", "selected=[\"test-go-cache-native-observer\",\"test-one\",\"test-one-wrapper\",\"test-run-dotnet-tests-gate-lockstep\",\"test-run-dotnet-tests-mtp\",\"test-run-dotnet-tests-workflow\",\"test-two\",\"test-validate-go-postgresql-fixture\",\"test-workflow\"]\n", false},
 		{"missing scope", "pull_request", "true", "", "", true},
 		{"malformed scope", "pull_request", "true", "unknown", "", true},
 		{"push cannot omit smoke", "push", "true", "false", "", true},

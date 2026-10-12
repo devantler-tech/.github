@@ -213,8 +213,9 @@ scope="$(sed -n 's/^catalogue=//p' "${output}")"
 EVENT_NAME=pull_request RUN_CATALOGUE=true CATALOGUE_SCOPE="${scope}" BASE_SHA="${base}" HEAD_SHA="${head}" GITHUB_OUTPUT="${selection_output}" \
   go -C "${repo_root}/.github/scripts/ci-selection" run . "${current}" "${repo_root}/.github/scripts/ci-selection/inventory.json" "${fixture}/workflow.json"
 selected="$(sed -n 's/^selected=//p' "${selection_output}")"
-[[ "$(jq 'length' <<<"${selected}")" == 35 ]] || fail 'deployment-only selection changed the independent coverage floor'
+[[ "$(jq 'length' <<<"${selected}")" == 36 ]] || fail 'deployment-only selection changed the independent coverage floor'
 jq -e 'index("test-validate-go-postgresql-fixture") != null' <<<"${selected}" >/dev/null || fail 'native PostgreSQL caller left the independent coverage floor'
+jq -e 'index("test-go-cache-native-observer") != null' <<<"${selected}" >/dev/null || fail 'native Go cache observer left the independent coverage floor'
 jq -en --argjson selected "${selected}" --slurpfile inventory "${repo_root}/.github/scripts/ci-selection/inventory.json" '
   ($inventory[0].catalogue_optional | length == 48) and
   all($selected[]; . as $id | ($inventory[0].catalogue_optional | index($id)) == null) and
@@ -229,6 +230,10 @@ JOB_RESULTS='success skipped' CATALOGUE_REQUIRED=true SELECTOR_RESULT=success SE
 bad_needs="$(jq '."test-approve-pr-credential-boundary".result="skipped"' <<<"${needs}")"
 if JOB_RESULTS='success skipped' CATALOGUE_REQUIRED=true SELECTOR_RESULT=success SELECTED_JOBS="${selected}" NEEDS_JSON="${bad_needs}" bash -c "${reducer}"; then
   fail 'selected-but-skipped credential replay was accepted'
+fi
+bad_needs="$(jq '."test-go-cache-native-observer".result="skipped"' <<<"${needs}")"
+if JOB_RESULTS='success skipped' CATALOGUE_REQUIRED=true SELECTOR_RESULT=success SELECTED_JOBS="${selected}" NEEDS_JSON="${bad_needs}" bash -c "${reducer}"; then
+  fail 'selected-but-skipped native cache observation was accepted'
 fi
 
 : >"${output}"
