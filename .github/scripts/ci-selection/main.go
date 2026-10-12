@@ -23,6 +23,8 @@ const cleanupProjection = ".github/workflows/delete-workflow-runs-readonly.yaml"
 const cleanupImplementation = ".github/scripts/delete-workflow-runs/main.go"
 const cleanupModule = ".github/scripts/delete-workflow-runs/go.mod"
 const dotnetWorkflow = ".github/workflows/run-dotnet-tests.yaml"
+const goCacheObserver = "test-go-cache-native-observer"
+const goCacheFixture = "test-validate-go-postgresql-fixture"
 
 var ordinarySelectiveFiles = map[string]bool{
 	cleanupImplementation: true,
@@ -59,6 +61,9 @@ func selectionGuard(id string) string {
 
 func validateInventory(i inventory, w workflow) ([]string, error) {
 	if err := validateDotnetOwners(i, w); err != nil {
+		return nil, err
+	}
+	if err := validateGoCacheOwners(i, w); err != nil {
 		return nil, err
 	}
 	// All native cleanup callers depend on the exact production source, module,
@@ -112,7 +117,11 @@ func validateInventory(i inventory, w workflow) ([]string, error) {
 			}
 		} else {
 			needs, ok := j.Needs.([]any)
-			if j.If != selectionGuard(id) || !ok || len(needs) != 1 || needs[0] != "select-ci-tests" {
+			expectedNeeds := []any{"select-ci-tests"}
+			if id == goCacheObserver {
+				expectedNeeds = append(expectedNeeds, goCacheFixture)
+			}
+			if j.If != selectionGuard(id) || !ok || !reflect.DeepEqual(needs, expectedNeeds) {
 				return nil, fmt.Errorf("invalid selector contract for %s", id)
 			}
 			gated = append(gated, id)
@@ -143,6 +152,27 @@ func validateInventory(i inventory, w workflow) ([]string, error) {
 	}
 	sort.Strings(gated)
 	return gated, nil
+}
+
+func validateGoCacheOwners(i inventory, w workflow) error {
+	for _, id := range []string{goCacheObserver, goCacheFixture} {
+		j, exists := w.Jobs[id]
+		if !exists || !reflect.DeepEqual(i.Jobs[id], []string{"actions/upload-coverage/"}) {
+			return fmt.Errorf("incomplete native Go cache owner %s", id)
+		}
+		if _, preserved := i.Preserved[id]; preserved {
+			return fmt.Errorf("native Go cache owner has bypass scheduling: %s", id)
+		}
+		for _, optional := range i.CatalogueOptional {
+			if optional == id {
+				return fmt.Errorf("native Go cache owner must remain required: %s", id)
+			}
+		}
+		if id == goCacheFixture && j.Uses != "./.github/workflows/validate-go-project-readonly.yaml" || id == goCacheObserver && j.Uses != "" {
+			return fmt.Errorf("unbound native Go cache owner %s", id)
+		}
+	}
+	return nil
 }
 
 func hasDotnetOwner(id string) bool {
