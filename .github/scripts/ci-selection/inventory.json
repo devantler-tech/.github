@@ -118,6 +118,7 @@
     "test-validate-go-project-interface": ["actions/upload-coverage/"],
     "test-validate-go-project": ["actions/upload-coverage/"],
     "test-validate-go-postgresql-fixture": ["actions/upload-coverage/"],
+    "test-go-cache-native-observer": ["actions/upload-coverage/"],
     "test-validate-go-project-manual-fixes": ["actions/upload-coverage/"],
     "test-validate-go-project-apply-signed-fixes": ["actions/upload-coverage/"],
     "test-validate-go-project-test-default-branch": ["actions/upload-coverage/"],

@@ -461,6 +461,15 @@ The default branch restores an exact match only, so its archive cannot accumulat
 module versions. A new job that sets up Go needs the same two restore steps and no save.
 Keep `test-go-module-cache-policy.sh` passing (#565).
 
+Required catalogue CI also observes the dependency-bearing PostgreSQL caller's
+current run attempt (#570). It reads complete job pages and all eight Go action
+logs, rejects skipped restores and PR Go-cache writes (including implicit
+setup-go saves), and requires one non-empty exact main module archive after a
+save or an exact hit without another save. The observer and fixture are selected
+together and neither may become optional; keep their offline failure controls
+and required-result wiring intact. Organization-required consumer invocation
+and the whole-repository cache-budget outcome remain separate evidence on #565.
+
 **Go disk measurement:** `measure-disk-usage` defaults to false. Opted-in build,
 test and race coverage emit separate cleanup and Go-command receipts, including
 capacity before and after cleanup and 1-second sampled headroom. Measurement

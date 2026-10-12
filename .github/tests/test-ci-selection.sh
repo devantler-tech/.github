@@ -79,8 +79,9 @@ touch "$work/output"
 EVENT_NAME=push RUN_CATALOGUE=true CATALOGUE_SCOPE=true GITHUB_OUTPUT="$work/output" \
   go -C "$root/.github/scripts/ci-selection" run . "$root" "$root/.github/scripts/ci-selection/inventory.json" "$work/workflow.json"
 selected="$(sed -n 's/^selected=//p' "$work/output")"
-[[ "$(jq 'length' <<< "$selected")" == 83 ]]
+[[ "$(jq 'length' <<< "$selected")" == 84 ]]
 jq -e 'index("test-validate-go-postgresql-fixture") != null' <<<"$selected" >/dev/null
+jq -e 'index("test-go-cache-native-observer") != null' <<<"$selected" >/dev/null
 full_selected="$selected"
 # Hosted CI reports these callers as skipped because their callee jobs are
 # intentionally excluded (dry-run, repository exclusion, or dependency-bot
