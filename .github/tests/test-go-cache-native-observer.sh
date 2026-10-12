@@ -49,11 +49,29 @@ reject_jobs '.[1].jobs[0].name += " unexpected"'
 reject_jobs '.[1].jobs[1].steps |= map(select(.name != "Save Go module cache"))'
 cp "$scratch/good-jobs.json" "$scratch/jobs.json"
 cp "$scratch/logs/108.log" "$scratch/good-scan.log"
-printf 'Cache saved with key: setup-go-unsafe\n' >>"$scratch/logs/108.log"
+printf 'Cache saved with the key: setup-go-unsafe\n' >>"$scratch/logs/108.log"
 if check pr >"$scratch/out" 2>"$scratch/error"; then fail 'implicit setup-go save was accepted'; fi
 cp "$scratch/good-scan.log" "$scratch/logs/108.log"
 printf '##[group]Run actions/cache/restore@x\n  key: wrong\n##[endgroup]\nCache not found for input keys: wrong\n' >"$scratch/logs/108.log"
 if check pr >"$scratch/out" 2>"$scratch/error"; then fail 'scanner without the expected module restore was accepted'; fi
+cp "$scratch/good-scan.log" "$scratch/logs/108.log"
+# Preserve the requested key while corrupting the actual outcome. A successful
+# REST step does not establish that the allowed archive was restored.
+for id in 101 102 103 104 105 106 107 108; do
+  cp "$scratch/logs/$id.log" "$scratch/before-outcome.log"
+  for outcome in 'Cache restored from key: other-module-key' 'Cache restored from key: ' 'Cache not found for input keys: wrong'; do
+    sed '/^Cache /d' "$scratch/before-outcome.log" >"$scratch/logs/$id.log"
+    printf '%s\n' "$outcome" >>"$scratch/logs/$id.log"
+    if check pr >"$scratch/out" 2>"$scratch/error"; then fail "unbound restore outcome accepted in job $id: $outcome"; fi
+  done
+  cp "$scratch/before-outcome.log" "$scratch/logs/$id.log"
+done
+# The scanner's supported timeout retry legitimately restores twice. Both
+# observations must be examined rather than accepting an arbitrary one.
+jq '.[1].jobs[4].steps = [{name:"🛡️ Scan for known vulnerabilities",status:"completed",conclusion:"failure"},{name:"🛡️ Scan for known vulnerabilities (retry after timeout)",status:"completed",conclusion:"success"}]' "$scratch/good-jobs.json" >"$scratch/jobs.json"
+cat "$scratch/good-scan.log" "$scratch/good-scan.log" >"$scratch/logs/108.log"
+check pr >"$scratch/out" 2>"$scratch/error" || fail "legitimate scanner retry was rejected: $(cat "$scratch/error")"
+cp "$scratch/good-jobs.json" "$scratch/jobs.json"
 cp "$scratch/good-scan.log" "$scratch/logs/108.log"
 jq '.event="push"' "$scratch/run.json" >"$scratch/run-next.json"
 mv "$scratch/run-next.json" "$scratch/run.json"

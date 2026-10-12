@@ -21,16 +21,19 @@ validate_jobs() {
         ([.steps[].name] | length == (unique | length))))
   ' "$jobs" >/dev/null 2>&1 || fail 'incomplete, stale or unsuccessful current-attempt jobs'
 }
+normalize_log() {
+  sed -E 's/^[0-9]{4}-[0-9T:.+-]+Z //; s/^Cache saved with the key: /Cache saved with key: /' "$1"
+}
 restore_section() {
   # Select only the action group with this exact key and its following result.
   # Source echoed inside a shell step cannot impersonate a cache-action result.
-  sed -E 's/^[0-9]{4}-[0-9T:.+-]+Z //' "$1" | awk -v key="$key" '
+  normalize_log "$1" | awk -v key="$key" -v expected="$2" '
     /##\[group\]/ {
       if (wanted) { printf "%s", block; matches++; }
       block=""; wanted=0; restore=($0 ~ /##\[group\]Run actions\/cache\/restore@/)
     }
     restore { block=block $0 "\n"; if ($0 == "  key: " key) wanted=1; }
-    END { if (wanted) { printf "%s", block; matches++; } if (matches != 1) exit 1; }
+    END { if (wanted) { printf "%s", block; matches++; } if (matches != expected) exit 1; }
   '
 }
 check() {
@@ -51,7 +54,7 @@ check() {
     log="$logs/$id.log"
     [[ -s "$log" && ! -L "$log" ]] || fail 'missing native Go job log'
     # Catch implicit setup-go savers too, not just named cache/save steps.
-    saved="$(sed -E 's/^[0-9]{4}-[0-9T:.+-]+Z //' "$log" | grep -E '^Cache saved with key: (setup-go-|go-mod-v1-|go-build-v1-)' || true)"
+    saved="$(normalize_log "$log" | grep -E '^Cache saved with key: (setup-go-|go-mod-|go-build-)' || true)"
     if [[ "$mode" == pr && -n "$saved" ]]; then fail 'pull request wrote a Go cache archive'; fi
     if [[ "$mode" == main && -n "$saved" ]]; then
       while IFS= read -r archive; do
@@ -66,14 +69,30 @@ check() {
         esac
       done <<<"$saved"
     fi
-    section="$(restore_section "$log")" || fail 'missing or ambiguous exact module restore action'
-    if ! grep -Eq '^Cache (restored from key:|not found for input keys:)' <<<"$section"; then fail 'module restore action has no completed outcome'; fi
+    restores=1
     if [[ "$name" == "${prefix}🛡️ Vulnerability Scan" ]]; then
-      jq -e --argjson id "$id" '[.[].jobs[] | select(.id == $id) | .steps[] | select(.name == "🛡️ Scan for known vulnerabilities" and .status == "completed" and .conclusion == "success")] | length == 1' "$jobs" >/dev/null || fail 'scanner did not exercise its module restore'
+      restores="$(jq -er --argjson id "$id" '
+        [.[].jobs[] | select(.id == $id) | .steps[] | select(.name == "🛡️ Scan for known vulnerabilities" and .status == "completed")] as $first |
+        [.[].jobs[] | select(.id == $id) | .steps[] | select(.name == "🛡️ Scan for known vulnerabilities (retry after timeout)" and .status == "completed")] as $retry |
+        if ($first | length) == 1 and $first[0].conclusion == "success" and (($retry | length) == 0 or (($retry | length) == 1 and $retry[0].conclusion == "skipped")) then 1
+        elif ($first | length) == 1 and ($first[0].conclusion == "failure" or $first[0].conclusion == "success") and ($retry | length) == 1 and $retry[0].conclusion == "success" then 2
+        else error("incomplete scanner execution") end
+      ' "$jobs")" || fail 'scanner did not exercise its module restore'
       [[ -z "$saved" ]] || fail 'scanner wrote a Go archive'
     else
       jq -e --argjson id "$id" '[.[].jobs[] | select(.id == $id) | .steps[] | select(.name == "Restore Go module cache" and .status == "completed" and .conclusion == "success")] | length == 1' "$jobs" >/dev/null || fail 'Go job did not restore its module cache'
     fi
+    section="$(restore_section "$log" "$restores")" || fail 'missing or ambiguous exact module restore action'
+    outcomes="$(grep -E '^Cache (restored from key:|not found for input keys:)' <<<"$section" || true)"
+    [[ "$(grep -c . <<<"$outcomes" || true)" == "$restores" ]] || fail 'module restore action has no unique completed outcome'
+    while IFS= read -r outcome; do
+      if [[ "$outcome" == 'Cache restored from key: '* ]]; then
+        restored_key="${outcome#Cache restored from key: }"
+        [[ "$restored_key" == "$key" || ( "$mode" == pr && "$restored_key" == "${key%-*}-"* && "${restored_key#"${key%-*}-"}" =~ ^[a-f0-9]{64}$ ) ]] || fail 'module restore returned a key outside its allowed namespace'
+      else
+        [[ "$outcome" == "Cache not found for input keys: $key" || ( "$mode" == pr && "$outcome" == "Cache not found for input keys: $key, ${key%-*}-" ) ]] || fail 'module miss did not name the requested key'
+      fi
+    done <<<"$outcomes"
     if [[ "$name" == "${prefix}🧪 Test" ]]; then
       test_id="$id"; test_restore="$section"
       module_save="$(jq -r --argjson id "$id" '[.[].jobs[] | select(.id == $id) | .steps[] | select(.name == "Save Go module cache" and .status == "completed")] | if length == 1 then .[0].conclusion else "missing" end' "$jobs")"
@@ -96,7 +115,7 @@ check() {
       [[ "$module_save" == skipped ]] || fail 'exact main hit saved again'
     elif grep -Fxq "Cache not found for input keys: $key" <<<"$test_restore"; then
       [[ "$module_save" == success ]] || fail 'main module miss did not save'
-      [[ "$(sed -E 's/^[0-9]{4}-[0-9T:.+-]+Z //' "$logs/$test_id.log" | grep -Fxc "Cache saved with key: $key" || true)" == 1 ]] || fail 'main miss did not publish its exact archive'
+      [[ "$(normalize_log "$logs/$test_id.log" | grep -Fxc "Cache saved with key: $key" || true)" == 1 ]] || fail 'main miss did not publish its exact archive'
     else
       fail 'main restored a non-exact module archive'
     fi
