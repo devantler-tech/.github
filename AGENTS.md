@@ -47,7 +47,7 @@ for the architecture, the GitHub App credential setup, and the Observe-first ado
   an already-live object must adopt it without risk of recreate/delete: set the
   `crossplane.io/external-name` annotation to the live name and use a management policy that
   **excludes `Delete`** (observe/late-initialize), per platform's `docs/github-management.md`. Once
-  adopted, an active `Repository` runs on `Observe`/`Create`/`Update` **without `LateInitialize`**:
+  adopted, an active `Repository` normally runs on `Observe`/`Create`/`Update` **without `LateInitialize`**:
   the values late-initialized *during adoption* stay in `forProvider` as provider-owned state, and
   once `LateInitialize` is gone **no newly observed field is ever copied in again** — so a resource
   adopted without a given field never acquires it, and nothing but the config can supply it. A
@@ -61,7 +61,11 @@ for the architecture, the GitHub App credential setup, and the Observe-first ado
   v0.20.0 embeds terraform-provider-github v6.13.0, whose fix for
   [upstream #2077](https://github.com/integrations/terraform-provider-github/issues/2077) omits the
   unchanged field when another setting needs an update. Active repositories can therefore use
-  `Update` while keeping the enforced live value explicit. The `platform` and `ksail` Repository
+  `Update` while keeping the enforced live value explicit. The adopted private `client-orders`
+  repository uses only `Observe`/`Update`: recreation is forbidden, privacy and Issues are explicit,
+  and init-only public-safe seeds preserve its externally owned description, homepage and security
+  settings. Never add those fields to `forProvider`, enable `Create` or `LateInitialize`, or copy
+  private metadata into this repository. The `platform` and `ksail` Repository
   resources host workflow-built Pages sites that the GitHub App cannot write, so each declares the
   deprecated `pages` field exactly as GitHub reports it. Declaring the whole list replaces stale
   provider state and leaves no Pages diff for an update to send (issue #232). After a repository's one-time

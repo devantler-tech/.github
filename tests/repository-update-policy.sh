@@ -314,4 +314,41 @@ for adopted in dot-github monorepo cloudflare data-product-controller business-s
     fail "$adopted must run on Observe/Create/Update now that adoption is complete: ${adopted_policies:-<absent>}"
 done
 
+# The adopted private repository can update shared settings while its description
+# remains externally owned. Init-only description emits ignore_changes in the
+# provider; forbidding Create makes the empty placeholder unusable for creation.
+private_repository_policies="$(
+  yq -N '
+    select(.kind == "Repository" and .metadata.name == "client-orders") |
+    .spec.managementPolicies | sort | join(",")
+  ' "$render"
+)"
+[[ "$private_repository_policies" == "Observe,Update" ]] ||
+  fail "client-orders must update adopted settings without Create, Delete or LateInitialize"
+
+private_repository_preservation="$(
+  yq -N '
+    select(.kind == "Repository" and .metadata.name == "client-orders") |
+    (
+      .metadata.annotations."crossplane.io/external-name" == "client-orders" and
+      .spec.forProvider.visibility == "private" and
+      .spec.forProvider.hasIssues == true and
+      (.spec.forProvider | has("description") | not) and
+      (.spec.initProvider | keys | sort | join(",")) == "description,homepageUrl,securityAndAnalysis,vulnerabilityAlerts" and
+      (.spec.initProvider.description | tag) == "!!str" and
+      .spec.initProvider.description == "" and
+      (.spec.initProvider.homepageUrl | tag) == "!!str" and
+      .spec.initProvider.homepageUrl == "" and
+      .spec.initProvider.vulnerabilityAlerts == true and
+      .spec.initProvider.securityAndAnalysis[0].secretScanning[0].status == "enabled" and
+      .spec.initProvider.securityAndAnalysis[0].secretScanningPushProtection[0].status == "enabled" and
+      (.spec.forProvider | has("homepageUrl") | not) and
+      (.spec.forProvider | has("vulnerabilityAlerts") | not) and
+      (.spec.forProvider | has("securityAndAnalysis") | not)
+    )
+  ' "$render"
+)"
+[[ "$private_repository_preservation" == "true" ]] ||
+  fail "client-orders must preserve its identity, privacy, Issues and externally owned description"
+
 echo "repository-update-policy: OK — $archived_count archived repositories are Observe-only; $active_count active repositories declare safe update policy"

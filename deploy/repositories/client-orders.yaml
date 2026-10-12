@@ -1,4 +1,4 @@
-# Observe-first adoption; settings activation follows verified live adoption (#556).
+# Manage shared settings on the adopted repository without taking metadata ownership.
 apiVersion: repo.github.m.upbound.io/v1alpha1
 kind: Repository
 metadata:
@@ -6,9 +6,22 @@ metadata:
   annotations:
     crossplane.io/external-name: client-orders
 spec:
-  managementPolicies: ["Observe"]
+  managementPolicies: ["Observe", "Update"]
   forProvider:
     name: client-orders
+    visibility: private
+    hasIssues: true
+  # Init-only fields are ignored on updates. Create is forbidden, so these
+  # public-safe seeds cannot replace the existing metadata or security settings.
+  initProvider:
+    description: ""
+    homepageUrl: ""
+    vulnerabilityAlerts: true
+    securityAndAnalysis:
+      - secretScanning:
+          - status: enabled
+        secretScanningPushProtection:
+          - status: enabled
   providerConfigRef:
     kind: ProviderConfig
     name: default
