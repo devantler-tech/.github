@@ -53,7 +53,13 @@ case "${1:-}" in
       exit 0
     fi
     report="$reports/tap/mega-linter-JSON_JSONLINT.tap"
-    [[ -f "$report" && ! -L "$report" ]]
+    if [[ ! -f "$report" || -L "$report" ]]; then
+      echo 'FAIL: actual checker TAP receipt is missing or linked' >&2
+      exit 1
+    fi
+    # Only synthetic fixture data is printed. Preserve the actual native bytes
+    # when the observer fails so schema drift cannot be diagnosed by inference.
+    sed -n '1,120p' "$report"
     case "$scenario" in
       root|nested) [[ "$outcome" == success ]] ;;
       absent|finding) [[ "$outcome" == failure ]] ;;
