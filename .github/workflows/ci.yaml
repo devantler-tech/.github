@@ -3420,6 +3420,9 @@ jobs:
       - name: Guard the declared compiler inside both MegaLinter entrypoints
         run: bash .github/tests/test-megalinter-go-toolchain.sh
 
+      - name: Guard the compatible linter against its real Go 1.27 finding fixture
+        run: bash .github/tests/test-go-linter-toolchain.sh
+
       - name: 🧪 Bound diagnostic fan-out and stalled reads without credentials
         run: bash .github/tests/test-diagnose-flux.sh
 
@@ -5407,7 +5410,7 @@ jobs:
         continue-on-error: true
         uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
         with:
-          version: v2.11.4
+          version: v2.14.0
           args: --fix --output.text.path=golangci-report.txt
           working-directory: .github/tests/golangci-lint-fixture
           verify: false
