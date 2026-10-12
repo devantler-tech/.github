@@ -1134,7 +1134,7 @@ The workflow assumes skills were previously installed with [`devantler-tech/.git
 - **Automated Linting**: Runs `golangci-lint` and `mega-linter` to ensure code quality
 - **Auto-fix**: Runs fixers in every validation and, when explicitly enabled, commits their fixes through the signed-commit workflow. Read-only runs fail with the remaining diff instead of discarding it
 - **Copilot Integration**: When linting fails, automatically prompts Copilot on the PR to fix the remaining issues
-- **Supply-chain Scanning**: Runs [`govulncheck`](https://go.dev/blog/govulncheck) using a reviewed scanner version and an allowlist evaluator shipped with the workflow to fail the PR on known vulnerabilities your code actually calls (call-graph reachability, so imported-but-unreachable advisories don't block). A consumer can risk-accept a reachable advisory that has no upstream fix (`Fixed in: N/A`) by committing an optional `.govulncheck-allow.txt` at the repo root (one `GO-YYYY-NNNN  # justification` per line; `#` comments and blank lines ignored); the gate stays strict for everything else. Without an allowlist file the scan is strict. The scanner uses the Go version from the selected module’s `go.mod`; Go 1.25, 1.26, and 1.27 are covered by the compatibility fixtures. Scanner failures and invalid output always fail the check. A scan attempt that runs out of time is retried once, so a slow runner cannot leave an unattended dependency pull request stuck on a cancelled check; a finding or any other failure fails the check immediately and is never retried.
+- **Supply-chain Scanning**: Runs [`govulncheck`](https://go.dev/blog/govulncheck) using a reviewed scanner version and an allowlist evaluator shipped with the workflow to fail the PR on known vulnerabilities your code actually calls (call-graph reachability, so imported-but-unreachable advisories don't block). A consumer can risk-accept a reachable advisory that has no upstream fix (`Fixed in: N/A`) by committing an optional `.govulncheck-allow.txt` in the selected Go module directory (one `GO-YYYY-NNNN  # justification` per line; `#` comments and blank lines ignored); the gate stays strict for everything else. Without an allowlist file the scan is strict. The scanner uses the Go version from the selected module’s `go.mod`; Go 1.25, 1.26, and 1.27 are covered by the compatibility fixtures. Scanner failures and invalid output always fail the check. A scan attempt that runs out of time is retried once, so a slow runner cannot leave an unattended dependency pull request stuck on a cancelled check; a finding or any other failure fails the check immediately and is never retried.
 - **Code Coverage**: Generates a Cobertura report and uploads it to **GitHub Code Quality** (native PR coverage).
 
 #### Usage
@@ -1162,6 +1162,7 @@ jobs:
 | `pr-owner`            | Input (string)  | -       | No       | Pull request author login. Signed fixes exclude exactly dependabot[bot], dependabot, renovate[bot], renovatebot and renovate                                                                                                                                                             |
 | `apply-signed-fixes`  | Input (boolean) | `true`  | No       | Commit each fixer lane's auto-fixes back to the pull request branch as a signed commit (on by default; the org-required direct run is opted in by its workflow ref). Pass false to keep a caller read-only. Forks, Dependabot/Renovate branches and non-PR events are always read-only and fail with their diff if changes remain; other same-repository automation branches (release, bot-authored) do receive fixer commits like any contributor branch                                                                                                               |
 | `working-directory`   | Input (string)  | `""`    | No       | Tracked module directory. Empty called inputs select the root; input-free required runs prefer a tracked root module, otherwise the sole tracked nested module. Unsafe or ambiguous selection fails. |
+| `enable-postgresql-fixture` | Input (boolean) | `false` | No | Opt in to the module-local PostgreSQL 17 fixture declaration; input-free required runs use only an explicit tracked declaration. No production endpoints or credentials are accepted. |
 | `go-memory-limit` | Input (string) | `8GiB` | No | Soft Go heap limit for deadcode and vulnerability analysis; lower it for smaller runners. Decimal Go units are accepted up to 8GiB; total runner memory is not capped. |
 | `minimum-free-disk-gib` | Input (number) | `0` | No | Opt in to retaining toolchains when a complete root-filesystem observation meets a measured whole-number GiB budget (1–1024). Zero and unknown capacity retain cleanup. |
 | `measure-disk-usage` | Input (boolean) | `false` | No | Record sampled filesystem headroom around cleanup and during build, test and race coverage; cleanup and Go results stay unchanged. |
@@ -1179,7 +1180,7 @@ disabled. Coverage uploads retain their dedicated `code-quality: write` scope.
 
 Callers grant only `contents: read`, `pull-requests: read` and
 `code-quality: write`, and forward no secrets. Catalogue CI uses this entrypoint
-for all six Go fixtures. The ordinary Go workflow retains reporting and signed fixes.
+for ordinary Go fixtures and the isolated PostgreSQL fixture. The ordinary Go workflow retains reporting and signed fixes.
 
 This workflow is generated from the production workflow by
 `bash .github/scripts/generate-go-readonly.sh`. Change the production source or
@@ -1191,6 +1192,7 @@ generator and regenerate it; CI checks the complete projection and credential bo
 |-----|------|---------|----------|-------------|
 | `pr-owner` | Input (string) | - | No | Pull request author login |
 | `working-directory` | Input (string) | `""` | No | Go module directory; empty selects the repository root |
+| `enable-postgresql-fixture` | Input (boolean) | `false` | No | Opt in to the tracked module-local PostgreSQL 17 test fixture |
 | `go-memory-limit` | Input (string) | `8GiB` | No | Soft Go heap limit for analysis; lower it for smaller runners, up to the 8GiB ceiling |
 | `minimum-free-disk-gib` | Input (number) | `0` | No | Opt in to retaining toolchains when a complete root-filesystem observation meets a measured whole-number GiB budget (1–1024). Zero and unknown capacity retain cleanup. |
 | `measure-disk-usage` | Input (boolean) | `false` | No | Record sampled filesystem headroom around cleanup and during build, test and race coverage; cleanup stays enabled |
@@ -1198,6 +1200,33 @@ generator and regenerate it; CI checks the complete projection and credential bo
 | `manual-workflow-fixes` | Input (boolean) | `false` | No | Prepare workflow-file fixes even after lint errors; patch upload is disabled and lint errors still fail |
 | `test-default-branch` | Input (boolean) | `true` | No | Run the suite on default-branch invocations |
 | `maintenance-default-branch` | Input (boolean) | `true` | No | Run tidy and dead-code analysis for Go changes on the default branch; pass false to opt out during rollout |
+
+#### Disposable PostgreSQL integration tests
+
+Commit a regular, tracked `.go-test-fixture.json` beside the selected `go.mod`:
+
+```json
+{"kind":"postgresql17","namespace":"example","database":"example_application_test"}
+```
+
+Only these three string fields are accepted. Namespace and database identifiers
+are bounded ASCII; the database belongs to the namespace and ends in `_test`.
+Duplicate keys, additional fields, symlinks, conflicted inventory and untracked
+declarations fail. No endpoint, password, image, command or SQL can be supplied.
+Called workflows additionally pass `enable-postgresql-fixture: true`; omitted or
+false inputs ignore declarations. Input-free required runs opt in only through
+the tracked declaration. A declaration change selects full Go validation.
+
+Test and Coverage each provision a fresh, fixed digest-pinned PostgreSQL 17 service
+and derive separate owner, migrator and runtime roles. Runtime has no superuser,
+database-creation, role-creation, inherited or row-security-bypass privileges;
+only schema usage is granted until application migrations grant table access.
+After successful provisioning, tests receive `EXAMPLE_TEST_DATABASE_URL` and
+`EXAMPLE_TEST_MIGRATION_DATABASE_URL` for `127.0.0.1:5432`, with the synthetic
+fixture password. Unconfigured consumers start no service. Opted-in test runs
+disable cached verdicts with `-count=1`, retaining full scope and race/coverage
+settings. This is disposable CI infrastructure, never a production connection.
+Pilot adoption and release-gate retirement remain in [#573](https://github.com/devantler-tech/.github/issues/573).
 
 Default-branch maintenance validation is enabled for callers that run on pushes
 to their default branch. Pass `maintenance-default-branch: false` to opt out

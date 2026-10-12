@@ -436,6 +436,18 @@ original test commands still run and Go validates their inputs. Save only on the
 branch, after success on a cache miss, without broad restore prefixes. Keep
 `test-go-build-cache.sh` and the read-only workflow projection passing.
 
+**Disposable PostgreSQL fixtures:** Called validation defaults off; input-free
+required runs opt in only through a regular tracked module-local closed-schema
+declaration. Immutable catalogue code accepts bounded namespace/database data,
+not endpoints, credentials, SQL or commands. Test and Coverage each start their own
+fixed digest-pinned PostgreSQL 17 service with separate restricted roles. Observe the
+job's exact service identity before provisioning, publish fixture URLs only after
+success, and remove helper checkout before Go execution. Opted-in runs disable
+cached test verdicts while retaining full test scopes and race/coverage settings.
+Keep declaration/refusal controls, actual service bindings and native database/role
+controls required; preserve the inert omitted/false called state. Pilot adoption
+and release-gate retirement remain #573.
+
 **Go module cache:** setup-go's own cache is off in every Go job and in the internal
 `govulncheck` action, because it saves a multi-gigabyte archive from any ref whose key
 misses. Each job restores one module archive keyed by runner OS/architecture, working

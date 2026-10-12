@@ -24,7 +24,8 @@ assert.equal(interfaces[0].secrets, undefined, 'production interface forwarded c
 assert.deepEqual(production.jobs.lint.needs, ['changes'], 'production reporter lost its skipped prerequisite');
 assert.doesNotMatch(production.jobs.lint.if, /\b(always|success|failure|cancelled)\s*\(/i, 'production reporter overrides skipped prerequisite');
 const callers = Object.values(ci.jobs).filter(j => j.uses === './.github/workflows/validate-go-project-readonly.yaml');
-assert.equal(callers.length, 5, 'all five Go fixture callers must remain');
+assert.equal(callers.length, 6, 'all six Go fixture callers must remain');
+assert.equal(ci.jobs['test-validate-go-postgresql-fixture'].with['enable-postgresql-fixture'], true, 'native database caller lost explicit admission');
 for (const j of callers) {
   assert.deepEqual(j.permissions, {contents: 'read', 'pull-requests': 'read', 'code-quality': 'write'}, 'fixture grants mutation permissions');
   assert.equal(j.secrets, undefined, 'fixture forwards a secret');
@@ -73,8 +74,8 @@ const evaluate = (expr, values) => {
 for (const go of ['true', 'false']) {
   assert.equal(evaluate(production.jobs.changes.outputs.go, {'steps.filter.outputs.go': go}), go, 'production Go filter changed');
   for (const repository of ['devantler-tech/.github', 'devantler-tech/ksail']) {
-    for (const directory of ['.github/tests/go-valid-fixture', '', 'another-module']) {
-      const fixture = repository === 'devantler-tech/.github' && directory === '.github/tests/go-valid-fixture';
+    for (const directory of ['.github/tests/go-valid-fixture', '.github/tests/go-postgresql-fixture', '', 'another-module']) {
+      const fixture = repository === 'devantler-tech/.github' && ['.github/tests/go-valid-fixture', '.github/tests/go-postgresql-fixture'].includes(directory);
       assert.equal(evaluate(w.jobs.changes.outputs.go, {
         'steps.filter.outputs.go': go, 'github.repository': repository, 'inputs.working-directory': directory
       }), fixture ? 'true' : go, 'fixture validation admission');
@@ -102,7 +103,7 @@ assert.ok(w.jobs.test.steps.some(s => s.run?.includes('go test')), 'real tests r
 assert.ok(w.jobs.coverage.steps.some(s => s.run?.includes('go test -race -coverprofile')), 'real coverage removed');
 assert.ok(w.jobs.coverage.steps.some(s => s.uses?.endsWith('/actions/upload-coverage')), 'coverage upload removed');
 assert.equal(w.jobs.coverage.permissions['code-quality'], 'write', 'coverage upload permission missing');
-console.log('PASS: five credential-safe callers; four lint admissions; four signed-fix denials; normal reporting and real validation retained');
+console.log('PASS: six credential-safe callers; bounded fixture admissions; four signed-fix denials; normal reporting and real validation retained');
 JS
 # Execute the actual dirty-tree gate from the read-only job.
 yq -r '.jobs.lint.steps[] | select(.name == "❌ Fail if uncommitted changes remain (read-only mode)") | .run' "$workflow" >"$work/dirty-gate.sh"
