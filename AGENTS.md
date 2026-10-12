@@ -445,7 +445,9 @@ required runs opt in only through a regular tracked module-local closed-schema
 declaration. Immutable catalogue code accepts bounded namespace/database data,
 not endpoints, credentials, SQL or commands. Test and Coverage each start their own
 fixed digest-pinned PostgreSQL 17 service with separate restricted roles. Observe the
-job's exact service identity before provisioning, publish fixture URLs only after
+job's exact service identity before provisioning. Services recover after runner
+hardening restarts Docker and check the final TCP server; provisioning waits within
+a fixed bound and executes its SQL batch once. Publish fixture URLs only after
 success, and remove helper checkout before Go execution. Opted-in runs disable
 cached test verdicts while retaining full test scopes and race/coverage settings.
 Keep declaration/refusal controls, actual service bindings and native database/role
