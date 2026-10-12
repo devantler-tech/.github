@@ -149,7 +149,7 @@ observe() {
   jobs="$scratch/jobs.json"
   validate_jobs
   while IFS= read -r id; do
-    gh api --allow-escape-sequences "repos/devantler-tech/.github/actions/jobs/$id/logs" >"$scratch/logs/$id.log" || fail 'Go job log read failed'
+    gh api "repos/devantler-tech/.github/actions/jobs/$id/logs" >"$scratch/logs/$id.log" || fail 'Go job log read failed'
   done < <(jq -r --arg prefix "$prefix" '.[].jobs[] | select((.name | startswith($prefix)) and .name != ($prefix + "🔍 Detect Changes")) | .id' "$jobs")
   printf '[]\n' >"$scratch/caches.json"
   if [[ "$mode" == main ]]; then

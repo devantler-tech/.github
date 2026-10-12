@@ -102,7 +102,7 @@ case "$*" in
   'api --paginate --slurp repos/devantler-tech/.github/actions/runs/23/attempts/2/jobs?per_page=100')
     [[ "${FAIL_JOB_READ:-false}" != true ]] || exit 1
     cat "$OBSERVER_FIXTURE/jobs.json" ;;
-  'api --allow-escape-sequences repos/devantler-tech/.github/actions/jobs/'*'/logs')
+  'api repos/devantler-tech/.github/actions/jobs/'*'/logs')
     id="${*: -1}"; id="${id%/logs}"; id="${id##*/}"
     [[ "$id" =~ ^10[1-8]$ ]] || exit 99
     cat "$OBSERVER_FIXTURE/logs/$id.log" ;;
@@ -117,7 +117,7 @@ export OBSERVER_FIXTURE="$scratch" GITHUB_REPOSITORY=devantler-tech/.github
 export GITHUB_RUN_ID=23 GITHUB_RUN_ATTEMPT=2 EXPECTED_HEAD="$head" MODULE_CACHE_KEY="$key"
 export GITHUB_EVENT_NAME=push GITHUB_REF=refs/heads/main
 PATH="$scratch/bin:$PATH" bash "$helper" observe >"$scratch/out" 2>"$scratch/error" || fail "native collector rejected complete evidence: $(cat "$scratch/error")"
-[[ "$(grep -c '^api --allow-escape-sequences ' "$scratch/calls")" == 8 ]] || fail 'collector did not read all eight Go logs'
+[[ "$(grep -c '^api repos/devantler-tech/.github/actions/jobs/' "$scratch/calls")" == 8 ]] || fail 'collector did not read all eight Go logs'
 if PATH="$scratch/bin:$PATH" FAIL_JOB_READ=true bash "$helper" observe >"$scratch/out" 2>"$scratch/error"; then fail 'failed paginated job read passed'; fi
 [[ ! -s "$scratch/out" ]] || fail 'failed job read published success'
 if PATH="$scratch/bin:$PATH" FAIL_CACHE_READ=true bash "$helper" observe >"$scratch/out" 2>"$scratch/error"; then fail 'failed archive read passed'; fi
