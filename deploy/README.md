@@ -129,12 +129,17 @@ policy; it covers the 25 active portfolio repositories, including
 `kyverno-policies`, `world-at-ruin`, `cloudflare` and `data-product-controller`.
 The archived `reusable-workflows` repository remains excluded.
 
-`client-orders` starts with Observe-only repository settings and labels (#556).
-Team ownership and Actions SHA pinning follow the existing organization
-policies; activating settings or authoritative labels requires verified adoption
-first. `client-portal` was archived on GitHub the day it was adopted, so it is
-an Observe-only mirror in `archived-repositories/` and has no labels, permission
-or team grants (#300).
+`client-orders` enforces the shared repository settings with `Observe` and
+`Update`, preserving its private visibility and enabled Issues. Its existing
+description, homepage and security configuration remain externally owned:
+public-safe `initProvider` seeds make the provider ignore changes to those
+fields. `Create`, `Delete` and `LateInitialize` are forbidden, so the seeds
+cannot initialize a replacement repository or copy private values into the
+configuration. Labels remain Observe-only; team ownership and Actions SHA
+pinning follow the existing organization policies.
+
+`client-portal` is an Observe-only mirror in `archived-repositories/` and has
+no labels, permission or team grants.
 
 The active policy is fully declarative and omits both `Delete` management and
 external names, so it cannot delete teams, memberships, or grants. Validate the
