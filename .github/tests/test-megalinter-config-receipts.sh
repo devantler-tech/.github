@@ -34,23 +34,26 @@ for scenario in root nested absent malformed finding; do
 done
 reports="$scratch/megalinter-bad-fixture-reports/tap"
 mkdir -p "$reports"
-prefix='/github/workspace/.github/tests/megalinter-bad-fixture/config-probe'
+prefix=''
 report="$reports/mega-linter-JSON_JSONLINT.tap"
 observe() {
   SCENARIO="$1" OUTCOME="$2" GITHUB_WORKSPACE="$scratch" \
     bash "$root/.github/tests/megalinter-config-container.sh" assert
 }
-healthy() { printf 'TAP version 13\n1..1\nok 1 - %s/config-probe-checked.json\n' "$prefix"; }
+healthy() { printf 'TAP version 13\n1..1\nok 1 - %sconfig-probe-checked.json\n' "$prefix"; }
 finding() {
-  printf 'TAP version 13\n1..1\nnot ok 1 - %s/config-probe-checked.json\n  ---\n  message: Parse error on line 1\n  ...\n' "$prefix"
+  printf 'TAP version 13\n1..1\nnot ok 1 - config-probe-checked.json\n  ---\n  message: File  config-probe-checked.json\\nParse error on line 2, column 26 \\n...liberatelyInvalid"  ,  "why"  "syntax e...\\n-----------------------^\\nNo value found for key "deliberatelyInvalid"\n  ...\n'
 }
 for scenario in root nested; do
+  prefix=''
+  [[ "$scenario" != root ]] || prefix='.github/tests/megalinter-bad-fixture/config-probe/'
   healthy >"$report"
   observe "$scenario" success
 done
+prefix=''
 finding >"$report"
 observe finding failure
-printf 'TAP version 13\n1..2\nnot ok 1 - %s/config-probe-bad.json\n  ---\n  message: Parse error on line 1\n  ...\nok 2 - %s/config-probe-checked.json\n' "$prefix" "$prefix" >"$report"
+printf 'TAP version 13\n1..2\nnot ok 1 - config-probe-bad.json\n  ---\n  message: File  config-probe-bad.json\\nParse error on line 2, column 26 \\n...liberatelyInvalid"  ,  "why"  "syntax e...\\n-----------------------^\\nNo value found for key "deliberatelyInvalid"\n  ...\nok 2 - config-probe-checked.json\n' >"$report"
 observe absent failure
 for mutation in header plan empty duplicate wrong-file wrong-path index unknown-line extra-result missing-result; do
   healthy >"$scratch/healthy.tap"
@@ -58,12 +61,12 @@ for mutation in header plan empty duplicate wrong-file wrong-path index unknown-
     header) sed 's/TAP version 13/TAP version 12/' "$scratch/healthy.tap" >"$report" ;;
     plan) sed 's/1\.\.1/1..2/' "$scratch/healthy.tap" >"$report" ;;
     empty) : >"$report" ;;
-    duplicate) healthy >"$report"; printf 'ok 1 - %s/config-probe-checked.json\n' "$prefix" >>"$report" ;;
+    duplicate) healthy >"$report"; printf 'ok 1 - config-probe-checked.json\n' >>"$report" ;;
     wrong-file) sed 's/config-probe-checked.json/unrelated.json/' "$scratch/healthy.tap" >"$report" ;;
-    wrong-path) sed 's@.github/tests/megalinter-bad-fixture/config-probe/@other/@' "$scratch/healthy.tap" >"$report" ;;
+    wrong-path) sed 's@config-probe-checked.json@other/config-probe-checked.json@' "$scratch/healthy.tap" >"$report" ;;
     index) sed 's/ok 1/ok 2/' "$scratch/healthy.tap" >"$report" ;;
     unknown-line) healthy >"$report"; printf 'unexpected receipt\n' >>"$report" ;;
-    extra-result) healthy >"$report"; printf 'ok 2 - %s/config-probe-bad.json\n' "$prefix" >>"$report" ;;
+    extra-result) healthy >"$report"; printf 'ok 2 - config-probe-bad.json\n' >>"$report" ;;
     missing-result) printf 'TAP version 13\n1..1\n' >"$report" ;;
   esac
   if observe nested success >"$scratch/error" 2>&1; then
@@ -75,7 +78,7 @@ for mutation in healthy operational absent-message wrong-file null-result wrong-
   finding >"$scratch/finding.tap"
   case "$mutation" in
     healthy) healthy >"$report" ;;
-    operational) sed 's/Parse error on line 1/command not found/' "$scratch/finding.tap" >"$report" ;;
+    operational) sed 's/Parse error on line 2/command not found/' "$scratch/finding.tap" >"$report" ;;
     absent-message) grep -v '  message:' "$scratch/finding.tap" >"$report" ;;
     wrong-file) sed 's/config-probe-checked.json/unrelated.json/' "$scratch/finding.tap" >"$report" ;;
     null-result) sed 's/not ok 1/unknown 1/' "$scratch/finding.tap" >"$report" ;;

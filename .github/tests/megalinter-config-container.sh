@@ -67,8 +67,9 @@ case "${1:-}" in
     # TAP is emitted by the actual pinned JSON checker. Require the complete
     # plan, exact prepared paths and successful analysis or its parser finding;
     # generic action failures, zero analysis and truncated reports cannot pass.
-    awk -v scenario="$scenario" \
-      -v prefix='/github/workspace/.github/tests/megalinter-bad-fixture/config-probe/' '
+    prefix=''
+    [[ "$scenario" != root ]] || prefix='.github/tests/megalinter-bad-fixture/config-probe/'
+    awk -v scenario="$scenario" -v prefix="$prefix" '
       BEGIN { expected = scenario == "absent" ? 2 : 1 }
       NR == 1 { if ($0 != "TAP version 13") exit 1; next }
       NR == 2 { if ($0 != "1.." expected) exit 1; next }
@@ -95,7 +96,9 @@ case "${1:-}" in
       }
       $0 == "  ---" { if (!pending || diagnostic) exit 1; diagnostic = 1; next }
       /^  message: / {
-        if (diagnostic != 1 || $0 !~ /^  message: Parse error/) exit 1
+        expected_message = "  message: File  " file "\\nParse error on line "
+        if (diagnostic != 1 || index($0, expected_message) != 1 ||
+            index($0, "No value found for key \"deliberatelyInvalid\"") == 0) exit 1
         diagnostic = 2
         next
       }
