@@ -1,0 +1,2 @@
+# Only this fixture selects one JSON file. Production scanner scope is unchanged.
+JSON_JSONLINT_FILTER_REGEX_INCLUDE: config-probe-checked[.]json$
