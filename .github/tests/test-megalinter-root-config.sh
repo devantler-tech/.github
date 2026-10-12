@@ -54,7 +54,8 @@ native_admit() {
     $action[0].env.REPORT_OUTPUT_FOLDER == "/github/workspace/megalinter-bad-fixture-reports" and
     $action[0].env.ENABLE_LINTERS == "JSON_JSONLINT" and
     $action[0].env.JSON_JSONLINT_CLI_LINT_MODE == "file" and
-    $action[0].env.JSON_REPORTER == true and $action[0].env.APPLY_FIXES == "none" and
+    $action[0].env.JSON_REPORTER == false and $action[0].env.TAP_REPORTER == true and
+    $action[0].env.TAP_REPORTER_OUTPUT_DETAIL == "detailed" and $action[0].env.APPLY_FIXES == "none" and
     ($action[0].env | has("GITHUB_TOKEN") | not) and
     $assert[0].env.OUTCOME == "${{ steps.ml.outcome }}" and
     $assert[0].env.SCENARIO == "${{ matrix.scenario }}" and
@@ -70,7 +71,9 @@ for mutation in \
   '.strategy.matrix.scenario |= map(select(. != "nested"))' \
   '(.steps[] | select(.id == "ml") | .env.MEGALINTER_CONFIG)=".mega-linter.yml"' \
   '(.steps[] | select(.id == "ml") | .env.REPORT_OUTPUT_FOLDER)="/home/unrelated/reports"' \
-  '(.steps[] | select(.id == "ml") | .env.JSON_REPORTER)=false' \
+  '(.steps[] | select(.id == "ml") | .env.JSON_REPORTER)=true' \
+  '(.steps[] | select(.id == "ml") | .env.TAP_REPORTER)=false' \
+  '(.steps[] | select(.id == "ml") | .env.TAP_REPORTER_OUTPUT_DETAIL)="simple"' \
   '(.steps[] | select(.id == "ml") | .env.APPLY_FIXES)="all"' \
   '(.steps[] | select(.run == "bash .github/tests/megalinter-config-container.sh assert") | .if)="false"'; do
   jq "$mutation" "$scratch/native.json" >"$scratch/native-mutant.json"
@@ -80,4 +83,4 @@ for mutation in \
   fi
 done
 echo "TEST PASS -- repository-root container configuration and $count rejected binding substitutions"
-echo 'TEST PASS -- five native scenarios and six rejected proof substitutions'
+echo 'TEST PASS -- five native scenarios and eight rejected proof substitutions'

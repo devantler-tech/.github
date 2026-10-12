@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Required native CI executes the production-pinned Docker action, not a loader
-# reimplementation. Its JSON receipt must contain real per-file checker results.
+# reimplementation. Its TAP receipt must contain real per-file checker results.
 set -euo pipefail
 scenario="${SCENARIO:?SCENARIO is required}"
 workspace="${GITHUB_WORKSPACE:?GITHUB_WORKSPACE is required}"
@@ -52,32 +52,55 @@ case "${1:-}" in
       echo 'PASS: actual pinned loader rejects malformed repository configuration'
       exit 0
     fi
-    report="$reports/mega-linter-report.json"
+    report="$reports/tap/mega-linter-JSON_JSONLINT.tap"
     [[ -f "$report" && ! -L "$report" ]]
-    # The JSON_JSONLINT identity and per-file results are from v10.1.0's real
-    # JsonReporter/Linter schema. Empty analysis and generic action failures fail.
-    jq -e '[.linters[] | select(.name == "JSON_JSONLINT" and .is_active == true)] |
-      length == 1 and .[0].files_number > 0 and (.[0].files_lint_results | length) > 0' "$report" >/dev/null
     case "$scenario" in
-      root|nested)
-        [[ "$outcome" == success ]]
-        jq -e '.return_code == 0 and
-          ([.linters[] | select(.name == "JSON_JSONLINT")] | .[0] |
-            .return_code == 0 and .files_number == 1 and
-            (.files_lint_results | length) == 1 and
-            .files_lint_results[0].status_code == 0 and
-            (.files_lint_results[0].file | endswith("/config-probe-checked.json")))' "$report" >/dev/null
-        ;;
-      absent|finding)
-        [[ "$outcome" == failure ]]
-        expected='config-probe-bad.json'
-        [[ "$scenario" != finding ]] || expected='config-probe-checked.json'
-        jq -e --arg expected "/$expected" '.return_code != 0 and
-          ([.linters[] | select(.name == "JSON_JSONLINT")] | .[0] |
-            .return_code != 0 and any(.files_lint_results[];
-              (.file | endswith($expected)) and .status_code != null and .status_code != 0))' "$report" >/dev/null
-        ;;
+      root|nested) [[ "$outcome" == success ]] ;;
+      absent|finding) [[ "$outcome" == failure ]] ;;
     esac
+    # TAP is emitted by the actual pinned JSON checker. Require the complete
+    # plan, exact prepared paths and successful analysis or its parser finding;
+    # generic action failures, zero analysis and truncated reports cannot pass.
+    awk -v scenario="$scenario" \
+      -v prefix='/github/workspace/.github/tests/megalinter-bad-fixture/config-probe/' '
+      BEGIN { expected = scenario == "absent" ? 2 : 1 }
+      NR == 1 { if ($0 != "TAP version 13") exit 1; next }
+      NR == 2 { if ($0 != "1.." expected) exit 1; next }
+      /^(not )?ok [1-9][0-9]* - / {
+        if (pending || diagnostic) exit 1
+        status = $0 ~ /^not ok/ ? "not ok" : "ok"
+        entry = $0
+        sub(/^(not )?ok /, "", entry)
+        number = entry
+        sub(/ - .*/, "", number)
+        file = entry
+        sub(/^[0-9]+ - /, "", file)
+        count++
+        if (number != count || seen[file]++) exit 1
+        checked = file == prefix "config-probe-checked.json"
+        bad = file == prefix "config-probe-bad.json"
+        if (scenario == "root" || scenario == "nested") {
+          if (!checked || status != "ok") exit 1
+        } else if (scenario == "finding") {
+          if (!checked || status != "not ok") exit 1
+        } else if (!(checked && status == "ok") && !(bad && status == "not ok")) exit 1
+        if (status == "not ok") { failures++; pending = 1 }
+        next
+      }
+      $0 == "  ---" { if (!pending || diagnostic) exit 1; diagnostic = 1; next }
+      /^  message: / {
+        if (diagnostic != 1 || $0 !~ /^  message: Parse error/) exit 1
+        diagnostic = 2
+        next
+      }
+      $0 == "  ..." { if (diagnostic != 2) exit 1; diagnostic = 0; pending = 0; next }
+      { exit 1 }
+      END {
+        if (NR < 3 || count != expected || diagnostic || pending) exit 1
+        if ((scenario == "root" || scenario == "nested") && failures) exit 1
+        if ((scenario == "absent" || scenario == "finding") && failures != 1) exit 1
+      }
+    ' "$report"
     echo "PASS: actual configuration/checker receipt for $scenario"
     ;;
   *) echo 'Expected prepare or assert' >&2; exit 1 ;;

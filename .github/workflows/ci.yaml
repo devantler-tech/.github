@@ -5689,7 +5689,9 @@ jobs:
           REPORT_OUTPUT_FOLDER: /github/workspace/megalinter-bad-fixture-reports
           ENABLE_LINTERS: JSON_JSONLINT
           JSON_JSONLINT_CLI_LINT_MODE: file
-          JSON_REPORTER: true
+          JSON_REPORTER: false
+          TAP_REPORTER: true
+          TAP_REPORTER_OUTPUT_DETAIL: detailed
           VALIDATE_ALL_CODEBASE: true
           APPLY_FIXES: none
           GITHUB_COMMENT_REPORTER: false
