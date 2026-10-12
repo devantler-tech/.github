@@ -17,7 +17,8 @@ def ml: [.jobs.lint.steps[] | select(.id == "ml")];
 and ($go[0] | (has("if") | not) and .with["go-version-file"] == "${{ inputs.working-directory || '.' }}/go.mod")
 and ($lint[0] | .if == "${{ inputs.go-version-file != '' }}" and .with["go-version-file"] == "${{ inputs.go-version-file }}")
 and all([$go[0],$lint[0]][]; .uses | test("^actions/setup-go@[0-9a-f]{40}$"))
-and all([$go[0],$lint[0]][]; .with | keys == ["go-version-file"])
+and ($go[0].with | keys == ["cache","go-version-file"] and .cache == false)
+and ($lint[0].with | keys == ["go-version-file"])
 and (.go | ml | length) == 1 and (.lint | ml | length) == 1
 and (.go | ml | .[0].env.GOTOOLCHAIN) == "go${{ steps.setup-go.outputs.go-version }}"
 and (.lint | ml | .[0].env.GOTOOLCHAIN) == "${{ inputs.go-version-file != '' && format('go{0}', steps.setup-go.outputs.go-version) || 'local' }}"
