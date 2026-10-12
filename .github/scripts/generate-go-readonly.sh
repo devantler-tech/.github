@@ -9,7 +9,7 @@ trap 'rm -f "$work"' EXIT
 # Selected catalogue fixtures must exercise Go on workflow-only changes too.
 # Other read-only consumers keep the production path-filter result.
 GO_FIXTURE_ADMISSION="$(cat <<'EXPR'
-${{ (github.repository == 'devantler-tech/.github' && inputs.working-directory == '.github/tests/go-valid-fixture') && 'true' || steps.filter.outputs.go }}
+${{ (github.repository == 'devantler-tech/.github' && (inputs.working-directory == '.github/tests/go-valid-fixture' || inputs.working-directory == '.github/tests/go-postgresql-fixture')) && 'true' || steps.filter.outputs.go }}
 EXPR
 )"
 export GO_FIXTURE_ADMISSION

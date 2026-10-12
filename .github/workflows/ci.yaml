@@ -3524,6 +3524,14 @@ jobs:
         shell: bash
         run: bash .github/tests/test-go-module-resolution.sh
 
+      - name: Check PostgreSQL fixture declaration and provisioning failure boundaries
+        shell: bash
+        run: bash .github/tests/test-go-postgresql-fixture.sh
+
+      - name: Check independent PostgreSQL service and identity bindings
+        shell: bash
+        run: bash .github/tests/test-go-postgresql-wiring.sh
+
       - name: Check opt-in Go disk observations and failure controls
         run: bash .github/tests/test-go-disk-measurement.sh
 
@@ -3807,6 +3815,21 @@ jobs:
       contents: read
       pull-requests: read
       code-quality: write # callers must grant this for the coverage upload (GitHub Code Quality)
+
+  test-validate-go-postgresql-fixture:
+    needs: [select-ci-tests]
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-validate-go-postgresql-fixture') }}"
+    name: "[Test] Validate Go Project - Isolated PostgreSQL"
+    uses: ./.github/workflows/validate-go-project-readonly.yaml
+    with:
+      working-directory: .github/tests/go-postgresql-fixture
+      enable-postgresql-fixture: true
+      apply-signed-fixes: false
+      minimum-free-disk-gib: 32
+    permissions:
+      contents: read
+      pull-requests: read
+      code-quality: write
 
   test-validate-go-project-manual-fixes:
     needs: [select-ci-tests]
@@ -6105,6 +6128,7 @@ jobs:
       - test-delete-workflow-runs-specific
       - test-delete-workflow-runs-minimal
       - test-validate-go-project
+      - test-validate-go-postgresql-fixture
       - test-validate-go-project-interface
       - test-validate-go-project-manual-fixes
       - test-validate-go-project-apply-signed-fixes
@@ -6245,6 +6269,7 @@ jobs:
             ${{ needs.test-delete-workflow-runs-specific.result }}
             ${{ needs.test-delete-workflow-runs-minimal.result }}
             ${{ needs.test-validate-go-project.result }}
+            ${{ needs.test-validate-go-postgresql-fixture.result }}
             ${{ needs.test-validate-go-project-interface.result }}
             ${{ needs.test-validate-go-project-manual-fixes.result }}
             ${{ needs.test-validate-go-project-apply-signed-fixes.result }}
