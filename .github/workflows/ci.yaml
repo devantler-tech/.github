@@ -3420,6 +3420,12 @@ jobs:
       - name: Guard the declared compiler inside both MegaLinter entrypoints
         run: bash .github/tests/test-megalinter-go-toolchain.sh
 
+      - name: Guard repository-root configuration inside the MegaLinter container
+        run: bash .github/tests/test-megalinter-root-config.sh
+
+      - name: Reject incomplete or unrelated native configuration/checker receipts
+        run: bash .github/tests/test-megalinter-config-receipts.sh
+
       - name: Guard the compatible linter against its real Go 1.27 finding fixture
         run: bash .github/tests/test-go-linter-toolchain.sh
 
@@ -5644,10 +5650,14 @@ jobs:
   test-lint-blocks:
     needs: [select-ci-tests]
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-lint-blocks') }}"
-    name: "[Test] Lint - Blocks On Invalid Fixture"
+    name: "[Test] Lint - Root Configuration - ${{ matrix.scenario }}"
     runs-on: ubuntu-latest
     permissions:
       contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        scenario: [root, nested, absent, malformed, finding]
     steps:
       - name: 🛡️ Harden runner
         uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
@@ -5659,40 +5669,40 @@ jobs:
         with:
           persist-credentials: false
 
-      # Same MegaLinter image SHA as lint.yaml's gate (guarded by test-lint-gate-lockstep),
-      # pointed at a fixture whose JSON has a syntax error no formatter can auto-fix — so
-      # APPLY_FIXES cannot mask it and the run must exit non-zero. continue-on-error lets
-      # the next step assert the failure. Reports go to a dedicated folder the assertion
-      # reads, which distinguishes a real lint block from an operational failure (e.g. an
-      # image pull error), which would leave no report at all.
-      - name: 🧹 Lint invalid fixture (expected to fail)
+      - name: Prepare declared, missing and invalid configuration controls
+        id: config-probe
+        shell: bash
+        env:
+          SCENARIO: ${{ matrix.scenario }}
+        run: bash .github/tests/megalinter-config-container.sh prepare
+
+      # The exact production action runs every matrix leg. The configuration-only
+      # filter selects a real valid JSON file, while ignoring a deliberately broken
+      # sibling. The runner translates the SAME root binding as both entrypoints.
+      - name: 🧹 Exercise the actual container configuration loader and JSON checker
         id: ml
         continue-on-error: true
         uses: oxsecurity/megalinter/flavors/go@9949bad031045f366be2467e00e8371a7328a2e2 # v10.1.0
         env:
-          DEFAULT_WORKSPACE: .github/tests/megalinter-bad-fixture
-          REPORT_OUTPUT_FOLDER: ${{ github.workspace }}/megalinter-bad-fixture-reports
+          DEFAULT_WORKSPACE: ${{ steps.config-probe.outputs.workspace }}
+          MEGALINTER_CONFIG: ${{ github.workspace }}/.mega-linter.yml
+          REPORT_OUTPUT_FOLDER: /github/workspace/megalinter-bad-fixture-reports
+          ENABLE_LINTERS: JSON_JSONLINT
+          JSON_JSONLINT_CLI_LINT_MODE: file
+          JSON_REPORTER: false
+          TAP_REPORTER: true
+          TAP_REPORTER_OUTPUT_DETAIL: detailed
           VALIDATE_ALL_CODEBASE: true
           APPLY_FIXES: none
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_COMMENT_REPORTER: false
+          GITHUB_STATUS_REPORTER: false
 
-      - name: ✅ Assert the lint gate blocked on the invalid fixture
+      - name: ✅ Assert actual file analysis, configuration effects and retained failures
         shell: bash
         env:
           OUTCOME: ${{ steps.ml.outcome }}
-        run: |
-          set -euo pipefail
-          REPORTS="${GITHUB_WORKSPACE}/megalinter-bad-fixture-reports"
-          if [ "$OUTCOME" != "failure" ]; then
-            echo "::error::MegaLinter should FAIL on the deliberately-invalid JSON in .github/tests/megalinter-bad-fixture, but its outcome was '$OUTCOME'. lint.yaml's gate is no longer blocking on lint findings."
-            exit 1
-          fi
-          if ! grep -rqF "bad.json" "$REPORTS" 2>/dev/null; then
-            echo "::error::MegaLinter failed, but no report named the bad.json fixture — the failure was operational (e.g. an image pull error), not a real lint block. Reports:"
-            ls -R "$REPORTS" 2>/dev/null || echo "(no reports captured)"
-            exit 1
-          fi
-          echo "Lint gate correctly blocked on the invalid JSON fixture ✅"
+          SCENARIO: ${{ matrix.scenario }}
+        run: bash .github/tests/megalinter-config-container.sh assert
 
   # Exercise the internal exporter through the runner, including deletion of its
   # loaded helper checkout and upload recovery after an actual preparation error.

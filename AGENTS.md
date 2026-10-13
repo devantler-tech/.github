@@ -689,6 +689,17 @@ prove the cleanup selector behavior still tracked in #350 or replace individual 
 
 **MegaLinter Go toolchain:** host-side setup does not replace the Docker action’s compiler. The production Go workflow, its generated read-only projection, and the whole-repository lint workflow select the exact `setup-go` output through a fixed named `GOTOOLCHAIN`, without `+auto`. The whole-repository workflow keeps `local` when no Go declaration is supplied. `test-megalinter-go-toolchain.sh` rejects binding substitutions; native positive Go and whole-repository fixtures prove real scanner analysis. Preserve the enabled scanners and fixer credential boundary.
 
+**MegaLinter root configuration:** Both production entrypoints and the generated
+read-only projection select the repository-root configuration; GitHub's Docker
+action handler translates its host path into the container mount. The native
+`test-lint-blocks` matrix uses the exact production action to prove real JSON-file
+analysis and configuration-only filtering in root and nested layouts. Absent
+configuration must report the deliberately invalid sibling;
+a configured invalid file must still fail. Malformed YAML must fail in the actual
+pinned loader, not merely through an image or runner error. Keep binding mutations,
+per-file receipt controls and immutable image-pin parity required. The synthetic
+fixture narrows only its own JSON checker; production scanner scope is unchanged.
+
 **Fixer-lane credential boundary (tested invariant):** `validate-go-project.yaml`'s three fixer lanes (`tidy`, `golangci-lint`, `lint` — every job that exports `fixes-created`) run tooling configured by the pull request under review, so they hold no credential that can write to the branch: `contents: read`, no App-token step, no App private key, no secret other than `GITHUB_TOKEN` (every expression spelling, case-insensitively, matched on complete scalars, and including the workflow-level `env:` every job inherits), and `persist-credentials: false` on every checkout. The commit is made on a fresh runner by `apply-signed-fixes.yaml`. `ci.yaml` asserts this with `.github/tests/test-fixer-credential-boundary.sh` (workflow- and job-scoped, so `lint.yaml` reuses it) and proves each assertion fires for its own reason with `test-fixer-credential-boundary-ablation.sh`; the lane list is derived from the workflow, so a new fixer lane is covered by construction. **A lane reshape must keep that guard green** — never move a write credential back into a fixer lane to make a step simpler.
 
 **gh installer digest pinning (tested invariant):** `.scripts/ensure-gh-skill.sh` verifies a downloaded cli/cli archive against `.scripts/gh-release-digests.tsv`, a reviewed version-to-digest manifest, in addition to attestation and the release-served checksum. That manifest is the only gate that rejects a **same-or-newer** substituted archive: attestation cannot tell cli/cli releases apart, the checksums file ships from the same mutable release, and the post-install version assertion is a floor rather than an equality. Enforcement is per row — an unpinned version warns and falls through, so a consumer passing a custom `gh-version` is never blocked. `test-ensure-gh-skill-script` guards it (cases 8e–8j: substitution rejected, matching digest installs, unpinned warns, malformed row fails closed); keep those green and refresh rows with `bash .scripts/refresh-gh-digests.sh <version>` rather than by hand.
