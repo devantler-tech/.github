@@ -4,6 +4,7 @@ set -euo pipefail
 root="$(cd "$(dirname "$0")/../.." && pwd)"
 scratch="$(mktemp -d)"
 trap 'rm -rf "$scratch"' EXIT
+# Reject any cleanup result that cannot prove removal or retain the test failure.
 fail() { printf 'FAIL: %s\n' "$*" >&2; exit 1; }
 sed -n '/^cleanup() {$/,/^}$/p' "$root/.github/tests/test-go-postgresql-recovery.sh" >"$scratch/cleanup.sh"
 [[ -s "$scratch/cleanup.sh" ]] || fail 'native cleanup function was not found'

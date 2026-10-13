@@ -3,7 +3,9 @@
 set -euo pipefail
 export LC_ALL=C
 image='postgres:17.11-bookworm@sha256:3645570cccdfa447589da9f57dd740faa29b30938e861289a5574b6ca6b03826'
+# Refuse invalid or unproven fixture data without publishing connection URLs.
 fail() { printf 'go-postgresql-fixture: %s\n' "$*" >&2; exit 2; }
+# Validate the closed identity grammar and derive the fixed role and env names.
 identities() {
   namespace="$1"; database="$2"
   [[ "$namespace" =~ ^[a-z][a-z0-9_]{0,31}$ ]] || fail 'invalid fixture namespace'
@@ -14,6 +16,7 @@ identities() {
   runtime="${namespace}_runtime"
   prefix="$(printf '%s' "$namespace" | tr '[:lower:]' '[:upper:]')"
 }
+# Normalize one tracked declaration; an explicit disabled mode reads no file.
 resolve() {
   [[ "$#" == 2 ]] || fail 'resolve needs a module and mode'
   module="$1"; mode="$2"

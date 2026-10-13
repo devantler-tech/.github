@@ -5,12 +5,15 @@ root="$(cd "$(dirname "$0")/../.." && pwd)"
 helper="$root/.github/scripts/go-postgresql-fixture.sh"
 scratch="$(mktemp -d)"
 trap 'rm -rf "$scratch"' EXIT
+# Stop the regression immediately when a fixture boundary is not preserved.
 fail() { printf 'FAIL: %s\n' "$*" >&2; exit 1; }
 git -C "$scratch" init -q
 mkdir -p "$scratch/server"
 fixture="$scratch/server/.go-test-fixture.json"
 good='{"kind":"postgresql17","namespace":"fixture","database":"fixture_workflow_test"}'
+# Invoke the shipped reader at the disposable repository's actual root.
 run_reader() { (cd "$scratch" && bash "$helper" resolve server "$1"); }
+# Keep each positive or refusal fixture in the Git inventory the reader checks.
 write_tracked() { printf '%s\n' "$1" >"$fixture"; git -C "$scratch" add -- server/.go-test-fixture.json; }
 [[ "$(run_reader optional)" == '{"enabled":false}' ]] || fail 'absent declaration is not disabled'
 [[ "$(run_reader disabled)" == '{"enabled":false}' ]] || fail 'explicit disable is not inert'
