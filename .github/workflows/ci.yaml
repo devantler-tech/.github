@@ -3541,6 +3541,21 @@ jobs:
         shell: bash
         run: bash .github/tests/test-go-postgresql-fixture.sh
 
+      - name: Set up the native PostgreSQL fixture's declared Go toolchain
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: .github/tests/go-postgresql-fixture/go.mod
+          cache: false
+
+      - name: Reject incomplete native PostgreSQL cleanup observations
+        shell: bash
+        run: bash .github/tests/test-go-postgresql-recovery-cleanup.sh
+
+      - name: Recover a stopped PostgreSQL service and exercise actual restricted roles
+        timeout-minutes: 5
+        shell: bash
+        run: bash .github/tests/test-go-postgresql-recovery.sh
+
       - name: Check independent PostgreSQL service and identity bindings
         shell: bash
         run: bash .github/tests/test-go-postgresql-wiring.sh

@@ -1221,6 +1221,9 @@ Test and Coverage each provision a fresh, fixed digest-pinned PostgreSQL 17 serv
 and derive separate owner, migrator and runtime roles. Runtime has no superuser,
 database-creation, role-creation, inherited or row-security-bypass privileges;
 only schema usage is granted until application migrations grant table access.
+Before SQL, the provisioner verifies the bound container's fixed image, environment
+and state. A cleanly stopped service is started once, then checked for TCP readiness;
+failed or unproven states fail without fixture URLs or a replayed SQL batch.
 After successful provisioning, tests receive `EXAMPLE_TEST_DATABASE_URL` and
 `EXAMPLE_TEST_MIGRATION_DATABASE_URL` for `127.0.0.1:5432`, with the synthetic
 fixture password. Unconfigured consumers start no service. Opted-in test runs
