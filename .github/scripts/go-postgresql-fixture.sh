@@ -88,6 +88,18 @@ provision() {
   # The service ID comes only from job.services, not consumer data. Execute in
   # that observed container; no consumer endpoint, credentials or SQL are read.
   # Runner hardening can restart Docker after its initial service health check.
+  # Recover a cleanly stopped, still-bound service once, before any SQL. Never
+  # restart an unhealthy/failed service or replay a partially executed batch.
+  state="$(docker inspect "$container" --format '{{json .State}}')" || fail 'service state observation failed'
+  lifecycle="$(jq -er 'if type != "object" or .Paused != false or .Restarting != false
+      or .OOMKilled != false or .Dead != false then error("unsafe service state")
+    elif .Status == "running" and .Running == true then "running"
+    elif .Status == "exited" and .Running == false and .ExitCode == 0 then "stopped"
+    else error("unsafe service state") end' <<<"$state")" || fail 'service state is not safe for provisioning'
+  if [[ "$lifecycle" == stopped ]]; then
+    started="$(docker start "$container")" || fail 'bound service start failed'
+    [[ "$started" == "$container" ]] || fail 'service start identity differs'
+  fi
   # Wait for the final TCP server in that same container before issuing SQL;
   # the image's temporary initialization server only accepts Unix connections.
   ready=false

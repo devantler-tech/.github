@@ -96,9 +96,33 @@ cat >"$scratch/bin/docker" <<'DOCKER'
 set -euo pipefail
 case "${1:-}" in
   inspect)
+    if [[ "$*" == "inspect ${FIXTURE_ID} --format {{json .State}}" ]]; then
+      [[ "${STATE_FAIL:-0}" == 0 ]] || exit 23
+      if [[ -n "${STATE_JSON:-}" ]]; then
+        printf '%s\n' "$STATE_JSON"
+        exit 0
+      fi
+      if [[ -e "$FIXTURE_STOPPED" ]]; then
+        printf '{"Status":"exited","Running":false,"Paused":false,"Restarting":false,"OOMKilled":false,"Dead":false,"ExitCode":0}\n'
+      else
+        printf '{"Status":"running","Running":true,"Paused":false,"Restarting":false,"OOMKilled":false,"Dead":false,"ExitCode":0}\n'
+      fi
+      exit 0
+    fi
     [[ "$*" == "inspect ${FIXTURE_ID} --format {{json .Config}}" ]] || exit 98
     [[ "${INSPECT_FAIL:-0}" == 0 ]] || exit 23
+    if [[ -n "${CONFIG_JSON:-}" ]]; then
+      printf '%s\n' "$CONFIG_JSON"
+      exit 0
+    fi
     printf '{"Image":"%s","Env":["POSTGRES_USER=fixture_fixture_owner","POSTGRES_PASSWORD=fixture-only","POSTGRES_DB=postgres"]}\n' "$FIXTURE_IMAGE"
+    ;;
+  start)
+    [[ "$*" == "start ${FIXTURE_ID}" ]] || exit 98
+    printf 'start\n' >>"$FIXTURE_START_CALLS"
+    [[ "${START_FAIL:-0}" == 0 ]] || exit 23
+    rm -f "$FIXTURE_STOPPED"
+    printf '%s\n' "${START_ID:-$FIXTURE_ID}"
     ;;
   exec)
     if [[ "$*" == "exec ${FIXTURE_ID} pg_isready -h 127.0.0.1 -p 5432 -U fixture_fixture_owner -d postgres -t 1" ]]; then
@@ -106,6 +130,7 @@ case "${1:-}" in
       [[ ! -f "$FIXTURE_READY_CALLS" ]] || count="$(<"$FIXTURE_READY_CALLS")"
       count=$((count + 1))
       printf '%s\n' "$count" >"$FIXTURE_READY_CALLS"
+      [[ ! -e "$FIXTURE_STOPPED" ]] || exit 1
       [[ "${READY_ERROR:-0}" == 0 ]] || exit "$READY_ERROR"
       [[ "$count" -gt "${READY_AFTER:-0}" ]] || exit 1
       exit 0
@@ -128,14 +153,50 @@ chmod +x "$scratch/bin/sleep"
 export PATH="$scratch/bin:$PATH" FIXTURE_ID=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 export FIXTURE_SQL="$scratch/sql" FIXTURE_IMAGE='postgres:17.11-bookworm@sha256:3645570cccdfa447589da9f57dd740faa29b30938e861289a5574b6ca6b03826'
 export FIXTURE_READY_CALLS="$scratch/ready-calls" FIXTURE_SQL_CALLS="$scratch/sql-calls" FIXTURE_WAIT_CALLS="$scratch/wait-calls"
+export FIXTURE_STOPPED="$scratch/stopped" FIXTURE_START_CALLS="$scratch/start-calls"
 export READY_AFTER=2 READY_ERROR=0
 bash "$helper" provision fixture fixture_workflow_test "$FIXTURE_ID" >"$scratch/env"
+[[ ! -e "$FIXTURE_START_CALLS" ]] || fail 'healthy running service was restarted'
 [[ "$(<"$FIXTURE_READY_CALLS")" == 3 && "$(wc -l <"$FIXTURE_SQL_CALLS" | tr -d '[:space:]')" == 1 && "$(wc -l <"$FIXTURE_WAIT_CALLS" | tr -d '[:space:]')" == 2 ]] || fail 'restarting service was not awaited before its single SQL batch'
 grep -Fx 'FIXTURE_TEST_DATABASE_URL=postgres://fixture_runtime:fixture-only@127.0.0.1:5432/fixture_workflow_test?sslmode=disable' "$scratch/env" >/dev/null || fail 'runtime URL was not fixed and local'
 grep -Fx 'FIXTURE_TEST_MIGRATION_DATABASE_URL=postgres://fixture_migrator:fixture-only@127.0.0.1:5432/fixture_workflow_test?sslmode=disable' "$scratch/env" >/dev/null || fail 'migration URL was not fixed and local'
 grep -F 'NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOBYPASSRLS' "$FIXTURE_SQL" >/dev/null || fail 'restricted-role contract missing'
 grep -F 'REVOKE CREATE ON SCHEMA public FROM PUBLIC' "$FIXTURE_SQL" >/dev/null || fail 'runtime schema authority expanded'
 grep -F 'GRANT USAGE ON SCHEMA public TO fixture_runtime' "$FIXTURE_SQL" >/dev/null || fail 'runtime cannot use migrated schema'
+rm -f "$FIXTURE_READY_CALLS" "$FIXTURE_SQL_CALLS" "$FIXTURE_WAIT_CALLS"
+touch "$FIXTURE_STOPPED"
+export READY_AFTER=0
+rc=0
+bash "$helper" provision fixture fixture_workflow_test "$FIXTURE_ID" >"$scratch/env" 2>"$scratch/error" || rc=$?
+[[ "$rc" == 0 && ! -e "$FIXTURE_STOPPED" && -s "$scratch/env" ]] || fail 'verified stopped service was not recovered before provisioning'
+[[ "$(wc -l <"$FIXTURE_START_CALLS" | tr -d '[:space:]')" == 1 && "$(wc -l <"$FIXTURE_SQL_CALLS" | tr -d '[:space:]')" == 1 ]] || fail 'service recovery or SQL exceeded its single-attempt bound'
+for failure in state-read malformed-state missing-state paused restarting oom dead crashed wrong-user start-failed start-identity; do
+  export STATE_FAIL=0 STATE_JSON='' CONFIG_JSON='' START_FAIL=0 START_ID="$FIXTURE_ID"
+  rm -f "$FIXTURE_START_CALLS" "$FIXTURE_SQL_CALLS" "$FIXTURE_READY_CALLS" "$FIXTURE_WAIT_CALLS"
+  touch "$FIXTURE_STOPPED"
+  case "$failure" in
+    state-read) STATE_FAIL=1 ;;
+    malformed-state) STATE_JSON='not-json' ;;
+    missing-state) STATE_JSON='{}' ;;
+    paused) STATE_JSON='{"Status":"paused","Running":true,"Paused":true,"Restarting":false,"OOMKilled":false,"Dead":false,"ExitCode":0}' ;;
+    restarting) STATE_JSON='{"Status":"restarting","Running":true,"Paused":false,"Restarting":true,"OOMKilled":false,"Dead":false,"ExitCode":0}' ;;
+    oom) STATE_JSON='{"Status":"exited","Running":false,"Paused":false,"Restarting":false,"OOMKilled":true,"Dead":false,"ExitCode":0}' ;;
+    dead) STATE_JSON='{"Status":"dead","Running":false,"Paused":false,"Restarting":false,"OOMKilled":false,"Dead":true,"ExitCode":0}' ;;
+    crashed) STATE_JSON='{"Status":"exited","Running":false,"Paused":false,"Restarting":false,"OOMKilled":false,"Dead":false,"ExitCode":1}' ;;
+    wrong-user) CONFIG_JSON='{"Image":"postgres:17.11-bookworm@sha256:3645570cccdfa447589da9f57dd740faa29b30938e861289a5574b6ca6b03826","Env":["POSTGRES_USER=unbound","POSTGRES_PASSWORD=fixture-only","POSTGRES_DB=postgres"]}' ;;
+    start-failed) START_FAIL=1 ;;
+    start-identity) START_ID=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb ;;
+  esac
+  rc=0
+  bash "$helper" provision fixture fixture_workflow_test "$FIXTURE_ID" >"$scratch/env" 2>"$scratch/error" || rc=$?
+  [[ "$rc" == 2 && ! -s "$scratch/env" && ! -e "$FIXTURE_SQL_CALLS" && ! -e "$FIXTURE_READY_CALLS" ]] || fail "unsafe recovery ($failure) reached readiness, SQL or URLs"
+  case "$failure" in
+    start-failed|start-identity) [[ "$(wc -l <"$FIXTURE_START_CALLS" | tr -d '[:space:]')" == 1 ]] || fail 'failed service start was retried' ;;
+    *) [[ ! -e "$FIXTURE_START_CALLS" ]] || fail "unsafe recovery ($failure) started a service" ;;
+  esac
+done
+export STATE_FAIL=0 STATE_JSON='' CONFIG_JSON='' START_FAIL=0 START_ID="$FIXTURE_ID"
+rm -f "$FIXTURE_STOPPED" "$FIXTURE_START_CALLS"
 for failure in inspect provision image stopped rejecting readiness-command; do
   export INSPECT_FAIL=0 PROVISION_FAIL=0 READY_AFTER=0 READY_ERROR=0
   rm -f "$FIXTURE_READY_CALLS" "$FIXTURE_SQL_CALLS" "$FIXTURE_WAIT_CALLS"
@@ -159,4 +220,4 @@ for id in missing --privileged aa; do
   bash "$helper" provision fixture fixture_workflow_test "$id" >"$scratch/env" 2>"$scratch/error" || rc=$?
   [[ "$rc" == 2 && ! -s "$scratch/env" ]] || fail 'unbound container identity was admitted'
 done
-printf 'PASS: PostgreSQL declarations, bounded TCP recovery, single SQL batch and failure boundaries\n'
+printf 'PASS: PostgreSQL declarations, bound stopped-service recovery, bounded TCP readiness, single SQL batch and failure boundaries\n'
