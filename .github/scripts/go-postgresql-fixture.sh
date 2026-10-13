@@ -80,7 +80,9 @@ provision() {
   container="$3"
   [[ "$container" =~ ^[a-f0-9]{64}$ ]] || fail 'service identity is not bound'
   config="$(docker inspect "$container" --format '{{json .Config}}')" || fail 'service observation failed'
-  jq -e --arg image "$image" --arg owner "$owner" 'type == "object"
+  jq -se --arg image "$image" --arg owner "$owner" '
+    if length != 1 then error("ambiguous service configuration") else .[0] end |
+    type == "object"
     and .Image == $image and (.Env | type == "array")
     and ([.Env[] | select(startswith("POSTGRES_USER="))] == ["POSTGRES_USER=" + $owner])
     and ([.Env[] | select(startswith("POSTGRES_PASSWORD="))] == ["POSTGRES_PASSWORD=fixture-only"])
@@ -91,10 +93,13 @@ provision() {
   # Recover a cleanly stopped, still-bound service once, before any SQL. Never
   # restart an unhealthy/failed service or replay a partially executed batch.
   state="$(docker inspect "$container" --format '{{json .State}}')" || fail 'service state observation failed'
-  lifecycle="$(jq -er 'if type != "object" or .Paused != false or .Restarting != false
+  lifecycle="$(jq -ser '
+    if length != 1 then error("ambiguous service state") else .[0] end |
+    if type != "object" or .Error != "" or .ExitCode != 0
+      or .Paused != false or .Restarting != false
       or .OOMKilled != false or .Dead != false then error("unsafe service state")
     elif .Status == "running" and .Running == true then "running"
-    elif .Status == "exited" and .Running == false and .ExitCode == 0 then "stopped"
+    elif .Status == "exited" and .Running == false then "stopped"
     else error("unsafe service state") end' <<<"$state")" || fail 'service state is not safe for provisioning'
   if [[ "$lifecycle" == stopped ]]; then
     started="$(docker start "$container")" || fail 'bound service start failed'

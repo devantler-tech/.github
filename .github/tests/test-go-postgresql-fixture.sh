@@ -103,9 +103,9 @@ case "${1:-}" in
         exit 0
       fi
       if [[ -e "$FIXTURE_STOPPED" ]]; then
-        printf '{"Status":"exited","Running":false,"Paused":false,"Restarting":false,"OOMKilled":false,"Dead":false,"ExitCode":0}\n'
+        printf '{"Status":"exited","Running":false,"Paused":false,"Restarting":false,"OOMKilled":false,"Dead":false,"ExitCode":0,"Error":""}\n'
       else
-        printf '{"Status":"running","Running":true,"Paused":false,"Restarting":false,"OOMKilled":false,"Dead":false,"ExitCode":0}\n'
+        printf '{"Status":"running","Running":true,"Paused":false,"Restarting":false,"OOMKilled":false,"Dead":false,"ExitCode":0,"Error":""}\n'
       fi
       exit 0
     fi
@@ -170,7 +170,7 @@ rc=0
 bash "$helper" provision fixture fixture_workflow_test "$FIXTURE_ID" >"$scratch/env" 2>"$scratch/error" || rc=$?
 [[ "$rc" == 0 && ! -e "$FIXTURE_STOPPED" && -s "$scratch/env" ]] || fail 'verified stopped service was not recovered before provisioning'
 [[ "$(wc -l <"$FIXTURE_START_CALLS" | tr -d '[:space:]')" == 1 && "$(wc -l <"$FIXTURE_SQL_CALLS" | tr -d '[:space:]')" == 1 ]] || fail 'service recovery or SQL exceeded its single-attempt bound'
-for failure in state-read malformed-state missing-state paused restarting oom dead crashed wrong-user start-failed start-identity; do
+for failure in state-read malformed-state missing-state recorded-error-running recorded-error-stopped multiple-state empty-state multiple-config paused restarting oom dead crashed wrong-user start-failed start-identity; do
   export STATE_FAIL=0 STATE_JSON='' CONFIG_JSON='' START_FAIL=0 START_ID="$FIXTURE_ID"
   rm -f "$FIXTURE_START_CALLS" "$FIXTURE_SQL_CALLS" "$FIXTURE_READY_CALLS" "$FIXTURE_WAIT_CALLS"
   touch "$FIXTURE_STOPPED"
@@ -178,11 +178,22 @@ for failure in state-read malformed-state missing-state paused restarting oom de
     state-read) STATE_FAIL=1 ;;
     malformed-state) STATE_JSON='not-json' ;;
     missing-state) STATE_JSON='{}' ;;
-    paused) STATE_JSON='{"Status":"paused","Running":true,"Paused":true,"Restarting":false,"OOMKilled":false,"Dead":false,"ExitCode":0}' ;;
-    restarting) STATE_JSON='{"Status":"restarting","Running":true,"Paused":false,"Restarting":true,"OOMKilled":false,"Dead":false,"ExitCode":0}' ;;
-    oom) STATE_JSON='{"Status":"exited","Running":false,"Paused":false,"Restarting":false,"OOMKilled":true,"Dead":false,"ExitCode":0}' ;;
-    dead) STATE_JSON='{"Status":"dead","Running":false,"Paused":false,"Restarting":false,"OOMKilled":false,"Dead":true,"ExitCode":0}' ;;
-    crashed) STATE_JSON='{"Status":"exited","Running":false,"Paused":false,"Restarting":false,"OOMKilled":false,"Dead":false,"ExitCode":1}' ;;
+    recorded-error-running) STATE_JSON='{"Status":"running","Running":true,"Paused":false,"Restarting":false,"OOMKilled":false,"Dead":false,"ExitCode":0,"Error":"recorded failure"}' ;;
+    recorded-error-stopped) STATE_JSON='{"Status":"exited","Running":false,"Paused":false,"Restarting":false,"OOMKilled":false,"Dead":false,"ExitCode":0,"Error":"recorded failure"}' ;;
+    multiple-state)
+      STATE_JSON='{"Status":"running","Running":true,"Paused":false,"Restarting":false,"OOMKilled":false,"Dead":false,"ExitCode":0,"Error":""}'
+      STATE_JSON="$STATE_JSON $STATE_JSON"
+      ;;
+    empty-state) STATE_JSON=' ' ;;
+    multiple-config)
+      CONFIG_JSON='{"Image":"postgres:17.11-bookworm@sha256:3645570cccdfa447589da9f57dd740faa29b30938e861289a5574b6ca6b03826","Env":["POSTGRES_USER=fixture_fixture_owner","POSTGRES_PASSWORD=fixture-only","POSTGRES_DB=postgres"]}'
+      CONFIG_JSON="$CONFIG_JSON $CONFIG_JSON"
+      ;;
+    paused) STATE_JSON='{"Status":"paused","Running":true,"Paused":true,"Restarting":false,"OOMKilled":false,"Dead":false,"ExitCode":0,"Error":""}' ;;
+    restarting) STATE_JSON='{"Status":"restarting","Running":true,"Paused":false,"Restarting":true,"OOMKilled":false,"Dead":false,"ExitCode":0,"Error":""}' ;;
+    oom) STATE_JSON='{"Status":"exited","Running":false,"Paused":false,"Restarting":false,"OOMKilled":true,"Dead":false,"ExitCode":0,"Error":""}' ;;
+    dead) STATE_JSON='{"Status":"dead","Running":false,"Paused":false,"Restarting":false,"OOMKilled":false,"Dead":true,"ExitCode":0,"Error":""}' ;;
+    crashed) STATE_JSON='{"Status":"exited","Running":false,"Paused":false,"Restarting":false,"OOMKilled":false,"Dead":false,"ExitCode":1,"Error":""}' ;;
     wrong-user) CONFIG_JSON='{"Image":"postgres:17.11-bookworm@sha256:3645570cccdfa447589da9f57dd740faa29b30938e861289a5574b6ca6b03826","Env":["POSTGRES_USER=unbound","POSTGRES_PASSWORD=fixture-only","POSTGRES_DB=postgres"]}' ;;
     start-failed) START_FAIL=1 ;;
     start-identity) START_ID=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb ;;
@@ -194,6 +205,35 @@ for failure in state-read malformed-state missing-state paused restarting oom de
     start-failed|start-identity) [[ "$(wc -l <"$FIXTURE_START_CALLS" | tr -d '[:space:]')" == 1 ]] || fail 'failed service start was retried' ;;
     *) [[ ! -e "$FIXTURE_START_CALLS" ]] || fail "unsafe recovery ($failure) started a service" ;;
   esac
+done
+# Every field used for admission must be observed with its native JSON type in
+# both lifecycle states. An omitted field is not a healthy value.
+for lifecycle in running exited; do
+  case "$lifecycle" in
+    running) complete_state='{"Status":"running","Running":true,"Paused":false,"Restarting":false,"OOMKilled":false,"Dead":false,"ExitCode":0,"Error":""}' ;;
+    exited) complete_state='{"Status":"exited","Running":false,"Paused":false,"Restarting":false,"OOMKilled":false,"Dead":false,"ExitCode":0,"Error":""}' ;;
+  esac
+  for field in Status Running Paused Restarting OOMKilled Dead ExitCode Error; do
+    for observation in missing null mistyped; do
+      if [[ "$observation" == missing ]]; then
+        STATE_JSON="$(jq --arg field "$field" 'del(.[$field])' <<<"$complete_state")"
+      elif [[ "$observation" == null ]]; then
+        STATE_JSON="$(jq --arg field "$field" '.[$field] = null' <<<"$complete_state")"
+      else
+        case "$field" in
+          Status|Error) STATE_JSON="$(jq --arg field "$field" '.[$field] = false' <<<"$complete_state")" ;;
+          ExitCode) STATE_JSON="$(jq --arg field "$field" '.[$field] = "0"' <<<"$complete_state")" ;;
+          *) STATE_JSON="$(jq --arg field "$field" '.[$field] = "false"' <<<"$complete_state")" ;;
+        esac
+      fi
+      export STATE_FAIL=0 STATE_JSON CONFIG_JSON='' START_FAIL=0 START_ID="$FIXTURE_ID"
+      rm -f "$FIXTURE_START_CALLS" "$FIXTURE_SQL_CALLS" "$FIXTURE_READY_CALLS" "$FIXTURE_WAIT_CALLS"
+      touch "$FIXTURE_STOPPED"
+      rc=0
+      bash "$helper" provision fixture fixture_workflow_test "$FIXTURE_ID" >"$scratch/env" 2>"$scratch/error" || rc=$?
+      [[ "$rc" == 2 && ! -s "$scratch/env" && ! -e "$FIXTURE_START_CALLS" && ! -e "$FIXTURE_READY_CALLS" && ! -e "$FIXTURE_SQL_CALLS" ]] || fail "incomplete lifecycle ($lifecycle/$field/$observation) reached provisioning"
+    done
+  done
 done
 export STATE_FAIL=0 STATE_JSON='' CONFIG_JSON='' START_FAIL=0 START_ID="$FIXTURE_ID"
 rm -f "$FIXTURE_STOPPED" "$FIXTURE_START_CALLS"
