@@ -127,7 +127,7 @@ jobs:
       signed-fixes: ${{ inputs.apply-signed-fixes == true || (toJSON(inputs) == '{}' && contains(github.workflow_ref, '/.github/workflows/validate-go-project.yaml@')) }}
     steps:
       - name: 🛡️ Harden runner
-        uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
+        uses: step-security/harden-runner@351661ca32ac09a36dc5ee2d536e3128f2a3c8ed # v2.22.0
         with:
           egress-policy: audit
 
@@ -341,7 +341,7 @@ jobs:
       contents: read
     steps:
       - name: 🛡️ Harden runner
-        uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
+        uses: step-security/harden-runner@351661ca32ac09a36dc5ee2d536e3128f2a3c8ed # v2.22.0
         with:
           egress-policy: audit
 
@@ -432,7 +432,7 @@ jobs:
       contents: read
     steps:
       - name: 🛡️ Harden runner
-        uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
+        uses: step-security/harden-runner@351661ca32ac09a36dc5ee2d536e3128f2a3c8ed # v2.22.0
         with:
           egress-policy: audit
 
@@ -552,7 +552,7 @@ jobs:
       GO_MEMORY_LIMIT: ${{ toJSON(inputs) == '{}' && '8GiB' || inputs.go-memory-limit }}
     steps:
       - name: 🛡️ Harden runner
-        uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
+        uses: step-security/harden-runner@351661ca32ac09a36dc5ee2d536e3128f2a3c8ed # v2.22.0
         with:
           egress-policy: audit
 
@@ -705,7 +705,7 @@ jobs:
       GO_MEMORY_LIMIT: ${{ toJSON(inputs) == '{}' && '8GiB' || inputs.go-memory-limit }}
     steps:
       - name: 🛡️ Harden runner
-        uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
+        uses: step-security/harden-runner@351661ca32ac09a36dc5ee2d536e3128f2a3c8ed # v2.22.0
         with:
           egress-policy: audit
 
@@ -841,7 +841,7 @@ jobs:
       pull-requests: write
     steps:
       - name: 🛡️ Harden runner
-        uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
+        uses: step-security/harden-runner@351661ca32ac09a36dc5ee2d536e3128f2a3c8ed # v2.22.0
         with:
           egress-policy: audit
 
@@ -990,7 +990,7 @@ jobs:
     name: 📦 Tidy - apply fixes
     needs: [changes, tidy]
     if: ${{ needs.changes.outputs.signed-fixes == 'true' }}
-    uses: devantler-tech/.github/.github/workflows/apply-signed-fixes.yaml@63c59062489edbee907d2a4d5d06f01c57b7d58c # v7.9.0
+    uses: devantler-tech/.github/.github/workflows/apply-signed-fixes.yaml@9ff2ad68306cc73df6814861c7804a11a25e0788 # v7.10.3
     permissions:
       contents: read
     with:
@@ -1005,7 +1005,7 @@ jobs:
     name: 🧹 Lint - golangci-lint - apply fixes
     needs: [changes, golangci-lint, apply-tidy-fixes]
     if: ${{ !cancelled() && needs.changes.outputs.signed-fixes == 'true' && needs.golangci-lint.result == 'success' && (needs.apply-tidy-fixes.result == 'success' || needs.apply-tidy-fixes.result == 'skipped') }}
-    uses: devantler-tech/.github/.github/workflows/apply-signed-fixes.yaml@63c59062489edbee907d2a4d5d06f01c57b7d58c # v7.9.0
+    uses: devantler-tech/.github/.github/workflows/apply-signed-fixes.yaml@9ff2ad68306cc73df6814861c7804a11a25e0788 # v7.10.3
     permissions:
       contents: read
     with:
@@ -1020,7 +1020,7 @@ jobs:
     name: 🧹 Lint - apply fixes
     needs: [changes, lint, apply-golangci-lint-fixes]
     if: ${{ !cancelled() && needs.changes.outputs.signed-fixes == 'true' && needs.lint.result == 'success' && (needs.apply-golangci-lint-fixes.result == 'success' || needs.apply-golangci-lint-fixes.result == 'skipped') }}
-    uses: devantler-tech/.github/.github/workflows/apply-signed-fixes.yaml@63c59062489edbee907d2a4d5d06f01c57b7d58c # v7.9.0
+    uses: devantler-tech/.github/.github/workflows/apply-signed-fixes.yaml@9ff2ad68306cc73df6814861c7804a11a25e0788 # v7.10.3
     permissions:
       contents: read
     with:
@@ -1045,7 +1045,7 @@ jobs:
       contents: read
     steps:
       - name: 🛡️ Harden runner
-        uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
+        uses: step-security/harden-runner@351661ca32ac09a36dc5ee2d536e3128f2a3c8ed # v2.22.0
         with:
           egress-policy: audit
 
@@ -1237,7 +1237,7 @@ jobs:
       contents: read
     steps:
       - name: 🛡️ Harden runner
-        uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
+        uses: step-security/harden-runner@351661ca32ac09a36dc5ee2d536e3128f2a3c8ed # v2.22.0
         with:
           egress-policy: audit
 
@@ -1505,7 +1505,7 @@ jobs:
       code-quality: write
     steps:
       - name: 🛡️ Harden runner
-        uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
+        uses: step-security/harden-runner@351661ca32ac09a36dc5ee2d536e3128f2a3c8ed # v2.22.0
         with:
           egress-policy: audit
 
