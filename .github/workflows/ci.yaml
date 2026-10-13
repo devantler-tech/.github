@@ -3547,6 +3547,10 @@ jobs:
           go-version-file: .github/tests/go-postgresql-fixture/go.mod
           cache: false
 
+      - name: Reject incomplete native PostgreSQL cleanup observations
+        shell: bash
+        run: bash .github/tests/test-go-postgresql-recovery-cleanup.sh
+
       - name: Recover a stopped PostgreSQL service and exercise actual restricted roles
         timeout-minutes: 5
         shell: bash

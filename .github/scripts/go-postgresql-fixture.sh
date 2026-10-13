@@ -74,6 +74,8 @@ resolve() {
       owner:$owner, migrator:$migrator, runtime:$runtime,
       runtime_env:$runtime_env, migration_env:$migration_env}'
 }
+# Admit complete observations of the fixed service, recover one clean stop and
+# publish local fixture URLs only after one successful SQL batch.
 provision() {
   [[ "$#" == 3 ]] || fail 'provision needs normalized identities and a service identity'
   identities "$1" "$2"

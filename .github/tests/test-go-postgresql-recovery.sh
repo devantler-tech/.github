@@ -5,16 +5,21 @@ root="$(cd "$(dirname "$0")/../.." && pwd)"
 scratch="$(mktemp -d)"
 name="go-fixture-recovery-${scratch##*/}"
 container=''
+# Remove the acknowledged service and its recorded anonymous volume; preserve
+# the original failure and reject incomplete cleanup observations.
 cleanup() {
   result=$?
   trap - EXIT
   if [[ -n "$container" ]]; then
-    volumes="$(docker inspect "$container" --format '{{range .Mounts}}{{if eq .Type "volume"}}{{.Name}}{{"\n"}}{{end}}{{end}}')" || result=1
+    volumes="$(docker inspect "$container" --format '{{range .Mounts}}{{if and (eq .Type "volume") (eq .Destination "/var/lib/postgresql/data")}}{{.Name}}{{"\n"}}{{end}}{{end}}')" || result=1
+    # This fixed image/create call owns exactly one anonymous data volume.
+    [[ "${volumes:-}" =~ ^[a-f0-9]{64}$ ]] || result=1
     docker rm --force --volumes "$container" >/dev/null || result=1
     remaining="$(docker ps --all --no-trunc --filter "id=$container" --format '{{.ID}}')" || result=1
     [[ -z "${remaining:-}" ]] || result=1
     while IFS= read -r volume; do
       [[ -n "$volume" ]] || continue
+      [[ "$volume" =~ ^[a-f0-9]{64}$ ]] || { result=1; continue; }
       remaining="$(docker volume ls --filter "name=$volume" --format '{{.Name}}')" || result=1
       [[ -z "${remaining:-}" ]] || result=1
     done <<<"${volumes:-}"
