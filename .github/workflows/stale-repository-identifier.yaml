@@ -33,7 +33,7 @@ jobs:
           persist-credentials: true
 
       - name: 🧹 Identify stale repositories
-        uses: github/stale-repos@cd662591ad9d5d8967f84431eb94a45f828c1db3 # v9.0.19
+        uses: github/stale-repos@07243c72d78533a27c0e37a93bfa87275fca4aa1 # v9.1.1
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           EXEMPT_TOPICS: "keep,template"
