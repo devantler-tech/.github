@@ -35,7 +35,7 @@ consumer_relative_calls="$(
 # its blob id recorded below (#484: naming the commit instead made every release bump fail until
 # someone copied the commit Dependabot had already chosen, which reviewed nothing).
 signed_fixes_path='.github/workflows/apply-signed-fixes.yaml'
-reviewed_blob='ccbcbabb46c1c5ae40066d05880ff29c50263f25'
+reviewed_blob='f5e207d6962827574cda83451c96360882560bb8'
 source_remote='https://github.com/devantler-tech/.github.git'
 # Each reference is read JSON-encoded: command substitution drops trailing newlines, so a plain
 # read would accept text after the commit.
