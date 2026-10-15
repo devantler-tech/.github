@@ -233,6 +233,14 @@ with a `workflow_call` trigger.
 
 ### Layout
 
+The default-off `inspect-release-recovery.yaml` diagnoses only public GitHub release evidence;
+it cannot publish or repair channel notes. Its Go inspector lives in
+`.github/scripts/inspect-release-recovery/`. Run
+`bash .github/tests/test-inspect-release-recovery.sh` after changes to either surface. That suite
+executes real HTTP controls and the immutable-source and read-only credential boundary, and runs
+inside `test-create-release-config` in required CI. Never treat its diagnosis as completed recovery
+or write authorization; #587 owns publication, legacy compatibility and protected consumer proof.
+
 ```text
 actions/<action-name>/            # One directory per composite action
 ├── action.yaml                   # Action metadata (name, description, inputs, steps)

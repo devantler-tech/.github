@@ -1309,3 +1309,57 @@ Start with [Contributing](CONTRIBUTING.md) for a safe first change; see
 [catalogue conventions](actions/CONTRIBUTING.md) when changing an action or reusable workflow.
 
 <!-- END actions catalogue -->
+
+### Inspect a stranded GitHub release
+
+[.github/workflows/inspect-release-recovery.yaml](.github/workflows/inspect-release-recovery.yaml)
+diagnoses an existing stable version tag whose original release run failed. It is read-only and
+disabled by default. A missing-publication diagnosis means release-by-tag reports no matching
+published GitHub release. It does not inspect draft records, repair the release, verify channel
+notes, or authorize a later publication. Recovery delivery
+and protected consumer rollout remain tracked in [#587](https://github.com/devantler-tech/.github/issues/587).
+
+For a credential-free first check, start at this repository's root with Go 1.26.9 or newer, Bash,
+Mike Farah yq v4 and jq installed:
+
+```bash
+bash .github/tests/test-inspect-release-recovery.sh
+```
+
+The test exercises the actual inspector against disposable local HTTP servers, including failed,
+changed and conflicting observations. It makes no live GitHub requests and publishes nothing.
+
+To inspect a real incident, run the workflow manually from the default branch after supplying the
+original identities, or call the reusable workflow at a reviewed full commit SHA. Explicitly set
+`enable-inspection: true`. The App identified by `APP_CLIENT_ID` must be installed on the target
+repository with Contents and Actions read access, and `APP_PRIVATE_KEY` must be available to the
+caller. The workflow requests a token for that one repository, builds its own immutable inspector
+before obtaining the token, then prints and returns one JSON diagnosis. Omitted enablement skips
+inspection; a skipped job is not an inspected release.
+
+This first version accepts only public active `devantler-tech` repositories, stable `vX.Y.Z` tags,
+failed push runs on the default branch and immutable original `create-release.yaml` producers from
+this catalogue or the frozen `devantler-tech/actions` catalogue. It reads configuration as data:
+only the supported JSON `.releaserc` with the default branch, commit analyzer, release-notes
+generator and GitHub publisher is accepted. Analyzer/notes options are limited to the observed
+breaking-header pattern and breaking/revert release rules; GitHub publisher options are unsupported.
+Tags must point directly to the source commit or through one annotated tag. Other publishers, executable or alternate release
+configuration and conflicting or incomplete evidence fail without a diagnosis. It repeats the
+evidence reads before returning; that observation is not a lock against later changes.
+
+#### Secrets and Inputs
+
+| Key | Type | Default | Required | Description |
+| --- | --- | --- | --- | --- |
+| `enable-inspection` | Input (boolean) | `false` | No | Explicitly run diagnosis without publication authority |
+| `repository` | Input (string) | — | Yes | Public target repository, such as `devantler-tech/platform` |
+| `tag` | Input (string) | — | Yes | Existing stable tag, such as `v1.2.3` |
+| `source-sha` | Input (string) | — | Yes | Original full source commit SHA |
+| `run-id` | Input (string) | — | Yes | Original failed release run ID |
+| `run-attempt` | Input (string) | — | Yes | Original failed run attempt |
+| `producer-ref` | Input (string) | — | Yes | Original catalogue workflow path at its full commit SHA |
+| `APP_PRIVATE_KEY` | Secret | — | When enabled | App key used only for a repository-scoped read-only token |
+
+The reusable output `diagnosis` contains the same JSON printed by the inspector. Failed or
+ambiguous reads fail the job and produce no successful diagnosis. No tags, release records,
+channel notes or aliases are written.

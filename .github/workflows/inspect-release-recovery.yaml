@@ -1,0 +1,172 @@
+name: 🔎 Inspect Release Recovery
+
+# Diagnosis only. Publication and channel-note recovery remain tracked in #587.
+on:
+  workflow_call:
+    inputs:
+      enable-inspection:
+        description: "Explicitly enable read-only inspection; never authorizes publication"
+        type: boolean
+        default: false
+      repository:
+        description: "Public devantler-tech repository containing the stranded release"
+        type: string
+        required: true
+      tag:
+        description: "Existing stable version tag, such as v1.2.3"
+        type: string
+        required: true
+      source-sha:
+        description: "Full original source commit SHA"
+        type: string
+        required: true
+      run-id:
+        description: "Original failed release workflow run ID"
+        type: string
+        required: true
+      run-attempt:
+        description: "Original failed release workflow attempt"
+        type: string
+        required: true
+      producer-ref:
+        description: "Original catalogue create-release workflow path at its full commit SHA"
+        type: string
+        required: true
+    secrets:
+      APP_PRIVATE_KEY:
+        required: false
+    outputs:
+      diagnosis:
+        description: "Read-only JSON diagnosis; not publication success or write authorization"
+        value: ${{ jobs.inspect.outputs.diagnosis }}
+  workflow_dispatch:
+    inputs:
+      enable-inspection:
+        description: "Explicitly enable read-only inspection; never authorizes publication"
+        type: boolean
+        default: false
+      repository:
+        description: "Public devantler-tech repository containing the stranded release"
+        type: string
+        required: true
+      tag:
+        description: "Existing stable version tag, such as v1.2.3"
+        type: string
+        required: true
+      source-sha:
+        description: "Full original source commit SHA"
+        type: string
+        required: true
+      run-id:
+        description: "Original failed release workflow run ID"
+        type: string
+        required: true
+      run-attempt:
+        description: "Original failed release workflow attempt"
+        type: string
+        required: true
+      producer-ref:
+        description: "Original catalogue create-release workflow path at its full commit SHA"
+        type: string
+        required: true
+
+permissions: {}
+
+jobs:
+  inspect:
+    if: inputs.enable-inspection
+    name: Inspect without publishing
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions: {}
+    outputs:
+      diagnosis: ${{ steps.diagnosis.outputs.diagnosis }}
+    steps:
+      - name: 🛡️ Harden runner
+        uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
+        with:
+          egress-policy: audit
+      - name: 🔎 Admit reviewed invocation and repository scope
+        id: admit
+        shell: bash
+        env:
+          REPOSITORY: ${{ inputs.repository }}
+          CURRENT_REF: ${{ github.ref }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          set -euo pipefail
+          [[ -n "$DEFAULT_BRANCH" && "$CURRENT_REF" == "refs/heads/$DEFAULT_BRANCH" &&
+            "$REPOSITORY" =~ ^devantler-tech/[A-Za-z0-9_.-]{1,100}$ &&
+            "$REPOSITORY" != devantler-tech/. && "$REPOSITORY" != devantler-tech/.. ]] || {
+            echo '::error::inspection requires the default branch and one portfolio repository' >&2
+            exit 1
+          }
+          printf 'name=%s\n' "${REPOSITORY#devantler-tech/}" >> "$GITHUB_OUTPUT"
+      - name: 📑 Download immutable inspector source
+        id: source
+        shell: bash
+        env:
+          CATALOGUE_REPOSITORY: ${{ job.workflow_repository }}
+          CATALOGUE_SHA: ${{ job.workflow_sha }}
+        run: |
+          set -euo pipefail
+          [[ "$CATALOGUE_REPOSITORY" == devantler-tech/.github && "$CATALOGUE_SHA" =~ ^[0-9a-f]{40}$ ]] || {
+            echo '::error::invalid catalogue source' >&2
+            exit 1
+          }
+          env -i PATH="$PATH" curl --disable --fail --silent --show-error --location \
+            --proto '=https' --proto-redir '=https' --connect-timeout 10 --max-time 120 --retry 3 \
+            --output "$RUNNER_TEMP/inspector.tar.gz" \
+            "https://codeload.github.com/$CATALOGUE_REPOSITORY/tar.gz/$CATALOGUE_SHA"
+          mkdir .devantler-tech-inspector
+          tar --extract --gzip --file="$RUNNER_TEMP/inspector.tar.gz" \
+            --strip-components=1 --directory=.devantler-tech-inspector
+          for source_file in go.mod main.go; do
+            [[ -f ".devantler-tech-inspector/.github/scripts/inspect-release-recovery/$source_file" &&
+              ! -L ".devantler-tech-inspector/.github/scripts/inspect-release-recovery/$source_file" ]] || {
+              echo '::error::incomplete inspector source' >&2
+              exit 1
+            }
+          done
+      - name: 📦 Setup Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: "1.26.9"
+          cache: false
+      - name: 🔨 Build before obtaining credentials
+        id: build
+        env:
+          GOWORK: "off"
+          GOFLAGS: ""
+          GOTOOLCHAIN: local
+          CGO_ENABLED: "0"
+        run: go -C .devantler-tech-inspector/.github/scripts/inspect-release-recovery build -trimpath -o "$RUNNER_TEMP/inspect-release-recovery" .
+      - name: 🔑 Obtain repository-scoped read-only token
+        id: read-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          client-id: ${{ vars.APP_CLIENT_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+          owner: devantler-tech
+          repositories: ${{ steps.admit.outputs.name }}
+          permission-contents: read
+          permission-actions: read
+      - name: 🔎 Inspect original release evidence
+        id: diagnosis
+        shell: bash
+        env:
+          GH_TOKEN: ${{ steps.read-token.outputs.token }}
+          REPOSITORY: ${{ inputs.repository }}
+          TAG: ${{ inputs.tag }}
+          SOURCE_SHA: ${{ inputs.source-sha }}
+          RUN_ID: ${{ inputs.run-id }}
+          RUN_ATTEMPT: ${{ inputs.run-attempt }}
+          PRODUCER_REF: ${{ inputs.producer-ref }}
+        run: |
+          set -euo pipefail
+          "$RUNNER_TEMP/inspect-release-recovery" \
+            --repository "$REPOSITORY" --tag "$TAG" --source-sha "$SOURCE_SHA" \
+            --run-id "$RUN_ID" --run-attempt "$RUN_ATTEMPT" --producer-ref "$PRODUCER_REF" \
+            > "$RUNNER_TEMP/release-diagnosis.json"
+          printf 'diagnosis=%s\n' "$(jq -c . "$RUNNER_TEMP/release-diagnosis.json")" >> "$GITHUB_OUTPUT"
+          cat "$RUNNER_TEMP/release-diagnosis.json"
