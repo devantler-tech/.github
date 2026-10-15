@@ -96,6 +96,7 @@ func changeConfig(content string) responseEdit {
 
 const publication = `{"id":17,"tag_name":"v1.222.1","target_commitish":"` + source + `","draft":false,"prerelease":false,"published_at":"2026-10-15T10:00:00Z"}`
 
+// Published evidence must not claim that this invocation published or inspected channel notes.
 func TestPresentReleaseIsDiagnosisWithoutPublicationOrNotesClaim(t *testing.T) {
 	out, err, requests := exercise(t, func(r *http.Request, _ int, status *int, body *string, _ http.Header) {
 		if strings.Contains(r.URL.Path, "/releases/tags/") {
@@ -115,6 +116,20 @@ func TestPresentReleaseIsDiagnosisWithoutPublicationOrNotesClaim(t *testing.T) {
 	}
 }
 
+// Producer branch metadata is valid only alongside the independently verified immutable tag.
+func TestPublishedDefaultBranchTargetStillBindsToCapturedTagSource(t *testing.T) {
+	out, err, requests := exercise(t, func(r *http.Request, _ int, status *int, body *string, _ http.Header) {
+		if strings.Contains(r.URL.Path, "/releases/tags/") {
+			*status = 200
+			*body = strings.Replace(publication, source, "main", 1)
+		}
+	}, args(), "fixture-token")
+	if err != nil || !strings.Contains(out, `"diagnosis":"github-release-present"`) || len(requests) != 14 {
+		t.Fatalf("matching default-branch publication refused: %v %q requests=%d", err, out, len(requests))
+	}
+}
+
+// Bad identities must be rejected before the credential can reach an API.
 func TestInvalidCLIInputsMakeNoRequests(t *testing.T) {
 	for index, values := range map[int][]string{
 		1:  {"elsewhere/platform", "devantler-tech/..", "devantler-tech/a/b", "devantler-tech/platform?token=secret"},
@@ -149,6 +164,7 @@ func TestInvalidCLIInputsMakeNoRequests(t *testing.T) {
 	}
 }
 
+// A convincing partial identity must never substitute for the complete original incident.
 func TestIdentityMismatchesAndMissingFieldsRefuseAllDiagnosis(t *testing.T) {
 	cases := []struct {
 		path, key string
@@ -187,8 +203,9 @@ func TestIdentityMismatchesAndMissingFieldsRefuseAllDiagnosis(t *testing.T) {
 	}
 }
 
+// Malformed, draft or conflicting publications must not become a positive diagnosis.
 func TestUnsafeOrMissingPublicationMetadataDoesNotBecomePresent(t *testing.T) {
-	for key, value := range map[string]any{"id": 0, "tag_name": "v1.222.2", "target_commitish": "main", "draft": true, "prerelease": true, "published_at": ""} {
+	for key, value := range map[string]any{"id": 0, "tag_name": "v1.222.2", "target_commitish": "other", "draft": true, "prerelease": true, "published_at": ""} {
 		for _, omit := range []bool{false, true} {
 			t.Run(key+fmt.Sprint(omit), func(t *testing.T) {
 				refuse(t, func(r *http.Request, _ int, status *int, body *string, _ http.Header) {
@@ -208,6 +225,7 @@ func TestUnsafeOrMissingPublicationMetadataDoesNotBecomePresent(t *testing.T) {
 	}
 }
 
+// Transport and provider failures must stop the conversation without replay or success output.
 func TestEveryHTTPReadFailsClosedWithoutRedirectRetryOrPartialOutput(t *testing.T) {
 	paths := []string{"", "/actions/runs/38418390528/attempts/1", "/git/ref/tags/v1.222.1", "/git/commits/" + source, "/git/trees/3333333333333333333333333333333333333333", "/contents/.releaserc", "/releases/tags/v1.222.1"}
 	for _, path := range paths {
@@ -266,6 +284,7 @@ func TestEveryHTTPReadFailsClosedWithoutRedirectRetryOrPartialOutput(t *testing.
 	}
 }
 
+// Configuration outside the bounded GitHub-only contract must never be executed or admitted.
 func TestUnsupportedReleaseConfigurationRefusesDiagnosis(t *testing.T) {
 	configs := []string{"branches: [main]", `{"branches":["main"],"branches":["main"],"plugins":[]}`}
 	for _, mutate := range []func(map[string]any){
@@ -302,6 +321,7 @@ func TestUnsupportedReleaseConfigurationRefusesDiagnosis(t *testing.T) {
 	}
 }
 
+// Annotation support must not weaken the captured tag and source relationship.
 func TestAnnotatedTagMustNameOriginalTagAndDirectCommit(t *testing.T) {
 	for _, scenario := range []string{"matching", "wrong-name", "wrong-sha", "nested", "wrong-source", "missing"} {
 		t.Run(scenario, func(t *testing.T) {
@@ -339,6 +359,7 @@ func TestAnnotatedTagMustNameOriginalTagAndDirectCommit(t *testing.T) {
 	}
 }
 
+// Individually valid observations are insufficient when they disagree across passes.
 func TestChangedValidObservationsRefusePrematureDiagnosis(t *testing.T) {
 	for _, scenario := range []string{"publication-created", "publication-replaced", "config-changed", "repository-replaced"} {
 		t.Run(scenario, func(t *testing.T) {
@@ -369,6 +390,7 @@ func TestChangedValidObservationsRefusePrematureDiagnosis(t *testing.T) {
 	}
 }
 
+// A bounded timeout must discard the unfinished observation rather than report prior evidence.
 func TestReadTimeoutDoesNotProducePartialDiagnosis(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		time.Sleep(40 * time.Millisecond)
@@ -384,6 +406,7 @@ func TestReadTimeoutDoesNotProducePartialDiagnosis(t *testing.T) {
 	}
 }
 
+// Malformed bytes and conflicting privacy metadata must not enter the public evidence path.
 func TestMalformedUTF8AndConflictingVisibilityRefuseDiagnosis(t *testing.T) {
 	for _, scenario := range []string{"invalid-utf8", "conflicting-visibility", "missing-visibility", "symlink-target"} {
 		t.Run(scenario, func(t *testing.T) {
@@ -407,6 +430,7 @@ func TestMalformedUTF8AndConflictingVisibilityRefuseDiagnosis(t *testing.T) {
 	}
 }
 
+// Otherwise-valid JSON proves duplicate-field rejection is the decisive control.
 func TestDuplicateSecurityFieldsCannotHideBehindOtherwiseValidResponses(t *testing.T) {
 	for path, duplicate := range map[string]string{
 		"":                                     `"private":false`,
@@ -426,6 +450,7 @@ func TestDuplicateSecurityFieldsCannotHideBehindOtherwiseValidResponses(t *testi
 	refuse(t, changeConfig(strings.Replace(config, `"branches":["main"]`, `"branches":["main"],"branches":["main"]`, 1)))
 }
 
+// A package must not silently introduce another semantic-release configuration.
 func TestPackageJSONMayNotProvideAnotherReleaseConfiguration(t *testing.T) {
 	for _, content := range []string{`{"name":"fixture"}`, `{"name":"fixture","release":null}`, `{"release":{"extends":"arbitrary-code"}}`, `[]`} {
 		t.Run(content, func(t *testing.T) {
@@ -451,6 +476,7 @@ func TestPackageJSONMayNotProvideAnotherReleaseConfiguration(t *testing.T) {
 	}
 }
 
+// A partial source inventory cannot establish exclusive supported configuration.
 func TestIncompleteConfigurationInventoriesRefuseDiagnosis(t *testing.T) {
 	for _, scenario := range []string{"empty", "wrong-shape", "duplicate", "missing-config", "symlink", "submodule", "truncated"} {
 		t.Run(scenario, func(t *testing.T) {
@@ -483,6 +509,7 @@ func TestIncompleteConfigurationInventoriesRefuseDiagnosis(t *testing.T) {
 	}
 }
 
+// Late failure must discard the first pass instead of laundering it into a diagnosis.
 func TestLateReadFailuresNeverEmitFirstObservationAsVerdict(t *testing.T) {
 	for _, path := range []string{"", "/actions/runs/38418390528/attempts/1", "/git/ref/tags/v1.222.1", "/git/commits/" + source, "/git/trees/3333333333333333333333333333333333333333", "/contents/.releaserc", "/releases/tags/v1.222.1"} {
 		t.Run(path, func(t *testing.T) {
@@ -495,6 +522,7 @@ func TestLateReadFailuresNeverEmitFirstObservationAsVerdict(t *testing.T) {
 	}
 }
 
+// Known producer migration and harmless JSON reordering must preserve valid observations.
 func TestMaintainedProducerAndHarmlessJSONFieldOrderingRemainSupported(t *testing.T) {
 	maintained := "devantler-tech/.github/.github/workflows/create-release.yaml@10ab0f1c94b951c16f6db58d094b42d49e2f775f"
 	arguments := args()
@@ -537,6 +565,7 @@ func blobSHA(content string) string {
 	return fmt.Sprintf("%x", sha1.Sum([]byte(fmt.Sprintf("blob %d%c%s", len(content), 0, content))))
 }
 
+// Real Git modes must reject symlinks even when Contents metadata presents a regular file.
 func TestAuthoritativeTreeModesAndSourceCommitAreRequired(t *testing.T) {
 	for _, scenario := range []string{"wrong-commit", "missing-tree", "wrong-tree", "truncated", "duplicate", "symlink", "submodule", "wrong-blob", "missing-mode"} {
 		t.Run(scenario, func(t *testing.T) {
@@ -579,6 +608,7 @@ func TestAuthoritativeTreeModesAndSourceCommitAreRequired(t *testing.T) {
 	}
 }
 
+// Matching metadata cannot conceal content bytes that belong to a different Git object.
 func TestContentBytesMustMatchGitBlobEvenWhenAllClaimedIdentitiesAgree(t *testing.T) {
 	refuse(t, func(r *http.Request, _ int, _ *int, body *string, _ http.Header) {
 		if !strings.HasSuffix(r.URL.Path, "/contents/.releaserc") {
@@ -593,6 +623,7 @@ func TestContentBytesMustMatchGitBlobEvenWhenAllClaimedIdentitiesAgree(t *testin
 	})
 }
 
+// The executable bit alone does not make a regular JSON configuration unsafe.
 func TestExecutableRegularGitBlobIsSupported(t *testing.T) {
 	out, err, _ := exercise(t, func(r *http.Request, _ int, _ *int, body *string, _ http.Header) {
 		if strings.Contains(r.URL.Path, "/git/trees/") {

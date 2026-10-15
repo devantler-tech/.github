@@ -4156,6 +4156,23 @@ jobs:
       dry-run: true
       offline-test: true
 
+  # Native disabled-mode interface call: no App secret or repository permissions.
+  # The enabled client is exercised by the loopback HTTP suite below; real App
+  # issuance and provider diagnosis are verified through reviewed-main dispatch.
+  test-inspect-release-recovery-disabled:
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    name: "[Test] Release Inspection - Disabled Without Credentials"
+    uses: ./.github/workflows/inspect-release-recovery.yaml
+    permissions: {}
+    with:
+      enable-inspection: false
+      repository: devantler-tech/fixture
+      tag: v1.2.3
+      source-sha: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+      run-id: "123"
+      run-attempt: "1"
+      producer-ref: devantler-tech/.github/.github/workflows/create-release.yaml@aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+
   test-create-release-config:
     needs: [select-ci-tests]
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-create-release-config') }}"
@@ -6210,6 +6227,7 @@ jobs:
       - test-enable-auto-merge-pentad-gate
       - test-create-release
       - test-create-release-config
+      - test-inspect-release-recovery-disabled
       - test-create-release-no-issue-side-effects
       - test-release-please-semantics
       - test-deploy-github-pages
@@ -6352,6 +6370,7 @@ jobs:
             ${{ needs.test-enable-auto-merge-pentad-gate.result }}
             ${{ needs.test-create-release.result }}
             ${{ needs.test-create-release-config.result }}
+            ${{ needs.test-inspect-release-recovery-disabled.result }}
             ${{ needs.test-create-release-no-issue-side-effects.result }}
             ${{ needs.test-release-please-semantics.result }}
             ${{ needs.test-deploy-github-pages.result }}

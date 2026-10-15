@@ -41,6 +41,7 @@ type inspector struct {
 	base   string
 }
 
+// newInspector bounds requests and prevents redirects, ambient proxies and credential forwarding.
 func newInspector(client *http.Client, base string) *inspector {
 	copyClient := http.Client{Timeout: 15 * time.Second}
 	if client != nil {
@@ -57,11 +58,13 @@ func newInspector(client *http.Client, base string) *inspector {
 	return &inspector{client: &copyClient, base: base}
 }
 
+// positive accepts canonical positive identifiers without overflow or alternate encodings.
 func positive(value string) bool {
 	n, err := strconv.ParseUint(value, 10, 64)
 	return err == nil && n > 0 && strconv.FormatUint(n, 10) == value
 }
 
+// parse rejects ambiguous incident identities before any credential-bearing request.
 func parse(args []string, token string) (input, error) {
 	var in input
 	flags := flag.NewFlagSet("inspect-release-recovery", flag.ContinueOnError)
@@ -167,8 +170,13 @@ func strictJSON(raw []byte) (any, error) {
 	return value, nil
 }
 
+// object leaves a wrong JSON type absent so identity checks fail closed.
 func object(value any) map[string]any { result, _ := value.(map[string]any); return result }
-func text(value any) string           { result, _ := value.(string); return result }
+
+// text never coerces numbers or compound JSON into identity strings.
+func text(value any) string { result, _ := value.(string); return result }
+
+// equalFields requires exact types and values for every security-relevant field.
 func equalFields(value map[string]any, expected map[string]any) bool {
 	for key, want := range expected {
 		if !reflect.DeepEqual(value[key], want) {
@@ -177,6 +185,8 @@ func equalFields(value map[string]any, expected map[string]any) bool {
 	}
 	return value != nil
 }
+
+// onlyKeys confines supported configuration to explicitly reviewed properties.
 func onlyKeys(value map[string]any, names ...string) bool {
 	if value == nil {
 		return false
@@ -192,6 +202,8 @@ func onlyKeys(value map[string]any, names ...string) bool {
 	}
 	return true
 }
+
+// selected retains stable evidence while excluding unrelated, mutable API metadata.
 func selected(value map[string]any, names ...string) map[string]any {
 	result := map[string]any{}
 	for _, name := range names {
@@ -200,6 +212,7 @@ func selected(value map[string]any, names ...string) map[string]any {
 	return result
 }
 
+// get performs one bounded read; a documented missing publication is the sole optional absence.
 func (i *inspector) get(ctx context.Context, path, token string, missing bool) (any, bool, error) {
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, i.base+path, nil)
 	if err != nil {
@@ -296,6 +309,7 @@ func configSupported(value any, branch string) bool {
 	return true
 }
 
+// snapshot binds one observation to the original run, tag, source files and published release.
 func (i *inspector) snapshot(ctx context.Context, in input, token string) (map[string]any, error) {
 	result := map[string]any{}
 	prefix := "/repos/" + in.Repository
@@ -424,6 +438,8 @@ func (i *inspector) snapshot(ctx context.Context, in input, token string) (map[s
 			return nil, errors.New("source configuration is incomplete or oversized")
 		}
 		// Git's SHA-1 object ID binds these bytes to the admitted commit's tree.
+		// This follows Git's object format, not a signature or independent trust
+		// decision; the authenticated fixed-origin API supplies the evidence.
 		blob := append([]byte(fmt.Sprintf("blob %d%c", len(content), 0)), content...)
 		if fmt.Sprintf("%x", sha1.Sum(blob)) != file["sha"] {
 			return nil, errors.New("source configuration bytes do not match the captured Git blob")
@@ -454,8 +470,12 @@ func (i *inspector) snapshot(ctx context.Context, in input, token string) (map[s
 		release := object(value)
 		releaseID, ok := release["id"].(json.Number)
 		_, dateError := time.Parse(time.RFC3339, text(release["published_at"]))
+		// semantic-release records the branch here. The existing tag, verified
+		// above on both passes, remains the authority for the original source.
+		commitish := text(release["target_commitish"])
 		if !ok || !positive(string(releaseID)) || dateError != nil || !equalFields(release, map[string]any{
-			"tag_name": in.Tag, "target_commitish": in.SourceSHA, "draft": false, "prerelease": false}) {
+			"tag_name": in.Tag, "draft": false, "prerelease": false}) ||
+			commitish != in.SourceSHA && commitish != branch {
 			return nil, errors.New("existing release is not a matching published stable source")
 		}
 		result["publication"] = selected(release, "id", "tag_name", "target_commitish", "draft", "prerelease", "published_at")
@@ -463,6 +483,7 @@ func (i *inspector) snapshot(ctx context.Context, in input, token string) (map[s
 	return result, nil
 }
 
+// run emits a diagnosis only after two complete observations agree; it never authorizes writes.
 func run(args []string, token string, out io.Writer, service *inspector) error {
 	in, err := parse(args, token)
 	if err != nil {
@@ -496,6 +517,7 @@ func run(args []string, token string, out io.Writer, service *inspector) error {
 	return err
 }
 
+// main requires an explicit credential and reports refusals without exposing response bodies.
 func main() {
 	if err := run(os.Args[1:], os.Getenv("GH_TOKEN"), os.Stdout, newInspector(nil, apiURL)); err != nil {
 		fmt.Fprintln(os.Stderr, "release inspection refused:", err)

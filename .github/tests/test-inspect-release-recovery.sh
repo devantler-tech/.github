@@ -49,6 +49,12 @@ cat > "$work/guard.jq" <<'JQ'
   ($s[6].run | contains("--repository \"$REPOSITORY\" --tag \"$TAG\" --source-sha \"$SOURCE_SHA\"")) and
   ($s[6].run | contains("--run-id \"$RUN_ID\" --run-attempt \"$RUN_ATTEMPT\" --producer-ref \"$PRODUCER_REF\"")) and
   ($s[6].run | contains("set -euo pipefail")) and
+  $c.jobs["test-inspect-release-recovery-disabled"].uses == "./.github/workflows/inspect-release-recovery.yaml" and
+  $c.jobs["test-inspect-release-recovery-disabled"].permissions == {} and
+  $c.jobs["test-inspect-release-recovery-disabled"].secrets == null and
+  $c.jobs["test-inspect-release-recovery-disabled"].with["enable-inspection"] == false and
+  ($c.jobs["ci-required-checks"].needs | index("test-inspect-release-recovery-disabled") != null) and
+  ($c.jobs["ci-required-checks"].steps | any((.env.JOB_RESULTS // "") | contains("needs.test-inspect-release-recovery-disabled.result"))) and
   ($c.jobs["test-create-release-config"].steps | any(.run == "bash .github/tests/test-inspect-release-recovery.sh" and ordinary)) and
   ($c.jobs["ci-required-checks"].needs | index("test-create-release-config") != null)
 JQ
@@ -68,6 +74,8 @@ for mutation in \
   '.w.jobs.inspect.steps[5].with["permission-contents"]="write"' \
   '.w.jobs.inspect.steps[5].with.repositories=null' \
   '.w.jobs.inspect.steps[6].env.GH_TOKEN="${{ github.token }}"' \
+  '.c.jobs["test-inspect-release-recovery-disabled"].with["enable-inspection"]=true' \
+  '.c.jobs["test-inspect-release-recovery-disabled"].secrets="inherit"' \
   '.c.jobs["test-create-release-config"].steps |= map(select(.run != "bash .github/tests/test-inspect-release-recovery.sh"))'; do
   jq "$mutation" "$work/bundle.json" > "$work/mutated.json"
   if jq -e -f "$work/guard.jq" "$work/mutated.json" >/dev/null; then fail "accepted mutation: $mutation"; fi

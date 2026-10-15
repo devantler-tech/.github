@@ -1346,6 +1346,8 @@ breaking-header pattern and breaking/revert release rules; GitHub publisher opti
 Tags must point directly to the source commit or through one annotated tag. Other publishers, executable or alternate release
 configuration and conflicting or incomplete evidence fail without a diagnosis. It repeats the
 evidence reads before returning; that observation is not a lock against later changes.
+An existing publication may record the captured source SHA or the default branch as its target;
+the independently checked tag remains authoritative for the source in both cases.
 
 #### Secrets and Inputs
 
