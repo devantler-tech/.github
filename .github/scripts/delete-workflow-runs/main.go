@@ -325,6 +325,7 @@ func (a api) list(ctx context.Context, path, key string) ([]json.RawMessage, err
 	if strings.Contains(path, "?") {
 		separator = "&"
 	}
+	emptyPage := false
 	appendPage := func(raw []byte) error {
 		if err := unambiguous(raw); err != nil {
 			return errors.New("ambiguous or incomplete listing JSON")
@@ -343,9 +344,6 @@ func (a api) list(ctx context.Context, path, key string) ([]json.RawMessage, err
 		if total < 0 {
 			total = count
 		}
-		if count != total {
-			return errors.New("listing total changed between pages")
-		}
 		var items []json.RawMessage
 		if value := document[key]; len(value) == 0 || string(value) == "null" {
 			return errors.New("missing listing items")
@@ -353,10 +351,10 @@ func (a api) list(ctx context.Context, path, key string) ([]json.RawMessage, err
 		if err := json.Unmarshal(document[key], &items); err != nil {
 			return errors.New("invalid listing items")
 		}
-		if len(items) > 100 || len(result)+len(items) > total {
+		if len(items) > 100 || len(items) > count {
 			return errors.New("listing count exceeds declared total")
 		}
-		if key == "workflow_runs" && strings.Contains(path, "?created=") && count >= 1000 {
+		if count == total && key == "workflow_runs" && strings.Contains(path, "?created=") && count >= 1000 {
 			return searchCapped
 		}
 		for _, item := range items {
@@ -371,8 +369,9 @@ func (a api) list(ctx context.Context, path, key string) ([]json.RawMessage, err
 			seen[id] = true
 			result = append(result, item)
 		}
-		if len(items) == 0 && len(result) != total {
-			return errors.New("listing ended before its declared total")
+		emptyPage = emptyPage || len(items) == 0
+		if count != total {
+			return historyChanged
 		}
 		return nil
 	}
@@ -406,32 +405,62 @@ func (a api) list(ctx context.Context, path, key string) ([]json.RawMessage, err
 			if failures[i] != nil {
 				return nil, failures[i]
 			}
+		}
+		changed := false
+		emptyPage = false
+		for i := range width {
 			if err := appendPage(bodies[i]); err != nil {
-				return nil, err
+				if !errors.Is(err, historyChanged) {
+					return nil, err
+				}
+				changed = true
 			}
-			if len(result) == total {
-				return result, nil
-			}
+		}
+		if changed {
+			// Preserve only received items for the snapshot's shape, range and
+			// global-identity checks; this is never a usable inventory.
+			return result, historyChanged
+		}
+		if len(result) > total {
+			return nil, errors.New("listing count exceeds declared total")
+		}
+		if len(result) == total {
+			return result, nil
+		}
+		if emptyPage {
+			return nil, errors.New("listing ended before its declared total")
 		}
 		page += width
 	}
 	return nil, errors.New("listing exceeds pagination limit")
 }
 
-// listRuns freezes creation time and splits capped searches into disjoint second
-// ranges. New arrivals cannot shift pages; uncertain or overflowing ranges fail closed.
+var historyChanged = errors.New("listing total changed between pages")
+
+// listRuns freezes creation time and permits one fresh inventory after totals
+// change. Both attempts share their partition and rate-limit wait budgets.
 func (a api) listRuns(ctx context.Context, path string, now time.Time) ([]json.RawMessage, error) {
 	upper := now.UTC().Truncate(time.Second).Add(-time.Second).Unix()
 	if upper < 0 {
 		return nil, errors.New("invalid run snapshot time")
 	}
+	partitions := 0
+	items, err := a.listRunSnapshot(ctx, path, upper, &partitions)
+	if errors.Is(err, historyChanged) {
+		return a.listRunSnapshot(ctx, path, upper, &partitions)
+	}
+	return items, err
+}
+
+// listRunSnapshot splits capped searches into disjoint second ranges. Every
+// attempt starts with empty results; uncertain or overflowing ranges fail closed.
+func (a api) listRunSnapshot(ctx context.Context, path string, upper int64, partitions *int) ([]json.RawMessage, error) {
 	result := []json.RawMessage{}
 	seen := map[int64]bool{}
-	partitions := 0
 	var visit func(int64, int64) error
 	visit = func(lower, upper int64) error {
-		partitions++
-		if partitions > 10000 {
+		(*partitions)++
+		if *partitions > 10000 {
 			return errors.New("run search exceeds partition limit")
 		}
 		stamp := func(second int64) string { return time.Unix(second, 0).UTC().Format(time.RFC3339) }
@@ -446,12 +475,12 @@ func (a api) listRuns(ctx context.Context, path string, now time.Time) ([]json.R
 			}
 			return visit(middle+1, upper)
 		}
-		if err != nil {
+		if err != nil && !errors.Is(err, historyChanged) {
 			return err
 		}
-		runs, err := decodeRuns(items)
-		if err != nil {
-			return err
+		runs, decodeErr := decodeRuns(items)
+		if decodeErr != nil {
+			return decodeErr
 		}
 		for _, run := range runs {
 			created, _ := time.Parse(time.RFC3339, run.CreatedAt)
@@ -459,6 +488,9 @@ func (a api) listRuns(ctx context.Context, path string, now time.Time) ([]json.R
 				return errors.New("run search returned an out-of-range or repeated identity")
 			}
 			seen[run.ID] = true
+		}
+		if err != nil {
+			return err
 		}
 		result = append(result, items...)
 		return nil
