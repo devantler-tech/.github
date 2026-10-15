@@ -61,7 +61,7 @@ active_count="$(printf '%s\n' "$active_repositories" | grep -c . || true)"
 
 # ksail and platform host GitHub Pages sites built by workflows. They were
 # adopted while LateInitialize copied the provider's deprecated `pages` field
-# into desired state, including a `source` GitHub does not report for workflow
+# into desired state, including a `source` the provider omits for workflow
 # builds (and, for platform, an empty cname). That permanent diff made every
 # update call the Pages API, which the GitHub App deliberately cannot write
 # (#232). Declaring `pages` exactly as GitHub reports it replaces the stale list
@@ -71,17 +71,22 @@ active_count="$(printf '%s\n' "$active_repositories" | grep -c . || true)"
 # With `pages` matching GitHub exactly, an update carries no Pages change, so both
 # are managed with Observe/Create/Update like every other active repository.
 declare_pages() {
-  local name="$1" want_cname="$2" got
+  local name="$1" want_cname="$2" want_homepage="${3:-}" got
   got="$(
     yq -N -o=json -I=0 "
       select(.kind == \"Repository\" and .metadata.name == \"$name\") |
       {
         \"policies\": (.spec.managementPolicies | sort | join(\",\")),
-        \"pages\": .spec.forProvider.pages
+        \"pages\": .spec.forProvider.pages,
+        \"homepage\": .spec.forProvider.homepageUrl
       }
     " "$render"
   )"
   [[ -n "$got" ]] || fail "$name Repository resource is missing"
+  if [[ -n "$want_homepage" ]]; then
+    [[ "$(yq -N '.homepage' <<<"$got")" == "$want_homepage" ]] ||
+      fail "$name must declare homepageUrl: $want_homepage, as GitHub reports it: $got"
+  fi
   [[ "$(yq -N '.policies' <<<"$got")" == "Create,Observe,Update" ]] ||
     fail "$name must be managed with Observe/Create/Update now that its Pages state is declared: $got"
   [[ "$(yq -N '.pages | length' <<<"$got")" == "1" ]] ||
@@ -89,7 +94,7 @@ declare_pages() {
   [[ "$(yq -N '.pages[0].buildType' <<<"$got")" == "workflow" ]] ||
     fail "$name Pages must declare buildType: workflow, as GitHub reports it: $got"
   [[ "$(yq -N '.pages[0] | has("source")' <<<"$got")" == "false" ]] ||
-    fail "$name Pages must not declare a source; GitHub reports none for a workflow build: $got"
+    fail "$name Pages must not declare a source; the provider omits it for workflow builds: $got"
   if [[ -n "$want_cname" ]]; then
     [[ "$(yq -N '.pages[0].cname' <<<"$got")" == "$want_cname" ]] ||
       fail "$name Pages must declare cname: $want_cname, as GitHub reports it: $got"
@@ -100,6 +105,7 @@ declare_pages() {
 }
 declare_pages ksail ksail.devantler.tech
 declare_pages platform ""
+declare_pages data-product-controller khoist.devantler.tech https://khoist.devantler.tech/
 
 # LateInitialize copies live-only values into forProvider, and everything in
 # forProvider is sent on update PATCHes, so LateInitialize is what turns a
