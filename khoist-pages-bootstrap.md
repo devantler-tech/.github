@@ -36,25 +36,14 @@ settings match, the reviewed declaration preserves the live shape while retainin
 the repository's existing management policies. Verify successful reconciliation
 without Pages permission errors before treating configuration adoption as complete.
 
-## DNS, publication and HTTPS
+## Publication ownership
 
-Configure the custom domain in Pages before adding DNS. The public record is a
-DNS-only CNAME from `khoist.devantler.tech` to `devantler-tech.github.io`.
-
-The [platform ExternalDNS integration](https://github.com/devantler-tech/platform/issues/4939)
-reconciles the product repository's `deploy/documentation/` through a narrowly
-scoped tenant identity. The product owns the declaration; the platform owns the
-shared writer and tenant registration. Deploy and verify its explicit-record admission
-boundary before enabling CRD discovery on the existing writer, retaining the
-current TXT registry, owner, zone filter and routed-service discovery. This path
-needs neither a direct Cloudflare settings change nor another credential.
-Do not change the shared Gateway's DNS target to publish a static site.
-
-After the site's reviewed source and configuration have shipped, run the product's
-documentation workflow from `main`. Confirm its Pages deployment, DNS resolution,
-valid custom-domain HTTPS and the published tutorial and search. Enforce HTTPS
-through the approved settings owner once GitHub has provisioned the certificate.
-Source merge, configuration adoption and public availability are separate results.
+The [product documentation](https://github.com/devantler-tech/data-product-controller/pull/425)
+owns publishing and user-facing verification. The product keeps its DNS declaration
+beside its deployment files; [platform tenant registration](https://github.com/devantler-tech/platform/issues/4939)
+owns reconciliation through the shared writer. Follow those owners' procedures for
+DNS and public HTTPS. Matching Pages settings here proves configuration adoption,
+not that the content is publicly available.
 
 GitHub documents the
 [Pages API permissions](https://docs.github.com/en/rest/pages/pages#create-a-github-pages-site)

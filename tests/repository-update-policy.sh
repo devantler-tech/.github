@@ -71,17 +71,22 @@ active_count="$(printf '%s\n' "$active_repositories" | grep -c . || true)"
 # With `pages` matching GitHub exactly, an update carries no Pages change, so both
 # are managed with Observe/Create/Update like every other active repository.
 declare_pages() {
-  local name="$1" want_cname="$2" got
+  local name="$1" want_cname="$2" want_homepage="${3:-}" got
   got="$(
     yq -N -o=json -I=0 "
       select(.kind == \"Repository\" and .metadata.name == \"$name\") |
       {
         \"policies\": (.spec.managementPolicies | sort | join(\",\")),
-        \"pages\": .spec.forProvider.pages
+        \"pages\": .spec.forProvider.pages,
+        \"homepage\": .spec.forProvider.homepageUrl
       }
     " "$render"
   )"
   [[ -n "$got" ]] || fail "$name Repository resource is missing"
+  if [[ -n "$want_homepage" ]]; then
+    [[ "$(yq -N '.homepage' <<<"$got")" == "$want_homepage" ]] ||
+      fail "$name must declare homepageUrl: $want_homepage, as GitHub reports it: $got"
+  fi
   [[ "$(yq -N '.policies' <<<"$got")" == "Create,Observe,Update" ]] ||
     fail "$name must be managed with Observe/Create/Update now that its Pages state is declared: $got"
   [[ "$(yq -N '.pages | length' <<<"$got")" == "1" ]] ||
@@ -100,7 +105,7 @@ declare_pages() {
 }
 declare_pages ksail ksail.devantler.tech
 declare_pages platform ""
-declare_pages data-product-controller khoist.devantler.tech
+declare_pages data-product-controller khoist.devantler.tech https://khoist.devantler.tech/
 
 # LateInitialize copies live-only values into forProvider, and everything in
 # forProvider is sent on update PATCHes, so LateInitialize is what turns a
