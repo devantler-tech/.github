@@ -223,11 +223,12 @@ jobs:
       - name: 🧪 Verify durable lifecycle ordering
         run: bash .github/tests/test-is-current-pull-request-lifecycle.sh
 
-  # Required-workflow rules treat a workflow whose only job is SKIPPED as
-  # unsatisfied. Classify every trigger in an unconditional, unprivileged job
-  # so human, draft, external-author, and merge-group runs complete green as a
-  # deliberate no-op while the privileged path remains bot-only.
+  # Classify every live/default trigger in an unprivileged job so human, draft,
+  # external-author and merge-group runs explicitly complete successfully.
+  # Only offline mode omits this runner: its independent fixture job already
+  # reports the result, and both privileged jobs exclude offline mode.
   eligibility:
+    if: "!inputs.dry-run"
     permissions: {}
     runs-on: ubuntu-latest
     env:
@@ -376,9 +377,11 @@ jobs:
       - name: ✅ Complete ineligible required-workflow run
         id: ineligible
         if: steps.classify.outputs.eligible != 'true'
-        run: >-
-          echo "::notice::This event is not eligible for privileged bot auto-merge;
-          completing the required workflow as a safe no-op."
+        env:
+          WORKFLOW_SOURCE_SHA: ${{ job.workflow_sha }}
+        run: |
+          echo "::notice::This event is not eligible for privileged bot auto-merge; completing the required workflow as a safe no-op."
+          printf 'Eligibility workflow source SHA: %s\n' "$WORKFLOW_SOURCE_SHA"
 
   # A trusted-bot PR may already be armed when an untrusted actor changes its
   # lifecycle state or removes trusted review evidence. Revoke that stale state

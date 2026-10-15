@@ -431,6 +431,9 @@ Use `dry-run: true` to exercise the workflow without changing a pull request.
 This path runs offline decision fixtures with `contents: read`, forwards no App
 secret, and has a separate concurrency lane so it cannot cancel live evaluations.
 The catalogue tests use it for default, actor-trust and pending-queue calls.
+Offline mode starts only the fixture runner and skips live eligibility classification.
+Omitted or false inputs retain the unprivileged classifier and explicit successful
+reporting for ineligible live and required-workflow events.
 Caller permissions still declare the production workflow's static write ceiling,
 which GitHub validates even when those jobs are skipped; executed dry-run jobs
 receive only read access. `dry-run` defaults to `false`, and live mutations require

@@ -18,6 +18,10 @@ guard() {
       $w.on.workflow_call.inputs["dry-run"].default != false or
       $w.on.workflow_call.secrets.APP_PRIVATE_KEY.required != false
     then error("dry-run must be default-off and secret-free")
+    elif $w.jobs.eligibility.if != "!inputs.dry-run" or
+      $w.jobs.eligibility.permissions != {} or $w.jobs.eligibility.needs != null or
+      ($w.jobs.eligibility["continue-on-error"] // false) != false
+    then error("offline eligibility must skip only the independent fixture; live/default reporting must remain")
     elif ($w.jobs["auto-merge"].if | gsub("\\s";"")) != "!inputs.dry-run&&needs.eligibility.outputs.eligible=='\''true'\''&&(github.event_name=='\''pull_request'\''||inputs.enforce-review-gates||vars.ENFORCE_MERGE_GATES=='\''true'\'')" or
       $w.jobs["disarm-untrusted-update"].if != "!inputs.dry-run && needs.eligibility.outputs.disarm == '\''true'\''"
     then error("dry-run must exclude every privileged job")
@@ -77,6 +81,12 @@ while IFS=$'\t' read -r label mutation diagnostic; do
 done <<'CASES'
 required secret	.workflow.on.workflow_call.secrets.APP_PRIVATE_KEY.required=true	secret-free
 live path changed	.workflow.on.workflow_call.inputs["dry-run"].default=true	default-off
+redundant eligibility runner	.workflow.jobs.eligibility.if=null	offline eligibility
+reversed eligibility	.workflow.jobs.eligibility.if="inputs.dry-run"	offline eligibility
+event-gated live reporting	.workflow.jobs.eligibility.if="!inputs.dry-run && github.event_name == 'pull_request'"	offline eligibility
+actor-gated live reporting	.workflow.jobs.eligibility.if="!inputs.dry-run && github.actor == 'dependabot[bot]'"	offline eligibility
+blocked eligibility	.workflow.jobs.eligibility.needs="dry-run"	offline eligibility
+eligibility write token	.workflow.jobs.eligibility.permissions={contents:"write"}	offline eligibility
 approval boundary lost	.workflow.jobs["auto-merge"].if |= sub("!inputs.dry-run && ";"")	privileged job
 disarm boundary lost	.workflow.jobs["disarm-untrusted-update"].if |= sub("!inputs.dry-run && ";"")	privileged job
 shared concurrency lane	.workflow.concurrency.group |= sub("\\$\\{\\{ inputs.dry-run.*$";"")	isolate its concurrency lane
@@ -106,3 +116,13 @@ boundary test skipped	.ci.jobs["test-enable-auto-merge-author-gate"].steps |= ma
 behavior test lost	.ci.jobs["test-enable-auto-merge-author-gate"].steps |= map(select(.run != "bash .github/tests/test-auto-merge-fixture.sh"))	regressions must execute
 CASES
 echo "PASS: auto-merge dry-run boundary rejects $count independent regressions"
+
+# Exercise the real no-op reporter; the public revision binds hosted empty-input
+# proof to the changed workflow rather than a ruleset still reading older main.
+yq -r '.jobs.eligibility.steps[] | select(.id == "ineligible") | .run' \
+  "${1:-$root/.github/workflows/enable-auto-merge.yaml}" > "$work/complete.sh"
+WORKFLOW_SOURCE_SHA=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa \
+  bash -euo pipefail "$work/complete.sh" > "$work/receipt"
+grep -qxF 'Eligibility workflow source SHA: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' "$work/receipt"
+grep -qxF '::notice::This event is not eligible for privileged bot auto-merge; completing the required workflow as a safe no-op.' "$work/receipt"
+echo 'PASS: native ineligible reporter preserves successful completion and exposes its public source revision'
