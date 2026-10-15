@@ -100,6 +100,7 @@ declare_pages() {
 }
 declare_pages ksail ksail.devantler.tech
 declare_pages platform ""
+declare_pages data-product-controller khoist.devantler.tech
 
 # LateInitialize copies live-only values into forProvider, and everything in
 # forProvider is sent on update PATCHes, so LateInitialize is what turns a
