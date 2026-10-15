@@ -56,6 +56,7 @@ native_admit() {
       ($prepare[0] | has("continue-on-error") | not) and
       $action[0].if == ("${{ !cancelled() && steps.prepare-" + $case + ".outcome == '\''success'\'' }}") and
       $action[0]["continue-on-error"] == true and
+      ($action[0].uses | type == "string" and test("^oxsecurity/megalinter/flavors/go@[0-9a-f]{40}$")) and
       $action[0].env.MEGALINTER_CONFIG == "${{ github.workspace }}/.mega-linter.yml" and
       $action[0].env.DEFAULT_WORKSPACE == ("${{ steps.prepare-" + $case + ".outputs.workspace }}") and
       $action[0].env.REPORT_OUTPUT_FOLDER == ("/github/workspace/megalinter-bad-fixture-reports-" + $case) and
@@ -91,7 +92,9 @@ for mutation in \
   '(.steps[] | select(.id == "prepare-root") | ."continue-on-error")=true' \
   "(.steps[] | select(.id == \"assert-nested\") | .env.OUTCOME)=\"\${{ steps.ml-root.outcome }}\"" \
   '(.steps[] | select(.id == "prepare-absent") | .env.SCENARIO)="root"' \
-  '.steps |= reverse'; do
+  '.steps |= reverse' \
+  '(.steps[] | select(.id == "ml-root") | .uses)="actions/checkout@0123456789abcdef0123456789abcdef01234567"' \
+  '.steps += [.steps[] | select(.id == "ml-root") | {uses}] | (.steps[] | select(.id == "ml-root") | .uses)="actions/checkout@0123456789abcdef0123456789abcdef01234567"'; do
   jq "$mutation" "$scratch/native.json" >"$scratch/native-mutant.json"
   if cmp -s "$scratch/native.json" "$scratch/native-mutant.json" || native_admit "$scratch/native-mutant.json"; then
     echo "TEST FAIL -- native configuration proof mutation admitted: $mutation" >&2
