@@ -312,7 +312,12 @@ func (a api) workflowAbsent(ctx context.Context, prefix string, id int64) (bool,
 	return false, nil
 }
 
-var searchCapped = errors.New("run search reaches GitHub's 1,000-result limit")
+type searchCapped struct{ minimum int }
+
+// Error preserves the cap diagnostic while the retained minimum guides splitting.
+func (e *searchCapped) Error() string {
+	return "run search reaches GitHub's 1,000-result limit"
+}
 
 // list requires stable totals, unique identities and complete item shapes on every page.
 // Page one establishes the minimum page count; up to four required pages then
@@ -357,7 +362,7 @@ func (a api) list(ctx context.Context, path, key string) ([]json.RawMessage, err
 			return errors.New("listing count exceeds declared total")
 		}
 		if key == "workflow_runs" && strings.Contains(path, "?created=") && count >= 1000 {
-			return searchCapped
+			return &searchCapped{minimum: count}
 		}
 		for _, item := range items {
 			var fields map[string]json.RawMessage
@@ -436,15 +441,25 @@ func (a api) listRuns(ctx context.Context, path string, now time.Time) ([]json.R
 		}
 		stamp := func(second int64) string { return time.Unix(second, 0).UTC().Format(time.RFC3339) }
 		items, err := a.list(ctx, path+"?created="+url.QueryEscape(stamp(lower)+".."+stamp(upper)), "workflow_runs")
-		if errors.Is(err, searchCapped) {
+		var capped *searchCapped
+		if errors.As(err, &capped) {
 			if lower == upper {
 				return errors.New("run search cannot prove completeness within one second")
 			}
+			before := len(result)
 			middle := lower + (upper-lower)/2
 			if err := visit(lower, middle); err != nil {
 				return err
 			}
-			return visit(middle+1, upper)
+			if err := visit(middle+1, upper); err != nil {
+				return err
+			}
+			// A capped count is a lower bound, not equality. Each split must
+			// account for its own minimum before any cleanup can use the plan.
+			if len(result)-before < capped.minimum {
+				return errors.New("split history is below its capped minimum")
+			}
+			return nil
 		}
 		if err != nil {
 			return err
