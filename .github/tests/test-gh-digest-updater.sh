@@ -22,7 +22,7 @@ check_boundary() {
     ($steps | length) == 5 and all($steps[];
       (keys - ["name","id","if","uses","with","run"] | length) == 0) and
     ($steps[0] | del(.name)) == {
-      uses:"step-security/harden-runner@351661ca32ac09a36dc5ee2d536e3128f2a3c8ed",
+      uses:"step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25",
       with:{"egress-policy":"audit"}} and
     ([$steps[]|select(.id=="source")|{uses,with}] == [{
       uses:"actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
@@ -50,10 +50,11 @@ check_boundary() {
   ' >/dev/null
 }
 check_boundary "$workflow" || fail 'updater source/credential/PR boundary is unsafe'
-for mutation in admission token-scope persisted source signing draft paths write-token early-token tolerated fallback ambient-secret early-secret; do
+for mutation in hardening-source admission token-scope persisted source signing draft paths write-token early-token tolerated fallback ambient-secret early-secret; do
   cp "$workflow" "$work/mutated.yaml"
   # shellcheck disable=SC2016 # Literal GitHub expressions in boundary controls.
   case "$mutation" in
+    hardening-source) yq -i '.jobs.refresh.steps[0].uses = "step-security/harden-runner@main"' "$work/mutated.yaml" ;;
     admission) yq -i '.jobs.refresh.if = true' "$work/mutated.yaml" ;;
     token-scope) yq -i '(.jobs.refresh.steps[]|select(.id=="app-token")).with.repositories = "ksail"' "$work/mutated.yaml" ;;
     persisted) yq -i '(.jobs.refresh.steps[]|select(.id=="source")).with."persist-credentials" = true' "$work/mutated.yaml" ;;
