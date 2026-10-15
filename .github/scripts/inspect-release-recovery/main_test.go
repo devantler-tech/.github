@@ -158,6 +158,47 @@ func TestRunWorkflowRevisionSuffixBindsToDefaultBranchOrCapturedSource(t *testin
 	}
 }
 
+// Historical API workflow refs may be branch-valued while sha captures the immutable producer.
+func TestReferencedWorkflowRefBindsToResolvedImmutableProducer(t *testing.T) {
+	base := strings.SplitN(producer, "@", 2)[0]
+	resolved := strings.SplitN(producer, "@", 2)[1]
+	for _, revision := range []string{"main", "refs/heads/main", "v13.10.11", resolved} {
+		t.Run(revision, func(t *testing.T) {
+			ref := "refs/heads/main"
+			if revision == "v13.10.11" {
+				ref = "refs/tags/v13.10.11"
+			}
+			out, err, requests := exercise(t, func(r *http.Request, _ int, _ *int, body *string, _ http.Header) {
+				if strings.Contains(r.URL.Path, "/attempts/") {
+					*body = changeJSON(*body, func(value map[string]any) {
+						value["referenced_workflows"] = []any{map[string]any{"path": base + "@" + revision, "sha": resolved, "ref": ref}}
+					})
+				}
+			}, args(), "fixture-token")
+			if err != nil || !strings.Contains(out, `"diagnosis":"missing-github-release"`) || len(requests) != 14 {
+				t.Fatalf("resolved producer refused: %v %q requests=%d", err, out, len(requests))
+			}
+		})
+	}
+	for _, reference := range []map[string]any{
+		{"path": base + "@main", "sha": strings.Repeat("a", 40), "ref": "refs/heads/main"},
+		{"path": base + "@main", "sha": resolved},
+		{"path": base + "@main", "sha": resolved, "ref": "refs/heads/other"},
+		{"path": base + "@main", "sha": resolved, "ref": "main"},
+		{"path": base + "@", "sha": resolved, "ref": "refs/heads/"},
+		{"path": base, "sha": resolved, "ref": "refs/heads/main"},
+		{"path": "elsewhere/actions/.github/workflows/create-release.yaml@main", "sha": resolved, "ref": "refs/heads/main"},
+	} {
+		t.Run(fmt.Sprint(reference), func(t *testing.T) {
+			refuse(t, func(r *http.Request, _ int, _ *int, body *string, _ http.Header) {
+				if strings.Contains(r.URL.Path, "/attempts/") {
+					*body = changeJSON(*body, func(value map[string]any) { value["referenced_workflows"] = []any{reference} })
+				}
+			})
+		})
+	}
+}
+
 // Bad identities must be rejected before the credential can reach an API.
 func TestInvalidCLIInputsMakeNoRequests(t *testing.T) {
 	for index, values := range map[int][]string{

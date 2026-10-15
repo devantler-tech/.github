@@ -350,7 +350,19 @@ func (i *inspector) snapshot(ctx context.Context, in input, token string) (map[s
 		}
 	}
 	refs, ok := run["referenced_workflows"].([]any)
-	if !ok || len(refs) != 1 || !equalFields(object(refs[0]), map[string]any{"path": in.ProducerRef, "sha": in.ProducerRef[len(in.ProducerRef)-40:]}) {
+	if !ok || len(refs) != 1 {
+		return nil, errors.New("original run must identify exactly the expected immutable release producer")
+	}
+	producer := object(refs[0])
+	expectedPath, expectedSHA, _ := strings.Cut(in.ProducerRef, "@")
+	producerPath, producerRevision, qualified := strings.Cut(text(producer["path"]), "@")
+	producerRef := text(producer["ref"])
+	// Branch/tag paths are historical API metadata; the separate resolved SHA binds
+	// the producer's immutable code. Never substitute the branch for that SHA.
+	matchingProducerRef := producerRevision == expectedSHA ||
+		(strings.HasPrefix(producerRef, "refs/heads/") || strings.HasPrefix(producerRef, "refs/tags/")) &&
+			(producerRef == producerRevision || producerRef == "refs/heads/"+producerRevision || producerRef == "refs/tags/"+producerRevision)
+	if !qualified || producerRevision == "" || producerPath != expectedPath || producer["sha"] != expectedSHA || !matchingProducerRef {
 		return nil, errors.New("original run must identify exactly the expected immutable release producer")
 	}
 	result["run"] = selected(run, "id", "run_attempt", "event", "status", "conclusion", "head_sha", "head_branch", "path", "referenced_workflows")
