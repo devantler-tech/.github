@@ -129,6 +129,35 @@ func TestPublishedDefaultBranchTargetStillBindsToCapturedTagSource(t *testing.T)
 	}
 }
 
+// GitHub may report a workflow path with its revision; it must name this run's source.
+func TestRunWorkflowRevisionSuffixBindsToDefaultBranchOrCapturedSource(t *testing.T) {
+	for _, suffix := range []string{"", "@main", "@refs/heads/main", "@" + source} {
+		t.Run(suffix, func(t *testing.T) {
+			out, err, requests := exercise(t, func(r *http.Request, _ int, _ *int, body *string, _ http.Header) {
+				if strings.Contains(r.URL.Path, "/attempts/") {
+					*body = changeJSON(*body, func(value map[string]any) {
+						value["path"] = ".github/workflows/release.yaml" + suffix
+					})
+				}
+			}, args(), "fixture-token")
+			if err != nil || !strings.Contains(out, `"diagnosis":"missing-github-release"`) || len(requests) != 14 {
+				t.Fatalf("matching workflow revision refused: %v %q requests=%d", err, out, len(requests))
+			}
+		})
+	}
+	for _, path := range []string{".github/workflows/release.yaml@", ".github/workflows/release.yaml@other",
+		".github/workflows/release.yaml@refs/tags/main", ".github/workflows/release.yaml@main@other",
+		".github/workflows/release.yaml@" + strings.Repeat("a", 40), "../release.yaml@main"} {
+		t.Run(path, func(t *testing.T) {
+			refuse(t, func(r *http.Request, _ int, _ *int, body *string, _ http.Header) {
+				if strings.Contains(r.URL.Path, "/attempts/") {
+					*body = changeJSON(*body, func(value map[string]any) { value["path"] = path })
+				}
+			})
+		})
+	}
+}
+
 // Bad identities must be rejected before the credential can reach an API.
 func TestInvalidCLIInputsMakeNoRequests(t *testing.T) {
 	for index, values := range map[int][]string{

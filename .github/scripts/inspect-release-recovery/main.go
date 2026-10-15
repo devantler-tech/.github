@@ -335,9 +335,13 @@ func (i *inspector) snapshot(ctx context.Context, in input, token string) (map[s
 		return nil, fmt.Errorf("original run: %w", err)
 	}
 	run := object(value)
+	workflow, revision, qualified := strings.Cut(text(run["path"]), "@")
+	// The API documents path@ref as well as the bare path observed on older runs.
+	// A qualified path must independently agree with the already captured run identity.
+	matchingRevision := !qualified || revision == branch || revision == "refs/heads/"+branch || revision == in.SourceSHA
 	if !equalFields(run, map[string]any{"id": json.Number(in.RunID), "run_attempt": json.Number(in.RunAttempt),
 		"event": "push", "status": "completed", "conclusion": "failure", "head_sha": in.SourceSHA, "head_branch": branch}) ||
-		!workflowPattern.MatchString(text(run["path"])) {
+		!workflowPattern.MatchString(workflow) || !matchingRevision {
 		return nil, errors.New("original failed default-branch push identity does not match")
 	}
 	for _, key := range []string{"repository", "head_repository"} {
