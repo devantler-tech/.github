@@ -37,6 +37,13 @@ mkdir -p "$reports"
 prefix=''
 report="$reports/mega-linter-JSON_JSONLINT.tap"
 observe() {
+  target="$scratch/megalinter-bad-fixture-reports-$1/tap"
+  mkdir -p "$target"
+  if [[ -f "$report" ]]; then
+    cp "$report" "$target/mega-linter-JSON_JSONLINT.tap"
+  else
+    rm -f "$target/mega-linter-JSON_JSONLINT.tap"
+  fi
   SCENARIO="$1" OUTCOME="$2" GITHUB_WORKSPACE="$scratch" \
     bash "$root/.github/tests/megalinter-config-container.sh" assert
 }
@@ -104,3 +111,49 @@ if observe absent failure >"$scratch/error" 2>&1; then
 fi
 echo 'TEST PASS -- four native TAP observer paths and 19 rejected receipt/outcome substitutions'
 echo 'TEST PASS -- five actual native fixture preparations preserve scenario paths and bytes'
+
+# A shared runner must restore fixture bytes after missing and invalid cases.
+shared="$scratch/shared"
+fixture="$shared/.github/tests/megalinter-bad-fixture"
+mkdir -p "$fixture"
+git -C "$shared" init --quiet
+cp "$root/.mega-linter.yml" "$shared/.mega-linter.yml"
+for file in bad.json config-probe.yml config-probe-checked.json config-probe-malformed.yml; do
+  cp "$root/.github/tests/megalinter-bad-fixture/$file" "$fixture/$file"
+done
+for scenario in absent malformed finding root nested; do
+  if ! SCENARIO="$scenario" GITHUB_WORKSPACE="$shared" GITHUB_OUTPUT="$shared/output" \
+    bash "$root/.github/tests/megalinter-config-container.sh" prepare; then
+    echo "TEST FAIL -- shared-runner preparation did not reset after the preceding case: $scenario" >&2
+    exit 1
+  fi
+  case "$scenario" in
+    absent) [[ ! -e "$shared/.mega-linter.yml" ]] ;;
+    malformed) cmp "$fixture/config-probe-malformed.yml" "$shared/.mega-linter.yml" ;;
+    *) cmp "$fixture/config-probe.yml" "$shared/.mega-linter.yml" ;;
+  esac
+  if [[ "$scenario" == finding ]]; then
+    cmp "$fixture/bad.json" "$fixture/config-probe/config-probe-checked.json"
+  else
+    jq -e '.configurationProbe == true' "$fixture/config-probe/config-probe-checked.json" >/dev/null
+  fi
+done
+echo 'TEST PASS -- sequential preparation restores absent, malformed and failed-file controls'
+
+# A previous case cannot satisfy the next case's missing receipt.
+rm -f "$scratch/megalinter-bad-fixture-reports-nested/tap/mega-linter-JSON_JSONLINT.tap"
+prefix=''
+healthy > "$scratch/megalinter-bad-fixture-reports/tap/mega-linter-JSON_JSONLINT.tap"
+if SCENARIO=nested OUTCOME=success GITHUB_WORKSPACE="$scratch" \
+  bash "$root/.github/tests/megalinter-config-container.sh" assert >"$scratch/error" 2>&1; then
+  echo 'TEST FAIL -- stale shared receipt admitted for a different case' >&2
+  exit 1
+fi
+mkdir -p "$shared/megalinter-bad-fixture-reports-root"
+if SCENARIO=root GITHUB_WORKSPACE="$shared" GITHUB_OUTPUT="$shared/output" \
+  bash "$root/.github/tests/megalinter-config-container.sh" prepare >"$scratch/error" 2>&1; then
+  echo 'TEST FAIL -- preparation accepted an existing scenario report' >&2
+  exit 1
+fi
+grep -F 'stale or linked scenario report path' "$scratch/error" >/dev/null
+echo 'TEST PASS -- stale shared receipts and existing case reports are refused'

@@ -5692,14 +5692,10 @@ jobs:
   test-lint-blocks:
     needs: [select-ci-tests]
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-lint-blocks') }}"
-    name: "[Test] Lint - Root Configuration - ${{ matrix.scenario }}"
+    name: "[Test] Lint - Root Configuration"
     runs-on: ubuntu-latest
     permissions:
       contents: read
-    strategy:
-      fail-fast: false
-      matrix:
-        scenario: [root, nested, absent, malformed, finding]
     steps:
       - name: 🛡️ Harden runner
         uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
@@ -5711,24 +5707,25 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Prepare declared, missing and invalid configuration controls
-        id: config-probe
+      # Each case has its own result; a failure keeps the job failed while later
+      # uncancelled cases continue. Native action calls share the downloaded image.
+      - name: Prepare root configuration case
+        id: prepare-root
+        if: ${{ !cancelled() }}
         shell: bash
         env:
-          SCENARIO: ${{ matrix.scenario }}
+          SCENARIO: root
         run: bash .github/tests/megalinter-config-container.sh prepare
 
-      # The exact production action runs every matrix leg. The configuration-only
-      # filter selects a real valid JSON file, while ignoring a deliberately broken
-      # sibling. The runner translates the SAME root binding as both entrypoints.
-      - name: 🧹 Exercise the actual container configuration loader and JSON checker
-        id: ml
+      - name: Exercise actual lint action for root
+        id: ml-root
+        if: ${{ !cancelled() && steps.prepare-root.outcome == 'success' }}
         continue-on-error: true
         uses: oxsecurity/megalinter/flavors/go@9949bad031045f366be2467e00e8371a7328a2e2 # v10.1.0
         env:
-          DEFAULT_WORKSPACE: ${{ steps.config-probe.outputs.workspace }}
+          DEFAULT_WORKSPACE: ${{ steps.prepare-root.outputs.workspace }}
           MEGALINTER_CONFIG: ${{ github.workspace }}/.mega-linter.yml
-          REPORT_OUTPUT_FOLDER: /github/workspace/megalinter-bad-fixture-reports
+          REPORT_OUTPUT_FOLDER: /github/workspace/megalinter-bad-fixture-reports-root
           ENABLE_LINTERS: JSON_JSONLINT
           JSON_JSONLINT_CLI_LINT_MODE: file
           JSON_REPORTER: false
@@ -5739,11 +5736,157 @@ jobs:
           GITHUB_COMMENT_REPORTER: false
           GITHUB_STATUS_REPORTER: false
 
-      - name: ✅ Assert actual file analysis, configuration effects and retained failures
+      - name: Assert actual root configuration receipt
+        id: assert-root
+        if: ${{ !cancelled() }}
         shell: bash
         env:
-          OUTCOME: ${{ steps.ml.outcome }}
-          SCENARIO: ${{ matrix.scenario }}
+          OUTCOME: ${{ steps.ml-root.outcome }}
+          SCENARIO: root
+        run: bash .github/tests/megalinter-config-container.sh assert
+
+      - name: Prepare nested configuration case
+        id: prepare-nested
+        if: ${{ !cancelled() }}
+        shell: bash
+        env:
+          SCENARIO: nested
+        run: bash .github/tests/megalinter-config-container.sh prepare
+
+      - name: Exercise actual lint action for nested
+        id: ml-nested
+        if: ${{ !cancelled() && steps.prepare-nested.outcome == 'success' }}
+        continue-on-error: true
+        uses: oxsecurity/megalinter/flavors/go@9949bad031045f366be2467e00e8371a7328a2e2 # v10.1.0
+        env:
+          DEFAULT_WORKSPACE: ${{ steps.prepare-nested.outputs.workspace }}
+          MEGALINTER_CONFIG: ${{ github.workspace }}/.mega-linter.yml
+          REPORT_OUTPUT_FOLDER: /github/workspace/megalinter-bad-fixture-reports-nested
+          ENABLE_LINTERS: JSON_JSONLINT
+          JSON_JSONLINT_CLI_LINT_MODE: file
+          JSON_REPORTER: false
+          TAP_REPORTER: true
+          TAP_REPORTER_OUTPUT_DETAIL: detailed
+          VALIDATE_ALL_CODEBASE: true
+          APPLY_FIXES: none
+          GITHUB_COMMENT_REPORTER: false
+          GITHUB_STATUS_REPORTER: false
+
+      - name: Assert actual nested configuration receipt
+        id: assert-nested
+        if: ${{ !cancelled() }}
+        shell: bash
+        env:
+          OUTCOME: ${{ steps.ml-nested.outcome }}
+          SCENARIO: nested
+        run: bash .github/tests/megalinter-config-container.sh assert
+
+      - name: Prepare absent configuration case
+        id: prepare-absent
+        if: ${{ !cancelled() }}
+        shell: bash
+        env:
+          SCENARIO: absent
+        run: bash .github/tests/megalinter-config-container.sh prepare
+
+      - name: Exercise actual lint action for absent
+        id: ml-absent
+        if: ${{ !cancelled() && steps.prepare-absent.outcome == 'success' }}
+        continue-on-error: true
+        uses: oxsecurity/megalinter/flavors/go@9949bad031045f366be2467e00e8371a7328a2e2 # v10.1.0
+        env:
+          DEFAULT_WORKSPACE: ${{ steps.prepare-absent.outputs.workspace }}
+          MEGALINTER_CONFIG: ${{ github.workspace }}/.mega-linter.yml
+          REPORT_OUTPUT_FOLDER: /github/workspace/megalinter-bad-fixture-reports-absent
+          ENABLE_LINTERS: JSON_JSONLINT
+          JSON_JSONLINT_CLI_LINT_MODE: file
+          JSON_REPORTER: false
+          TAP_REPORTER: true
+          TAP_REPORTER_OUTPUT_DETAIL: detailed
+          VALIDATE_ALL_CODEBASE: true
+          APPLY_FIXES: none
+          GITHUB_COMMENT_REPORTER: false
+          GITHUB_STATUS_REPORTER: false
+
+      - name: Assert actual absent configuration receipt
+        id: assert-absent
+        if: ${{ !cancelled() }}
+        shell: bash
+        env:
+          OUTCOME: ${{ steps.ml-absent.outcome }}
+          SCENARIO: absent
+        run: bash .github/tests/megalinter-config-container.sh assert
+
+      - name: Prepare malformed configuration case
+        id: prepare-malformed
+        if: ${{ !cancelled() }}
+        shell: bash
+        env:
+          SCENARIO: malformed
+        run: bash .github/tests/megalinter-config-container.sh prepare
+
+      - name: Exercise actual lint action for malformed
+        id: ml-malformed
+        if: ${{ !cancelled() && steps.prepare-malformed.outcome == 'success' }}
+        continue-on-error: true
+        uses: oxsecurity/megalinter/flavors/go@9949bad031045f366be2467e00e8371a7328a2e2 # v10.1.0
+        env:
+          DEFAULT_WORKSPACE: ${{ steps.prepare-malformed.outputs.workspace }}
+          MEGALINTER_CONFIG: ${{ github.workspace }}/.mega-linter.yml
+          REPORT_OUTPUT_FOLDER: /github/workspace/megalinter-bad-fixture-reports-malformed
+          ENABLE_LINTERS: JSON_JSONLINT
+          JSON_JSONLINT_CLI_LINT_MODE: file
+          JSON_REPORTER: false
+          TAP_REPORTER: true
+          TAP_REPORTER_OUTPUT_DETAIL: detailed
+          VALIDATE_ALL_CODEBASE: true
+          APPLY_FIXES: none
+          GITHUB_COMMENT_REPORTER: false
+          GITHUB_STATUS_REPORTER: false
+
+      - name: Assert actual malformed configuration receipt
+        id: assert-malformed
+        if: ${{ !cancelled() }}
+        shell: bash
+        env:
+          OUTCOME: ${{ steps.ml-malformed.outcome }}
+          SCENARIO: malformed
+        run: bash .github/tests/megalinter-config-container.sh assert
+
+      - name: Prepare finding configuration case
+        id: prepare-finding
+        if: ${{ !cancelled() }}
+        shell: bash
+        env:
+          SCENARIO: finding
+        run: bash .github/tests/megalinter-config-container.sh prepare
+
+      - name: Exercise actual lint action for finding
+        id: ml-finding
+        if: ${{ !cancelled() && steps.prepare-finding.outcome == 'success' }}
+        continue-on-error: true
+        uses: oxsecurity/megalinter/flavors/go@9949bad031045f366be2467e00e8371a7328a2e2 # v10.1.0
+        env:
+          DEFAULT_WORKSPACE: ${{ steps.prepare-finding.outputs.workspace }}
+          MEGALINTER_CONFIG: ${{ github.workspace }}/.mega-linter.yml
+          REPORT_OUTPUT_FOLDER: /github/workspace/megalinter-bad-fixture-reports-finding
+          ENABLE_LINTERS: JSON_JSONLINT
+          JSON_JSONLINT_CLI_LINT_MODE: file
+          JSON_REPORTER: false
+          TAP_REPORTER: true
+          TAP_REPORTER_OUTPUT_DETAIL: detailed
+          VALIDATE_ALL_CODEBASE: true
+          APPLY_FIXES: none
+          GITHUB_COMMENT_REPORTER: false
+          GITHUB_STATUS_REPORTER: false
+
+      - name: Assert actual finding configuration receipt
+        id: assert-finding
+        if: ${{ !cancelled() }}
+        shell: bash
+        env:
+          OUTCOME: ${{ steps.ml-finding.outcome }}
+          SCENARIO: finding
         run: bash .github/tests/megalinter-config-container.sh assert
 
   # Exercise the internal exporter through the runner, including deletion of its

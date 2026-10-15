@@ -51,10 +51,14 @@ if [[ "$scope" == all || "$scope" == golangci ]]; then
   echo 'PASS: production and failure-fixture golangci pins, tool versions and actual test roles agree'
 fi
 if [[ "$scope" == all || "$scope" == megalinter ]]; then
-  fixture_pin="$(read_pin "$ci" test-lint-blocks ml oxsecurity/megalinter/flavors/go)"
+  fixture_pins="$(yq -o=json '.jobs["test-lint-blocks"].steps' "$ci" |
+    jq -ce '[.[] | .uses // "" | select(startswith("oxsecurity/megalinter/flavors/go@"))] |
+      select(length == 5 and all(.[]; test("^oxsecurity/megalinter/flavors/go@[0-9a-f]{40}$")))')" ||
+    fail 'CI must select five full-SHA MegaLinter invocations'
   for gate in "$go_gate" "$lint_gate"; do
     gate_pin="$(read_pin "$gate" lint ml oxsecurity/megalinter/flavors/go)"
-    [[ "$gate_pin" == "$fixture_pin" ]] || fail "$gate and test-lint-blocks use different MegaLinter pins"
+    jq -e --arg pin "$gate_pin" 'all(.[]; . == $pin)' <<<"$fixture_pins" >/dev/null ||
+      fail "$gate and test-lint-blocks use different MegaLinter pins"
   done
   echo 'PASS: both production gates and the failure fixture use the same complete MegaLinter pin'
 fi

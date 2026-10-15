@@ -6,14 +6,21 @@ scenario="${SCENARIO:?SCENARIO is required}"
 workspace="${GITHUB_WORKSPACE:?GITHUB_WORKSPACE is required}"
 fixture="$workspace/.github/tests/megalinter-bad-fixture"
 probe="$fixture/config-probe"
+reports="$workspace/megalinter-bad-fixture-reports-$scenario"
 case "$scenario" in root|nested|absent|malformed|finding) ;;
   *) echo 'Unknown configuration scenario' >&2; exit 1 ;;
 esac
 case "${1:-}" in
   prepare)
     [[ "$(git -C "$workspace" rev-parse --show-toplevel)" == "$workspace" ]]
-    [[ -f "$workspace/.mega-linter.yml" && ! -L "$workspace/.mega-linter.yml" ]]
-    mkdir "$probe"
+    [[ ! -L "$workspace/.mega-linter.yml" && ( ! -e "$workspace/.mega-linter.yml" || -f "$workspace/.mega-linter.yml" ) ]]
+    [[ ! -L "$probe" && ( ! -e "$probe" || -d "$probe" ) ]]
+    # Never reuse another case or a prior invocation as checker evidence.
+    [[ ! -e "$reports" && ! -L "$reports" ]] || {
+      echo 'FAIL: stale or linked scenario report path' >&2
+      exit 1
+    }
+    mkdir -p "$probe"
     cp "$fixture/config-probe-checked.json" "$probe/config-probe-checked.json"
     cp "$fixture/bad.json" "$probe/config-probe-bad.json"
     cp "$fixture/config-probe.yml" "$workspace/.mega-linter.yml"
@@ -30,7 +37,6 @@ case "${1:-}" in
     ;;
   assert)
     outcome="${OUTCOME:?OUTCOME is required}"
-    reports="$workspace/megalinter-bad-fixture-reports"
     if [[ "$scenario" == malformed ]]; then
       [[ "$outcome" == failure ]]
       # The action has already pulled this image at its immutable action pin.
