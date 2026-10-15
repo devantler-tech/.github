@@ -61,7 +61,7 @@ active_count="$(printf '%s\n' "$active_repositories" | grep -c . || true)"
 
 # ksail and platform host GitHub Pages sites built by workflows. They were
 # adopted while LateInitialize copied the provider's deprecated `pages` field
-# into desired state, including a `source` GitHub does not report for workflow
+# into desired state, including a `source` the provider omits for workflow
 # builds (and, for platform, an empty cname). That permanent diff made every
 # update call the Pages API, which the GitHub App deliberately cannot write
 # (#232). Declaring `pages` exactly as GitHub reports it replaces the stale list
@@ -94,7 +94,7 @@ declare_pages() {
   [[ "$(yq -N '.pages[0].buildType' <<<"$got")" == "workflow" ]] ||
     fail "$name Pages must declare buildType: workflow, as GitHub reports it: $got"
   [[ "$(yq -N '.pages[0] | has("source")' <<<"$got")" == "false" ]] ||
-    fail "$name Pages must not declare a source; GitHub reports none for a workflow build: $got"
+    fail "$name Pages must not declare a source; the provider omits it for workflow builds: $got"
   if [[ -n "$want_cname" ]]; then
     [[ "$(yq -N '.pages[0].cname' <<<"$got")" == "$want_cname" ]] ||
       fail "$name Pages must declare cname: $want_cname, as GitHub reports it: $got"

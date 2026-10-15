@@ -31,8 +31,11 @@ There is no branch `source` block for a workflow-built site. A checked-in `CNAME
 file does not configure an Actions-built site's custom domain.
 
 Read the live Pages settings with `gh api repos/devantler-tech/data-product-controller/pages`.
-Confirm `build_type: workflow`, the exact `cname`, and no source branch. Once those
-settings match, the reviewed declaration preserves the live shape while retaining
+Confirm `build_type: workflow` and the exact `cname`. The REST response may retain
+a legacy `source` branch even for workflow builds. The pinned provider's
+[`flattenPages` implementation](https://github.com/integrations/terraform-provider-github/blob/v6.13.0/github/resource_github_repository.go)
+normalizes that field to absent for workflow builds, so the declaration must omit it.
+Once those settings match, the reviewed declaration preserves the provider's shape while retaining
 the repository's existing management policies. Verify successful reconciliation
 without Pages permission errors before treating configuration adoption as complete.
 
