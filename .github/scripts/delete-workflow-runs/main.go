@@ -314,6 +314,7 @@ func (a api) workflowAbsent(ctx context.Context, prefix string, id int64) (bool,
 
 type searchCapped struct{ minimum int }
 
+// Error preserves the cap diagnostic while the retained minimum guides splitting.
 func (e *searchCapped) Error() string {
 	return "run search reaches GitHub's 1,000-result limit"
 }
