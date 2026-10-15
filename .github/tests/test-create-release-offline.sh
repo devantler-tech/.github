@@ -67,7 +67,7 @@ guard() {
       any($c.jobs["ci-required-checks"].steps[]; (.env.JOB_RESULTS // "" |
         contains("needs."+$name+".result")) and (.run // "" | contains("$JOB_RESULTS"))))) | not
     then error("secret-free release calls must gate required CI")
-    elif (["test-create-release-offline.sh","test-create-release-fixture-controls.sh"] | all(. as $script |
+    elif (["test-create-release-offline.sh","test-create-release-fixture-controls.sh","test-create-release-stable-channels.sh"] | all(. as $script |
       [$c.jobs["test-create-release-config"].steps[] | select(.run == "bash .github/tests/"+$script)] |
         length == 1 and all(runnable))) | not
     then error("offline boundary regressions must execute in CI")
@@ -126,6 +126,7 @@ lost result	.ci.jobs["ci-required-checks"].steps |= map(if .env.JOB_RESULTS then
 boundary skipped	.ci.jobs["test-create-release-config"].steps |= map(if .run == "bash .github/tests/test-create-release-offline.sh" then .if="false" else . end)	regressions must execute
 invalid offline mode	.workflow.jobs["offline-test"].steps |= map(select(.name != "🔎 Validate offline mode"))	require dry-run
 behavior controls skipped	.ci.jobs["test-create-release-config"].steps |= map(select(.run != "bash .github/tests/test-create-release-fixture-controls.sh"))	regressions must execute
+channel controls skipped	.ci.jobs["test-create-release-config"].steps |= map(select(.run != "bash .github/tests/test-create-release-stable-channels.sh"))	regressions must execute
 CASES
 echo "PASS: release offline boundary rejects $count independent regressions"
 
@@ -136,6 +137,7 @@ mkdir "$work/bin" "$work/source"
 mkdir -p "$work/source/catalogue/.github/workflows" "$work/source/catalogue/.github/tests"
 cp "$root/.github/workflows/create-release.yaml" "$work/source/catalogue/.github/workflows/"
 cp "$root/.github/tests/create-release-fixture.sh" "$work/source/catalogue/.github/tests/"
+cp "$root/.github/tests/create-release-stable-channel-fixture.sh" "$work/source/catalogue/.github/tests/"
 cp "$root/.releaserc" "$work/source/catalogue/"
 tar -czf "$work/valid.tar.gz" -C "$work/source" catalogue
 cat >"$work/bin/curl" <<'CURL'
@@ -184,7 +186,7 @@ for invalid in repository short-sha mutable-ref path-sha uppercase-sha; do
 done
 echo 'PASS: five invalid source inputs fail before download or extraction'
 
-for transport in failure truncated missing-fixture valid; do
+for transport in failure truncated missing-fixture missing-channel-fixture valid; do
   rm -rf "$work/download/.devantler-tech-actions"
   rm -f "$work/catalogue.tar.gz" "$work/request"
   printf '%s\n' "$transport" >"$work/mode"
@@ -193,6 +195,9 @@ for transport in failure truncated missing-fixture valid; do
   truncated) printf '%s\n' 'not a gzip archive' >"$work/payload" ;;
   missing-fixture)
     tar -czf "$work/payload" -C "$work/source" catalogue/.releaserc catalogue/.github/workflows
+    ;;
+  missing-channel-fixture)
+    tar -czf "$work/payload" -C "$work/source" catalogue/.releaserc catalogue/.github/workflows catalogue/.github/tests/create-release-fixture.sh
     ;;
   valid) cp "$work/valid.tar.gz" "$work/payload" ;;
   esac
@@ -210,6 +215,7 @@ for transport in failure truncated missing-fixture valid; do
     [[ "$result" == 0 ]]
     cmp "$root/.releaserc" "$work/download/.devantler-tech-actions/.releaserc"
     cmp "$root/.github/tests/create-release-fixture.sh" "$work/download/.devantler-tech-actions/.github/tests/create-release-fixture.sh"
+    cmp "$root/.github/tests/create-release-stable-channel-fixture.sh" "$work/download/.devantler-tech-actions/.github/tests/create-release-stable-channel-fixture.sh"
   else
     [[ "$result" != 0 ]] || {
       echo "FAIL: $transport source retrieval was accepted" >&2

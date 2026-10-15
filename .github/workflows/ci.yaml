@@ -4228,6 +4228,9 @@ jobs:
       - name: 🧪 Verify release-decision regressions fail
         run: bash .github/tests/test-create-release-fixture-controls.sh
 
+      - name: 🧪 Verify stable channel decisions preserve existing tags and notes
+        run: bash .github/tests/test-create-release-stable-channels.sh
+
   test-release-please-semantics:
     needs: [select-ci-tests]
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-release-please-semantics') }}"

@@ -18,6 +18,7 @@ export CATALOGUE_CREDENTIALS_OFFLINE=1
 "$tmp/guard" "$tmp/catalogue"
 controls=0
 # Each expected diagnostic is an authority class; no credential value is printed.
+# Restoring a writer behind a skipped dependency also requires a status function.
 while IFS=$'\t' read -r label path mutation expected_status diagnostic; do
   [[ -n "$label" ]] || continue
   yq -o=json '.' "$root/$path" > "$tmp/source.json"
@@ -55,7 +56,7 @@ restored template writer	.github/workflows/template-sync.yaml	del(.jobs["templat
 restored skills writer	.github/workflows/update-agent-skills.yaml	del(.jobs["update-agent-skills"].if)	1	write authority
 removed skipped dependency	.github/workflows/update-agent-skills.yaml	del(.jobs["open-skill-pull-requests"].needs)	1	write authority
 always restores skipped writer	.github/workflows/update-agent-skills.yaml	.jobs["open-skill-pull-requests"].if="${{ always() }}"	1	write authority
-restored auto merge	.github/workflows/enable-auto-merge.yaml	.jobs["disarm-untrusted-update"].if="true"	1	write authority
+restored auto merge	.github/workflows/enable-auto-merge.yaml	.jobs["disarm-untrusted-update"].if="${{ always() }}"	1	write authority
 restored pages writer	.github/workflows/deploy-github-pages.yaml	del(.jobs.build.if)	1	write authority
 restored package writer	.github/workflows/publish-dotnet-library.yaml	del(.jobs.publish.if)	1	write authority
 restored application writer	.github/workflows/publish-app.yaml	del(.jobs.publish.if)	1	write authority

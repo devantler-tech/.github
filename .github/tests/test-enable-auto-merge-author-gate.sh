@@ -48,11 +48,12 @@ if [[ "$enabled_test_uses" != "./.github/workflows/enable-auto-merge.yaml" ||
 fi
 
 # A required workflow must complete successfully for ineligible events rather
-# than making its only job SKIPPED. Keep classification in an unconditional,
-# zero-permission job and gate the privileged job on its output.
+# than making its only job SKIPPED. Keep classification independent of event,
+# author and draft state; only the separate offline fixture job replaces it.
+# Gate the privileged jobs on its outputs and keep its token unprivileged.
 eligibility_job_condition="$(yq -r '.jobs.eligibility.if // ""' "$workflow")"
-if [[ -n "$eligibility_job_condition" ]]; then
-  echo "::error file=$workflow::eligibility job must be unconditional so required workflows complete for ineligible events"
+if [[ "$eligibility_job_condition" != '!inputs.dry-run' ]]; then
+  echo "::error file=$workflow::eligibility must execute for every live/default invocation and skip only the independent offline fixture"
   status=1
 fi
 
@@ -91,6 +92,11 @@ ineligible_condition="$(yq -r '
   | join("\n")' "$workflow")"
 if [[ "$ineligible_condition" != *"steps.classify.outputs.eligible != 'true'"* ]]; then
   echo "::error file=$workflow::eligibility job needs an explicit successful ineligible-event step"
+  status=1
+fi
+ineligible_source="$(yq -r '.jobs.eligibility.steps[] | select(.id == "ineligible") | .env.WORKFLOW_SOURCE_SHA // ""' "$workflow")"
+if [[ "$ineligible_source" != "\${{ job.workflow_sha }}" ]]; then
+  echo "::error file=$workflow::ineligible reporting must bind its public source revision to the executed workflow"
   status=1
 fi
 configuration_condition="$(yq -r '

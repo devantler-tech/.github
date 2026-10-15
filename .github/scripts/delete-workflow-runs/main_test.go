@@ -1455,3 +1455,139 @@ func TestChangingTotalsCannotHideOtherHistoryFailures(t *testing.T) {
 		})
 	}
 }
+
+// Capped totals are lower bounds. Every descendant must be observed before
+// a partial plan may reach either a mutation or a completion receipt.
+func TestCappedHistoryCannotShrinkBelowItsMinimum(t *testing.T) {
+	for _, test := range []struct {
+		name                string
+		parent, descendants int
+		accept              bool
+	}{
+		{"empty", 1000, 0, false},
+		{"one", 1000, 1, false},
+		{"one-short", 1000, 999, false},
+		{"exact-minimum", 1000, 1000, true},
+		{"above-minimum", 1000, 1001, true},
+		{"larger-advertised-minimum", 1500, 1001, false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			cutoff := fixedNow.Add(-time.Second).Unix()
+			stamp := func(second int64) string { return time.Unix(second, 0).UTC().Format(time.RFC3339) }
+			whole := stamp(0) + ".." + stamp(cutoff)
+			left := stamp(0) + ".." + stamp(cutoff/2)
+			right := stamp(cutoff/2+1) + ".." + stamp(cutoff)
+			older, newer := []string{}, []string{}
+			for id := 1; id <= test.descendants; id++ {
+				if id <= (test.descendants+1)/2 {
+					older = append(older, runJSON(id, "1990-01-01T00:00:00Z", "completed", "success"))
+				} else {
+					newer = append(newer, oldRun(id))
+				}
+			}
+			var writes atomic.Int64
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.Method == "DELETE" {
+					writes.Add(1)
+					w.WriteHeader(204)
+					return
+				}
+				if r.URL.Path == fixtureRepo+"/actions/workflows" {
+					_, _ = io.WriteString(w, workflowBody)
+					return
+				}
+				var runs []string
+				switch r.URL.Query().Get("created") {
+				case whole:
+					_, _ = fmt.Fprintf(w, `{"total_count":%d,"workflow_runs":[]}`, test.parent)
+					return
+				case left:
+					runs = older
+				case right:
+					runs = newer
+				default:
+					t.Errorf("unexpected range: %s", r.URL.RequestURI())
+					w.WriteHeader(403)
+					return
+				}
+				page, err := strconv.Atoi(r.URL.Query().Get("page"))
+				if err != nil || page < 1 || (page-1)*100 > len(runs) {
+					w.WriteHeader(403)
+					return
+				}
+				start := (page - 1) * 100
+				_, _ = fmt.Fprintf(w, `{"total_count":%d,"workflow_runs":[%s]}`, len(runs), strings.Join(runs[start:min(start+100, len(runs))], ","))
+			}))
+			defer server.Close()
+			cfg := baseConfig()
+			cfg.minimum, cfg.dryRun = 0, test.accept
+			var log bytes.Buffer
+			err := clean(context.Background(), cfg, server.URL, "offline-fixture-token", server.Client(), fixedNow, &log, func(context.Context, time.Duration) error { return nil })
+			if test.accept {
+				if err != nil || !strings.Contains(log.String(), fmt.Sprintf("Cleanup completed: selected=%d dry-run=true", test.descendants)) {
+					t.Fatalf("complete capped history rejected: err=%v log bytes=%d", err, log.Len())
+				}
+			} else if err == nil || !strings.Contains(err.Error(), "capped minimum") || log.Len() != 0 {
+				t.Fatalf("incomplete split accepted: err=%v writes=%d log bytes=%d", err, writes.Load(), log.Len())
+			}
+			if writes.Load() != 0 {
+				t.Fatalf("partial or dry-run history reached %d DELETEs", writes.Load())
+			}
+		})
+	}
+}
+
+func TestEarlierSiblingCannotHideNestedCappedShortage(t *testing.T) {
+	cutoff := fixedNow.Add(-time.Second).Unix()
+	middle := cutoff / 2
+	stamp := func(second int64) string { return time.Unix(second, 0).UTC().Format(time.RFC3339) }
+	whole := stamp(0) + ".." + stamp(cutoff)
+	left := stamp(0) + ".." + stamp(middle)
+	right := stamp(middle+1) + ".." + stamp(cutoff)
+	nestedMiddle := middle + 1 + (cutoff-middle-1)/2
+	nestedLeft := stamp(middle+1) + ".." + stamp(nestedMiddle)
+	nestedRight := stamp(nestedMiddle+1) + ".." + stamp(cutoff)
+	older := []string{}
+	for id := 1; id <= 999; id++ {
+		older = append(older, runJSON(id, "1990-01-01T00:00:00Z", "completed", "success"))
+	}
+	var writes atomic.Int64
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == "DELETE" {
+			writes.Add(1)
+			w.WriteHeader(204)
+			return
+		}
+		if r.URL.Path == fixtureRepo+"/actions/workflows" {
+			_, _ = io.WriteString(w, workflowBody)
+			return
+		}
+		switch r.URL.Query().Get("created") {
+		case whole, right:
+			_, _ = io.WriteString(w, `{"total_count":1000,"workflow_runs":[]}`)
+		case left:
+			page, _ := strconv.Atoi(r.URL.Query().Get("page"))
+			start := (page - 1) * 100
+			if page < 1 || start >= len(older) {
+				w.WriteHeader(403)
+				return
+			}
+			_, _ = fmt.Fprintf(w, `{"total_count":999,"workflow_runs":[%s]}`, strings.Join(older[start:min(start+100, len(older))], ","))
+		case nestedLeft:
+			_, _ = io.WriteString(w, runBody(runJSON(1000, "2000-01-01T00:00:00Z", "completed", "success")))
+		case nestedRight:
+			_, _ = io.WriteString(w, runBody())
+		default:
+			t.Errorf("unexpected range: %s", r.URL.RequestURI())
+			w.WriteHeader(403)
+		}
+	}))
+	defer server.Close()
+	cfg := baseConfig()
+	cfg.minimum, cfg.dryRun = 0, false
+	var log bytes.Buffer
+	err := clean(context.Background(), cfg, server.URL, "offline-fixture-token", server.Client(), fixedNow, &log, func(context.Context, time.Duration) error { return nil })
+	if err == nil || !strings.Contains(err.Error(), "capped minimum") || writes.Load() != 0 || log.Len() != 0 {
+		t.Fatalf("earlier sibling hid partial nested inventory: err=%v writes=%d log bytes=%d", err, writes.Load(), log.Len())
+	}
+}

@@ -168,3 +168,4 @@ warning-unsupported	fix: exercise unsupported diagnostic configuration	1.2.4
 warning-tool-error	fix: exercise diagnostic tool failure	1.2.4
 CASES
 echo "PASS: $cases actual release decisions; warning enabled=$warning_enabled; issue-hook suppression=$disabled; no credentials"
+bash "$root/.github/tests/create-release-stable-channel-fixture.sh" "$workflow" "$config"

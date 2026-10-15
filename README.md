@@ -190,6 +190,12 @@ Consumer rollout and the decision on removing this temporary flag are tracked in
 
 For catalogue self-tests, set `offline-test: true` together with `dry-run: true` and omit the App secret. This independent job requests no repository permissions and retrieves its immutable public catalogue source anonymously. It evaluates the pinned release command and catalogue configuration against disposable local repositories, verifying patch, minor, major, and no-release decisions without changing files or refs. It also honors `warn-missing-breaking-bang`: a missing-pattern fixture emits exactly one warning when enabled, while intact, disabled, unsupported-config and tool-error cases continue without warning or release blockage. Both issue-hook settings are exercised; this does not test live notification delivery. Normal releases and consumer dry-run previews continue to use the consumer's own configuration and App credentials, including callers that declare `permissions: {}`.
 
+These offline tests also cover existing stable tags with absent or matching default-channel notes,
+using both lightweight and annotated tags. No new release is selected at the tagged commit; a
+subsequent fix selects the next patch while preserving all files, tags and notes. This supports
+leaving channel notes unchanged for stable/default-branch recovery. It does not prove GitHub
+publication, prerelease channels or multiple release branches.
+
 #### Usage
 
 ```yaml
@@ -257,8 +263,9 @@ Every workflow's retention decision uses that same complete repository-run snaps
 avoiding repeated scans of the same history through separate workflow endpoints.
 Run enumeration ends at the last complete second before cleanup starts, so new
 runs wait for the next cleanup instead of shifting pagination. Searches reaching
-GitHub's 1,000-result limit are split into disjoint creation-time ranges; a range
-that still reaches the limit within one second fails rather than skipping history.
+GitHub's 1,000-result limit are split into disjoint creation-time ranges. Each split
+must recover at least the count its parent advertised before cleanup may proceed.
+A range that still reaches the limit within one second fails rather than skipping history.
 The newest `minimum-runs` matching old runs are retained in addition to recent runs.
 Runs whose workflow is no longer listed are selected independently of those filters
 only after an individual workflow lookup confirms absence. Workflows that appear
@@ -434,6 +441,9 @@ Use `dry-run: true` to exercise the workflow without changing a pull request.
 This path runs offline decision fixtures with `contents: read`, forwards no App
 secret, and has a separate concurrency lane so it cannot cancel live evaluations.
 The catalogue tests use it for default, actor-trust and pending-queue calls.
+Offline mode starts only the fixture runner and skips live eligibility classification.
+Omitted or false inputs retain the unprivileged classifier and explicit successful
+reporting for ineligible live and required-workflow events.
 Caller permissions still declare the production workflow's static write ceiling,
 which GitHub validates even when those jobs are skipped; executed dry-run jobs
 receive only read access. `dry-run` defaults to `false`, and live mutations require
