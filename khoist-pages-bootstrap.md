@@ -14,10 +14,9 @@ against an absent site: it would produce a permission error, as diagnosed in
 [#232](https://github.com/devantler-tech/.github/issues/232).
 
 The bootstrap writer must have the authority GitHub requires for creating the
-site. This change grants no permissions and creates no token. The agent does not
-perform an imperative settings update or change the App's privileges. The
-maintainer must approve the one-time bootstrap procedure through this owner
-before it is used.
+site. This change grants no permissions, creates no token and does not change the
+App's privileges. The maintainer must approve the one-time bootstrap procedure
+through this owner before it is used.
 
 The intended settings are:
 
@@ -42,11 +41,12 @@ without Pages permission errors before treating configuration adoption as comple
 Configure the custom domain in Pages before adding DNS. The public record is a
 DNS-only CNAME from `khoist.devantler.tech` to `devantler-tech.github.io`.
 
-The [Cloudflare owner runbook](https://github.com/devantler-tech/cloudflare/blob/main/docs/runbooks/bootstrap-and-recovery.md)
-requires the complete imported inventory, recovery custody and a reviewed plan with
-no deletes or replacements before authoritative apply. This document is not an
-exception to that boundary. Do not apply an isolated new-record configuration
-against empty authoritative maps.
+The [platform ExternalDNS integration](https://github.com/devantler-tech/platform/issues/4939)
+owns this record through GitOps. Deploy and verify its explicit-record admission
+boundary before enabling CRD discovery on the existing writer, retaining the
+current TXT registry, owner, zone filter and routed-service discovery. This path
+needs neither a direct Cloudflare settings change nor another credential.
+Do not change the shared Gateway's DNS target to publish a static site.
 
 After the site's reviewed source and configuration have shipped, run the product's
 documentation workflow from `main`. Confirm its Pages deployment, DNS resolution,
