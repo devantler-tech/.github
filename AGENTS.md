@@ -241,6 +241,14 @@ executes real HTTP controls and the immutable-source and read-only credential bo
 inside `test-create-release-config` in required CI. Never treat its diagnosis as completed recovery
 or write authorization; #587 owns publication, legacy compatibility and protected consumer proof.
 
+The credential-free release fixture also exercises stranded stable tags with absent or matching
+default-channel notes, for both lightweight and annotated tags. It verifies no release at the tagged
+commit, the next patch after a subsequent fix, and unchanged consumer files and local/remote refs.
+Run `bash .github/tests/test-create-release-stable-channels.sh` for native decisions and negative
+observation controls. The existing offline reusable callers run the fixture; required CI runs the
+controls. This covers stable/default-branch decisions only, without the authenticated GitHub
+publisher; publication, prereleases and multiple release branches need separate evidence.
+
 ```text
 actions/<action-name>/            # One directory per composite action
 ├── action.yaml                   # Action metadata (name, description, inputs, steps)

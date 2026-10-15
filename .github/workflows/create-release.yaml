@@ -362,7 +362,7 @@ jobs:
           mkdir .devantler-tech-actions
           tar --extract --gzip --file="$RUNNER_TEMP/catalogue.tar.gz" \
             --strip-components=1 --directory=.devantler-tech-actions
-          for source_file in .releaserc .github/workflows/create-release.yaml .github/tests/create-release-fixture.sh; do
+          for source_file in .releaserc .github/workflows/create-release.yaml .github/tests/create-release-fixture.sh .github/tests/create-release-stable-channel-fixture.sh; do
             [[ -f ".devantler-tech-actions/$source_file" && ! -L ".devantler-tech-actions/$source_file" ]] || {
               echo '::error::incomplete catalogue source' >&2
               exit 1
