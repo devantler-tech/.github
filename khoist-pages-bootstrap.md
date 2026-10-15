@@ -42,7 +42,9 @@ Configure the custom domain in Pages before adding DNS. The public record is a
 DNS-only CNAME from `khoist.devantler.tech` to `devantler-tech.github.io`.
 
 The [platform ExternalDNS integration](https://github.com/devantler-tech/platform/issues/4939)
-owns this record through GitOps. Deploy and verify its explicit-record admission
+reconciles the product repository's `deploy/documentation/` through a narrowly
+scoped tenant identity. The product owns the declaration; the platform owns the
+shared writer and tenant registration. Deploy and verify its explicit-record admission
 boundary before enabling CRD discovery on the existing writer, retaining the
 current TXT registry, owner, zone filter and routed-service discovery. This path
 needs neither a direct Cloudflare settings change nor another credential.
