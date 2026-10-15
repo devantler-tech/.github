@@ -18,6 +18,10 @@ if ! env GIT_DIR="$work/foreign-git" GIT_WORK_TREE="$work/foreign-tree" GIT_INDE
   exit 1
 fi
 [[ ! -e "$work/foreign-git" && ! -e "$work/foreign-tree" && ! -e "$work/foreign-index" ]]
+grep -qxF 'PASS: eight native stable/default-branch decisions; GitHub publication, prereleases and multiple branches not exercised' "$work/output" || {
+  echo 'FAIL: the reusable offline entrypoint omitted stable-channel decisions' >&2
+  exit 1
+}
 echo 'PASS: ambient Git paths, templates and hooks cannot redirect fixture operations'
 reject() {
   local label="$1" workflow_path="$2" config_path="$3" diagnostic="$4"

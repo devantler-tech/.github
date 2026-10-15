@@ -190,6 +190,12 @@ Consumer rollout and the decision on removing this temporary flag are tracked in
 
 For catalogue self-tests, set `offline-test: true` together with `dry-run: true` and omit the App secret. This independent job requests no repository permissions and retrieves its immutable public catalogue source anonymously. It evaluates the pinned release command and catalogue configuration against disposable local repositories, verifying patch, minor, major, and no-release decisions without changing files or refs. It also honors `warn-missing-breaking-bang`: a missing-pattern fixture emits exactly one warning when enabled, while intact, disabled, unsupported-config and tool-error cases continue without warning or release blockage. Both issue-hook settings are exercised; this does not test live notification delivery. Normal releases and consumer dry-run previews continue to use the consumer's own configuration and App credentials, including callers that declare `permissions: {}`.
 
+These offline tests also cover existing stable tags with absent or matching default-channel notes,
+using both lightweight and annotated tags. No new release is selected at the tagged commit; a
+subsequent fix selects the next patch while preserving all files, tags and notes. This supports
+leaving channel notes unchanged for stable/default-branch recovery. It does not prove GitHub
+publication, prerelease channels or multiple release branches.
+
 #### Usage
 
 ```yaml
