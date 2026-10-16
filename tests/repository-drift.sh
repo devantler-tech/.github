@@ -263,6 +263,31 @@ expect_status "$work/pages-unmapped" 2 "a declared Pages key this check cannot c
 grep -Fq 'pages.source' "$work/pages-unmapped/stderr" ||
   fail "the uncomparable Pages key must be named"
 
+# Bootstrap-only Pages settings are still audited, although Crossplane must not
+# attempt to enforce them through an App that cannot write Pages.
+seed_bootstrap_pages() {
+  DECLARED=$'  initProvider:\n    pages:\n      - buildType: workflow\n        cname: pages.example.invalid\n' \
+    perl -0pi -e 's/^(spec:\n)/$1$ENV{DECLARED}/m or die "no fixture spec\n"' "$1/render.yaml"
+}
+bootstrap_pages_fixture() {
+  local dir="$1" live_pages="$2"
+  pages_fixture "$dir" "" "$live_pages"
+  seed_bootstrap_pages "$dir"
+}
+bootstrap_pages_fixture "$work/bootstrap-pages" "$live_cname"
+expect_status "$work/bootstrap-pages" 0 "matching bootstrap-only Pages settings"
+bootstrap_pages_fixture "$work/bootstrap-pages-drift" '{"build_type":"workflow","cname":"other.example.invalid"}'
+expect_status "$work/bootstrap-pages-drift" 1 "a changed bootstrap-only Pages domain"
+grep -Fq 'DRIFT fixture-repo-1.pages' "$work/bootstrap-pages-drift/stdout" ||
+  fail "bootstrap-only Pages drift must still name the pages field"
+bootstrap_pages_fixture "$work/bootstrap-pages-missing" ""
+expect_status "$work/bootstrap-pages-missing" 2 "an unreadable bootstrap-only Pages site"
+
+# Two owners for Pages are ambiguous; do not silently hide either declaration.
+pages_fixture "$work/pages-two-owners" "$cname_pages" "$live_cname"
+seed_bootstrap_pages "$work/pages-two-owners"
+expect_status "$work/pages-two-owners" 2 "both managed and bootstrap-only Pages settings"
+
 # Exercise the real gh transport path, including the REST omissions observed
 # with an installation token. The fake accepts only the expected read requests.
 transport="$work/transport"

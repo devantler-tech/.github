@@ -70,7 +70,7 @@ for family in golangci megalinter version; do
     for gate in validate-go-project lint; do
       yq -i "(.jobs.lint.steps[] | select(.id == \"ml\")).uses = \"oxsecurity/megalinter/flavors/go@$sha\"" "$fixture/.github/workflows/$gate.yaml"
     done
-    yq -i "(.jobs.test-lint-blocks.steps[] | select(.id == \"ml\")).uses = \"oxsecurity/megalinter/flavors/go@$sha\"" "$fixture/.github/workflows/ci.yaml"
+    yq -i "(.jobs.test-lint-blocks.steps[] | select((.id // \"\") | test(\"^ml-\"))).uses = \"oxsecurity/megalinter/flavors/go@$sha\"" "$fixture/.github/workflows/ci.yaml"
     ;;
   version)
     yq -i '(.jobs.golangci-lint.steps[] | select(.id == "golangci-lint")).with.version = "v99.0.0"' "$fixture/.github/workflows/validate-go-project.yaml"
@@ -104,11 +104,16 @@ for file in validate-go-project ci; do
   reject parity ".github/workflows/$file.yaml" ".jobs.$job.steps += [.jobs.$job.steps[] | select(.id == \"$id\")]" 'exactly one full-SHA'
 done
 for file in validate-go-project lint ci; do
-  job=lint
-  [[ "$file" != ci ]] || job=test-lint-blocks
-  reject parity ".github/workflows/$file.yaml" "(.jobs.$job.steps[] | select(.id == \"ml\")).uses = \"oxsecurity/megalinter/flavors/go@$sha\"" 'different MegaLinter pins'
-  reject parity ".github/workflows/$file.yaml" "del(.jobs.$job.steps[] | select(.id == \"ml\"))" 'exactly one full-SHA'
-  reject parity ".github/workflows/$file.yaml" ".jobs.$job.steps += [.jobs.$job.steps[] | select(.id == \"ml\")]" 'exactly one full-SHA'
+  job=lint ids=(ml) diagnostic='exactly one full-SHA'
+  if [[ "$file" == ci ]]; then
+    job=test-lint-blocks ids=(ml-root ml-nested ml-absent ml-malformed ml-finding)
+    diagnostic='five full-SHA MegaLinter'
+  fi
+  for id in "${ids[@]}"; do
+    reject parity ".github/workflows/$file.yaml" "(.jobs.$job.steps[] | select(.id == \"$id\")).uses = \"oxsecurity/megalinter/flavors/go@$sha\"" 'different MegaLinter pins'
+    reject parity ".github/workflows/$file.yaml" "del(.jobs.$job.steps[] | select(.id == \"$id\"))" "$diagnostic"
+    reject parity ".github/workflows/$file.yaml" ".jobs.$job.steps += [.jobs.$job.steps[] | select(.id == \"$id\")]" "$diagnostic"
+  done
 done
 reject parity .github/workflows/validate-go-project.yaml '(.jobs.test.steps[] | select(.name == "🧪 Test")).run = "# go test ./...\ntrue"' 'production test role'
 reject parity .github/workflows/validate-go-project.yaml "(.jobs.test.steps[] | select(.name == \"🧪 Test\")).run = \"if [[ \\\"\$MEASURE_DISK_USAGE\\\" == true ]]; then go test ./wrong; else go test ./...; fi\"" 'production test role'

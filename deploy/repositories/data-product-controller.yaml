@@ -5,19 +5,20 @@ metadata:
   annotations:
     crossplane.io/external-name: data-product-controller
 spec:
-  # The adopted repository is Synced/Ready. Apply the shared repository policy.
+  # Keep ordinary settings management on the adopted repository.
   managementPolicies: ["Observe", "Create", "Update"]
+  # Pages was bootstrapped separately. Preserve its initial declaration without
+  # asking the managed App to write Pages; the drift audit still verifies it.
+  initProvider:
+    pages:
+      - buildType: workflow
+        cname: khoist.devantler.tech
   forProvider:
     name: data-product-controller
     visibility: public
     archived: false
     description: "A cloud-native controller for composable, self-describing data products."
     homepageUrl: https://khoist.devantler.tech/
-    # Bootstrap is a maintainer prerequisite; see khoist-pages-bootstrap.md.
-    # Match the workflow site's live shape exactly, without a branch source (#232).
-    pages:
-      - buildType: workflow
-        cname: khoist.devantler.tech
     # Issues are used here; an undeclared bool takes the provider default (false) on update (#311).
     hasIssues: true
   providerConfigRef:
