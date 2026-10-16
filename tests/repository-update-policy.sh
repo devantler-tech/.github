@@ -71,18 +71,23 @@ active_count="$(printf '%s\n' "$active_repositories" | grep -c . || true)"
 # With `pages` matching GitHub exactly, an update carries no Pages change, so both
 # are managed with Observe/Create/Update like every other active repository.
 declare_pages() {
-  local name="$1" want_cname="$2" want_homepage="${3:-}" got
+  local name="$1" want_cname="$2" want_homepage="${3:-}" owner="${4:-forProvider}" got
   got="$(
     yq -N -o=json -I=0 "
       select(.kind == \"Repository\" and .metadata.name == \"$name\") |
       {
         \"policies\": (.spec.managementPolicies | sort | join(\",\")),
-        \"pages\": .spec.forProvider.pages,
+        \"pages\": .spec.$owner.pages,
+        \"managedPages\": (.spec.forProvider | has(\"pages\")),
         \"homepage\": .spec.forProvider.homepageUrl
       }
     " "$render"
   )"
   [[ -n "$got" ]] || fail "$name Repository resource is missing"
+  if [[ "$owner" == initProvider ]]; then
+    [[ "$(yq -N '.managedPages' <<<"$got")" == "false" ]] ||
+      fail "$name bootstrap-only Pages must not be enforced through forProvider: $got"
+  fi
   if [[ -n "$want_homepage" ]]; then
     [[ "$(yq -N '.homepage' <<<"$got")" == "$want_homepage" ]] ||
       fail "$name must declare homepageUrl: $want_homepage, as GitHub reports it: $got"
@@ -90,7 +95,7 @@ declare_pages() {
   [[ "$(yq -N '.policies' <<<"$got")" == "Create,Observe,Update" ]] ||
     fail "$name must be managed with Observe/Create/Update now that its Pages state is declared: $got"
   [[ "$(yq -N '.pages | length' <<<"$got")" == "1" ]] ||
-    fail "$name must declare exactly one forProvider.pages entry: $got"
+    fail "$name must declare exactly one $owner.pages entry: $got"
   [[ "$(yq -N '.pages[0].buildType' <<<"$got")" == "workflow" ]] ||
     fail "$name Pages must declare buildType: workflow, as GitHub reports it: $got"
   [[ "$(yq -N '.pages[0] | has("source")' <<<"$got")" == "false" ]] ||
@@ -105,7 +110,9 @@ declare_pages() {
 }
 declare_pages ksail ksail.devantler.tech
 declare_pages platform ""
-declare_pages data-product-controller khoist.devantler.tech https://khoist.devantler.tech/
+# A first Pages site has no observed provider block to adopt (#614). Enforcing
+# it would retry an unsupported Pages PUT. Keep its seed explicit and audit it.
+declare_pages data-product-controller khoist.devantler.tech https://khoist.devantler.tech/ initProvider
 
 # LateInitialize copies live-only values into forProvider, and everything in
 # forProvider is sent on update PATCHes, so LateInitialize is what turns a

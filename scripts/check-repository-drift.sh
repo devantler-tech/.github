@@ -67,9 +67,16 @@ yq -N -o=json -I=0 '
   {
     "repo": (.metadata.annotations["crossplane.io/external-name"] // .metadata.name),
     "resource": .metadata.name,
-    "declared": .spec.forProvider
+    "declared": .spec.forProvider,
+    "bootstrapPages": .spec.initProvider.pages
   }
-' "$render" >"$work/declared.jsonl" || abort "failed to read Repository resources from the render"
+' "$render" | jq -c '
+  if .bootstrapPages != null then
+    if .declared | has("pages") then
+      error("Pages must have one declaration owner")
+    else .declared.pages = .bootstrapPages end
+  else . end | del(.bootstrapPages)
+' >"$work/declared.jsonl" || abort "failed to read Repository resources from the render"
 
 declared_count="$(grep -c . "$work/declared.jsonl" || true)"
 # deploy/ manages the whole org; a render that yields almost nothing means the
@@ -91,7 +98,8 @@ readonly KEY_PROGRAM='
 readonly SETTINGS_KEYS='["allow_auto_merge", "allow_squash_merge", "allow_merge_commit",
   "allow_rebase_merge", "allow_update_branch", "delete_branch_on_merge",
   "web_commit_signoff_required"]'
-readonly SETTINGS_QUERY='query RepositorySettings($owner: String!, $name: String!) {
+SETTINGS_QUERY=$(cat <<'GRAPHQL'
+query RepositorySettings($owner: String!, $name: String!) {
   repository(owner: $owner, name: $name) {
     id nameWithOwner isPrivate
     allow_auto_merge: autoMergeAllowed
@@ -102,7 +110,10 @@ readonly SETTINGS_QUERY='query RepositorySettings($owner: String!, $name: String
     delete_branch_on_merge: deleteBranchOnMerge
     web_commit_signoff_required: webCommitSignoffRequired
   }
-}'
+}
+GRAPHQL
+)
+readonly SETTINGS_QUERY
 
 complete_repository_settings() {
   local entry="$1" live="$2" repo="$3" declared_settings missing settings

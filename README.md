@@ -274,7 +274,10 @@ Workflow patterns match names or filenames
 without case sensitivity. Workflow, state and conclusion filters accept comma or
 pipe separated values.
 
-Invalid or incomplete API responses fail before deletion starts. Transient read
+Invalid or incomplete API responses fail before deletion starts. If run-history
+page totals change, cleanup discards that inventory and tries once more with the
+same creation-time cutoff. Both attempts share partition and rate-limit wait
+budgets; a second inconsistency still fails before deletion. Transient read
 failures receive at most two retries; a deletion is attempted once, requires HTTP
 204 confirmation, and stops cleanup on rejection or an unknown outcome. Confirmed
 deletions are spaced by at least one second; cancellation interrupts that pause.

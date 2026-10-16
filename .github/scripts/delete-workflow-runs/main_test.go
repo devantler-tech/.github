@@ -1128,6 +1128,334 @@ func TestSharedSnapshotRetainsMinimumForEachWorkflow(t *testing.T) {
 	}
 }
 
+func TestChangingHistoryRestartsFromAnEmptyInventory(t *testing.T) {
+	for _, next := range []string{"complete", "changed-again", "malformed", "denied"} {
+		t.Run(next, func(t *testing.T) {
+			var starts, reads, active, joined atomic.Int64
+			var mu sync.Mutex
+			deleted := []string{}
+			cutoff := "1970-01-01T00:00:00Z.." + fixedNow.Add(-time.Second).Format(time.RFC3339)
+			middle := (fixedNow.Add(-time.Second).Unix()) / 2
+			left := "1970-01-01T00:00:00Z.." + time.Unix(middle, 0).UTC().Format(time.RFC3339)
+			right := time.Unix(middle+1, 0).UTC().Format(time.RFC3339) + ".." + fixedNow.Add(-time.Second).Format(time.RFC3339)
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.Method == "DELETE" {
+					mu.Lock()
+					defer mu.Unlock()
+					deleted = append(deleted, r.URL.Path)
+					if active.Load() != 0 || joined.Load() != 7 {
+						t.Error("mutation preceded complete joined inventory")
+					}
+					w.WriteHeader(204)
+					return
+				}
+				if r.URL.Path == fixtureRepo+"/actions/workflows" {
+					_, _ = io.WriteString(w, workflowBody)
+					return
+				}
+				span := r.URL.Query().Get("created")
+				if r.Method != "GET" || r.URL.Path != fixtureRepo+"/actions/runs" || (span != cutoff && span != left && span != right) || r.URL.Query().Get("per_page") != "100" {
+					t.Errorf("unexpected history request: %s %s", r.Method, r.URL.RequestURI())
+					w.WriteHeader(403)
+					return
+				}
+				active.Add(1)
+				defer active.Add(-1)
+				reads.Add(1)
+				page, _ := strconv.Atoi(r.URL.Query().Get("page"))
+				attempt := starts.Load()
+				if span == cutoff && page == 1 {
+					attempt = starts.Add(1)
+				}
+				if attempt > 2 || page < 1 || page > 5 {
+					t.Error("unbounded history restart")
+					w.WriteHeader(403)
+					return
+				}
+				if attempt == 2 && span == cutoff && page == 1 {
+					if active.Load() != 1 || joined.Load() != 7 {
+						t.Error("restart preceded joined first-attempt reads")
+					}
+					switch next {
+					case "complete":
+						_, _ = fmt.Fprintf(w, `{"total_count":1,"workflow_runs":[%s]}`, runJSON(2, "1990-01-01T00:00:00Z", "completed", "success"))
+						return
+					case "malformed":
+						_, _ = io.WriteString(w, `{"total_count":`)
+						return
+					case "denied":
+						w.WriteHeader(403)
+						_, _ = io.WriteString(w, `{"message":"denied"}`)
+						return
+					}
+				}
+				if attempt == 1 {
+					defer joined.Add(1)
+				}
+				if span == cutoff {
+					_, _ = io.WriteString(w, `{"total_count":1000,"workflow_runs":[]}`)
+					return
+				}
+				if span == left {
+					_, _ = fmt.Fprintf(w, `{"total_count":2,"workflow_runs":[%s,%s]}`, runJSON(1, "1990-01-01T00:00:00Z", "completed", "success"), runJSON(2, "1990-01-01T00:00:00Z", "completed", "success"))
+					return
+				}
+				if page > 1 {
+					if err := delay(r.Context(), time.Duration(page)*10*time.Millisecond); err != nil {
+						return
+					}
+				}
+				total := 401
+				if page == 2 {
+					total = 400
+				}
+				rows := []string{}
+				for id := (page-1)*100 + 1; id <= min(page*100, 401); id++ {
+					rows = append(rows, oldRun(id+2))
+				}
+				_, _ = fmt.Fprintf(w, `{"total_count":%d,"workflow_runs":[%s]}`, total, strings.Join(rows, ","))
+			}))
+			defer server.Close()
+			cfg := baseConfig()
+			cfg.minimum, cfg.dryRun = 0, false
+			var log bytes.Buffer
+			err := clean(context.Background(), cfg, server.URL, "offline-fixture-token", server.Client(), fixedNow, &log, func(context.Context, time.Duration) error { return nil })
+			mu.Lock()
+			defer mu.Unlock()
+			expectedReads := int64(8)
+			if next == "changed-again" {
+				expectedReads = 14
+			}
+			if starts.Load() != 2 || reads.Load() != expectedReads || active.Load() != 0 {
+				t.Fatalf("restart bounds: starts=%d reads=%d active=%d err=%v", starts.Load(), reads.Load(), active.Load(), err)
+			}
+			if next == "complete" {
+				if err != nil || !reflect.DeepEqual(deleted, []string{fixtureRepo + "/actions/runs/2"}) || !strings.Contains(log.String(), "Cleanup completed: selected=1 dry-run=false") {
+					t.Fatalf("fresh inventory was not used alone: err=%v deleted=%v log=%q", err, deleted, log.String())
+				}
+			} else if err == nil || len(deleted) != 0 || log.Len() != 0 {
+				t.Fatalf("uncertain fresh inventory reached mutation or receipt: err=%v deleted=%v log=%q", err, deleted, log.String())
+			}
+		})
+	}
+}
+
+func TestOtherHistoryFailuresDoNotRestartInventory(t *testing.T) {
+	for _, failure := range []string{"denied", "malformed", "duplicate", "missing-total"} {
+		t.Run(failure, func(t *testing.T) {
+			var reads, writes atomic.Int64
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.Method == "DELETE" {
+					writes.Add(1)
+					w.WriteHeader(204)
+					return
+				}
+				if r.URL.Path == fixtureRepo+"/actions/workflows" {
+					_, _ = io.WriteString(w, workflowBody)
+					return
+				}
+				reads.Add(1)
+				switch failure {
+				case "denied":
+					w.WriteHeader(403)
+					_, _ = io.WriteString(w, `{"message":"denied"}`)
+				case "malformed":
+					_, _ = io.WriteString(w, `{"total_count":`)
+				case "duplicate":
+					_, _ = fmt.Fprintf(w, `{"total_count":2,"workflow_runs":[%s,%s]}`, oldRun(1), oldRun(1))
+				case "missing-total":
+					_, _ = io.WriteString(w, `{"workflow_runs":[]}`)
+				}
+			}))
+			defer server.Close()
+			cfg := baseConfig()
+			cfg.minimum, cfg.dryRun = 0, false
+			var log bytes.Buffer
+			err := clean(context.Background(), cfg, server.URL, "offline-fixture-token", server.Client(), fixedNow, &log, delay)
+			if err == nil || reads.Load() != 1 || writes.Load() != 0 || log.Len() != 0 {
+				t.Fatalf("non-drift failure was restarted or accepted: err=%v reads=%d writes=%d log=%q", err, reads.Load(), writes.Load(), log.String())
+			}
+		})
+	}
+}
+
+func TestFreshHistorySharesTheRateLimitWaitBudget(t *testing.T) {
+	var roots, reads, writes, waits atomic.Int64
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == "DELETE" {
+			writes.Add(1)
+			w.WriteHeader(204)
+			return
+		}
+		if r.URL.Path == fixtureRepo+"/actions/workflows" {
+			_, _ = io.WriteString(w, workflowBody)
+			return
+		}
+		reads.Add(1)
+		if r.URL.Query().Get("page") == "2" {
+			_, _ = io.WriteString(w, `{"total_count":100,"workflow_runs":[]}`)
+			return
+		}
+		switch roots.Add(1) {
+		case 1, 3:
+			w.Header().Set("Retry-After", strconv.Itoa(int(maxRateLimitRetryDelay/time.Second)))
+			w.WriteHeader(429)
+			_, _ = io.WriteString(w, `{"message":"limited"}`)
+		case 2:
+			rows := []string{}
+			for id := 1; id <= 100; id++ {
+				rows = append(rows, oldRun(id))
+			}
+			_, _ = fmt.Fprintf(w, `{"total_count":101,"workflow_runs":[%s]}`, strings.Join(rows, ","))
+		default:
+			_, _ = fmt.Fprintf(w, `{"total_count":1,"workflow_runs":[%s]}`, oldRun(999))
+		}
+	}))
+	defer server.Close()
+	cfg := baseConfig()
+	cfg.minimum, cfg.dryRun = 0, false
+	var log bytes.Buffer
+	wait := func(ctx context.Context, d time.Duration) error {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		waits.Add(1)
+		if d != maxRateLimitRetryDelay {
+			t.Errorf("unexpected rate-limit wait: %s", d)
+		}
+		return nil
+	}
+	err := clean(context.Background(), cfg, server.URL, "offline-fixture-token", server.Client(), fixedNow, &log, wait)
+	if err == nil || roots.Load() != 3 || reads.Load() != 4 || waits.Load() != 1 || writes.Load() != 0 || log.Len() != 0 {
+		t.Fatalf("fresh history replenished rate-limit budget: err=%v roots=%d reads=%d waits=%d writes=%d log=%q", err, roots.Load(), reads.Load(), waits.Load(), writes.Load(), log.String())
+	}
+}
+
+func TestFreshHistoryCannotReplenishItsPartitionBudget(t *testing.T) {
+	var reads atomic.Int64
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		reads.Add(1)
+		if r.URL.Query().Get("page") == "2" {
+			_, _ = io.WriteString(w, `{"total_count":100,"workflow_runs":[]}`)
+			return
+		}
+		rows := []string{}
+		for id := 1; id <= 100; id++ {
+			rows = append(rows, oldRun(id))
+		}
+		_, _ = fmt.Fprintf(w, `{"total_count":101,"workflow_runs":[%s]}`, strings.Join(rows, ","))
+	}))
+	defer server.Close()
+	a := api{base: server.URL, token: "offline-fixture-token", client: server.Client(), wait: delay, budget: &rateLimitWaitBudget{}}
+	partitions := 9999
+	upper := fixedNow.Add(-time.Second).Unix()
+	_, err := a.listRunSnapshot(context.Background(), fixtureRepo+"/actions/runs", upper, &partitions)
+	if !errors.Is(err, historyChanged) || partitions != 10000 || reads.Load() != 2 {
+		t.Fatalf("first inventory did not consume the remaining partition: err=%v partitions=%d reads=%d", err, partitions, reads.Load())
+	}
+	_, err = a.listRunSnapshot(context.Background(), fixtureRepo+"/actions/runs", upper, &partitions)
+	if err == nil || !strings.Contains(err.Error(), "partition limit") || reads.Load() != 2 {
+		t.Fatalf("fresh inventory replenished the partition budget: err=%v reads=%d", err, reads.Load())
+	}
+}
+
+func TestChangingTotalsCannotHideOtherHistoryFailures(t *testing.T) {
+	for _, defect := range []string{"null-items", "malformed-run", "duplicate", "out-of-range", "cross-partition-duplicate", "malformed-prior", "malformed-later", "denied-later"} {
+		t.Run(defect, func(t *testing.T) {
+			var starts, active, writes atomic.Int64
+			cutoff := fixedNow.Add(-time.Second).Unix()
+			middle := cutoff / 2
+			stamp := func(s int64) string { return time.Unix(s, 0).UTC().Format(time.RFC3339) }
+			whole := stamp(0) + ".." + stamp(cutoff)
+			left := stamp(0) + ".." + stamp(middle)
+			right := stamp(middle+1) + ".." + stamp(cutoff)
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.Method == "DELETE" {
+					writes.Add(1)
+					w.WriteHeader(204)
+					return
+				}
+				if r.URL.Path == fixtureRepo+"/actions/workflows" {
+					_, _ = io.WriteString(w, workflowBody)
+					return
+				}
+				active.Add(1)
+				defer active.Add(-1)
+				page, _ := strconv.Atoi(r.URL.Query().Get("page"))
+				switch r.URL.Query().Get("created") {
+				case whole:
+					if starts.Add(1) > 1 {
+						_, _ = fmt.Fprintf(w, `{"total_count":1,"workflow_runs":[%s]}`, runJSON(2, "1990-01-01T00:00:00Z", "completed", "success"))
+						return
+					}
+					_, _ = io.WriteString(w, `{"total_count":1000,"workflow_runs":[]}`)
+					return
+				case left:
+					_, _ = fmt.Fprintf(w, `{"total_count":2,"workflow_runs":[%s,%s]}`, runJSON(1, "1990-01-01T00:00:00Z", "completed", "success"), runJSON(2, "1990-01-01T00:00:00Z", "completed", "success"))
+					return
+				case right:
+				default:
+					t.Error("unexpected history range")
+					w.WriteHeader(403)
+					return
+				}
+				if page < 1 || page > 5 {
+					t.Error("unexpected history page")
+					w.WriteHeader(403)
+					return
+				}
+				if page == 3 && defect == "denied-later" {
+					w.WriteHeader(403)
+					_, _ = io.WriteString(w, `{"message":"denied"}`)
+					return
+				}
+				if page == 3 && defect == "malformed-later" {
+					_, _ = io.WriteString(w, `{"total_count":`)
+					return
+				}
+				if page == 2 && defect == "null-items" {
+					_, _ = io.WriteString(w, `{"total_count":400,"workflow_runs":null}`)
+					return
+				}
+				rows := []string{}
+				for id := (page-1)*100 + 1; id <= min(page*100, 401); id++ {
+					row := oldRun(id + 2)
+					if page == 2 && id == 101 {
+						switch defect {
+						case "malformed-run":
+							row = `{"id":103}`
+						case "duplicate":
+							row = oldRun(3)
+						case "out-of-range":
+							row = runJSON(103, "1990-01-01T00:00:00Z", "completed", "success")
+						case "cross-partition-duplicate":
+							row = oldRun(1)
+						}
+					}
+					if page == 1 && id == 1 && defect == "malformed-prior" {
+						row = `{"id":3}`
+					}
+					rows = append(rows, row)
+				}
+				total := 401
+				if page == 2 {
+					total = 400
+				}
+				_, _ = fmt.Fprintf(w, `{"total_count":%d,"workflow_runs":[%s]}`, total, strings.Join(rows, ","))
+			}))
+			defer server.Close()
+			cfg := baseConfig()
+			cfg.minimum, cfg.dryRun = 0, false
+			var log bytes.Buffer
+			err := clean(context.Background(), cfg, server.URL, "offline-fixture-token", server.Client(), fixedNow, &log, func(context.Context, time.Duration) error { return nil })
+			server.Close()
+			if err == nil || starts.Load() != 1 || active.Load() != 0 || writes.Load() != 0 || log.Len() != 0 {
+				t.Fatalf("changing totals hid %s: err=%v starts=%d active=%d writes=%d log=%q", defect, err, starts.Load(), active.Load(), writes.Load(), log.String())
+			}
+		})
+	}
+}
+
 // Capped totals are lower bounds. Every descendant must be observed before
 // a partial plan may reach either a mutation or a completion receipt.
 func TestCappedHistoryCannotShrinkBelowItsMinimum(t *testing.T) {
