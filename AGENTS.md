@@ -393,7 +393,9 @@ completes enumeration and individual orphan-parent revalidation before mutation,
 freezes run creation time and partitions searches at GitHub's 1,000-result cap,
 requires every split to recover its own advertised minimum before deletion,
 uses the complete repository snapshot for every workflow's retention decisions,
-retries transient reads twice and never replays a deletion. Newly observed workflows
+retries transient reads twice and never replays a deletion. Changed page totals
+permit one fresh run inventory with the original cutoff and shared partition and
+rate-limit wait budgets. Newly observed workflows
 retain their runs; unknown absence fails closed. Its real HTTP and native-command tests run through the same
 coverage guard, including retention, pagination, partial reads, ambiguous identities,
 lost mutation responses and rejected or unconfirmed deletions. Fixtures use only
