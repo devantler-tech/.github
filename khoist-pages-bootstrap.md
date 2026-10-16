@@ -27,6 +27,13 @@ The intended settings are:
 | Custom domain | `khoist.devantler.tech` |
 | Homepage | `https://khoist.devantler.tech/` |
 
+The bootstrap expectation is declared in `initProvider.pages`. The managed App
+does not enforce it after adoption; the read-only repository drift check still
+compares its build type and domain with the Pages API and fails on a mismatch or
+an unreadable site. The homepage and ordinary repository settings remain enforced
+in `forProvider`. Existing KSail/platform Pages adoptions retain their separate
+observed-state declarations from #232.
+
 There is no branch `source` block for a workflow-built site. A checked-in `CNAME`
 file does not configure an Actions-built site's custom domain.
 
@@ -35,9 +42,11 @@ Confirm `build_type: workflow` and the exact `cname`. The REST response may reta
 a legacy `source` branch even for workflow builds. The pinned provider's
 [`flattenPages` implementation](https://github.com/integrations/terraform-provider-github/blob/v6.13.0/github/resource_github_repository.go)
 normalizes that field to absent for workflow builds, so the declaration must omit it.
-Once those settings match, the reviewed declaration preserves the provider's shape while retaining
-the repository's existing management policies. Verify successful reconciliation
-without Pages permission errors before treating configuration adoption as complete.
+The initial forProvider declaration in #615 still retried a Pages PUT: this new
+site had no observed provider Pages state to match. The bootstrap-only declaration
+avoids taking ongoing Pages write ownership. Verify successful repository
+reconciliation and the independent Pages drift check before treating adoption as
+complete; a matching manifest alone does not prove either result.
 
 ## Publication ownership
 
