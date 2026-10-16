@@ -715,8 +715,11 @@ prove the cleanup selector behavior still tracked in #350 or replace individual 
 **MegaLinter root configuration:** Both production entrypoints and the generated
 read-only projection select the repository-root configuration; GitHub's Docker
 action handler translates its host path into the container mount. The native
-`test-lint-blocks` matrix uses the exact production action to prove real JSON-file
-analysis and configuration-only filtering in root and nested layouts. Absent
+`test-lint-blocks` job executes five independent cases on one runner using the exact
+production action, with fresh synthetic inputs and separate report locations. It
+proves real JSON-file analysis and configuration-only filtering in root and nested
+layouts. A failed preparation or assertion keeps the job failed while later
+uncancelled cases still execute. Absent
 configuration must report the deliberately invalid sibling;
 a configured invalid file must still fail. Malformed YAML must fail in the actual
 pinned loader, not merely through an image or runner error. Keep binding mutations,
