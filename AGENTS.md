@@ -68,7 +68,12 @@ for the architecture, the GitHub App credential setup, and the Observe-first ado
   private metadata into this repository. The `platform` and `ksail` Repository
   resources host workflow-built Pages sites that the GitHub App cannot write, so each declares the
   deprecated `pages` field exactly as GitHub reports it. Declaring the whole list replaces stale
-  provider state and leaves no Pages diff for an update to send (issue #232). After a repository's one-time
+  provider state and leaves no Pages diff for an update to send (issue #232). KHoist's newly
+  bootstrapped site has no observed Pages block, so an enforced declaration instead retries a
+  forbidden Pages PUT. Keep only its Pages bootstrap expectation in `initProvider.pages`, retain
+  the homepage and repository settings in `forProvider`, and verify the Pages expectation through
+  the read-only repository drift check (#614). Do not expand the managed App's Pages permissions.
+  After a repository's one-time
   `archived: true` update lands, move it to exactly `Observe`: GitHub makes archived repositories
   read-only, and retaining `Update` or `LateInitialize` lets newly exposed provider fields create a
   permanent update loop. `tests/repository-update-policy.sh` pins both invariants. Verify
