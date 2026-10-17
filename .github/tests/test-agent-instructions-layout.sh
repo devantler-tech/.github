@@ -8,7 +8,7 @@ check_layout() (
   local target="$1" guide bytes workflow trigger declared actual
   shopt -s nullglob
   [[ -f "$target/AGENTS.md" && ! -L "$target/AGENTS.md" ]] || { fail 'missing regular instruction entrypoint'; exit 1; }
-  bytes="$(wc -c < "$target/AGENTS.md")"
+  bytes="$(wc -c < "$target/AGENTS.md")" || { fail 'unreadable instruction size'; exit 1; }
   ((bytes <= 32268)) || { fail 'instruction entrypoint exceeds 32 KiB with 500 bytes of headroom'; exit 1; }
   grep -qF 'Read each guide before doing the work its row names.' "$target/AGENTS.md" || { fail 'missing read-before instruction'; exit 1; }
   for guide in "${guides[@]}"; do
@@ -26,14 +26,14 @@ check_layout() (
       elif type == "array" and all(type == "string") then (index("workflow_call") != null) | tostring
       else error("invalid workflow trigger") end')" || { fail 'unreadable workflow triggers'; exit 1; }
     case "$trigger" in
-      false) actual+="$(basename "$workflow")"$'\n' ;;
+      false) actual+="${workflow##*/}"$'\n' ;;
       true) ;;
       *) fail 'unreadable workflow triggers'; exit 1 ;;
     esac
   done
-  actual="$(printf '%s' "$actual" | LC_ALL=C sort)"
+  actual="$(printf '%s' "$actual" | LC_ALL=C sort)" || { fail 'unreadable workflow inventory'; exit 1; }
   # shellcheck disable=SC2016 # Backticks are literal Markdown code delimiters.
-  declared="$(sed -En 's/^[|] `([a-z0-9-]+[.]ya?ml)` [|].*$/\1/p' "$target/.github/agent-guides/catalogue.md" | LC_ALL=C sort)"
+  declared="$(sed -En 's/^[|] `([a-z0-9-]+[.]ya?ml)` [|].*$/\1/p' "$target/.github/agent-guides/catalogue.md" | LC_ALL=C sort)" || { fail 'unreadable workflow inventory'; exit 1; }
   [[ -n "$actual" && "$declared" == "$actual" ]] || { fail 'repository workflow layout differs from actual triggers'; exit 1; }
 )
 check_layout "$root"
@@ -92,4 +92,17 @@ chmod +x "$work/bin/yq"
 reset_fixture
 if REAL_YQ="$real_yq" PATH="$work/bin:$PATH" check_layout "$work/bad" > "$work/output" 2>&1; then fail 'accepted plausible output from a failed reader'; exit 1; fi
 grep -qF 'unreadable workflow triggers' "$work/output"
-printf 'PASS: instruction size, guide discovery, retained anchors and repository workflow layout; 17 negative controls\n'
+rm "$work/bin/yq"
+for reader in wc sed sort; do
+  real_reader="$(command -v "$reader")"
+  cat > "$work/bin/$reader" <<'WRAPPER'
+#!/usr/bin/env bash
+"$REAL_READER" "$@"
+exit 42
+WRAPPER
+  chmod +x "$work/bin/$reader"
+  if REAL_READER="$real_reader" PATH="$work/bin:$PATH" check_layout "$work/bad" > "$work/output" 2>&1; then fail "accepted plausible output from failed $reader"; exit 1; fi
+  grep -qF 'unreadable' "$work/output"
+  rm "$work/bin/$reader"
+done
+printf 'PASS: instruction size, guide discovery, retained anchors and repository workflow layout; 20 negative controls\n'
