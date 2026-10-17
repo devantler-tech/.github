@@ -457,9 +457,25 @@ func (a api) listRuns(ctx context.Context, path string, now time.Time) ([]json.R
 	return items, err
 }
 
+// recentWindow is the trailing span a capped whole-history search splits off first.
+// Cleanup histories are usually densest in their latest day, and halving the whole
+// epoch range reaches that day only after about fifteen capped searches.
+const recentWindow = 24 * 60 * 60
+
+// splitPoint returns the last second of a capped range's left half. The whole-history
+// search separates its trailing day; every other range, and a history shorter than one
+// day, is bisected. Both halves are always visited.
+func splitPoint(lower, upper, snapshotUpper int64) int64 {
+	if lower == 0 && upper == snapshotUpper && upper-recentWindow >= lower {
+		return upper - recentWindow
+	}
+	return lower + (upper-lower)/2
+}
+
 // listRunSnapshot splits capped searches into disjoint second ranges. Every
 // attempt starts with empty results; uncertain or overflowing ranges fail closed.
 func (a api) listRunSnapshot(ctx context.Context, path string, upper int64, partitions *int) ([]json.RawMessage, error) {
+	snapshotUpper := upper
 	result := []json.RawMessage{}
 	seen := map[int64]bool{}
 	var visit func(int64, int64) error
@@ -476,7 +492,7 @@ func (a api) listRunSnapshot(ctx context.Context, path string, upper int64, part
 				return errors.New("run search cannot prove completeness within one second")
 			}
 			before := len(result)
-			middle := lower + (upper-lower)/2
+			middle := splitPoint(lower, upper, snapshotUpper)
 			if err := visit(lower, middle); err != nil {
 				return err
 			}
