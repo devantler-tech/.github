@@ -322,7 +322,7 @@ jobs:
         # nonessential notification hooks so a bare issue reference intended for
         # another repository cannot turn an otherwise-published release red.
         run: >-
-          npx semantic-release@25.0.3
+          npx semantic-release@25.0.9
           ${{ inputs.disable-issue-side-effects && '--success false --fail false' || '' }}
           ${{ inputs.dry-run && '--dry-run' || '' }}
         env:
@@ -384,7 +384,7 @@ jobs:
           }
 
       - name: 📦 Acquire pinned release dependency
-        run: npx --yes semantic-release@25.0.3 --version
+        run: npx --yes semantic-release@25.0.9 --version
 
       - name: 🧪 Evaluate release decisions without credentials
         env:

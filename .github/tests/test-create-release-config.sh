@@ -16,7 +16,7 @@ fi
 release_run="$(
   yq -r '.jobs.release.steps[] | select(.name == "🎉 Release") | .run' "$workflow"
 )"
-expected_run="npx semantic-release@25.0.3 \${{ inputs.disable-issue-side-effects && '--success false --fail false' || '' }} \${{ inputs.dry-run && '--dry-run' || '' }}"
+expected_run="npx semantic-release@25.0.9 \${{ inputs.disable-issue-side-effects && '--success false --fail false' || '' }} \${{ inputs.dry-run && '--dry-run' || '' }}"
 if [[ "$release_run" != "$expected_run" ]]; then
   echo "create-release must disable semantic-release success and fail hooks when opted in" >&2
   exit 1

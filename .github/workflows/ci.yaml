@@ -4226,7 +4226,7 @@ jobs:
           node-version: 22
 
       - name: 📦 Acquire pinned release dependency for controls
-        run: npx --yes semantic-release@25.0.3 --version
+        run: npx --yes semantic-release@25.0.9 --version
 
       - name: 🧪 Verify release-decision regressions fail
         run: bash .github/tests/test-create-release-fixture-controls.sh
@@ -4581,7 +4581,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        go: ['1.25.14', '1.26.8', '1.27.1']
+        go: ['1.25.14', '1.26.9', '1.27.2']
         fixture: [govulncheck-allowlist, govulncheck-generics]
     runs-on: ubuntu-latest
     permissions:
@@ -4628,7 +4628,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        go: ['1.25.14', '1.26.8', '1.27.1']
+        go: ['1.25.14', '1.26.9', '1.27.2']
         fixture: [govulncheck-allowlist, govulncheck-generics]
     runs-on: ubuntu-latest
     permissions:
