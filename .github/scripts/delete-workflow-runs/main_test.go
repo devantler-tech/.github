@@ -1424,17 +1424,17 @@ func TestChangingTotalsCannotHideOtherHistoryFailures(t *testing.T) {
 				}
 				rows := []string{}
 				for id := (page-1)*100 + 1; id <= min(page*100, 401); id++ {
-					row := oldRun(id + 2)
+					row := recentRun(id + 2)
 					if page == 2 && id == 101 {
 						switch defect {
 						case "malformed-run":
 							row = `{"id":103}`
 						case "duplicate":
-							row = oldRun(3)
+							row = recentRun(3)
 						case "out-of-range":
 							row = runJSON(103, "1990-01-01T00:00:00Z", "completed", "success")
 						case "cross-partition-duplicate":
-							row = oldRun(1)
+							row = recentRun(1)
 						}
 					}
 					if page == 1 && id == 1 && defect == "malformed-prior" {
