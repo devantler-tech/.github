@@ -17,7 +17,7 @@ jq '.plugins |= map(select((if type == "array" then .[0] else . end) != "@semant
 run="$(yq -r '.jobs.release.steps[] | select(.name == "🎉 Release") | .run' "$workflow")"
 hooks="\${{ inputs.disable-issue-side-effects && '--success false --fail false' || '' }}"
 dry="\${{ inputs.dry-run && '--dry-run' || '' }}"
-[[ "$run" == "npx semantic-release@25.0.3 $hooks $dry" ]] || fail 'unsupported shipped release command'
+[[ "$run" == "npx semantic-release@25.0.9 $hooks $dry" ]] || fail 'unsupported shipped release command'
 run="${run//"$hooks"/}"
 run="${run//"$dry"/--dry-run}"
 read -r -a command_parts <<< "$run"

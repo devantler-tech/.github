@@ -1,0 +1,62 @@
+# Catalogue tested invariants
+
+Read this guide before changing catalogue implementations or tests. Commands and code paths are relative to the repository root.
+
+**Tested invariants (don't silently regress):** some behaviours of a workflow are a *contract* consumers depend on, not an implementation detail — `validate-go-project.yaml`'s vuln-scan honoring a `.govulncheck-allow.txt` allowlist is the canonical one (it was silently lost across `v5.4.1`–`v5.4.4` when the gate swapped to an action with no `allow-file` input, wedging every consumer that had risk-accepted an advisory). These contracts are guarded by self-tests in `ci.yaml` (`test-govulncheck-allowlist-honored` / `test-govulncheck-strict-blocks` / `test-govulncheck-action-lockstep`, against the `.github/tests/govulncheck-allowlist/` fixture). **Any swap of the vuln-scan implementation — including back to the official `golang/govulncheck-action` once it gains an `allow-file`-equivalent input — must keep that guard green**; update the self-test in lockstep, never delete it to make a swap pass.
+
+**Scanner compatibility and verdicts:** the workflow now resolves `.github/actions/govulncheck` from its own exact commit. That internal action owns the single reviewed scanner-version pin and the allowlist evaluator. Hosted strict and allowlisted fixtures cover Go 1.25, 1.26, and 1.27, including a generic method-set regression that crashes the old scanner. The strict fixture must report `verdict=blocking` and the expected advisory; an operational error has no verdict and must never count as a successful negative test. `test-govulncheck-scan.sh` covers result parsing and failure boundaries, and `test-govulncheck-wiring.sh` keeps the production and fixture implementations aligned.
+
+**Vulnerability-scan timeout retry (tested invariant):** a job that hits its own `timeout-minutes` ends `cancelled`, and a cancelled required check is never rerun on a Dependabot PR, so auto-merge waits forever (devantler-tech/actions#1097). `validate-go-project.yaml`'s scan step therefore carries its own deadline with `continue-on-error`, a classifier step retries it exactly once when the elapsed time shows it ran out of time (first stopping the timed-out `govulncheck`, which a step timeout leaves running as an orphan), and fails the job at once on any other outcome (a finding is never retried). The job ceiling covers two attempts plus setup-go's post-job cache save, so it cannot pre-empt the retry. `test-govulncheck-timeout-retry.sh` pins the structure and drives the classifier, `test-govulncheck-timeout-retry-blocks.sh` proves each assertion fires, and the `test-govulncheck-timeout-retry-live` job proves GitHub's step-timeout semantics on a step that deliberately outlives a 1-minute deadline, including that its child process survives the step and is stopped before the retry. Keep the scan and retry steps' `uses`/`with`/`timeout-minutes` identical.
+
+**Signed auto-fixes are ON by default, including the org-required direct run (tested invariant):** `validate-go-project.yaml` gates every fixer export and apply job on ONE decision, `needs.changes.outputs.signed-fixes` — `inputs.apply-signed-fixes == true || (toJSON(inputs) == '{}' && contains(github.workflow_ref, '/.github/workflows/validate-go-project.yaml@'))`. The second clause is load-bearing: outside `workflow_call` the `inputs` context is EMPTY, so a gate written on the input alone can never enable the org-required direct run — the one path that produces auto-fix commits on `ksail` — and no `default:` reaches it (measured on devantler-tech/actions#1129: direct run `inputs={}` with its own path in `workflow_ref`; a called run carries every declared input and the CALLER's ref — the empty-inputs half is what keeps an explicit `false` honoured, since null, false and '' compare equal). ⚠️ The direct path's EFFECT is proven only by ksail's first Go pull request after the pin bump; devantler-tech/actions#1129 proved the signer through workflow_call. `.github/tests/test-validate-go-signed-fixes-contract.sh` pins the decision expression, the `true` default, `needs: changes` on every apply job, and both states instantiated in `ci.yaml` (`apply-signed-fixes: false` on the read-only self-tests). A caller opts out with `apply-signed-fixes: false`; never re-gate on the raw input (devantler-tech/actions#1075).
+
+**Shared Go fix exporter (tested invariant):** The three Go fixer lanes resolve `.github/actions/prepare-fixes` from the workflow's exact commit. The composite removes its reserved helper checkout before capturing a complete, root-relative patch. Each caller supplies its existing upload eligibility decision once and reuses the returned decision for read-only failure. Keep the real-Git patch replay, recovery-gate mutations, and hosted `test-prepare-fixes` scenarios green when changing this boundary. Manual workflow patches remain complete and never authorize a signing job.
+
+**Catalogue self-test credentials:** Required CI follows every declared CI job through its
+reusable workflows and local composite actions. A possibly reached leaf has no repository-write
+authority or external secret; reporting permissions and read-only OIDC proofs remain classified
+separately. Dry-run and skipped-dependency proofs use call-specific inputs and complete source
+observations. Action metadata has one regular-file implementation with unambiguous path casing, bound to the
+actual immutable checkout through verified commit/tree/blob identities and exact directory spelling.
+Source and checkout paths use measured ASCII spelling, and local metadata crosses no symlink component.
+A possibly skipped or ignored composite installation establishes no sibling checkout proof. Missing, mutable or
+unclassified sources and partial expression evidence fail closed as UNKNOWN. Keep both
+`test-catalogue-credentials.sh` and its real-source mutation controls unconditional within
+`lint-ci-coverage-parity`, whose result gates the required check. This admission guard does not
+prove the cleanup selector behavior still tracked in #350 or replace individual user-path tests.
+
+**MegaLinter Go toolchain:** host-side setup does not replace the Docker action’s compiler. The production Go workflow, its generated read-only projection, and the whole-repository lint workflow select the exact `setup-go` output through a fixed named `GOTOOLCHAIN`, without `+auto`. The whole-repository workflow keeps `local` when no Go declaration is supplied. `test-megalinter-go-toolchain.sh` rejects binding substitutions; native positive Go and whole-repository fixtures prove real scanner analysis. Preserve the enabled scanners and fixer credential boundary.
+
+**MegaLinter root configuration:** Both production entrypoints and the generated
+read-only projection select the repository-root configuration; GitHub's Docker
+action handler translates its host path into the container mount. The native
+`test-lint-blocks` job executes five independent cases on one runner using the exact
+production action, with fresh synthetic inputs and separate report locations. It
+proves real JSON-file analysis and configuration-only filtering in root and nested
+layouts. A failed preparation or assertion keeps the job failed while later
+uncancelled cases still execute. Absent
+configuration must report the deliberately invalid sibling;
+a configured invalid file must still fail. Malformed YAML must fail in the actual
+pinned loader, not merely through an image or runner error. Keep binding mutations,
+per-file receipt controls and immutable image-pin parity required. The synthetic
+fixture narrows only its own JSON checker; production scanner scope is unchanged.
+
+**Fixer-lane credential boundary (tested invariant):** `validate-go-project.yaml`'s three fixer lanes (`tidy`, `golangci-lint`, `lint` — every job that exports `fixes-created`) run tooling configured by the pull request under review, so they hold no credential that can write to the branch: `contents: read`, no App-token step, no App private key, no secret other than `GITHUB_TOKEN` (every expression spelling, case-insensitively, matched on complete scalars, and including the workflow-level `env:` every job inherits), and `persist-credentials: false` on every checkout. The commit is made on a fresh runner by `apply-signed-fixes.yaml`. `ci.yaml` asserts this with `.github/tests/test-fixer-credential-boundary.sh` (workflow- and job-scoped, so `lint.yaml` reuses it) and proves each assertion fires for its own reason with `test-fixer-credential-boundary-ablation.sh`; the lane list is derived from the workflow, so a new fixer lane is covered by construction. **A lane reshape must keep that guard green** — never move a write credential back into a fixer lane to make a step simpler.
+
+**gh installer digest pinning (tested invariant):** `.scripts/ensure-gh-skill.sh` verifies a downloaded cli/cli archive against `.scripts/gh-release-digests.tsv`, a reviewed version-to-digest manifest, in addition to attestation and the release-served checksum. That manifest is the only gate that rejects a **same-or-newer** substituted archive: attestation cannot tell cli/cli releases apart, the checksums file ships from the same mutable release, and the post-install version assertion is a floor rather than an equality. Enforcement is per row — an unpinned version warns and falls through, so a consumer passing a custom `gh-version` is never blocked. `test-ensure-gh-skill-script` guards it (cases 8e–8j: substitution rejected, matching digest installs, unpinned warns, malformed row fails closed); keep those green and refresh rows with `bash .scripts/refresh-gh-digests.sh <version>` rather than by hand.
+
+**Applied-fixes failure handling (tested invariant):** the signer requires a valid head-commit message before deciding that a signature check is unnecessary. Failed Git headline or head-identity reads fail the job before a commit request. `test-apply-signed-fixes-behavior.sh` executes the workflow's actual inline steps against disposable Git repositories and an offline API fixture, covering both signature paths, exact payload bytes, expected-head binding, no-change and replacement runs, patch conflicts, and operational errors. Changes are committed to a temporary branch identified by the check-run ID; only an exact signed commit with the original head as its single parent can advance the consumer branch. One atomic, non-forced ref transaction compares both tips and deletes the staging ref. Cleanup deletes only an acknowledged staging tip and retains uncertain or concurrently changed refs. Temporary branches can trigger ordinary consumer workflows; cancellation can leave a ref requiring later inspection. Its ablation suite detects missing verification, removed expected heads, blind cleanup, forced updates and softened read failures. Test helpers stay outside the consumer tree; the privileged job still executes no checked-out code.
+
+**Task menu** (1–2 items/run; high care):
+
+The catalogue-owned `refresh-gh-digests.yaml` updater runs only from reviewed main, validates the
+complete manifest before minting a repository-scoped App token, and opens a signed draft limited
+to the manifest. Preserve its source/credential/path mutations and the fail-closed retained-pin
+regression. The read-only native CI preparation supplies actual release checksums; it is not
+proof that a draft update merged or that a consumer installed the reviewed pinned archive.
+
+- **Triage** new issues/PRs; one insightful comment on the oldest un-commented item.
+- **Action/version hygiene:** keep third-party actions pinned & aligned; bundle Dependabot `github_actions` PRs; flag majors. (There are no first-party self-reference pins to bump — self-references resolve via the same-commit self-checkout.)
+- **Workflow health & dedup:** consolidate duplicated steps, split overgrown jobs, improve caching, remove dead workflows — backward-compatible, one concern per draft PR, `actionlint`-clean.
+- **Consistency** between actions and reusable workflows and with how consumer repos call them.
+- **Maintain your own PRs:** fix CI you caused, resolve conflicts.
