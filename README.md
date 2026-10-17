@@ -263,7 +263,9 @@ Every workflow's retention decision uses that same complete repository-run snaps
 avoiding repeated scans of the same history through separate workflow endpoints.
 Run enumeration ends at the last complete second before cleanup starts, so new
 runs wait for the next cleanup instead of shifting pagination. Searches reaching
-GitHub's 1,000-result limit are split into disjoint creation-time ranges. Each split
+GitHub's 1,000-result limit are split into disjoint creation-time ranges: the whole
+history first separates its latest day, where runs are usually densest, and every other
+range is halved. Each split
 must recover at least the count its parent advertised before cleanup may proceed.
 A range that still reaches the limit within one second fails rather than skipping history.
 The newest `minimum-runs` matching old runs are retained in addition to recent runs.
