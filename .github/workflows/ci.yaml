@@ -3227,6 +3227,9 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: 📋 Check agent instruction layout
+        run: bash .github/tests/test-agent-instructions-layout.sh
+
       - name: 📋 Check README ↔ action.yaml input/output parity
         shell: bash
         run: |
