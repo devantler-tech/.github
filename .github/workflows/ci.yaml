@@ -6252,7 +6252,7 @@ jobs:
       - name: 🧪 Test platform merge-queue ruleset
         run: bash tests/platform-merge-queue-ruleset.sh
 
-      - name: 🧪 Test catalogue CodeQL findings protection
+      - name: 🧪 Test organization CodeQL observation
         run: bash tests/code-scanning-ruleset.sh
 
       - name: 🧪 Test independent Monorepo CI aggregate ruleset

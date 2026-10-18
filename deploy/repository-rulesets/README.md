@@ -17,7 +17,6 @@ observes.
 
 | File | Repo | Ruleset | Policy |
 |---|---|---|---|
-| `require-codeql-findings-on-dotgithub.yaml` | `.github` | Require CodeQL findings | Managed (net-new; Observe + Create + Update + LateInitialize; never Delete) |
 | `require-cla-gate-on-world-at-ruin.yaml` | `world-at-ruin` | Require CLA gate | Managed (net-new; Observe + Create + Update + LateInitialize) |
 | `require-merge-queue-on-platform.yaml` | `platform` | Require merge queue | Managed import (Observe + Update; full ruleset backfilled, no LateInitialize, no Delete) |
 
@@ -28,29 +27,6 @@ creates it on first reconcile. Keep `LateInitialize` on a net-new ruleset: witho
 provider never writes the created id back as the external-name, so a provider restart would
 create a second copy.
 `../organization-rulesets/protect-release-tags.yaml` is the org-level precedent for that shape.
-
-## Catalogue CodeQL protection
-
-The separate catalogue rule requires `CodeQL`, blocks security findings rated high
-or critical and other findings rated error, and targets only the default branch.
-It declares no bypass actors. It reuses the existing CodeQL setup and analyses;
-it neither enables another product/license nor adds a workflow or runner. The
-existing native Code Quality rule retains its independent `all` threshold.
-
-The [released provider schema](https://github.com/crossplane-contrib/provider-upjet-github/blob/a211e095e2fe49c477836acec2ad4a28aa60e030/package/crds/repo.github.m.upbound.io_repositoryrulesets.yaml)
-and its namespaced example expose `requiredCodeScanning`. The nested field
-descriptions do not enforce cardinality or threshold enums, so
-`tests/code-scanning-ruleset.sh` checks the exact rendered policy and rejection
-controls in the existing required manifest job. Do not round-trip the unsupported
-Code Quality or secret-resolution fields through this resource.
-
-GitHub's [native merge protection](https://docs.github.com/en/code-security/concepts/code-scanning/merge-protection)
-judges findings intersecting the pull-request diff. It does not cover merge-queue
-groups or Dependabot PRs analyzed by default setup. Existing dependency-review and
-other required checks remain necessary; this rule cannot stand in for them or for
-remediation of old default-branch findings. A configured tool is not successful
-current analysis. Issue #636 retains reconciliation, effective default-branch
-readback and native clean/refusal evidence until those are actually observed.
 
 An **imported** ruleset promoted past Observe (today only `require-merge-queue-on-platform.yaml`)
 takes `Observe` + `Update` and nothing else: no `Create`, because it already exists, and no

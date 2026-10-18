@@ -4,14 +4,14 @@ root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
 fail() { printf 'code-scanning-ruleset: %s\n' "$*" >&2; return 1; }
-expected='{"managementPolicies":["Observe","Create","Update","LateInitialize"],"forProvider":{"repository":".github","name":"Require CodeQL findings","target":"branch","enforcement":"active","bypassActors":[],"conditions":[{"refName":[{"include":["~DEFAULT_BRANCH"],"exclude":[]}]}],"rules":[{"requiredCodeScanning":[{"requiredCodeScanningTool":[{"tool":"CodeQL","alertsThreshold":"errors","securityAlertsThreshold":"high_or_higher"}]}]}]},"providerConfigRef":{"kind":"ProviderConfig","name":"default"}}'
+expected='{"managementPolicies":["Observe"],"forProvider":{"name":"Require code scanning results","target":"branch","enforcement":"active"},"providerConfigRef":{"kind":"ProviderConfig","name":"default"}}'
 check_rule() {
   local observed
-  observed="$(yq -o=json -I=0 '.' "$1" | jq -s '[.[] | select(.kind == "RepositoryRuleset" and .metadata.name == "dotgithub-require-codeql-findings")]')" || { fail 'unreadable render'; return 1; }
+  observed="$(yq -o=json -I=0 '.' "$1" | jq -s '[.[] | select(.kind == "OrganizationRuleset" and .metadata.name == "require-code-scanning-results")]')" || { fail 'unreadable render'; return 1; }
   jq -e --argjson expected "$expected" '
-    length == 1 and .[0].apiVersion == "repo.github.m.upbound.io/v1alpha1"
+    length == 1 and .[0].apiVersion == "enterprise.github.m.upbound.io/v1alpha1"
     and .[0].spec == $expected
-    and (.[0].metadata.annotations["crossplane.io/external-name"] == null)
+    and (.[0].metadata.annotations["crossplane.io/external-name"] == "6455804")
   ' <<< "$observed" >/dev/null || { fail 'unexpected CodeQL policy'; return 1; }
 }
 check_ci() {
@@ -26,22 +26,22 @@ check_rule "$work/render.yaml"
 check_ci "$root/.github/workflows/ci.yaml"
 # Exercise the rendered policy, not a second synthetic resource.
 mutations=(
-  'del(.spec.forProvider.rules)'
-  '.spec.forProvider.repository = "another-repository"'
-  '.spec.forProvider.enforcement = "disabled"'
-  '.spec.forProvider.target = "tag"'
-  '.spec.forProvider.conditions[0].refName[0].include = ["~ALL"]'
-  '.spec.forProvider.conditions[0].refName[0].exclude = ["main"]'
-  '.spec.forProvider.bypassActors = [{"actorType":"OrganizationAdmin","bypassMode":"always"}]'
-  '.spec.forProvider.rules[0].requiredCodeScanning[0].requiredCodeScanningTool[0].tool = "another-tool"'
-  '.spec.forProvider.rules[0].requiredCodeScanning[0].requiredCodeScanningTool[0].alertsThreshold = "none"'
-  '.spec.forProvider.rules[0].requiredCodeScanning[0].requiredCodeScanningTool[0].securityAlertsThreshold = "none"'
-  '.spec.forProvider.rules[0].requiredCodeScanning += .spec.forProvider.rules[0].requiredCodeScanning'
-  '.spec.forProvider.rules[0].requiredCodeScanning[0].requiredCodeScanningTool = []'
+  'del(.spec.managementPolicies)'
+  '.spec.managementPolicies += ["Update"]'
+  '.spec.managementPolicies += ["Create"]'
   '.spec.managementPolicies += ["Delete"]'
+  '.spec.managementPolicies += ["LateInitialize"]'
   '.metadata.annotations."crossplane.io/external-name" = "123"'
+  'del(.metadata.annotations."crossplane.io/external-name")'
+  '.spec.forProvider.name = "another-rule"'
+  '.spec.forProvider.target = "tag"'
+  '.spec.forProvider.enforcement = "disabled"'
+  '.spec.forProvider.rules = [{"deletion":true}]'
+  '.spec.forProvider.conditions = [{"repositoryName":[{"include":["~ALL"],"exclude":[]}]}]'
+  '.apiVersion = "repo.github.m.upbound.io/v1alpha1"'
+  '.spec.providerConfigRef.name = "another-provider"'
 )
-selector='select(.kind == "RepositoryRuleset" and .metadata.name == "dotgithub-require-codeql-findings")'
+selector='select(.kind == "OrganizationRuleset" and .metadata.name == "require-code-scanning-results")'
 for mutation in "${mutations[@]}"; do
   yq "($selector) |= ($mutation)" "$work/render.yaml" > "$work/bad.yaml"
   if check_rule "$work/bad.yaml" > "$work/diagnostic" 2>&1; then fail "accepted mutation $mutation"; exit 1; fi
@@ -66,4 +66,4 @@ for mutation in \
   if check_ci "$work/ci.yaml" > "$work/diagnostic" 2>&1; then fail 'accepted weakened CI guard'; exit 1; fi
   grep -qF 'missing unconditional CI guard' "$work/diagnostic"
 done
-printf 'code-scanning-ruleset: PASS; exact rendered policy and 18 rejection controls\n'
+printf 'code-scanning-ruleset: PASS; exact rendered Observe-only import and 18 rejection controls\n'
