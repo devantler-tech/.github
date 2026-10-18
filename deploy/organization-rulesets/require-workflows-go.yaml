@@ -20,6 +20,8 @@ spec:
     conditions:
       - refName:
           - include: ["~DEFAULT_BRANCH"]
+            # Terraform requires the empty list, omitted by the read-only observation.
+            exclude: []
         repositoryProperty:
           - include:
               - name: language

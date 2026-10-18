@@ -8,7 +8,8 @@ fail() {
   return 1
 }
 # The captured complete live policy is independent of the desired manifest.
-# Permit only its reviewed source-repository replacement and safe ID-less bypass encoding.
+# Permit only its reviewed source-repository replacement and provider-required
+# encodings of an ID-less bypass and the observed absence of ref exclusions.
 fixture="$root/tests/fixtures/go-workflow-ruleset-observed.json"
 fixture_hash="$(sha256sum "$fixture" | cut -d ' ' -f 1)"
 [[ "$fixture_hash" == 70b116550ab2adaf1d55a5e8a622536e12245ea65387817713045f3adfc44c66 ]] || {
@@ -23,6 +24,7 @@ expected="$(jq -ce '
     managementPolicies:["Observe","Update"],
     forProvider:(.forProvider
       | .bypassActors |= map(if .actorType == "OrganizationAdmin" and .actorId == 0 then del(.actorId) else . end)
+      | .conditions[0].refName[0].exclude = []
       | .rules[0].requiredWorkflows[0].requiredWorkflow[0].repositoryId = 933213756),
     providerConfigRef:{kind:"ProviderConfig",name:"default"}
   } end' "$fixture")"
@@ -88,6 +90,8 @@ mutations=(
   'del(.spec.forProvider.conditions)'
   '.spec.forProvider.conditions = [{"repositoryName":[{"include":["~ALL"],"exclude":[]}]}]'
   '.spec.forProvider.conditions[0].refName[0].include = ["~ALL"]'
+  'del(.spec.forProvider.conditions[0].refName[0].exclude)'
+  '.spec.forProvider.conditions[0].refName[0].exclude = ["~DEFAULT_BRANCH"]'
   '.spec.forProvider.conditions[0].repositoryProperty[0].include[0].name = "other"'
   '.spec.forProvider.conditions[0].repositoryProperty[0].include[0].propertyValues = ["Rust"]'
   '.spec.forProvider.conditions[0].repositoryProperty[0].include[0].source = "custom"'
