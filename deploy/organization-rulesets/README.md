@@ -45,6 +45,7 @@ verb — e.g. `require-pull-request.yaml`). Repo-scoped rulesets live next door 
 | `require-dotgithub-deploy-guards.yaml` | **Require workflow - .github deploy guards** (net-new) | Managed (Create) — target only this repository and run the `deploy/` release-contract and deletion validators from its reviewed `main` |
 | `require-go-template-validation.yaml` | **Require workflow - Go template validation** (net-new) | Managed (Create) — target only go-template and require the canonical Go validation workflow from this repository's reviewed `main`, restoring the gate the property-conditioned UI ruleset stopped applying there |
 | `require-dotnet-template-tests.yaml` | **Require workflow - .NET template tests** (net-new) | Managed (Create) — target only dotnet-template and require the canonical .NET tests workflow from this repository's reviewed `main`, supplying the build and test gate the UI ruleset does not apply there |
+| `require-metadata-code-scanning-results.yaml` | **Require code scanning results - Metadata** (net-new) | Managed (Create) — centrally require CodeQL with both finding thresholds at all on `.github` and `monorepo`; no bypass actors |
 | (in `../repository-rulesets/`) `require-merge-queue-on-platform.yaml` | `platform` "Require merge queue" | Observe + Update (managed import, full ruleset backfilled) |
 
 The 11 imported org rulesets: Block force pushes · Require a pull request before
@@ -55,24 +56,26 @@ branch names · Restrict commit metadata · Require workflows (DependencyReview)
 ### Organization CodeQL observation
 
 `require-code-scanning-results.yaml` imports the existing organization rule
-`6455804` with Observe only. Native inherited reads confirm CodeQL with both
-finding thresholds at `all`, the default-branch ref selector and the existing
-OrganizationAdmin bypass. Those repository views omit organization repository
-selection conditions, and the existing identity cannot read the organization
-detail. Do not infer an exclusion or replace the selector with `~ALL`.
+`6455804` with Observe only. Reconciliation exposed its complete repository-property
+selector: Type is Application, Library, Marketplace or Infrastructure. Its default-branch
+selector, CodeQL thresholds at `all` and existing OrganizationAdmin bypass are observed.
+The import remains identity-only and read-only; it does not round-trip the policy.
+`tests/code-scanning-ruleset.sh` preserves that boundary in required CI.
 
-Observe-first reconciliation must expose the complete `status.atProvider`
-selectors, bypasses and rules before a reviewed managed-adoption change. No
-Create, Update, LateInitialize or Delete permission is granted here; this import
-changes neither targeting nor existing protection. `tests/code-scanning-ruleset.sh`
-checks its exact rendered identity and read-only lifecycle in required CI.
+`.github` and `monorepo` have Type Metadata and successful default-branch CodeQL
+analysis. The new `require-metadata-code-scanning-results.yaml` complements the
+existing policy **at organization scope**, targeting just those repository names and
+the default branch. Both finding thresholds are `all`, with no bypass actors and no
+Delete permission. It does not enable a scanner, license or optional AI feature.
+The whole Metadata category is not selected: category membership alone does not
+prove applicable source and current analysis. Renames and new applicable repositories
+must be included in adoption-drift checks.
 
-Prefer organization rulesets wherever the feature applies. Issue #636 retains
-full observation, repository-scope comparison, supported organization adoption
-and native positive/refusal verification. The catalogue does not currently
-inherit this rule; no repository duplicate is introduced to hide that gap.
-The existing organization Code Quality rule remains separate and is not
-round-tripped through this provider's unsupported schema.
+Issue #636 retains provider creation, native organization-rule and inherited-scope
+readback, plus current-head positive and qualifying-finding refusal verification.
+A merged manifest alone does not prove effective protection. The existing organization
+Code Quality rule remains separate and is not round-tripped through this provider's
+unsupported schema. No repository duplicate is introduced.
 
 ### Retained signing-rule record
 

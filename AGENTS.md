@@ -130,7 +130,11 @@ The existing organization CodeQL finding rule is imported Observe-only. Run
 lifecycle or CI integration. Full observed selectors, thresholds and bypasses
 are required before any managed adoption; see
 [`deploy/organization-rulesets/README.md`](deploy/organization-rulesets/README.md)
-and the remaining observation and coverage gates in #636.
+and the remaining observation and coverage gates in #636. Run
+`bash tests/metadata-code-scanning-ruleset.sh` after changing the separate
+organization rule for `.github` and `monorepo`; preserve its exact verified scope,
+all finding thresholds, no bypasses and non-deleting lifecycle. Native creation
+and positive/refusal evidence remain separate delivery gates.
 
 **Validate before every PR** (the sole required check, `CI - Required Checks`, gates on this):
 
