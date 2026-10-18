@@ -1,0 +1,18 @@
+# Observe the existing rule before migrating its legacy workflow source (#237).
+# Keep identity-only forProvider and Observe only until the complete rules,
+# repository selectors and bypass actors have been read back from status.atProvider.
+apiVersion: enterprise.github.m.upbound.io/v1alpha1
+kind: OrganizationRuleset
+metadata:
+  name: require-workflows-go
+  annotations:
+    crossplane.io/external-name: "10320335"
+spec:
+  managementPolicies: ["Observe"]
+  forProvider:
+    name: Require workflows to pass before merging for Go
+    target: branch
+    enforcement: active
+  providerConfigRef:
+    kind: ProviderConfig
+    name: default

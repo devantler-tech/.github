@@ -3,9 +3,9 @@
 # status.atProvider (lossy round-trip). See ./README.md for the convention.
 #
 # Newer "Require workflows to pass" rule (API type `workflows`, exposed by the
-# provider as `requiredWorkflows`). Only this DependencyReview variant is
-# importable — it conditions on repository_name `~ALL`. The other "Require
-# workflows …" rulesets condition on repository_property and stay UI-managed.
+# provider as `requiredWorkflows`). This DependencyReview variant conditions on
+# repository_name `~ALL`. Property-scoped variants also need their complete
+# observed policy before any write-enabled adoption; see ./README.md.
 apiVersion: enterprise.github.m.upbound.io/v1alpha1
 kind: OrganizationRuleset
 metadata:
