@@ -9,12 +9,13 @@ Reconciled by the platform `github-config` tenant like the rest of `deploy/`.
 
 ## How adoption works
 
-- **Observe-first (read-only).** The eleven Observe-only org imports are bound with
+- **Observe-first (read-only).** The ten Observe-only org imports are bound with
   `managementPolicies: ["Observe"]` — Crossplane mirrors live GitHub state into
   `status.atProvider` and **never writes, reverts, or deletes**. This is pure GitOps
   *visibility*, with zero behaviour change (the same flow `repositories/` and `teams/`
-  used). The [retained signing rule](#retained-signing-rule-record) is the exception:
-  it uses only Observe and Update to preserve its disabled record. `Delete` is
+  used). The [retained signing rule](#retained-signing-rule-record) and fully adopted
+  [Go workflow rule](#organization-go-workflow-policy) use only Observe and Update.
+  The signing rule preserves its disabled record; the Go rule uses the maintained catalogue. `Delete` is
   omitted everywhere, so a CR/Flux prune can never delete a real ruleset.
 - **external-name = the numeric ruleset id**, for both Kinds — `OrganizationRuleset`
   (`gh api orgs/devantler-tech/rulesets`) and `RepositoryRuleset`
@@ -37,8 +38,9 @@ verb — e.g. `require-pull-request.yaml`). Repo-scoped rulesets live next door 
 
 | Files | Rulesets | Policy |
 |---|---|---|
-| 11 `OrganizationRuleset` files | the imported org rulesets below except Require signed commits | Observe (read-only import) |
+| 10 `OrganizationRuleset` files | the imported org rulesets below except Require signed commits and Require workflows (Go) | Observe (read-only import) |
 | `require-signed-commits.yaml` | **Require signed commits** (existing, retired) | Observe + Update — retain the disabled record; never create or delete |
+| `require-workflows-go.yaml` | **Require workflows to pass before merging for Go** (existing, adopted) | Observe + Update — preserve the complete observed policy and require the maintained Go workflow; never create or delete |
 | `protect-release-tags.yaml` | **Protect release tags** (net-new) | Managed (Create) — block tag delete + force-move + require `v<semver>` |
 | `require-world-at-ruin-trusted-regressions.yaml` | **Require workflow - World at Ruin trusted regressions** (net-new) | Managed (Create) — target only World at Ruin and require the canonical catalogue's trusted regression workflow |
 | `require-monorepo-ci-aggregate-contract.yaml` | **Require workflow - Monorepo CI aggregate contract** (net-new) | Managed (Create) — target only monorepo and require the aggregate-execution control from its reviewed `main` |
@@ -53,19 +55,25 @@ merging · Require conversation resolution before merging · Require code scanni
 Require signed commits · Require status checks to pass · Restrict deletions · Restrict
 branch names · Restrict commit metadata · Require workflows (DependencyReview) · Require workflows (Go).
 
-### Organization Go workflow observation
+### Organization Go workflow policy
 
-`require-workflows-go.yaml` imports existing rule `10320335` with Observe only.
-It does not change its workflow source, repository selection, enforcement or bypasses.
-The current rule still requires the legacy Go workflow; importing it alone does not
-apply the maintained catalogue's cache policy or reduce CI runtime.
+`require-workflows-go.yaml` adopts existing rule `10320335` after its complete
+Observe-only readback. It retains active enforcement, the system `language: Go`
+repository selector, default branches, the existing OrganizationAdmin bypass and
+`doNotEnforceOnCreate`. Its required workflow now comes from this maintained
+catalogue, repository `933213756`, at the same path and `refs/heads/main`.
 
-Before repointing the source under [#237](https://github.com/devantler-tech/.github/issues/237),
-read back the complete `status.atProvider`, preserve its selectors and bypass actors,
-and review the full desired policy in a separate change. Required consumer CI and
-cache-write measurements remain necessary after that migration.
-`tests/go-workflow-observation.sh` guards the rendered identity-only, read-only import
-and rejects duplicate adoption of the same external rule.
+The complete policy is backfilled before permitting Update; Create, Delete and
+LateInitialize remain excluded. ID-less OrganizationAdmin actors omit `actorId`
+as required by the provider schema. `tests/go-workflow-observation.sh` compares
+the real rendered policy with an integrity-bound complete pre-migration snapshot,
+allowing only that source replacement and the ID-less representation. It rejects
+selector, bypass, workflow and authority drift, as well as duplicate adoption.
+
+Native inherited-rule and qualifying consumer CI readback remain on
+[#645](https://github.com/devantler-tech/.github/issues/645). Source adoption alone
+does not prove a runtime improvement or sustained cache budget. The managed CodeQL
+writer and remaining migration families stay separate under #237/#565.
 
 ### Organization CodeQL observation
 

@@ -1,6 +1,6 @@
-# Observe the existing rule before migrating its legacy workflow source (#237).
-# Keep identity-only forProvider and Observe only until the complete rules,
-# repository selectors and bypass actors have been read back from status.atProvider.
+# Existing rule observed completely before adoption (#643 / #645).
+# Preserve its policy and change only the workflow source to the maintained
+# catalogue. No Create, Delete or LateInitialize authority is granted.
 apiVersion: enterprise.github.m.upbound.io/v1alpha1
 kind: OrganizationRuleset
 metadata:
@@ -8,11 +8,38 @@ metadata:
   annotations:
     crossplane.io/external-name: "10320335"
 spec:
-  managementPolicies: ["Observe"]
+  managementPolicies: ["Observe", "Update"]
   forProvider:
     name: Require workflows to pass before merging for Go
     target: branch
     enforcement: active
+    bypassActors:
+      # OrganizationAdmin is ID-less; the provider's observed 0 maps to API null.
+      - actorType: OrganizationAdmin
+        bypassMode: always
+    conditions:
+      - refName:
+          - include: ["~DEFAULT_BRANCH"]
+            # Terraform requires the empty list, omitted by the read-only observation.
+            exclude: []
+        repositoryProperty:
+          - include:
+              - name: language
+                propertyValues: [Go]
+                source: system
+    rules:
+      - creation: false
+        deletion: false
+        nonFastForward: false
+        requiredLinearHistory: false
+        requiredSignatures: false
+        requiredWorkflows:
+          - doNotEnforceOnCreate: true
+            requiredWorkflow:
+              - path: .github/workflows/validate-go-project.yaml
+                ref: refs/heads/main
+                repositoryId: 933213756
+        update: false
   providerConfigRef:
     kind: ProviderConfig
     name: default
