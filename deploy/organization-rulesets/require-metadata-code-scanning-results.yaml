@@ -1,0 +1,37 @@
+# Central finding protection for the two verified Metadata repositories with
+# successful CodeQL analysis. The existing property-scoped organization rule
+# excludes Metadata; selecting that whole category would also select repositories
+# without applicable source or analysis. Stable IDs preserve coverage across renames.
+# Re-evaluate new applicable repositories during adoption-drift checks.
+# No scanner, license, paid runner or optional AI feature is enabled here.
+# Native creation, effective scope and positive/refusal evidence remain #636 gates.
+# Managed Observe + Create + Update + LateInitialize; no Delete or bypass actors.
+apiVersion: enterprise.github.m.upbound.io/v1alpha1
+kind: OrganizationRuleset
+metadata:
+  name: require-metadata-code-scanning-results
+spec:
+  managementPolicies:
+    - Observe
+    - Create
+    - Update
+    - LateInitialize
+  forProvider:
+    name: Require code scanning results - Metadata
+    target: branch
+    enforcement: active
+    bypassActors: []
+    conditions:
+      - refName:
+          - include: ["~DEFAULT_BRANCH"]
+            exclude: []
+        repositoryId: [933213756, 786274843] # .github and monorepo; rename-stable.
+    rules:
+      - requiredCodeScanning:
+          - requiredCodeScanningTool:
+              - tool: CodeQL
+                alertsThreshold: all
+                securityAlertsThreshold: all
+  providerConfigRef:
+    kind: ProviderConfig
+    name: default
