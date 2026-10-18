@@ -6255,6 +6255,9 @@ jobs:
       - name: 🧪 Test organization CodeQL observation
         run: bash tests/code-scanning-ruleset.sh
 
+      - name: 🧪 Test organization Go workflow observation
+        run: bash tests/go-workflow-observation.sh
+
       - name: 🧪 Test organization CodeQL protection for metadata repositories
         run: bash tests/metadata-code-scanning-ruleset.sh
 
