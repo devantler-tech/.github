@@ -125,6 +125,12 @@ complete-outcome reporting and source/credential mutations in required CI. Routi
 main dispatch prove both full checks and the reporter. Legacy maintenance retirement
 remains a separate gate (#84).
 
+The catalogue's separate CodeQL finding rule reuses existing analysis and preserves
+the stricter native Code Quality rule. Run `bash tests/code-scanning-ruleset.sh`
+after changing its scope, thresholds, lifecycle or CI integration. See
+[`deploy/repository-rulesets/README.md`](deploy/repository-rulesets/README.md) for
+native protection limits and the remaining observation gate in #636.
+
 **Validate before every PR** (the sole required check, `CI - Required Checks`, gates on this):
 
 ```sh

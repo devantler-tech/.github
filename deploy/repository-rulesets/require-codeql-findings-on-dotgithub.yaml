@@ -1,0 +1,34 @@
+# Reuse the catalogue's existing CodeQL analyses; no extra scan or license is enabled.
+# A separate rule preserves the provider-unsupported native Code Quality rule.
+# Provider v0.20.0: a211e095e2fe49c477836acec2ad4a28aa60e030,
+# repo.github.m.upbound.io_repositoryrulesets.yaml blob
+# 38d44c1f1e08f162709d1582e8f665f142e0842f.
+apiVersion: repo.github.m.upbound.io/v1alpha1
+kind: RepositoryRuleset
+metadata:
+  name: dotgithub-require-codeql-findings
+spec:
+  managementPolicies:
+    - Observe
+    - Create
+    - Update
+    - LateInitialize
+  forProvider:
+    repository: .github
+    name: Require CodeQL findings
+    target: branch
+    enforcement: active
+    bypassActors: []
+    conditions:
+      - refName:
+          - include: ["~DEFAULT_BRANCH"]
+            exclude: []
+    rules:
+      - requiredCodeScanning:
+          - requiredCodeScanningTool:
+              - tool: CodeQL
+                alertsThreshold: errors
+                securityAlertsThreshold: high_or_higher
+  providerConfigRef:
+    kind: ProviderConfig
+    name: default
