@@ -1,8 +1,8 @@
 # Central finding protection for the two verified Metadata repositories with
 # successful CodeQL analysis. The existing property-scoped organization rule
 # excludes Metadata; selecting that whole category would also select repositories
-# without applicable source or analysis. Name targeting is intentionally bounded.
-# Re-evaluate names and new applicable repositories during adoption-drift checks.
+# without applicable source or analysis. Stable IDs preserve coverage across renames.
+# Re-evaluate new applicable repositories during adoption-drift checks.
 # No scanner, license, paid runner or optional AI feature is enabled here.
 # Native creation, effective scope and positive/refusal evidence remain #636 gates.
 # Managed Observe + Create + Update + LateInitialize; no Delete or bypass actors.
@@ -25,9 +25,7 @@ spec:
       - refName:
           - include: ["~DEFAULT_BRANCH"]
             exclude: []
-        repositoryName:
-          - include: [".github", "monorepo"]
-            exclude: []
+        repositoryId: [933213756, 786274843] # .github and monorepo; rename-stable.
     rules:
       - requiredCodeScanning:
           - requiredCodeScanningTool:

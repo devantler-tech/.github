@@ -64,12 +64,12 @@ The import remains identity-only and read-only; it does not round-trip the polic
 
 `.github` and `monorepo` have Type Metadata and successful default-branch CodeQL
 analysis. The new `require-metadata-code-scanning-results.yaml` complements the
-existing policy **at organization scope**, targeting just those repository names and
+existing policy **at organization scope**, targeting just those stable repository IDs and
 the default branch. Both finding thresholds are `all`, with no bypass actors and no
-Delete permission. It does not enable a scanner, license or optional AI feature.
+Delete permission. Stable repository IDs preserve coverage across renames without
+adding a rename restriction. It does not enable a scanner, license or optional AI feature.
 The whole Metadata category is not selected: category membership alone does not
-prove applicable source and current analysis. Renames and new applicable repositories
-must be included in adoption-drift checks.
+prove applicable source and current analysis. New applicable repositories must be included in adoption-drift checks.
 
 Issue #636 retains provider creation, native organization-rule and inherited-scope
 readback, plus current-head positive and qualifying-finding refusal verification.

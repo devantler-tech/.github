@@ -4,7 +4,7 @@ root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
 fail() { printf 'metadata-code-scanning-ruleset: %s\n' "$*" >&2; return 1; }
-expected='{"managementPolicies":["Observe","Create","Update","LateInitialize"],"forProvider":{"name":"Require code scanning results - Metadata","target":"branch","enforcement":"active","bypassActors":[],"conditions":[{"refName":[{"include":["~DEFAULT_BRANCH"],"exclude":[]}],"repositoryName":[{"include":[".github","monorepo"],"exclude":[]}]}],"rules":[{"requiredCodeScanning":[{"requiredCodeScanningTool":[{"tool":"CodeQL","alertsThreshold":"all","securityAlertsThreshold":"all"}]}]}]},"providerConfigRef":{"kind":"ProviderConfig","name":"default"}}'
+expected='{"managementPolicies":["Observe","Create","Update","LateInitialize"],"forProvider":{"name":"Require code scanning results - Metadata","target":"branch","enforcement":"active","bypassActors":[],"conditions":[{"refName":[{"include":["~DEFAULT_BRANCH"],"exclude":[]}],"repositoryId":[933213756,786274843]}],"rules":[{"requiredCodeScanning":[{"requiredCodeScanningTool":[{"tool":"CodeQL","alertsThreshold":"all","securityAlertsThreshold":"all"}]}]}]},"providerConfigRef":{"kind":"ProviderConfig","name":"default"}}'
 check_rule() {
   local observed
   observed="$(yq -o=json -I=0 '.' "$1" | jq -s '[.[] | select(.kind == "OrganizationRuleset" and .metadata.name == "require-metadata-code-scanning-results")]')" || { fail 'unreadable render'; return 1; }
@@ -34,9 +34,9 @@ mutations=(
   '.spec.forProvider.target = "tag"'
   '.spec.forProvider.enforcement = "disabled"'
   '.spec.forProvider.bypassActors = [{"actorId":0,"actorType":"OrganizationAdmin","bypassMode":"always"}]'
-  '.spec.forProvider.conditions[0].repositoryName[0].include = ["~ALL"]'
-  '.spec.forProvider.conditions[0].repositoryName[0].include = [".github"]'
-  '.spec.forProvider.conditions[0].repositoryName[0].exclude = ["monorepo"]'
+  '.spec.forProvider.conditions[0].repositoryId += [123]'
+  '.spec.forProvider.conditions[0].repositoryId = [933213756]'
+  '.spec.forProvider.conditions[0].repositoryId[0] = 123'
   '.spec.forProvider.conditions[0].repositoryProperty = [{"name":"Type","propertyValues":["Metadata"],"source":"custom"}]'
   '.spec.forProvider.conditions[0].refName[0].include = ["refs/heads/control"]'
   '.spec.forProvider.conditions[0].refName[0].exclude = ["~DEFAULT_BRANCH"]'
@@ -73,4 +73,4 @@ for mutation in \
   if check_ci "$work/ci.yaml" > "$work/diagnostic" 2>&1; then fail 'accepted weakened CI guard'; exit 1; fi
   grep -qF 'missing unconditional CI guard' "$work/diagnostic"
 done
-printf 'metadata-code-scanning-ruleset: PASS; exact organization scope, all findings, no bypass and 25 rejection controls\n'
+printf 'metadata-code-scanning-ruleset: PASS; exact rename-stable organization scope, all findings, no bypass and 25 rejection controls\n'
