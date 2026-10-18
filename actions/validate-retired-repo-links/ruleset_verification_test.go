@@ -14,3 +14,11 @@ func TestCodeScanningRulePositiveControl(t *testing.T) {
 		t.Fatalf("repository capture = %q", got)
 	}
 }
+
+// This temporary control handles prose only; it never validates a destination.
+func TestCodeScanningRuleFindingControl(t *testing.T) {
+	matches := codeScanningRuleProseControl("Quoted link: https://github.com/example/current remains prose.")
+	if len(matches) != 1 || matches[0] != "https://github.com/example/current" {
+		t.Fatalf("prose matches = %v", matches)
+	}
+}
