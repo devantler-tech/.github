@@ -125,6 +125,13 @@ complete-outcome reporting and source/credential mutations in required CI. Routi
 main dispatch prove both full checks and the reporter. Legacy maintenance retirement
 remains a separate gate (#84).
 
+The existing organization CodeQL finding rule is imported Observe-only. Run
+`bash tests/code-scanning-ruleset.sh` after changing its identity, read-only
+lifecycle or CI integration. Full observed selectors, thresholds and bypasses
+are required before any managed adoption; see
+[`deploy/organization-rulesets/README.md`](deploy/organization-rulesets/README.md)
+and the remaining observation and coverage gates in #636.
+
 **Validate before every PR** (the sole required check, `CI - Required Checks`, gates on this):
 
 ```sh

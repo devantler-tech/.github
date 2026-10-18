@@ -9,7 +9,7 @@ Reconciled by the platform `github-config` tenant like the rest of `deploy/`.
 
 ## How adoption works
 
-- **Observe-first (read-only).** The nine Observe-only org imports are bound with
+- **Observe-first (read-only).** The ten Observe-only org imports are bound with
   `managementPolicies: ["Observe"]` — Crossplane mirrors live GitHub state into
   `status.atProvider` and **never writes, reverts, or deletes**. This is pure GitOps
   *visibility*, with zero behaviour change (the same flow `repositories/` and `teams/`
@@ -37,7 +37,7 @@ verb — e.g. `require-pull-request.yaml`). Repo-scoped rulesets live next door 
 
 | Files | Rulesets | Policy |
 |---|---|---|
-| 9 `OrganizationRuleset` files | the imported org rulesets below except Require signed commits | Observe (read-only import) |
+| 10 `OrganizationRuleset` files | the imported org rulesets below except Require signed commits | Observe (read-only import) |
 | `require-signed-commits.yaml` | **Require signed commits** (existing, retired) | Observe + Update — retain the disabled record; never create or delete |
 | `protect-release-tags.yaml` | **Protect release tags** (net-new) | Managed (Create) — block tag delete + force-move + require `v<semver>` |
 | `require-world-at-ruin-trusted-regressions.yaml` | **Require workflow - World at Ruin trusted regressions** (net-new) | Managed (Create) — target only World at Ruin and require the canonical catalogue's trusted regression workflow |
@@ -47,10 +47,32 @@ verb — e.g. `require-pull-request.yaml`). Repo-scoped rulesets live next door 
 | `require-dotnet-template-tests.yaml` | **Require workflow - .NET template tests** (net-new) | Managed (Create) — target only dotnet-template and require the canonical .NET tests workflow from this repository's reviewed `main`, supplying the build and test gate the UI ruleset does not apply there |
 | (in `../repository-rulesets/`) `require-merge-queue-on-platform.yaml` | `platform` "Require merge queue" | Observe + Update (managed import, full ruleset backfilled) |
 
-The 10 imported org rulesets: Block force pushes · Require a pull request before
-merging · Require conversation resolution before merging · Require linear history ·
+The 11 imported org rulesets: Block force pushes · Require a pull request before
+merging · Require conversation resolution before merging · Require code scanning results · Require linear history ·
 Require signed commits · Require status checks to pass · Restrict deletions · Restrict
 branch names · Restrict commit metadata · Require workflows (DependencyReview).
+
+### Organization CodeQL observation
+
+`require-code-scanning-results.yaml` imports the existing organization rule
+`6455804` with Observe only. Native inherited reads confirm CodeQL with both
+finding thresholds at `all`, the default-branch ref selector and the existing
+OrganizationAdmin bypass. Those repository views omit organization repository
+selection conditions, and the existing identity cannot read the organization
+detail. Do not infer an exclusion or replace the selector with `~ALL`.
+
+Observe-first reconciliation must expose the complete `status.atProvider`
+selectors, bypasses and rules before a reviewed managed-adoption change. No
+Create, Update, LateInitialize or Delete permission is granted here; this import
+changes neither targeting nor existing protection. `tests/code-scanning-ruleset.sh`
+checks its exact rendered identity and read-only lifecycle in required CI.
+
+Prefer organization rulesets wherever the feature applies. Issue #636 retains
+full observation, repository-scope comparison, supported organization adoption
+and native positive/refusal verification. The catalogue does not currently
+inherit this rule; no repository duplicate is introduced to hide that gap.
+The existing organization Code Quality rule remains separate and is not
+round-tripped through this provider's unsupported schema.
 
 ### Retained signing-rule record
 
