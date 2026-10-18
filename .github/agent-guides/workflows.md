@@ -54,7 +54,8 @@ Regenerate with `bash .github/scripts/generate-cleanup-readonly.sh`; never edit 
 projection by hand. Input behavior and credential restoration have independent
 negative controls. The owned Go driver under `.github/scripts/delete-workflow-runs/`
 completes enumeration and individual orphan-parent revalidation before mutation,
-freezes run creation time and partitions searches at GitHub's 1,000-result cap,
+freezes run creation time and partitions searches at GitHub's 1,000-result cap
+(the whole history splits off its latest day first, then halves every other range),
 requires every split to recover its own advertised minimum before deletion,
 uses the complete repository snapshot for every workflow's retention decisions,
 retries transient reads twice and never replays a deletion. Changed page totals
