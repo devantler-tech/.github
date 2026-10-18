@@ -19,6 +19,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 )
@@ -130,7 +131,13 @@ type api struct {
 	client      *http.Client
 	wait        func(context.Context, time.Duration) error
 	budget      *rateLimitWaitBudget
+	sent        *requestCount
 }
+
+// requestCount totals the HTTP attempts a cleanup sends, retries included. The
+// completion line reports only these totals, so a hosted run can be compared with
+// the native measurement without exposing run identities or response content.
+type requestCount struct{ reads, writes atomic.Int64 }
 
 type httpFailure struct{ status int }
 
@@ -237,6 +244,13 @@ func (a api) request(ctx context.Context, method, path string) ([]byte, error) {
 		req.Header.Set("Authorization", "Bearer "+a.token)
 		req.Header.Set("Accept", "application/vnd.github+json")
 		req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
+		if a.sent != nil {
+			if method == "GET" {
+				a.sent.reads.Add(1)
+			} else {
+				a.sent.writes.Add(1)
+			}
+		}
 		response, err := client.Do(req)
 		if err == nil {
 			raw, readErr := io.ReadAll(io.LimitReader(response.Body, (16<<20)+1))
@@ -628,6 +642,7 @@ func clean(ctx context.Context, cfg config, base, token string, client *http.Cli
 		client: client,
 		wait:   wait,
 		budget: &rateLimitWaitBudget{},
+		sent:   &requestCount{},
 	}
 	prefix := "/repos/" + cfg.repository
 	items, err := a.list(ctx, prefix+"/actions/workflows", "workflows")
@@ -746,7 +761,7 @@ func clean(ctx context.Context, cfg config, base, token string, client *http.Cli
 			return err
 		}
 	}
-	_, err = fmt.Fprintf(out, "Cleanup completed: selected=%d dry-run=%t\n", len(plan), cfg.dryRun)
+	_, err = fmt.Fprintf(out, "Cleanup completed: selected=%d dry-run=%t reads=%d writes=%d\n", len(plan), cfg.dryRun, a.sent.reads.Load(), a.sent.writes.Load())
 	return err
 }
 
