@@ -971,6 +971,39 @@ func TestRunEnumerationFreezesCreationTime(t *testing.T) {
 	}
 }
 
+// TestCompletionReportsRequestTotals keeps the hosted request observer equal to
+// what the server received, counting a retried read as two requests.
+func TestCompletionReportsRequestTotals(t *testing.T) {
+	var reads, writes, failed atomic.Int64
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == "DELETE" {
+			writes.Add(1)
+			w.WriteHeader(204)
+			return
+		}
+		reads.Add(1)
+		if r.URL.Path == fixtureRepo+"/actions/workflows" {
+			if failed.Add(1) == 1 {
+				w.WriteHeader(502)
+				return
+			}
+			_, _ = io.WriteString(w, workflowBody)
+			return
+		}
+		_, _ = io.WriteString(w, runBody(oldRun(101)))
+	}))
+	defer server.Close()
+	cfg := baseConfig()
+	cfg.minimum, cfg.dryRun = 0, false
+	var log bytes.Buffer
+	noWait := func(context.Context, time.Duration) error { return nil }
+	err := clean(context.Background(), cfg, server.URL, "offline-fixture-token", server.Client(), fixedNow, &log, noWait)
+	want := fmt.Sprintf("Cleanup completed: selected=1 dry-run=false reads=%d writes=%d\n", reads.Load(), writes.Load())
+	if err != nil || failed.Load() < 2 || writes.Load() != 1 || !strings.HasSuffix(log.String(), want) {
+		t.Fatalf("completion totals differ from the server: %v want suffix %q log=%q", err, want, log.String())
+	}
+}
+
 // TestCappedRunSearchSplitsWithoutDroppingHistory protects retention beyond GitHub's 1,000-result cap.
 func TestCappedRunSearchSplitsWithoutDroppingHistory(t *testing.T) {
 	cutoff := fixedNow.Add(-time.Second).Unix()

@@ -272,6 +272,9 @@ The newest `minimum-runs` matching old runs are retained in addition to recent r
 Runs whose workflow is no longer listed are selected independently of those filters
 only after an individual workflow lookup confirms absence. Workflows that appear
 during enumeration are retained; an uncertain lookup fails before deletion.
+A successful run ends with one summary line giving how many runs it selected and how
+many read and delete requests it sent, retries included, so its API cost can be compared
+between runs without exposing run details.
 Workflow patterns match names or filenames
 without case sensitivity. Workflow, state and conclusion filters accept comma or
 pipe separated values.
