@@ -1,0 +1,58 @@
+{
+  "rulesetId": 10320335,
+  "observedAtUTC": "2026-10-18 11:15:35 UTC",
+  "forProvider": {
+    "name": "Require workflows to pass before merging for Go",
+    "target": "branch",
+    "enforcement": "active",
+    "bypassActors": [
+      {
+        "actorId": 0,
+        "actorType": "OrganizationAdmin",
+        "bypassMode": "always"
+      }
+    ],
+    "conditions": [
+      {
+        "refName": [
+          {
+            "include": ["~DEFAULT_BRANCH"]
+          }
+        ],
+        "repositoryProperty": [
+          {
+            "include": [
+              {
+                "name": "language",
+                "propertyValues": ["Go"],
+                "source": "system"
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "rules": [
+      {
+        "creation": false,
+        "deletion": false,
+        "nonFastForward": false,
+        "requiredLinearHistory": false,
+        "requiredSignatures": false,
+        "requiredWorkflows": [
+          {
+            "doNotEnforceOnCreate": true,
+            "requiredWorkflow": [
+              {
+                "path": ".github/workflows/validate-go-project.yaml",
+                "ref": "refs/heads/main",
+                "repositoryId": 948529001
+              }
+            ]
+          }
+        ],
+        "update": false
+      }
+    ]
+  }
+}
