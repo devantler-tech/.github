@@ -11,7 +11,7 @@ mkdir "$work/bin"
 cat >"$work/bin/gh" <<'SH'
 #!/usr/bin/env bash
 set -euo pipefail
-[[ "$*" == 'api repos/devantler-tech/fixture/actions/runs/123/attempts/2/jobs?per_page=100 --paginate --slurp' ]] || exit 99
+[[ "$*" == 'api repos/devantler-tech/fixture/actions/runs/123/attempts/2/jobs?per_page=50 --paginate --slurp' ]] || exit 99
 count=0
 [[ ! -f "$FIXTURE/count" ]] || read -r count <"$FIXTURE/count"
 count=$((count + 1))

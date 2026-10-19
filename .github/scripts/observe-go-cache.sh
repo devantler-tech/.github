@@ -145,7 +145,7 @@ observe() {
   trap 'rm -rf "$scratch"' EXIT
   mkdir "$scratch/logs"
   gh api "repos/devantler-tech/.github/actions/runs/$run/attempts/$attempt" >"$scratch/run.json" || fail 'run metadata read failed'
-  gh api --paginate --slurp "repos/devantler-tech/.github/actions/runs/$run/attempts/$attempt/jobs?per_page=100" >"$scratch/jobs.json" || fail 'complete current-attempt job read failed'
+  gh api --paginate --slurp "repos/devantler-tech/.github/actions/runs/$run/attempts/$attempt/jobs?per_page=50" >"$scratch/jobs.json" || fail 'complete current-attempt job read failed'
   jobs="$scratch/jobs.json"
   validate_jobs
   # Older gh versions print log bytes directly and do not accept this option.

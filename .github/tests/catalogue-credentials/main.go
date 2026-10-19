@@ -1180,7 +1180,7 @@ func checkWiring(w object) error {
 			}
 			// Pin the complete reviewed reducer, including native queue proof; arbitrary
 			// Bash mentions are not result admission and must not bypass either check.
-			if fmt.Sprintf("%x", sha256.Sum256([]byte(text(s["run"])))) != "62c7d254f2998fe3861ede8fc5c356eb38defe8e8c9be211f23af062d12ac277" {
+			if fmt.Sprintf("%x", sha256.Sum256([]byte(text(s["run"])))) != "87e47c8778ac03a6bddf68125ce26b580aa75ed40aba2a276f4310dbf8e5c438" {
 				return fail()
 			}
 			results = true

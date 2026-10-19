@@ -102,7 +102,7 @@ case "$*" in
     [[ "${FAIL_HELP_READ:-false}" != true ]] || exit 1
     if [[ "${MODERN_CLI:-false}" == true ]]; then printf '      --allow-escape-sequences   Allow printing terminal escape sequences\n'; else printf '      --include   Include HTTP response status line\n'; fi ;;
   'api repos/devantler-tech/.github/actions/runs/23/attempts/2') cat "$OBSERVER_FIXTURE/run.json" ;;
-  'api --paginate --slurp repos/devantler-tech/.github/actions/runs/23/attempts/2/jobs?per_page=100')
+  'api --paginate --slurp repos/devantler-tech/.github/actions/runs/23/attempts/2/jobs?per_page=50')
     [[ "${FAIL_JOB_READ:-false}" != true ]] || exit 1
     cat "$OBSERVER_FIXTURE/jobs.json" ;;
   'api repos/devantler-tech/.github/actions/jobs/'*'/logs')
