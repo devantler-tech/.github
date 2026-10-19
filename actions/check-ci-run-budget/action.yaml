@@ -94,5 +94,6 @@ runs:
         if [[ "$status" != 0 ]]; then exit "$status"; fi
         receipt="$(jq -ce '.state == "within_budget" and .scope == "single_workflow_run"' "$scratch/receipt.json")"
         [[ "$receipt" == true ]]
-        printf 'validated=true\n' >> "$GITHUB_OUTPUT"
-        printf 'receipt=%s\n' "$(jq -c . "$scratch/receipt.json")" >> "$GITHUB_OUTPUT"
+        receipt="$(jq -c . "$scratch/receipt.json")"
+        [[ -n "$receipt" ]]
+        printf 'receipt=%s\nvalidated=true\n' "$receipt" >> "$GITHUB_OUTPUT"

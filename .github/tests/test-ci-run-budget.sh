@@ -51,17 +51,30 @@ esac
 if [[ "${FAIL_METADATA:-false}" == true ]]; then exit 17; fi
 SH
 chmod +x "$work/bin/gh"
+REAL_JQ="$(command -v jq)"
+export REAL_JQ
+cat > "$work/bin/jq" <<'SH'
+#!/usr/bin/env bash
+set -euo pipefail
+if [[ "${FAIL_RECEIPT_SERIALIZATION:-false}" == true && "$#" == 3 && "$1" == -c && "$2" == . ]]; then
+  exit 17
+fi
+exec "$REAL_JQ" "$@"
+SH
+chmod +x "$work/bin/jq"
 export PATH="$work/bin:$PATH" BUDGET_FIXTURE="$work"
 head=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 printf '%s\n' '{"id":42,"run_attempt":1,"repository":{"full_name":"example/repo"},"head_sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","path":".github/workflows/ci.yaml","event":"pull_request","status":"completed","conclusion":"success","created_at":"2020-01-01T00:00:00Z","updated_at":"2020-01-02T00:00:00Z"}' > "$work/run.json"
-for scenario in below at above failed-read; do
+for scenario in below at above failed-read failed-serialization; do
   case "$scenario" in
-    below|failed-read) end=00:14:59; expected=within_budget; code=0 ;;
+    below|failed-read|failed-serialization) end=00:14:59; expected=within_budget; code=0 ;;
     at) end=00:15:00; expected=over_budget; code=1 ;;
     above) end=00:15:01; expected=over_budget; code=1 ;;
   esac
   fail_metadata=false
+  fail_serialization=false
   if [[ "$scenario" == failed-read ]]; then fail_metadata=true; expected=unknown; code=2; fi
+  if [[ "$scenario" == failed-serialization ]]; then fail_serialization=true; code=17; fi
   printf '{"total_count":1,"jobs":[{"id":1,"run_id":42,"run_attempt":1,"head_sha":"%s","status":"completed","conclusion":"success","started_at":"2020-01-01T00:01:00Z","completed_at":"2020-01-01T%sZ"}]}\n' "$head" "$end" > "$work/jobs.json"
   ENABLED=true GITHUB_OUTPUT="$work/on" bash "$work/admit.sh"
   [[ "$(cat "$work/on")" == enabled=true ]]
@@ -73,16 +86,23 @@ for scenario in below at above failed-read; do
   actual=0
   BINARY="$binary" REPOSITORY=example/repo RUN_ID=42 RUN_ATTEMPT=1 HEAD_SHA="$head" \
     WORKFLOW_PATH=.github/workflows/ci.yaml EVENT_NAME=pull_request FAIL_METADATA="$fail_metadata" \
+    FAIL_RECEIPT_SERIALIZATION="$fail_serialization" \
     RUNNER_TEMP="$work/runner" GITHUB_OUTPUT="$work/validated" \
     bash "$work/check.sh" > "$work/receipt.json" || actual=$?
-  [[ "$actual" == "$code" ]]
+  if [[ "$actual" != "$code" ]]; then
+    printf '%s: expected action exit %s, got %s\n' "$scenario" "$code" "$actual" >&2
+    exit 1
+  fi
   jq -e --arg state "$expected" '.scope == "single_workflow_run" and .state == $state' "$work/receipt.json" >/dev/null
   [[ ! -e "$binary" ]]
+  [[ ! -e "${binary%/*}" ]]
   if [[ "$code" == 0 ]]; then
     grep -qx 'validated=true' "$work/validated"
+    published_receipt="$(sed -n 's/^receipt=//p' "$work/validated")"
+    [[ -n "$published_receipt" && "$published_receipt" == "$(jq -c . "$work/receipt.json")" ]]
     rm "$work/validated"
   else
     [[ ! -e "$work/validated" ]]
   fi
 done
-echo 'PASS: disabled, enabled, exact deadline and native read-failure paths'
+echo 'PASS: disabled, enabled, exact deadline, native read-failure and output-serialization paths'
