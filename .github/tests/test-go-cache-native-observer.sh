@@ -47,6 +47,47 @@ reject_jobs '.[1].jobs[0].head_sha = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"'
 reject_jobs '.[1].jobs[0].status = "in_progress"'
 reject_jobs '.[1].jobs[0].name += " unexpected"'
 reject_jobs '.[1].jobs[1].steps |= map(select(.name != "Save Go module cache"))'
+reject_jobs_with_summary() {
+  reject_jobs "$1"
+  local summary
+  summary="$(sed -n 's/^native-go-cache: job-evidence-summary=//p' "$scratch/error")"
+  [[ -n "$summary" ]] || fail 'rejected jobs have no sanitized diagnostic'
+  jq -e '
+    if keys == ["state"] then .state | IN("invalid_shape", "unreadable")
+    else keys == ["duplicate_ids", "fetched_jobs", "fixture_invalid", "fixture_jobs", "pages", "reported_totals", "total_count_variants"] and
+      (.reported_totals | length <= 8 and all(.[]; type == "number" and . > 0 and floor == .)) and
+      (del(.reported_totals) | all(.[]; type == "number" and . >= 0 and floor == .)) end
+  ' <<<"$summary" >/dev/null || fail 'diagnostic exposed unapproved fields or unbounded values'
+  jq -e "$2" <<<"$summary" >/dev/null || fail 'diagnostic does not identify the rejected invariant'
+}
+reject_jobs_with_summary '.[0].total_count = 10' \
+  '.pages == 2 and .reported_totals == [9,10] and .fetched_jobs == 9 and .duplicate_ids == 0 and .fixture_jobs == 9'
+reject_jobs_with_summary '.[1].jobs |= .[1:]' \
+  '.reported_totals == [9] and .fetched_jobs == 8 and .duplicate_ids == 0 and .fixture_jobs == 8'
+reject_jobs_with_summary '.[1].jobs[0] = .[1].jobs[1]' \
+  '.fetched_jobs == 9 and .duplicate_ids == 1 and .fixture_jobs == 9'
+reject_jobs_with_summary '.[1].jobs[0].run_attempt = 1' \
+  '.fixture_invalid == 1 and .fixture_jobs == 9 and .duplicate_ids == 0'
+reject_jobs_with_summary '.[1].jobs[0].status = "in_progress"' \
+  '.fixture_invalid == 1 and .fixture_jobs == 9'
+reject_jobs_with_summary '. + [range(10;22) | {total_count:.,jobs:[]}]' \
+  '.pages == 14 and .total_count_variants == 13 and (.reported_totals | length == 8)'
+# Only scalar counts may leave rejected evidence; never echo native names,
+# identifiers, arbitrary response text or parser diagnostics.
+reject_jobs_with_summary '.[0].total_count = "private-response-sentinel"' \
+  '. == {state:"invalid_shape"}'
+if grep -q 'private-response-sentinel' "$scratch/error"; then fail 'diagnostic disclosed raw evidence'; fi
+printf 'not-json private-response-sentinel\n' >"$scratch/jobs.json"
+if check pr >"$scratch/out" 2>"$scratch/error"; then fail 'malformed evidence passed'; fi
+[[ ! -s "$scratch/out" ]] || fail 'malformed evidence published success'
+grep -qx 'native-go-cache: job-evidence-summary={"state":"unreadable"}' "$scratch/error" || fail 'malformed evidence lacks a safe diagnostic'
+if grep -q 'private-response-sentinel' "$scratch/error"; then fail 'parser disclosed raw evidence'; fi
+for evidence in '' '   ' '{} {}'; do
+  printf '%s\n' "$evidence" >"$scratch/jobs.json"
+  if check pr >"$scratch/out" 2>"$scratch/error"; then fail 'empty or multiple-root evidence passed'; fi
+  [[ ! -s "$scratch/out" ]] || fail 'invalid JSON stream published success'
+  grep -qx 'native-go-cache: job-evidence-summary={"state":"unreadable"}' "$scratch/error" || fail 'invalid JSON stream lacks one safe diagnostic'
+done
 cp "$scratch/good-jobs.json" "$scratch/jobs.json"
 cp "$scratch/logs/108.log" "$scratch/good-scan.log"
 printf 'Cache saved with the key: setup-go-unsafe\n' >>"$scratch/logs/108.log"
