@@ -19,9 +19,9 @@ required workflows must also be assessed. It is disabled unless explicitly enabl
 | `event` | `pull_request` or `merge_group` | When enabled | — |
 | `github-token` | Token with `actions: read` | No | Calling job's token |
 
-The caller needs GitHub CLI and a Bash-capable Linux or macOS runner. The action
-sets up the Go version declared by its inspector module. Keep job permissions
-read-only; no App or write permission is needed.
+The caller needs GitHub CLI, `jq` and a Bash-capable Linux or macOS runner.
+The action sets up the Go version declared by its inspector module. Keep job
+permissions read-only; no App or write permission is needed.
 
 ## Outputs
 

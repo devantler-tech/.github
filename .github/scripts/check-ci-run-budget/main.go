@@ -72,6 +72,7 @@ var repositoryPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9-]{0,38}/[A-Za
 var shaPattern = regexp.MustCompile(`^[a-f0-9]{40}$`)
 var workflowPattern = regexp.MustCompile(`^\.github/workflows/[A-Za-z0-9_-][A-Za-z0-9_.-]*\.ya?ml$`)
 
+// valid admits only complete native identities and supported CI events.
 func (o options) valid() bool {
 	return repositoryPattern.MatchString(o.repository) &&
 		o.repository[len(o.repository)-1:] != "/" &&
@@ -81,6 +82,7 @@ func (o options) valid() bool {
 		(o.event == "pull_request" || o.event == "merge_group") && o.runID > 0 && o.attempt > 0
 }
 
+// readJSON rejects failed, oversized or malformed metadata without exposing it.
 func readJSON(ctx context.Context, api reader, path string, out any) error {
 	data, err := api.read(ctx, path)
 	if err != nil {
@@ -95,6 +97,8 @@ func readJSON(ctx context.Context, api reader, path string, out any) error {
 	return nil
 }
 
+// inspect binds complete native evidence to one stable run and its original clock.
+// Exit codes distinguish an under-budget success, a failed verdict and unknown data.
 func inspect(ctx context.Context, o options, api reader, now time.Time) (receipt, int) {
 	result := receipt{Schema: 1, State: "unknown", Scope: "single_workflow_run", Reason: "invalid_arguments", BudgetSeconds: 900}
 	unknown := func(reason string) (receipt, int) { result.Reason = reason; return result, 2 }
@@ -217,6 +221,7 @@ type commandAPI struct{ program string }
 
 type boundedBuffer struct{ bytes.Buffer }
 
+// Write limits captured metadata so a child command cannot grow memory unboundedly.
 func (b *boundedBuffer) Write(p []byte) (int, error) {
 	if b.Len()+len(p) > 8<<20 {
 		return 0, fmt.Errorf("metadata response too large")
@@ -224,6 +229,7 @@ func (b *boundedBuffer) Write(p []byte) (int, error) {
 	return b.Buffer.Write(p)
 }
 
+// read performs a bounded GitHub-only GET and discards incomplete or failed output.
 func (a commandAPI) read(ctx context.Context, path string) ([]byte, error) {
 	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
@@ -239,6 +245,7 @@ func (a commandAPI) read(ctx context.Context, path string) ([]byte, error) {
 	return output.Bytes(), nil
 }
 
+// execute validates CLI arguments and writes one sanitized single-run receipt.
 func execute(args []string, out io.Writer, api reader, now time.Time) int {
 	flags := flag.NewFlagSet("check-ci-run-budget", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
@@ -262,6 +269,7 @@ func execute(args []string, out io.Writer, api reader, now time.Time) int {
 	return code
 }
 
+// main connects the native CLI reader to the process exit status.
 func main() {
 	os.Exit(execute(os.Args[1:], os.Stdout, commandAPI{program: "gh"}, time.Now()))
 }

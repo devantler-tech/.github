@@ -25,6 +25,7 @@ type fixtureAPI struct {
 	reads    int
 }
 
+// read serves exact fixture routes and models partial output followed by failure.
 func (f *fixtureAPI) read(_ context.Context, path string) ([]byte, error) {
 	switch path {
 	case "repos/example/repo/actions/runs/42":
@@ -55,6 +56,7 @@ func (f *fixtureAPI) read(_ context.Context, path string) ([]byte, error) {
 	}
 }
 
+// fixture supplies one successful run with a controlled actual completion time.
 func fixture(seconds int) fixtureAPI {
 	end := time.Date(2026, 10, 19, 0, 0, seconds, 0, time.UTC).Format(time.RFC3339)
 	return fixtureAPI{
@@ -63,6 +65,7 @@ func fixture(seconds int) fixtureAPI {
 	}
 }
 
+// TestBudgetUsesJobCompletionAndStrictBoundary pins 899/900/901-second verdicts.
 func TestBudgetUsesJobCompletionAndStrictBoundary(t *testing.T) {
 	for _, tc := range []struct {
 		name    string
@@ -85,6 +88,7 @@ func TestBudgetUsesJobCompletionAndStrictBoundary(t *testing.T) {
 	}
 }
 
+// change mutates a complete fixture document while preserving valid JSON.
 func change(t *testing.T, raw []byte, mutate func(map[string]any)) []byte {
 	t.Helper()
 	var value map[string]any
@@ -99,6 +103,7 @@ func change(t *testing.T, raw []byte, mutate func(map[string]any)) []byte {
 	return data
 }
 
+// TestRefusesIncompleteOrMismatchedEvidence rejects unsafe run and page observations.
 func TestRefusesIncompleteOrMismatchedEvidence(t *testing.T) {
 	for _, tc := range []struct {
 		name   string
@@ -149,6 +154,7 @@ func TestRefusesIncompleteOrMismatchedEvidence(t *testing.T) {
 	}
 }
 
+// TestRejectsUnboundOrUnfinishedJobs binds every job to terminal, consistent metadata.
 func TestRejectsUnboundOrUnfinishedJobs(t *testing.T) {
 	for _, tc := range []struct {
 		key   string
@@ -170,6 +176,7 @@ func TestRejectsUnboundOrUnfinishedJobs(t *testing.T) {
 	}
 }
 
+// TestCompletePaginationAndStableAttempt requires all unique pages despite read errors.
 func TestCompletePaginationAndStableAttempt(t *testing.T) {
 	f := fixture(899)
 	var one map[string]any
@@ -214,6 +221,7 @@ func TestCompletePaginationAndStableAttempt(t *testing.T) {
 	}
 }
 
+// TestRerunRetainsOriginalCreationClock prevents a partial rerun resetting the budget.
 func TestRerunRetainsOriginalCreationClock(t *testing.T) {
 	f := fixture(901)
 	f.run = change(t, f.run, func(v map[string]any) { v["run_attempt"] = 2; v["run_started_at"] = "2026-10-19T00:14:59Z" })
@@ -224,6 +232,7 @@ func TestRerunRetainsOriginalCreationClock(t *testing.T) {
 	}
 }
 
+// TestSkippedJobsCannotHideLateCompletionOrEmptyExecution counts every terminal time.
 func TestSkippedJobsCannotHideLateCompletionOrEmptyExecution(t *testing.T) {
 	f := fixture(899)
 	f.page = change(t, f.page, func(v map[string]any) {
@@ -245,6 +254,7 @@ func TestSkippedJobsCannotHideLateCompletionOrEmptyExecution(t *testing.T) {
 	}
 }
 
+// TestNativeSkippedJobHasNoExecutionStartClock accepts native synthetic skip starts.
 func TestNativeSkippedJobHasNoExecutionStartClock(t *testing.T) {
 	// GitHub reports these placeholder skip timestamps in catalogue run39263825120.
 	f := fixture(899)
@@ -261,6 +271,7 @@ func TestNativeSkippedJobHasNoExecutionStartClock(t *testing.T) {
 	}
 }
 
+// TestCLIEmitsScopedReceipts verifies verdicts and refuses invalid flags without reads.
 func TestCLIEmitsScopedReceipts(t *testing.T) {
 	args := []string{"--repository", "example/repo", "--run-id", "42", "--attempt", "1", "--head-sha", head, "--workflow-path", ".github/workflows/ci.yaml", "--event", "pull_request"}
 	for _, tc := range []struct {
@@ -295,6 +306,7 @@ func TestCLIEmitsScopedReceipts(t *testing.T) {
 	}
 }
 
+// TestNativeCommandIsReadOnlyAndRejectsPlausibleFailedOutput exercises the subprocess.
 func TestNativeCommandIsReadOnlyAndRejectsPlausibleFailedOutput(t *testing.T) {
 	dir := t.TempDir()
 	program := filepath.Join(dir, "gh")
