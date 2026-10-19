@@ -1001,7 +1001,7 @@ jobs:
           persist-credentials: false
       - name: Exercise omitted opt-in without API authority
         id: disabled
-        uses: ./actions/check-ci-run-budget # zizmor: ignore[self-repository]
+        uses: ./actions/check-ci-run-budget
       - name: Assert disabled calls publish no validation
         env:
           VALIDATED: ${{ steps.disabled.outputs.validated }}
