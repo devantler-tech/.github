@@ -6642,8 +6642,10 @@ jobs:
           fi
           # Retry only server failures, restarting the entire paginated read.
           # A failed later page can already have emitted convincing partial data.
+          # Pages of 100 jobs on the full catalogue run fail with HTTP 502 every
+          # time, while pages of 50 succeed, so the page size stays at 50.
           for attempt in 1 2 3; do
-            if gh api "repos/$REPOSITORY/actions/runs/$RUN_ID/attempts/$RUN_ATTEMPT/jobs?per_page=100" \
+            if gh api "repos/$REPOSITORY/actions/runs/$RUN_ID/attempts/$RUN_ATTEMPT/jobs?per_page=50" \
               --paginate --slurp > jobs.json 2> jobs.error; then
               break
             fi
