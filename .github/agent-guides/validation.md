@@ -2,6 +2,16 @@
 
 Read this guide before changing catalogue validation, to-do forwarding, publication or release recovery. Validation includes naming, shell pipelines and retired links. Commands and code paths are relative to the repository root.
 
+**CI run budgets:** `check-ci-run-budget` is default-off and metadata-only.
+Enabled calls bind one completed run, repository, full head, workflow path,
+event and stable attempt. Complete latest-job pages determine actual completion;
+mutable workflow updates never do. Reruns retain original creation time.
+Below 900 seconds passes; native failures and over-budget runs fail, while
+incomplete or changed evidence is unknown. Disabled and unsuccessful calls expose
+no validation output. Keep the Linux/macOS shipped-step and native-command
+controls in required CI. This is a single-run primitive, not whole-PR enforcement;
+consumer adoption, aggregation and flag retirement remain under #654.
+
 **Production to-do input forwarding:** the reusable scanner exposes the composite's
 optional-project integration choices while retaining its existing defaults.
 The generated read-only workflow runs the exact production steps with an empty

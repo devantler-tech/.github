@@ -980,6 +980,47 @@ jobs:
       - name: ✅ Verify GHCR login
         run: cat ~/.docker/config.json | grep -q "ghcr.io"
 
+  test-check-ci-run-budget:
+    name: "[Test] CI Run Budget (${{ matrix.os }})"
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 5
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    permissions:
+      contents: read
+    steps:
+      - name: Harden runner
+        uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
+        with:
+          egress-policy: audit
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Exercise omitted opt-in without API authority
+        id: disabled
+        uses: ./actions/check-ci-run-budget # zizmor: ignore[self-repository]
+      - name: Assert disabled calls publish no validation
+        env:
+          VALIDATED: ${{ steps.disabled.outputs.validated }}
+          RECEIPT: ${{ steps.disabled.outputs.receipt }}
+        run: |
+          test -z "$VALIDATED"
+          test -z "$RECEIPT"
+      - name: Set up offline test toolchain
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: .github/scripts/check-ci-run-budget/go.mod
+          cache: false
+      - name: Exercise enabled, disabled and refusal paths
+        env:
+          GOWORK: "off"
+          GOFLAGS: ""
+          GOTOOLCHAIN: local
+        run: bash .github/tests/test-ci-run-budget.sh
+
   # ── aggregate-job-checks ────────────────────────────────────
   test-aggregate-job-checks-empty:
     needs: [select-ci-tests]
@@ -6329,6 +6370,7 @@ jobs:
       - test-free-disk-space
       - test-free-disk-space-keep
       - test-login-to-ghcr
+      - test-check-ci-run-budget
       - test-aggregate-job-checks-empty
       - test-aggregate-job-checks-success
       - test-aggregate-job-checks-failure
@@ -6472,6 +6514,7 @@ jobs:
             ${{ needs.test-free-disk-space.result }}
             ${{ needs.test-free-disk-space-keep.result }}
             ${{ needs.test-login-to-ghcr.result }}
+            ${{ needs.test-check-ci-run-budget.result }}
             ${{ needs.test-aggregate-job-checks-empty.result }}
             ${{ needs.test-aggregate-job-checks-success.result }}
             ${{ needs.test-aggregate-job-checks-failure.result }}

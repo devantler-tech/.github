@@ -62,6 +62,7 @@ flowchart TD
 |--------|-------------|
 | [aggregate-job-checks](actions/aggregate-job-checks/README.md) | Aggregate multiple job results into a single required check |
 | [approve-pr](actions/approve-pr/README.md) | Approve a PR using a GitHub App identity |
+| [check-ci-run-budget](actions/check-ci-run-budget/README.md) | Opt-in, metadata-only 15-minute budget check for one exact completed workflow run |
 | [cleanup-ghcr-packages](actions/cleanup-ghcr-packages/README.md) | Clean up old GHCR packages |
 | [create-issues-from-todos](actions/create-issues-from-todos/README.md) | Create GitHub issues from TODO comments, with optional project integration |
 | [dependency-review](actions/dependency-review/README.md) | Scan a PR's dependency changes for vulnerabilities and disallowed licenses |
