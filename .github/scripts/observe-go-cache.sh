@@ -4,6 +4,26 @@ set -euo pipefail
 export LC_ALL=C
 prefix='[Test] Validate Go Project - Isolated PostgreSQL / '
 fail() { printf 'native-go-cache: %s\n' "$*" >&2; exit 2; }
+diagnose_jobs() {
+  local summary
+  summary="$(jq -cse --argjson run "$run" --argjson attempt "$attempt" --arg head "$head" --arg prefix "$prefix" '
+    def positive: type == "number" and . > 0 and floor == .;
+    (if length == 1 then .[0] else error("expected one job inventory") end) |
+    if type == "array" and length > 0 and
+      all(.[]; type == "object" and (.total_count | positive) and (.jobs | type == "array"))
+    then [.[].jobs[]] as $all |
+      [$all[] | select(.name | type == "string") | select(.name | startswith($prefix))] as $fixture |
+      {pages:length, reported_totals:([.[].total_count] | unique | .[0:8]),
+       total_count_variants:([.[].total_count] | unique | length),
+       fetched_jobs:($all | length), duplicate_ids:(($all | length) - ($all | map(.id) | unique | length)),
+       fixture_jobs:($fixture | length), fixture_invalid:([$fixture[] | select(
+         ((.id | positive) and .run_id == $run and .run_attempt == $attempt and .head_sha == $head and
+          .status == "completed" and .conclusion == "success" and (.steps | type == "array") and
+          ([.steps[].name] | length == (unique | length))) | not)] | length)}
+    else {state:"invalid_shape"} end
+  ' "$jobs" 2>/dev/null)" || summary='{"state":"unreadable"}'
+  printf 'native-go-cache: job-evidence-summary=%s\n' "$summary" >&2
+}
 validate_jobs() {
   jq -e --argjson run "$run" --argjson attempt "$attempt" --arg head "$head" --arg prefix "$prefix" '
     def positive: type == "number" and . > 0 and floor == .;
@@ -19,7 +39,10 @@ validate_jobs() {
       all($fixture[]; (.id | positive) and .run_id == $run and .run_attempt == $attempt and .head_sha == $head and
         .status == "completed" and .conclusion == "success" and (.steps | type == "array") and
         ([.steps[].name] | length == (unique | length))))
-  ' "$jobs" >/dev/null 2>&1 || fail 'incomplete, stale or unsuccessful current-attempt jobs'
+  ' "$jobs" >/dev/null 2>&1 || {
+    diagnose_jobs
+    fail 'incomplete, stale or unsuccessful current-attempt jobs'
+  }
 }
 normalize_log() {
   sed -E 's/^[0-9]{4}-[0-9T:.+-]+Z //; s/^Cache saved with the key: /Cache saved with key: /' "$1"
