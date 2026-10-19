@@ -32,7 +32,7 @@ check_boundary() {
     ([$steps|to_entries[]|select(.value.id=="prepare")|.key][0] <
      [$steps|to_entries[]|select(.value.id=="app-token")|.key][0]) and
     ([$steps[]|select(.id=="app-token")|{uses,if,with}] == [{
-      uses:"actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1",
+      uses:"actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510",
       if:"${{ steps.prepare.outputs.changed == '\''true'\'' }}",
       with:{"client-id":"${{ vars.APP_CLIENT_ID }}","private-key":"${{ secrets.APP_PRIVATE_KEY }}",
         owner:"devantler-tech",repositories:".github","permission-contents":"write","permission-pull-requests":"write"}}]) and
