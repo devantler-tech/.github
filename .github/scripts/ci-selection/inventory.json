@@ -18,6 +18,7 @@
     "test-validate-shell-pipelines", "test-validate-shell-pipelines-scope", "test-zizmor-action-lockstep", "test-zizmor-blocks"
   ],
   "preserved": {
+    "test-check-ci-run-budget": {"if": "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"},
     "test-apply-signed-fixes-verifies-without-a-patch": {"if": "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"},
     "test-dependency-review-workflow": {"if": "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"},
     "test-apply-signed-fixes-suppresses-bots": {"if": "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"},
@@ -176,6 +177,7 @@
     "test-prepare-fixes": [],
     "test-lint-gate-lockstep": ["actions/upload-coverage/"],
     "test-apply-signed-fixes-suppresses-bots": [],
-    "test-apply-signed-fixes-verifies-without-a-patch": []
+    "test-apply-signed-fixes-verifies-without-a-patch": [],
+    "test-check-ci-run-budget": ["actions/check-ci-run-budget/"]
   }
 }

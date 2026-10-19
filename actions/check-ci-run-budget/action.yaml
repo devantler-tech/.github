@@ -1,0 +1,99 @@
+name: Check CI Run Budget
+description: Check one exact completed workflow run against the fixed 15-minute feedback budget
+author: devantler-tech
+inputs:
+  enabled:
+    description: Explicit opt-in; disabled calls perform no metadata reads or validation
+    required: false
+    default: "false"
+  run-id:
+    description: Native completed workflow run ID in the calling repository
+    required: false
+  run-attempt:
+    description: Expected current run attempt; reruns retain the original creation clock
+    required: false
+  head-sha:
+    description: Expected full lowercase commit SHA
+    required: false
+  workflow-path:
+    description: Expected repository-root workflow path
+    required: false
+  event:
+    description: Expected pull_request or merge_group event
+    required: false
+  github-token:
+    description: Token with actions-read access to the calling repository
+    required: false
+outputs:
+  validated:
+    description: True only for a complete successful single-workflow run below 900 seconds
+    value: ${{ steps.check.outputs.validated }}
+  receipt:
+    description: Single-workflow JSON receipt; never a whole-PR compliance result
+    value: ${{ steps.check.outputs.receipt }}
+runs:
+  using: composite
+  steps:
+    - name: Admit explicit opt-in
+      id: admit
+      shell: bash
+      env:
+        ENABLED: ${{ inputs.enabled }}
+      run: |
+        set -euo pipefail
+        case "$ENABLED" in
+          ''|false) printf 'enabled=false\n' >> "$GITHUB_OUTPUT" ;;
+          true) printf 'enabled=true\n' >> "$GITHUB_OUTPUT" ;;
+          *) echo '::error::enabled must be true or false' >&2; exit 2 ;;
+        esac
+    - name: Set up inspector toolchain
+      if: steps.admit.outputs.enabled == 'true'
+      uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      with:
+        go-version-file: ${{ github.action_path }}/../../.github/scripts/check-ci-run-budget/go.mod
+        cache: false
+    - name: Build metadata-only inspector
+      if: steps.admit.outputs.enabled == 'true'
+      id: build
+      shell: bash
+      env:
+        GOWORK: "off"
+        GOFLAGS: ""
+        GOTOOLCHAIN: local
+        CGO_ENABLED: "0"
+      run: |
+        set -euo pipefail
+        scratch="$(mktemp -d "$RUNNER_TEMP/ci-budget.XXXXXX")"
+        trap 'rm -rf "$scratch"' EXIT
+        go -C "$GITHUB_ACTION_PATH/../../.github/scripts/check-ci-run-budget" build -trimpath -o "$scratch/check-ci-run-budget" .
+        printf 'binary=%s/check-ci-run-budget\n' "$scratch" >> "$GITHUB_OUTPUT"
+        trap - EXIT
+    - name: Check complete native evidence
+      if: steps.admit.outputs.enabled == 'true'
+      id: check
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github-token || github.token }}
+        REPOSITORY: ${{ github.repository }}
+        RUN_ID: ${{ inputs.run-id }}
+        RUN_ATTEMPT: ${{ inputs.run-attempt }}
+        HEAD_SHA: ${{ inputs.head-sha }}
+        WORKFLOW_PATH: ${{ inputs.workflow-path }}
+        EVENT_NAME: ${{ inputs.event }}
+        BINARY: ${{ steps.build.outputs.binary }}
+      run: |
+        set -euo pipefail
+        [[ "$BINARY" == "$RUNNER_TEMP"/ci-budget.*/check-ci-run-budget && -f "$BINARY" ]]
+        scratch="${BINARY%/*}"
+        trap 'rm -rf "$scratch"' EXIT
+        status=0
+        "$BINARY" --repository "$REPOSITORY" --run-id "$RUN_ID" --attempt "$RUN_ATTEMPT" \
+          --head-sha "$HEAD_SHA" --workflow-path "$WORKFLOW_PATH" --event "$EVENT_NAME" \
+          > "$scratch/receipt.json" || status=$?
+        cat "$scratch/receipt.json"
+        if [[ "$status" != 0 ]]; then exit "$status"; fi
+        receipt="$(jq -ce '.state == "within_budget" and .scope == "single_workflow_run"' "$scratch/receipt.json")"
+        [[ "$receipt" == true ]]
+        receipt="$(jq -c . "$scratch/receipt.json")"
+        [[ -n "$receipt" ]]
+        printf 'receipt=%s\nvalidated=true\n' "$receipt" >> "$GITHUB_OUTPUT"
