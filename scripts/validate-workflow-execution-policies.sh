@@ -60,7 +60,7 @@ actor_types='["User","Bot","Team","BusinessTeam","EnterpriseTeam","IntegrationIn
 # Policy files the maintainer has approved to be active, by exact file name. Adding a name here is
 # the approval: each activation changes this list in its own reviewed pull request. See the README's
 # "Testing a policy before it blocks".
-approved_active='["restrict-deploy-starters-go-template.json","restrict-deploy-starters-data-product-controller.json"]'
+approved_active='["restrict-deploy-starters-go-template.json","restrict-deploy-starters-data-product-controller.json","restrict-deploy-starters-world-at-ruin.json"]'
 
 failed=0
 for f in "${files[@]}"; do
