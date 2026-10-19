@@ -488,7 +488,7 @@ jobs:
       # (workflow-touching or not) would hit a red required check before the
       # arming step's graceful-degrade could ever run.
       - name: 🔑 Generate GitHub App Token (Workflows-scoped)
-        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
         id: app-token
         continue-on-error: true
         with:
@@ -508,7 +508,7 @@ jobs:
       # the arming step. A genuine auth error (bad key) fails BOTH mints, and
       # this one has no continue-on-error, so the job still fails closed.
       - name: 🔑 Generate GitHub App Token (base scope fallback)
-        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
         id: app-token-base
         if: steps.app-token.outcome == 'failure'
         with:
@@ -626,7 +626,7 @@ jobs:
       # `steps.gate-token.outcome == 'failure'`, so nothing is ever armed on
       # unverified gates and an already-armed PR is actively revoked.
       - name: 🔑 Generate gate-lookup token (enforced runs only)
-        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
         id: gate-token
         if: >-
           steps.pr.outputs.eligible == 'true' &&

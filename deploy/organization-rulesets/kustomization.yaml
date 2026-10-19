@@ -1,23 +1,25 @@
 # `OrganizationRuleset` resources — one per file, named after the rule (an active verb).
-# Nine imported org rulesets remain Observe-only; the retained signing rule is disabled
-# with only Observe/Update. Six net-new rulesets are managed (Create).
-# The 10 org rulesets the provider cannot express remain UI-managed —
+# Ten imported org rulesets remain Observe-only. The retained signing rule and
+# adopted Go workflow rule have only Observe/Update. Seven net-new rulesets are managed (Create).
+# Rulesets the provider cannot express remain UI-managed —
 # see ./README.md for the importability matrix and the push/tag/Actions-policy analysis.
 # Repo-scoped rulesets live in ../repository-rulesets/. Included by ../kustomization.yaml.
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
-  # Existing imports: nine Observe-only, with the retained signing exception marked below.
+  # Existing imports: ten Observe-only, with two fully backfilled managed imports.
   - block-force-pushes.yaml
   - require-pull-request.yaml
   - require-conversation-resolution.yaml
   - require-linear-history.yaml
+  - require-code-scanning-results.yaml
   - require-signed-commits.yaml # Retained disabled record: Observe + Update only.
   - require-status-checks.yaml
   - restrict-deletions.yaml
   - restrict-branch-names.yaml
   - restrict-commit-metadata.yaml
   - require-workflows-dependency-review.yaml
+  - require-workflows-go.yaml # Full policy adopted: Observe + Update only.
   # Net-new, managed (Create).
   - protect-release-tags.yaml
   - require-world-at-ruin-trusted-regressions.yaml
@@ -25,3 +27,4 @@ resources:
   - require-dotgithub-deploy-guards.yaml
   - require-go-template-validation.yaml
   - require-dotnet-template-tests.yaml
+  - require-metadata-code-scanning-results.yaml

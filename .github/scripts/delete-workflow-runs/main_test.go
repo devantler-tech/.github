@@ -14,6 +14,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -317,6 +318,9 @@ func runJSON(id int, date, status, conclusion string) string {
 
 // oldRun is eligible by age, leaving minimum-run retention to the driver.
 func oldRun(id int) string { return runJSON(id, "2000-01-01T00:00:00Z", "completed", "success") }
+
+// recentRun falls inside the trailing day a capped whole-history search splits off first.
+func recentRun(id int) string { return runJSON(id, "2026-10-05T12:00:00Z", "completed", "success") }
 
 // standardRoutes supplies complete workflow metadata and the shared repository-run snapshot.
 func standardRoutes(runs string) []fixtureRoute {
@@ -967,17 +971,50 @@ func TestRunEnumerationFreezesCreationTime(t *testing.T) {
 	}
 }
 
+// TestCompletionReportsRequestTotals keeps the hosted request observer equal to
+// what the server received, counting a retried read as two requests.
+func TestCompletionReportsRequestTotals(t *testing.T) {
+	var reads, writes, failed atomic.Int64
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == "DELETE" {
+			writes.Add(1)
+			w.WriteHeader(204)
+			return
+		}
+		reads.Add(1)
+		if r.URL.Path == fixtureRepo+"/actions/workflows" {
+			if failed.Add(1) == 1 {
+				w.WriteHeader(502)
+				return
+			}
+			_, _ = io.WriteString(w, workflowBody)
+			return
+		}
+		_, _ = io.WriteString(w, runBody(oldRun(101)))
+	}))
+	defer server.Close()
+	cfg := baseConfig()
+	cfg.minimum, cfg.dryRun = 0, false
+	var log bytes.Buffer
+	noWait := func(context.Context, time.Duration) error { return nil }
+	err := clean(context.Background(), cfg, server.URL, "offline-fixture-token", server.Client(), fixedNow, &log, noWait)
+	want := fmt.Sprintf("Cleanup completed: selected=1 dry-run=false reads=%d writes=%d\n", reads.Load(), writes.Load())
+	if err != nil || failed.Load() < 2 || writes.Load() != 1 || !strings.HasSuffix(log.String(), want) {
+		t.Fatalf("completion totals differ from the server: %v want suffix %q log=%q", err, want, log.String())
+	}
+}
+
 // TestCappedRunSearchSplitsWithoutDroppingHistory protects retention beyond GitHub's 1,000-result cap.
 func TestCappedRunSearchSplitsWithoutDroppingHistory(t *testing.T) {
 	cutoff := fixedNow.Add(-time.Second).Unix()
-	middle := cutoff / 2
+	middle := cutoff - recentWindow
 	format := func(second int64) string { return time.Unix(second, 0).UTC().Format(time.RFC3339) }
 	whole := format(0) + ".." + format(cutoff)
 	left := format(0) + ".." + format(middle)
 	right := format(middle+1) + ".." + format(cutoff)
 	newer := []string{}
 	for id := 1; id <= 999; id++ {
-		newer = append(newer, oldRun(id))
+		newer = append(newer, recentRun(id))
 	}
 	older := []string{runJSON(1000, "1990-01-01T00:00:00Z", "completed", "success"), runJSON(1001, "1990-01-02T00:00:00Z", "completed", "success")}
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -1016,7 +1053,8 @@ func TestCappedRunSearchSplitsWithoutDroppingHistory(t *testing.T) {
 	}))
 	defer server.Close()
 	cfg := baseConfig()
-	cfg.minimum = 0
+	// The trailing-day runs are recent, so age-based retention is off to keep every run selectable.
+	cfg.minimum, cfg.days = 0, 0
 	var log bytes.Buffer
 	err := clean(context.Background(), cfg, server.URL, "offline-fixture-token", server.Client(), fixedNow, &log, delay)
 	if err != nil || !strings.Contains(log.String(), "selected=1001 dry-run=true") || !strings.Contains(log.String(), "Would delete run 1001\n") {
@@ -1031,7 +1069,7 @@ func TestSnapshotFailuresProduceNoWrites(t *testing.T) {
 			var writes, reads atomic.Int64
 			cutoff := fixedNow.Add(-time.Second).Unix()
 			whole := "1970-01-01T00:00:00Z..2026-10-05T23:59:59Z"
-			left := "1970-01-01T00:00:00Z.." + time.Unix(cutoff/2, 0).UTC().Format(time.RFC3339)
+			left := "1970-01-01T00:00:00Z.." + time.Unix(cutoff-recentWindow, 0).UTC().Format(time.RFC3339)
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				if r.Method == "DELETE" {
 					writes.Add(1)
@@ -1135,7 +1173,7 @@ func TestChangingHistoryRestartsFromAnEmptyInventory(t *testing.T) {
 			var mu sync.Mutex
 			deleted := []string{}
 			cutoff := "1970-01-01T00:00:00Z.." + fixedNow.Add(-time.Second).Format(time.RFC3339)
-			middle := (fixedNow.Add(-time.Second).Unix()) / 2
+			middle := fixedNow.Add(-time.Second).Unix() - recentWindow
 			left := "1970-01-01T00:00:00Z.." + time.Unix(middle, 0).UTC().Format(time.RFC3339)
 			right := time.Unix(middle+1, 0).UTC().Format(time.RFC3339) + ".." + fixedNow.Add(-time.Second).Format(time.RFC3339)
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -1211,7 +1249,7 @@ func TestChangingHistoryRestartsFromAnEmptyInventory(t *testing.T) {
 				}
 				rows := []string{}
 				for id := (page-1)*100 + 1; id <= min(page*100, 401); id++ {
-					rows = append(rows, oldRun(id+2))
+					rows = append(rows, recentRun(id+2))
 				}
 				_, _ = fmt.Fprintf(w, `{"total_count":%d,"workflow_runs":[%s]}`, total, strings.Join(rows, ","))
 			}))
@@ -1364,7 +1402,7 @@ func TestChangingTotalsCannotHideOtherHistoryFailures(t *testing.T) {
 		t.Run(defect, func(t *testing.T) {
 			var starts, active, writes atomic.Int64
 			cutoff := fixedNow.Add(-time.Second).Unix()
-			middle := cutoff / 2
+			middle := cutoff - recentWindow
 			stamp := func(s int64) string { return time.Unix(s, 0).UTC().Format(time.RFC3339) }
 			whole := stamp(0) + ".." + stamp(cutoff)
 			left := stamp(0) + ".." + stamp(middle)
@@ -1419,17 +1457,17 @@ func TestChangingTotalsCannotHideOtherHistoryFailures(t *testing.T) {
 				}
 				rows := []string{}
 				for id := (page-1)*100 + 1; id <= min(page*100, 401); id++ {
-					row := oldRun(id + 2)
+					row := recentRun(id + 2)
 					if page == 2 && id == 101 {
 						switch defect {
 						case "malformed-run":
 							row = `{"id":103}`
 						case "duplicate":
-							row = oldRun(3)
+							row = recentRun(3)
 						case "out-of-range":
 							row = runJSON(103, "1990-01-01T00:00:00Z", "completed", "success")
 						case "cross-partition-duplicate":
-							row = oldRun(1)
+							row = recentRun(1)
 						}
 					}
 					if page == 1 && id == 1 && defect == "malformed-prior" {
@@ -1475,14 +1513,14 @@ func TestCappedHistoryCannotShrinkBelowItsMinimum(t *testing.T) {
 			cutoff := fixedNow.Add(-time.Second).Unix()
 			stamp := func(second int64) string { return time.Unix(second, 0).UTC().Format(time.RFC3339) }
 			whole := stamp(0) + ".." + stamp(cutoff)
-			left := stamp(0) + ".." + stamp(cutoff/2)
-			right := stamp(cutoff/2+1) + ".." + stamp(cutoff)
+			left := stamp(0) + ".." + stamp(cutoff-recentWindow)
+			right := stamp(cutoff-recentWindow+1) + ".." + stamp(cutoff)
 			older, newer := []string{}, []string{}
 			for id := 1; id <= test.descendants; id++ {
 				if id <= (test.descendants+1)/2 {
 					older = append(older, runJSON(id, "1990-01-01T00:00:00Z", "completed", "success"))
 				} else {
-					newer = append(newer, oldRun(id))
+					newer = append(newer, recentRun(id))
 				}
 			}
 			var writes atomic.Int64
@@ -1520,7 +1558,7 @@ func TestCappedHistoryCannotShrinkBelowItsMinimum(t *testing.T) {
 			}))
 			defer server.Close()
 			cfg := baseConfig()
-			cfg.minimum, cfg.dryRun = 0, test.accept
+			cfg.minimum, cfg.days, cfg.dryRun = 0, 0, test.accept
 			var log bytes.Buffer
 			err := clean(context.Background(), cfg, server.URL, "offline-fixture-token", server.Client(), fixedNow, &log, func(context.Context, time.Duration) error { return nil })
 			if test.accept {
@@ -1539,7 +1577,7 @@ func TestCappedHistoryCannotShrinkBelowItsMinimum(t *testing.T) {
 
 func TestEarlierSiblingCannotHideNestedCappedShortage(t *testing.T) {
 	cutoff := fixedNow.Add(-time.Second).Unix()
-	middle := cutoff / 2
+	middle := cutoff - recentWindow
 	stamp := func(second int64) string { return time.Unix(second, 0).UTC().Format(time.RFC3339) }
 	whole := stamp(0) + ".." + stamp(cutoff)
 	left := stamp(0) + ".." + stamp(middle)
@@ -1574,7 +1612,7 @@ func TestEarlierSiblingCannotHideNestedCappedShortage(t *testing.T) {
 			}
 			_, _ = fmt.Fprintf(w, `{"total_count":999,"workflow_runs":[%s]}`, strings.Join(older[start:min(start+100, len(older))], ","))
 		case nestedLeft:
-			_, _ = io.WriteString(w, runBody(runJSON(1000, "2000-01-01T00:00:00Z", "completed", "success")))
+			_, _ = io.WriteString(w, runBody(runJSON(1000, "2026-10-05T06:00:00Z", "completed", "success")))
 		case nestedRight:
 			_, _ = io.WriteString(w, runBody())
 		default:
@@ -1589,5 +1627,131 @@ func TestEarlierSiblingCannotHideNestedCappedShortage(t *testing.T) {
 	err := clean(context.Background(), cfg, server.URL, "offline-fixture-token", server.Client(), fixedNow, &log, func(context.Context, time.Duration) error { return nil })
 	if err == nil || !strings.Contains(err.Error(), "capped minimum") || writes.Load() != 0 || log.Len() != 0 {
 		t.Fatalf("earlier sibling hid partial nested inventory: err=%v writes=%d log bytes=%d", err, writes.Load(), log.Len())
+	}
+}
+
+// searchHistory serves GitHub's created-range run search over a frozen synthetic history:
+// newest first, 100 per page, with only the first 1,000 results reachable.
+func searchHistory(t *testing.T, created []int64) (*httptest.Server, *atomic.Int64) {
+	t.Helper()
+	runs := append([]int64(nil), created...)
+	sort.Slice(runs, func(i, j int) bool { return runs[i] > runs[j] })
+	var reads atomic.Int64
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "GET" || r.URL.Path != fixtureRepo+"/actions/runs" {
+			t.Errorf("unexpected request: %s %s", r.Method, r.URL.RequestURI())
+			w.WriteHeader(403)
+			return
+		}
+		reads.Add(1)
+		bounds := strings.Split(r.URL.Query().Get("created"), "..")
+		if len(bounds) != 2 {
+			t.Errorf("unbounded run search: %s", r.URL.RequestURI())
+			w.WriteHeader(422)
+			return
+		}
+		lower, lowerErr := time.Parse(time.RFC3339, bounds[0])
+		upper, upperErr := time.Parse(time.RFC3339, bounds[1])
+		if lowerErr != nil || upperErr != nil || upper.Before(lower) {
+			t.Errorf("malformed run search range: %s", r.URL.RequestURI())
+			w.WriteHeader(422)
+			return
+		}
+		matched := []string{}
+		for index, second := range runs {
+			if second >= lower.Unix() && second <= upper.Unix() {
+				stamp := time.Unix(second, 0).UTC().Format(time.RFC3339)
+				matched = append(matched, runJSON(index+1, stamp, "completed", "success"))
+			}
+		}
+		page := 0
+		_, _ = fmt.Sscan(r.URL.Query().Get("page"), &page)
+		start := (page - 1) * 100
+		end := min(start+100, len(matched), 1000)
+		items := []string{}
+		if start >= 0 && start < end {
+			items = matched[start:end]
+		}
+		_, _ = fmt.Fprintf(w, `{"total_count":%d,"workflow_runs":[%s]}`, len(matched), strings.Join(items, ","))
+	}))
+	return server, &reads
+}
+
+// TestSplitPointSeparatesOnlyTheWholeHistorysTrailingDay keeps every other range on bisection.
+func TestSplitPointSeparatesOnlyTheWholeHistorysTrailingDay(t *testing.T) {
+	snapshot := fixedNow.Add(-time.Second).Unix()
+	for _, test := range []struct {
+		name                string
+		lower, upper, split int64
+	}{
+		{"whole history", 0, snapshot, snapshot - recentWindow},
+		{"nested range bisects", snapshot - recentWindow + 1, snapshot, snapshot - recentWindow + 1 + (recentWindow-1)/2},
+		{"left child bisects", 0, snapshot - recentWindow, (snapshot - recentWindow) / 2},
+		{"history of exactly one day", 0, recentWindow, 0},
+		{"history shorter than a day", 0, recentWindow - 1, (recentWindow - 1) / 2},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			upper := snapshot
+			if test.lower == 0 && test.upper <= recentWindow {
+				upper = test.upper
+			}
+			split := splitPoint(test.lower, test.upper, upper)
+			if split != test.split || split < test.lower || split >= test.upper {
+				t.Fatalf("splitPoint(%d, %d) = %d, want %d inside [lower, upper)", test.lower, test.upper, split, test.split)
+			}
+		})
+	}
+}
+
+// TestRunSearchRequestCounts pins the request cost of the history split for the three frozen
+// workloads measured on #612, and proves every run is still returned exactly once.
+func TestRunSearchRequestCounts(t *testing.T) {
+	cutoff := fixedNow.Add(-time.Second).Unix()
+	dense := []int64{}
+	for second := range int64(1001) {
+		dense = append(dense, cutoff-second)
+	}
+	year := []int64{}
+	for index := range int64(10001) {
+		year = append(year, cutoff-index*(365*24*60*60)/10001)
+	}
+	epoch := []int64{}
+	for index := range int64(1001) {
+		epoch = append(epoch, index*cutoff/1000)
+	}
+	for _, workload := range []struct {
+		name     string
+		created  []int64
+		requests int64
+	}{
+		{"dense-recent-day", dense, 26},
+		{"spread-over-a-year", year, 143},
+		{"spread-over-the-epoch", epoch, 13},
+	} {
+		t.Run(workload.name, func(t *testing.T) {
+			server, reads := searchHistory(t, workload.created)
+			defer server.Close()
+			a := api{base: server.URL, token: "offline-fixture-token", client: server.Client(), wait: delay, budget: &rateLimitWaitBudget{}}
+			items, err := a.listRuns(context.Background(), fixtureRepo+"/actions/runs", fixedNow)
+			if err != nil {
+				t.Fatalf("run search failed: %v", err)
+			}
+			seen := map[int64]bool{}
+			for _, raw := range items {
+				var run struct {
+					ID int64 `json:"id"`
+				}
+				if json.Unmarshal(raw, &run) != nil || run.ID <= 0 || seen[run.ID] {
+					t.Fatalf("invalid or repeated run in result: %s", raw)
+				}
+				seen[run.ID] = true
+			}
+			if len(seen) != len(workload.created) {
+				t.Fatalf("returned %d runs, want every one of %d", len(seen), len(workload.created))
+			}
+			if got := reads.Load(); got != workload.requests {
+				t.Fatalf("run search used %d requests, want %d", got, workload.requests)
+			}
+		})
 	}
 }

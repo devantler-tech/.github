@@ -58,16 +58,16 @@ assert_value "source path" ".github/workflows/world-at-ruin-required-regressions
 assert_value "source ref" "refs/heads/main" '.spec.forProvider.rules[0].requiredWorkflows[0].requiredWorkflow[0].ref'
 
 inventory="${repo_root}/deploy/organization-rulesets/README.md"
-grep -Fq 'The 10 imported org rulesets' "${inventory}" ||
-  fail "organization ruleset inventory must account for 10 imported rulesets"
+grep -Fq 'The 12 imported org rulesets' "${inventory}" ||
+  fail "organization ruleset inventory must account for 12 imported rulesets"
 # The backticks are literal Markdown table cell delimiters, not command substitution.
 # shellcheck disable=SC2016
 managed_rows="$(grep -c '^| `[a-z-]*\.yaml` | .*(net-new) | Managed (Create)' "${inventory}" || true)"
-[[ "${managed_rows}" == "6" ]] ||
-  fail "organization ruleset inventory must list 6 managed rulesets, got ${managed_rows}"
+[[ "${managed_rows}" == "7" ]] ||
+  fail "organization ruleset inventory must list 7 managed rulesets, got ${managed_rows}"
 managed_rendered="$(yq -N 'select(.kind == "OrganizationRuleset" and (.spec.managementPolicies | contains(["Create"]))) | .metadata.name' "${render}" | grep -c . || true)"
-[[ "${managed_rendered}" == "6" ]] ||
-  fail "expected 6 rendered managed (Create) organization rulesets, got ${managed_rendered}"
+[[ "${managed_rendered}" == "7" ]] ||
+  fail "expected 7 rendered managed (Create) organization rulesets, got ${managed_rendered}"
 # Schema inspection is not a live census. Keep rendered ownership checks above,
 # and require the capability inventory to preserve that evidence boundary.
 if ! grep -Fq 'Schema support determines what can be declared; it does not prove adoption,' "${inventory}" ||

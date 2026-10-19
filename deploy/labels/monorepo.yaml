@@ -2,7 +2,9 @@
 # is appended to every IssueLabels by the shared patch in kustomization.yaml; this
 # file adds only the monorepo's repo-specific extras (the dependency/ecosystem
 # labels Dependabot applies — incl. `submodules` for the gitsubmodule ecosystem),
-# declared so the authoritative set doesn't churn against the bots. See ../README.md.
+# declared so the authoritative set doesn't churn against the bots, and the three
+# labels the maintainer digest workflows read (ADR 0009 in the monorepo): an ask,
+# an urgent ask, and the weekly digest. See ../README.md.
 apiVersion: repo.github.m.upbound.io/v1alpha1
 kind: IssueLabels
 metadata:
@@ -26,6 +28,12 @@ spec:
         color: "168700"
       - name: "submodules"
         color: "000000"
+      - name: "maintainer-ask"
+        color: "fbca04"
+      - name: "maintainer-ask-urgent"
+        color: "b60205"
+      - name: "maintainer-digest"
+        color: "0e8a16"
   providerConfigRef:
     kind: ProviderConfig
     name: default

@@ -19,6 +19,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 )
@@ -130,7 +131,13 @@ type api struct {
 	client      *http.Client
 	wait        func(context.Context, time.Duration) error
 	budget      *rateLimitWaitBudget
+	sent        *requestCount
 }
+
+// requestCount totals the HTTP attempts a cleanup sends, retries included. The
+// completion line reports only these totals, so a hosted run can be compared with
+// the native measurement without exposing run identities or response content.
+type requestCount struct{ reads, writes atomic.Int64 }
 
 type httpFailure struct{ status int }
 
@@ -237,6 +244,13 @@ func (a api) request(ctx context.Context, method, path string) ([]byte, error) {
 		req.Header.Set("Authorization", "Bearer "+a.token)
 		req.Header.Set("Accept", "application/vnd.github+json")
 		req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
+		if a.sent != nil {
+			if method == "GET" {
+				a.sent.reads.Add(1)
+			} else {
+				a.sent.writes.Add(1)
+			}
+		}
 		response, err := client.Do(req)
 		if err == nil {
 			raw, readErr := io.ReadAll(io.LimitReader(response.Body, (16<<20)+1))
@@ -457,9 +471,25 @@ func (a api) listRuns(ctx context.Context, path string, now time.Time) ([]json.R
 	return items, err
 }
 
+// recentWindow is the trailing span a capped whole-history search splits off first.
+// Cleanup histories are usually densest in their latest day, and halving the whole
+// epoch range reaches that day only after about fifteen capped searches.
+const recentWindow = 24 * 60 * 60
+
+// splitPoint returns the last second of a capped range's left half. The whole-history
+// search separates its trailing day; every other range, and a history shorter than one
+// day, is bisected. Both halves are always visited.
+func splitPoint(lower, upper, snapshotUpper int64) int64 {
+	if lower == 0 && upper == snapshotUpper && upper-recentWindow >= lower {
+		return upper - recentWindow
+	}
+	return lower + (upper-lower)/2
+}
+
 // listRunSnapshot splits capped searches into disjoint second ranges. Every
 // attempt starts with empty results; uncertain or overflowing ranges fail closed.
 func (a api) listRunSnapshot(ctx context.Context, path string, upper int64, partitions *int) ([]json.RawMessage, error) {
+	snapshotUpper := upper
 	result := []json.RawMessage{}
 	seen := map[int64]bool{}
 	var visit func(int64, int64) error
@@ -476,7 +506,7 @@ func (a api) listRunSnapshot(ctx context.Context, path string, upper int64, part
 				return errors.New("run search cannot prove completeness within one second")
 			}
 			before := len(result)
-			middle := lower + (upper-lower)/2
+			middle := splitPoint(lower, upper, snapshotUpper)
 			if err := visit(lower, middle); err != nil {
 				return err
 			}
@@ -612,6 +642,7 @@ func clean(ctx context.Context, cfg config, base, token string, client *http.Cli
 		client: client,
 		wait:   wait,
 		budget: &rateLimitWaitBudget{},
+		sent:   &requestCount{},
 	}
 	prefix := "/repos/" + cfg.repository
 	items, err := a.list(ctx, prefix+"/actions/workflows", "workflows")
@@ -730,7 +761,7 @@ func clean(ctx context.Context, cfg config, base, token string, client *http.Cli
 			return err
 		}
 	}
-	_, err = fmt.Fprintf(out, "Cleanup completed: selected=%d dry-run=%t\n", len(plan), cfg.dryRun)
+	_, err = fmt.Fprintf(out, "Cleanup completed: selected=%d dry-run=%t reads=%d writes=%d\n", len(plan), cfg.dryRun, a.sent.reads.Load(), a.sent.writes.Load())
 	return err
 }
 

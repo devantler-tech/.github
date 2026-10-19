@@ -1,0 +1,18 @@
+# Existing organization CodeQL rule, observed without changing native protection.
+# The repository view omits organization selection conditions. Recover the full
+# status.atProvider before any managed adoption; never synthesize a selector.
+apiVersion: enterprise.github.m.upbound.io/v1alpha1
+kind: OrganizationRuleset
+metadata:
+  name: require-code-scanning-results
+  annotations:
+    crossplane.io/external-name: "6455804"
+spec:
+  managementPolicies: ["Observe"]
+  forProvider:
+    name: Require code scanning results
+    target: branch
+    enforcement: active
+  providerConfigRef:
+    kind: ProviderConfig
+    name: default

@@ -3227,6 +3227,9 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: 📋 Check agent instruction layout
+        run: bash .github/tests/test-agent-instructions-layout.sh
+
       - name: 📋 Check README ↔ action.yaml input/output parity
         shell: bash
         run: |
@@ -4223,7 +4226,7 @@ jobs:
           node-version: 22
 
       - name: 📦 Acquire pinned release dependency for controls
-        run: npx --yes semantic-release@25.0.3 --version
+        run: npx --yes semantic-release@25.0.9 --version
 
       - name: 🧪 Verify release-decision regressions fail
         run: bash .github/tests/test-create-release-fixture-controls.sh
@@ -4578,7 +4581,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        go: ['1.25.14', '1.26.8', '1.27.1']
+        go: ['1.25.14', '1.26.9', '1.27.2']
         fixture: [govulncheck-allowlist, govulncheck-generics]
     runs-on: ubuntu-latest
     permissions:
@@ -4625,7 +4628,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        go: ['1.25.14', '1.26.8', '1.27.1']
+        go: ['1.25.14', '1.26.9', '1.27.2']
         fixture: [govulncheck-allowlist, govulncheck-generics]
     runs-on: ubuntu-latest
     permissions:
@@ -6249,6 +6252,15 @@ jobs:
       - name: 🧪 Test platform merge-queue ruleset
         run: bash tests/platform-merge-queue-ruleset.sh
 
+      - name: 🧪 Test organization CodeQL observation
+        run: bash tests/code-scanning-ruleset.sh
+
+      - name: 🧪 Test organization Go workflow observation
+        run: bash tests/go-workflow-observation.sh
+
+      - name: 🧪 Test organization CodeQL protection for metadata repositories
+        run: bash tests/metadata-code-scanning-ruleset.sh
+
       - name: 🧪 Test independent Monorepo CI aggregate ruleset
         run: bash tests/ci-aggregate-ruleset.sh
 
@@ -6630,8 +6642,10 @@ jobs:
           fi
           # Retry only server failures, restarting the entire paginated read.
           # A failed later page can already have emitted convincing partial data.
+          # Pages of 100 jobs on the full catalogue run fail with HTTP 502 every
+          # time, while pages of 50 succeed, so the page size stays at 50.
           for attempt in 1 2 3; do
-            if gh api "repos/$REPOSITORY/actions/runs/$RUN_ID/attempts/$RUN_ATTEMPT/jobs?per_page=100" \
+            if gh api "repos/$REPOSITORY/actions/runs/$RUN_ID/attempts/$RUN_ATTEMPT/jobs?per_page=50" \
               --paginate --slurp > jobs.json 2> jobs.error; then
               break
             fi
