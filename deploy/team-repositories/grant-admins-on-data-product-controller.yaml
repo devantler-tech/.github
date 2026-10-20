@@ -11,7 +11,7 @@ spec:
       name: admins
       policy:
         resolve: Always
-    repository: data-product-controller
+    repository: khoist
     permission: admin
   providerConfigRef:
     kind: ProviderConfig

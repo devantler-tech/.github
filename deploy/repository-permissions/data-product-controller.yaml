@@ -7,7 +7,7 @@ kind: RepositoryPermissions
 metadata:
   name: data-product-controller
   annotations:
-    crossplane.io/external-name: data-product-controller
+    crossplane.io/external-name: khoist
 spec:
   managementPolicies:
     - Observe
@@ -15,7 +15,7 @@ spec:
     - Update
     - LateInitialize
   forProvider:
-    repository: data-product-controller
+    repository: khoist
   providerConfigRef:
     kind: ProviderConfig
     name: default
