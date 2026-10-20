@@ -16,7 +16,7 @@ spec:
       - buildType: workflow
         cname: khoist.devantler.tech
   forProvider:
-    name: data-product-controller
+    name: khoist
     visibility: public
     archived: false
     description: "A cloud-native controller for composable, self-describing data products."
