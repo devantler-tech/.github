@@ -26,7 +26,6 @@ resources:
   - actions.yaml
   - platform.yaml
   - ksail.yaml
-  - maintenance.yaml
   - agent-skills.yaml
   - agent-plugins.yaml
   - unifi.yaml

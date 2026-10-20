@@ -59,8 +59,6 @@ exemptions=(
   # fleet-gitops is private; the Maintainers team deliberately stays off it
   # (maintainer decision on #115, 2026-09-25).
   "team-maintainers/fleet-gitops"
-  # maintenance is being retired (#84), so it gets no new grant.
-  "team-maintainers/maintenance"
 )
 
 is_exempt() {
