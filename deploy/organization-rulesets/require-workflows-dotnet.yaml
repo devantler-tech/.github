@@ -1,5 +1,5 @@
-# Existing language-selected policy, separate from the template-only rule (#674).
-# Observe only; selectors, bypasses and rules must be backfilled before Update.
+# Complete native policy observed before migration (#237 / #674).
+# Preserve selectors, bypasses and lifecycle; change only the required source.
 apiVersion: enterprise.github.m.upbound.io/v1alpha1
 kind: OrganizationRuleset
 metadata:
@@ -7,11 +7,40 @@ metadata:
   annotations:
     crossplane.io/external-name: "3716863"
 spec:
-  managementPolicies: ["Observe"]
+  managementPolicies:
+    - Observe
+    - Update
   forProvider:
-    name: Require workflows to pass before merging for .NET
-    target: branch
+    bypassActors:
+      - actorType: OrganizationAdmin
+        bypassMode: always
+    conditions:
+      - refName:
+          - include:
+              - ~DEFAULT_BRANCH
+            exclude: []
+        repositoryProperty:
+          - include:
+              - name: language
+                propertyValues:
+                  - C#
+                source: system
     enforcement: active
+    name: Require workflows to pass before merging for .NET
+    rules:
+      - creation: false
+        deletion: false
+        nonFastForward: false
+        requiredLinearHistory: false
+        requiredSignatures: false
+        requiredWorkflows:
+          - doNotEnforceOnCreate: true
+            requiredWorkflow:
+              - path: .github/workflows/run-dotnet-tests.yaml
+                ref: refs/heads/main
+                repositoryId: 933213756
+        update: false
+    target: branch
   providerConfigRef:
     kind: ProviderConfig
     name: default

@@ -6299,7 +6299,7 @@ jobs:
       - name: 🧪 Test organization Go workflow observation
         run: bash tests/go-workflow-observation.sh
 
-      - name: 🧪 Test read-only legacy workflow observations
+      - name: 🧪 Test complete legacy workflow source migration
         run: bash tests/legacy-workflow-observation.sh
 
       - name: 🧪 Test organization CodeQL protection for metadata repositories

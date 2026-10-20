@@ -1,13 +1,13 @@
 # `OrganizationRuleset` resources — one per file, named after the rule (an active verb).
-# Thirteen imported org rulesets remain Observe-only. The retained signing rule and
-# adopted Go workflow rule have only Observe/Update. Seven net-new rulesets are managed (Create).
+# Nine imported org rulesets remain Observe-only. The retained signing rule and
+# five adopted workflow rules have only Observe/Update. Seven net-new rulesets are managed (Create).
 # Rulesets the provider cannot express remain UI-managed —
 # see ./README.md for the importability matrix and the push/tag/Actions-policy analysis.
 # Repo-scoped rulesets live in ../repository-rulesets/. Included by ../kustomization.yaml.
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
-  # Existing imports: thirteen Observe-only, with two fully backfilled managed imports.
+  # Existing imports: nine Observe-only, with six fully backfilled managed imports.
   - block-force-pushes.yaml
   - require-pull-request.yaml
   - require-conversation-resolution.yaml

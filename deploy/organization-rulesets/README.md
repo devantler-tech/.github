@@ -9,13 +9,13 @@ Reconciled by the platform `github-config` tenant like the rest of `deploy/`.
 
 ## How adoption works
 
-- **Observe-first (read-only).** The thirteen Observe-only org imports are bound with
+- **Observe-first (read-only).** The nine Observe-only org imports are bound with
   `managementPolicies: ["Observe"]` — Crossplane mirrors live GitHub state into
   `status.atProvider` and **never writes, reverts, or deletes**. This is pure GitOps
   *visibility*, with zero behaviour change (the same flow `repositories/` and `teams/`
-  used). The [retained signing rule](#retained-signing-rule-record) and fully adopted
-  [Go workflow rule](#organization-go-workflow-policy) use only Observe and Update.
-  The signing rule preserves its disabled record; the Go rule uses the maintained catalogue. `Delete` is
+  used). The [retained signing rule](#retained-signing-rule-record) and five fully adopted
+  workflow rules use only Observe and Update.
+  The signing rule preserves its disabled record; the workflow rules use the maintained catalogue. `Delete` is
   omitted everywhere, so a CR/Flux prune can never delete a real ruleset.
 - **external-name = the numeric ruleset id**, for both Kinds — `OrganizationRuleset`
   (`gh api orgs/devantler-tech/rulesets`) and `RepositoryRuleset`
@@ -38,9 +38,10 @@ verb — e.g. `require-pull-request.yaml`). Repo-scoped rulesets live next door 
 
 | Files | Rulesets | Policy |
 |---|---|---|
-| 13 `OrganizationRuleset` files | the imported org rulesets below except Require signed commits and Require workflows (Go) | Observe (read-only import) |
+| 9 `OrganizationRuleset` files | the imported org rulesets below except the six managed imports in this table | Observe (read-only import) |
 | `require-signed-commits.yaml` | **Require signed commits** (existing, retired) | Observe + Update — retain the disabled record; never create or delete |
 | `require-workflows-go.yaml` | **Require workflows to pass before merging for Go** (existing, adopted) | Observe + Update — preserve the complete observed policy and require the maintained Go workflow; never create or delete |
+| 4 `require-workflows-*.yaml` imports | **DependencyReview**, **EnableAutoMerge**, **ScanGitHubActions** and language-selected **.NET** | Observe + Update — fully backfill the observed policy before switching only its required source; never create or delete |
 | `protect-release-tags.yaml` | **Protect release tags** (net-new) | Managed (Create) — block tag delete + force-move + require `v<semver>` |
 | `require-world-at-ruin-trusted-regressions.yaml` | **Require workflow - World at Ruin trusted regressions** (net-new) | Managed (Create) — target only World at Ruin and require the canonical catalogue's trusted regression workflow |
 | `require-monorepo-ci-aggregate-contract.yaml` | **Require workflow - Monorepo CI aggregate contract** (net-new) | Managed (Create) — target only monorepo and require the aggregate-execution control from its reviewed `main` |
@@ -56,18 +57,25 @@ Require signed commits · Require status checks to pass · Restrict deletions ·
 branch names · Restrict commit metadata · Require workflows (DependencyReview) · Require workflows (Go) ·
 Require workflows (EnableAutoMerge) · Require workflows (ScanGitHubActions) · Require workflows (.NET).
 
-### Legacy workflow policy observations
+### Legacy required-workflow source migration
 
-The auto-merge, workflow-scanning and language-selected .NET imports are read-only
-records of existing policies, separate from the template-only rules. Their native
-selectors, bypasses and workflow configuration remain authoritative until fully
-observed and backfilled in a separate reviewed adoption change. Repository-inherited
-API views omit organization repository selectors and are insufficient for that backfill.
+The four imported rules and two template-specific rules were observed completely
+before this source migration. Their original default-branch selectors, repository
+selectors, bypasses and creation behavior remain unchanged. Required workflows move
+from the legacy catalogue to repository `933213756`, preserving each path and
+`refs/heads/main`. The imports permit only Observe and Update; the two existing
+managed template rules retain their previous lifecycle authority.
+
+The complete pre-migration snapshots are integrity-bound in
+`tests/fixtures/legacy-workflow-rulesets-observed.jsonl`. They are native policy
+evidence, not repository-inherited API projections, which omit organization selectors.
 
 Run `bash tests/legacy-workflow-observation.sh` from the repository root. It renders
-the real configuration, rejects write authority and substituted or duplicate
-identities, and checks its required CI invocation. Native observation, source
-migration and actual consumer proof remain separate gates under #237/#674.
+the real configuration, compares every policy field with those observations and
+allows only the reviewed source switch and provider-required encodings. Its 113
+rejection controls cover policy drift, excess authority, duplicate adoption,
+incomplete input, additional legacy sources and weakened required CI invocation. Native readback and actual
+ordinary consumer executions remain separate delivery gates under #237.
 
 ### Organization Go workflow policy
 
