@@ -136,6 +136,11 @@ organization rule for `.github` and `monorepo`; preserve its exact verified scop
 all finding thresholds, no bypasses and non-deleting lifecycle. Native creation
 and positive/refusal evidence remain separate delivery gates.
 
+The imported auto-merge, workflow-scanning and language-selected .NET rules remain
+Observe-only. Run `bash tests/legacy-workflow-observation.sh` after changing their
+identities, authority or CI integration; complete native policy observation is
+required before any separately reviewed source migration (#674).
+
 **Validate before every PR** (the sole required check, `CI - Required Checks`, gates on this):
 
 ```sh

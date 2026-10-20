@@ -6299,6 +6299,9 @@ jobs:
       - name: 🧪 Test organization Go workflow observation
         run: bash tests/go-workflow-observation.sh
 
+      - name: 🧪 Test read-only legacy workflow observations
+        run: bash tests/legacy-workflow-observation.sh
+
       - name: 🧪 Test organization CodeQL protection for metadata repositories
         run: bash tests/metadata-code-scanning-ruleset.sh
 
