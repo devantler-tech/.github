@@ -1,23 +1,44 @@
-# Existing org ruleset, adopted Observe-first (read-only). Identity-only
-# forProvider — don't promote past Observe without backfilling from
-# status.atProvider (lossy round-trip). See ./README.md for the convention.
-#
-# Newer "Require workflows to pass" rule (API type `workflows`, exposed by the
-# provider as `requiredWorkflows`). This DependencyReview variant conditions on
-# repository_name `~ALL`. Property-scoped variants also need their complete
-# observed policy before any write-enabled adoption; see ./README.md.
+# Complete native policy observed before migration (#237 / #674).
+# Preserve selectors, bypasses and lifecycle; change only the required source.
 apiVersion: enterprise.github.m.upbound.io/v1alpha1
 kind: OrganizationRuleset
 metadata:
   name: require-workflows-dependency-review
   annotations:
-    crossplane.io/external-name: "17213449" # numeric ruleset id
+    crossplane.io/external-name: "17213449"
 spec:
-  managementPolicies: ["Observe"]
+  managementPolicies:
+    - Observe
+    - Update
   forProvider:
-    name: Require workflows to pass before merging - DependencyReview
-    target: branch
+    bypassActors:
+      - actorType: OrganizationAdmin
+        bypassMode: always
+    conditions:
+      - refName:
+          - include:
+              - ~DEFAULT_BRANCH
+            exclude: []
+        repositoryName:
+          - include:
+              - ~ALL
+            protected: false
     enforcement: active
+    name: Require workflows to pass before merging - DependencyReview
+    rules:
+      - creation: false
+        deletion: false
+        nonFastForward: false
+        requiredLinearHistory: false
+        requiredSignatures: false
+        requiredWorkflows:
+          - doNotEnforceOnCreate: true
+            requiredWorkflow:
+              - path: .github/workflows/dependency-review.yaml
+                ref: refs/heads/main
+                repositoryId: 933213756
+        update: false
+    target: branch
   providerConfigRef:
     kind: ProviderConfig
     name: default

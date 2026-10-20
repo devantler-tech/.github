@@ -20,5 +20,5 @@ assert_json '[1065308377]' '.spec.forProvider.conditions[0].repositoryId'
 assert_json '["~DEFAULT_BRANCH"]' '.spec.forProvider.conditions[0].refName[0].include'
 assert_json '[]' '.spec.forProvider.conditions[0].refName[0].exclude'
 assert_json '[]' '(.spec.forProvider.bypassActors // [])'
-assert_json '[{"requiredWorkflows":[{"requiredWorkflow":[{"path":".github/workflows/validate-go-project.yaml","ref":"refs/heads/main","repositoryId":948529001}]}]}]' '.spec.forProvider.rules'
+assert_json '[{"creation":false,"deletion":false,"nonFastForward":false,"requiredLinearHistory":false,"requiredSignatures":false,"requiredWorkflows":[{"doNotEnforceOnCreate":false,"requiredWorkflow":[{"path":".github/workflows/validate-go-project.yaml","ref":"refs/heads/main","repositoryId":933213756}]}],"update":false}]' '.spec.forProvider.rules'
 echo "go-template-validation-ruleset: OK"
