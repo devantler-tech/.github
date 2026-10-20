@@ -71,7 +71,7 @@ repositories=(
   wedding-app
   world-at-ruin
   cloudflare
-  data-product-controller
+  khoist
 )
 
 for repository in "${repositories[@]}"; do

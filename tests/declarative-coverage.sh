@@ -61,15 +61,6 @@ exemptions=(
   "team-maintainers/fleet-gitops"
   # maintenance is being retired (#84), so it gets no new grant.
   "team-maintainers/maintenance"
-  # The data product controller repository is renamed to khoist in place
-  # (#597): the Repository declares the new name first, and its labels, team
-  # grants and Actions permissions keep the old name until the rename is read
-  # back, then move together (#597 step 3), which removes these five entries.
-  "repositories/data-product-controller"
-  "labels/khoist"
-  "team-admins/khoist"
-  "team-maintainers/khoist"
-  "repository-permissions/khoist"
 )
 
 is_exempt() {

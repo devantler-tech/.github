@@ -9,7 +9,7 @@ kind: IssueLabels
 metadata:
   name: data-product-controller
   annotations:
-    crossplane.io/external-name: data-product-controller
+    crossplane.io/external-name: khoist
 spec:
   managementPolicies:
     - Observe
@@ -17,7 +17,7 @@ spec:
     - Update
     - LateInitialize
   forProvider:
-    repository: data-product-controller
+    repository: khoist
     label:
       - name: "dependencies"
         color: "0366d6"
