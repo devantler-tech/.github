@@ -1,18 +1,18 @@
-# Admins-team repository grant. No external-name is set because the separate
-# team and its admin grant are created declaratively without claiming Delete.
+# Team → repository access. No external-name: this grant does not exist yet, so it is
+# Created (full management except Delete) rather than adopted.
 apiVersion: team.github.m.upbound.io/v1alpha1
 kind: TeamRepository
 metadata:
-  name: admins-data-product-controller
+  name: maintainers-khoist
 spec:
   managementPolicies: ["Observe", "Create", "Update", "LateInitialize"]
   forProvider:
     teamIdRef:
-      name: admins
+      name: maintainers
       policy:
         resolve: Always
     repository: khoist
-    permission: admin
+    permission: maintain
   providerConfigRef:
     kind: ProviderConfig
     name: default

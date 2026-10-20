@@ -28,7 +28,7 @@ resources:
   - grant-maintainers-on-ascoachingogvaner.yaml
   - grant-maintainers-on-wedding-app.yaml
   - grant-maintainers-on-cloudflare.yaml
-  - grant-maintainers-on-data-product-controller.yaml
+  - grant-maintainers-on-khoist.yaml
   - grant-maintainers-on-business-site.yaml
   - grant-maintainers-on-client-orders.yaml
   # Active Admins policy (one admin grant per active repository).
@@ -54,6 +54,6 @@ resources:
   - grant-admins-on-wedding-app.yaml
   - grant-admins-on-world-at-ruin.yaml
   - grant-admins-on-cloudflare.yaml
-  - grant-admins-on-data-product-controller.yaml
+  - grant-admins-on-khoist.yaml
   - grant-admins-on-business-site.yaml
   - grant-admins-on-client-orders.yaml
