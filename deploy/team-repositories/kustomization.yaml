@@ -45,7 +45,6 @@ resources:
   - grant-admins-on-homebrew-tap.yaml
   - grant-admins-on-ksail.yaml
   - grant-admins-on-kyverno-policies.yaml
-  - grant-admins-on-maintenance.yaml
   - grant-admins-on-monorepo.yaml
   - grant-admins-on-platform.yaml
   - grant-admins-on-platform-template.yaml
