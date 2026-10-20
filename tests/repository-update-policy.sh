@@ -72,10 +72,10 @@ active_count="$(printf '%s\n' "$active_repositories" | grep -c . || true)"
 # repository being renamed: without Create, a lookup that misses during the rename is
 # reported instead of creating a new empty repository. Remove it from this list, and
 # restore Create on its resource, once the rename is verified (#597).
-renaming_repositories=(data-product-controller)
+renaming_repositories=()
 expected_active_policies() {
   local repository
-  for repository in "${renaming_repositories[@]}"; do
+  for repository in ${renaming_repositories[@]+"${renaming_repositories[@]}"}; do
     [[ "$1" == "$repository" ]] && { echo "Observe,Update"; return; }
   done
   echo "Create,Observe,Update"
