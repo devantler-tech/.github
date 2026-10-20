@@ -5,8 +5,10 @@ metadata:
   annotations:
     crossplane.io/external-name: data-product-controller
 spec:
-  # Keep ordinary settings management on the adopted repository.
-  managementPolicies: ["Observe", "Create", "Update"]
+  # Observe and Update only while the repository is renamed (#597): if the
+  # lookup ever misses during the rename, the sync must report it rather than
+  # create a new empty repository. Restore Create once the rename is verified.
+  managementPolicies: ["Observe", "Update"]
   # Pages was bootstrapped separately. Preserve its initial declaration without
   # asking the managed App to write Pages; the drift audit still verifies it.
   initProvider:

@@ -68,10 +68,25 @@ active_count="$(printf '%s\n' "$active_repositories" | grep -c . || true)"
 # as a whole (the CRD gives it no list type, so server-side apply treats it as
 # atomic), so the provider sees no Pages change and never calls that API.
 #
+# An active repository is managed with Observe/Create/Update. The one exception is a
+# repository being renamed: without Create, a lookup that misses during the rename is
+# reported instead of creating a new empty repository. Remove it from this list, and
+# restore Create on its resource, once the rename is verified (#597).
+renaming_repositories=(data-product-controller)
+expected_active_policies() {
+  local repository
+  for repository in "${renaming_repositories[@]}"; do
+    [[ "$1" == "$repository" ]] && { echo "Observe,Update"; return; }
+  done
+  echo "Create,Observe,Update"
+}
+
 # With `pages` matching GitHub exactly, an update carries no Pages change, so both
 # are managed with Observe/Create/Update like every other active repository.
 declare_pages() {
-  local name="$1" want_cname="$2" want_homepage="${3:-}" owner="${4:-forProvider}" got
+  local name="$1" want_cname="$2" want_homepage="${3:-}" owner="${4:-forProvider}"
+  local want_policies got
+  want_policies="$(expected_active_policies "$name")"
   got="$(
     yq -N -o=json -I=0 "
       select(.kind == \"Repository\" and .metadata.name == \"$name\") |
@@ -92,8 +107,8 @@ declare_pages() {
     [[ "$(yq -N '.homepage' <<<"$got")" == "$want_homepage" ]] ||
       fail "$name must declare homepageUrl: $want_homepage, as GitHub reports it: $got"
   fi
-  [[ "$(yq -N '.policies' <<<"$got")" == "Create,Observe,Update" ]] ||
-    fail "$name must be managed with Observe/Create/Update now that its Pages state is declared: $got"
+  [[ "$(yq -N '.policies' <<<"$got")" == "$want_policies" ]] ||
+    fail "$name must be managed with $want_policies now that its Pages state is declared: $got"
   [[ "$(yq -N '.pages | length' <<<"$got")" == "1" ]] ||
     fail "$name must declare exactly one $owner.pages entry: $got"
   [[ "$(yq -N '.pages[0].buildType' <<<"$got")" == "workflow" ]] ||
@@ -323,8 +338,8 @@ for adopted in dot-github monorepo cloudflare data-product-controller business-s
       join(\",\")
     " "$render"
   )"
-  [[ "$adopted_policies" == "Create,Observe,Update" ]] ||
-    fail "$adopted must run on Observe/Create/Update now that adoption is complete: ${adopted_policies:-<absent>}"
+  [[ "$adopted_policies" == "$(expected_active_policies "$adopted")" ]] ||
+    fail "$adopted must run on $(expected_active_policies "$adopted") now that adoption is complete: ${adopted_policies:-<absent>}"
 done
 
 # The adopted private repository can update shared settings while its description
