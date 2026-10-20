@@ -185,7 +185,7 @@ while IFS=$'\t' read -r name base; do
   fi
   # Normalizing here, not in the write pass, means a shape the comparison cannot handle stops
   # the run before the first write rather than midway through it.
-  if ! have="$(jq -L "$repo_root/scripts" --slurpfile wanted "$desired/$base" -c "$normalize" 2>/dev/null <<<"$policy")" || [ -z "$have" ]; then
+  if ! have="$(jq -L "$repo_root/scripts" --slurpfile wanted "$desired/$base" -S -c "$normalize" 2>/dev/null <<<"$policy")" || [ -z "$have" ]; then
     echo "UNKNOWN  $base: policy $live_id's full read could not be compared" >&2
     unreadable=1
     continue
@@ -200,7 +200,7 @@ fi
 
 failed=0
 while IFS=$'\t' read -r name base; do
-  want="$(jq -L "$repo_root/scripts" --slurpfile wanted "$desired/$base" -c "$normalize" "$desired/$base")"
+  want="$(jq -L "$repo_root/scripts" --slurpfile wanted "$desired/$base" -S -c "$normalize" "$desired/$base")"
   live_id=""
   have=""
   if [ -f "$full/$base.id" ]; then
@@ -247,7 +247,7 @@ while IFS=$'\t' read -r name base; do
     failed=1
     continue
   fi
-  got="$(jq -L "$repo_root/scripts" --slurpfile wanted "$desired/$base" -c "$normalize" <<<"$stored" 2>/dev/null || true)"
+  got="$(jq -L "$repo_root/scripts" --slurpfile wanted "$desired/$base" -S -c "$normalize" <<<"$stored" 2>/dev/null || true)"
   if [ "$got" != "$want" ]; then
     echo "MISMATCH $base: policy $id was stored differently"
     echo "         sent:   $want"

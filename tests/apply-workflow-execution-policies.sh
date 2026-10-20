@@ -326,6 +326,14 @@ run_apply 0 --dir "$policies"
 expect_out 'IN-SYNC  starters.json'
 expect_writes 0
 
+# GitHub may return the conditions in another key order (it stores repository_id after
+# workflow_path); the comparison is on content, never on key order.
+case=condition-key-order
+reset "$(jq '.[1].conditions |= {workflow_path, repository_name}' <<<"$in_sync")"
+run_apply 0 --dir "$policies"
+expect_out 'IN-SYNC  starters.json'
+expect_writes 0
+
 case=update
 reset "$(jq '.[1].enforcement = "active"' <<<"$in_sync")"
 run_apply 0 --dir "$policies"
