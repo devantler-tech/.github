@@ -130,7 +130,7 @@ expect workflow-path-empty-pattern 1 '.conditions.workflow_path = {"include": ["
 # Naming files is reviewable only against one repository: ci.yaml deploys in one repository and
 # only tests in another, so the same path would restrict a different workflow elsewhere.
 named='.conditions.workflow_path = {"include": [".github/workflows/cd.yaml"], "exclude": []}'
-single="specific files, so repository_name must include exactly one repository"
+single="specific files, so it must target exactly one repository"
 expect named-files-one-repository 0 "$named | .conditions.repository_name.include = [\"platform\"]"
 expect named-files-all-repositories 1 "$named" "$single"
 expect named-files-two-repositories 1 "$named | .conditions.repository_name.include = [\"platform\", \"ksail\"]" "$single"
@@ -138,6 +138,10 @@ expect named-files-glob-repository 1 "$named | .conditions.repository_name.inclu
 expect named-files-repository-excluded 1 "$named | .conditions.repository_name = {\"include\": [\"platform\"], \"exclude\": [\"platform\"]}" "$single"
 expect named-files-by-property 1 \
   "$named | del(.conditions.repository_name) | .conditions.repository_property = {\"include\": [{\"name\": \"tier\", \"property_values\": [\"prod\"]}]}" "$single"
+# A repository id names one repository whatever it is called, so a rename cannot silently move it.
+expect named-files-one-repository-id 0 "$named | del(.conditions.repository_name) | .conditions.repository_id = {\"repository_ids\": [1350892700]}"
+expect named-files-two-repository-ids 1 "$named | del(.conditions.repository_name) | .conditions.repository_id = {\"repository_ids\": [1, 2]}" "$single"
+expect named-files-no-repository-ids 1 "$named | del(.conditions.repository_name) | .conditions.repository_id = {\"repository_ids\": []}" "$single"
 expect all-files-all-repositories 0 '.conditions.workflow_path = {"include": ["~ALL"], "exclude": []}'
 
 # Moving a policy to active is the maintainer's call, one file at a time: only a file on the
