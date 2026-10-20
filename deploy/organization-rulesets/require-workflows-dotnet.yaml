@@ -1,0 +1,17 @@
+# Existing language-selected policy, separate from the template-only rule (#674).
+# Observe only; selectors, bypasses and rules must be backfilled before Update.
+apiVersion: enterprise.github.m.upbound.io/v1alpha1
+kind: OrganizationRuleset
+metadata:
+  name: require-workflows-dotnet
+  annotations:
+    crossplane.io/external-name: "3716863"
+spec:
+  managementPolicies: ["Observe"]
+  forProvider:
+    name: Require workflows to pass before merging for .NET
+    target: branch
+    enforcement: active
+  providerConfigRef:
+    kind: ProviderConfig
+    name: default

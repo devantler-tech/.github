@@ -9,7 +9,7 @@ Reconciled by the platform `github-config` tenant like the rest of `deploy/`.
 
 ## How adoption works
 
-- **Observe-first (read-only).** The ten Observe-only org imports are bound with
+- **Observe-first (read-only).** The thirteen Observe-only org imports are bound with
   `managementPolicies: ["Observe"]` — Crossplane mirrors live GitHub state into
   `status.atProvider` and **never writes, reverts, or deletes**. This is pure GitOps
   *visibility*, with zero behaviour change (the same flow `repositories/` and `teams/`
@@ -38,7 +38,7 @@ verb — e.g. `require-pull-request.yaml`). Repo-scoped rulesets live next door 
 
 | Files | Rulesets | Policy |
 |---|---|---|
-| 10 `OrganizationRuleset` files | the imported org rulesets below except Require signed commits and Require workflows (Go) | Observe (read-only import) |
+| 13 `OrganizationRuleset` files | the imported org rulesets below except Require signed commits and Require workflows (Go) | Observe (read-only import) |
 | `require-signed-commits.yaml` | **Require signed commits** (existing, retired) | Observe + Update — retain the disabled record; never create or delete |
 | `require-workflows-go.yaml` | **Require workflows to pass before merging for Go** (existing, adopted) | Observe + Update — preserve the complete observed policy and require the maintained Go workflow; never create or delete |
 | `protect-release-tags.yaml` | **Protect release tags** (net-new) | Managed (Create) — block tag delete + force-move + require `v<semver>` |
@@ -50,10 +50,24 @@ verb — e.g. `require-pull-request.yaml`). Repo-scoped rulesets live next door 
 | `require-metadata-code-scanning-results.yaml` | **Require code scanning results - Metadata** (net-new) | Managed (Create) — centrally require CodeQL with both finding thresholds at all on `.github` and `monorepo`; no bypass actors |
 | (in `../repository-rulesets/`) `require-merge-queue-on-platform.yaml` | `platform` "Require merge queue" | Observe + Update (managed import, full ruleset backfilled) |
 
-The 12 imported org rulesets: Block force pushes · Require a pull request before
+The 15 imported org rulesets: Block force pushes · Require a pull request before
 merging · Require conversation resolution before merging · Require code scanning results · Require linear history ·
 Require signed commits · Require status checks to pass · Restrict deletions · Restrict
-branch names · Restrict commit metadata · Require workflows (DependencyReview) · Require workflows (Go).
+branch names · Restrict commit metadata · Require workflows (DependencyReview) · Require workflows (Go) ·
+Require workflows (EnableAutoMerge) · Require workflows (ScanGitHubActions) · Require workflows (.NET).
+
+### Legacy workflow policy observations
+
+The auto-merge, workflow-scanning and language-selected .NET imports are read-only
+records of existing policies, separate from the template-only rules. Their native
+selectors, bypasses and workflow configuration remain authoritative until fully
+observed and backfilled in a separate reviewed adoption change. Repository-inherited
+API views omit organization repository selectors and are insufficient for that backfill.
+
+Run `bash tests/legacy-workflow-observation.sh` from the repository root. It renders
+the real configuration, rejects write authority and substituted or duplicate
+identities, and checks its required CI invocation. Native observation, source
+migration and actual consumer proof remain separate gates under #237/#674.
 
 ### Organization Go workflow policy
 
