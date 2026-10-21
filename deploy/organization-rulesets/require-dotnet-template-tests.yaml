@@ -1,5 +1,6 @@
 # Complete native policy observed before migration (#237 / #674).
-# Preserve selectors, bypasses and lifecycle; change only the required source.
+# Native repository enforcement proved in .github#688 and dotnet-template#543.
+# Retain the complete disabled policy for identity and rollback, without Delete.
 apiVersion: enterprise.github.m.upbound.io/v1alpha1
 kind: OrganizationRuleset
 metadata:
@@ -18,7 +19,7 @@ spec:
             exclude: []
         repositoryId:
           - 825979604
-    enforcement: active
+    enforcement: disabled
     name: Require workflow - .NET template tests
     rules:
       - creation: false

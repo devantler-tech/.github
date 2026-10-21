@@ -29,7 +29,7 @@ jq -e '
   .providerConfigRef == {"kind":"ProviderConfig","name":"default"}
 ' <<<"$policy" >/dev/null || fail 'provider payload loses a platform, producer binding or branch protection'
 
-# Overlap is deliberate: source deployment is not live enforcement evidence.
+# Positive and intentional-failure controls proved every native platform binding.
 legacy="$(yq -r 'select(.kind == "OrganizationRuleset" and .metadata.name == "require-dotnet-template-tests") | .spec.forProvider.enforcement' "$render")"
-[[ "$legacy" == active ]] || fail 'legacy protection was retired before native overlap proof'
-echo 'dotnet repository validation: all native legs required; legacy overlap retained'
+[[ "$legacy" == disabled ]] || fail 'duplicate organization gate must remain retired after native proof'
+echo 'dotnet repository validation: all native legs required; duplicate organization gate retired'

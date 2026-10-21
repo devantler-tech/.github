@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Preserve six complete native policies while moving only their workflow source (#237).
+# Preserve complete observed policies plus the proven two-template cutover (#237).
 set -euo pipefail
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 work="$(mktemp -d)"
@@ -16,6 +16,8 @@ check_rules() {
     def expected:
       {managementPolicies:(if .managementPolicies==["Observe"] then ["Observe","Update"] else .managementPolicies end),
        forProvider:(.forProvider
+         | if .name=="Require workflow - Go template validation" or .name=="Require workflow - .NET template tests"
+           then .enforcement="disabled" else . end
          | if has("bypassActors") then .bypassActors |= map(
              if .actorType=="OrganizationAdmin" and .actorId==0 then del(.actorId) else . end) else . end
          | .conditions[0].refName[0].exclude=[]
@@ -55,7 +57,7 @@ mutations=(
   '.spec.managementPolicies = ["*"]'
   '.metadata.annotations["crossplane.io/external-name"] = "123"'
   '.metadata.namespace = "another-namespace"'
-  '.spec.forProvider.enforcement = "disabled"'
+  '.spec.forProvider.enforcement |= (if .=="active" then "disabled" else "active" end)'
   '.spec.forProvider.target = "tag"'
   'del(.spec.forProvider.rules)'
   'del(.spec.forProvider.conditions)'

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Require the native Go aggregate without retiring the temporary organization gate.
+# Require the native Go aggregate after the proven template-only cutover.
 set -euo pipefail
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 render="$(mktemp)"
@@ -26,5 +26,5 @@ jq -e '
 ' <<<"$policy" >/dev/null || fail 'provider payload loses native validation, its producer or branch protection'
 
 legacy="$(yq -r 'select(.kind == "OrganizationRuleset" and .metadata.name == "require-go-template-validation") | .spec.forProvider.enforcement' "$render")"
-[[ "$legacy" == active ]] || fail 'legacy protection was retired before native overlap proof'
-echo 'go repository validation: native aggregate required; legacy overlap retained'
+[[ "$legacy" == disabled ]] || fail 'duplicate organization gate must remain retired after native proof'
+echo 'go repository validation: native aggregate required; duplicate organization gate retired'

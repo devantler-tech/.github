@@ -15,7 +15,7 @@ assert_json() {
 }
 assert_json '["Observe","Create","Update","LateInitialize"]' '.spec.managementPolicies'
 assert_json '"branch"' '.spec.forProvider.target'
-assert_json '"active"' '.spec.forProvider.enforcement'
+assert_json '"disabled"' '.spec.forProvider.enforcement'
 assert_json '[1065308377]' '.spec.forProvider.conditions[0].repositoryId'
 assert_json '["~DEFAULT_BRANCH"]' '.spec.forProvider.conditions[0].refName[0].include'
 assert_json '[]' '.spec.forProvider.conditions[0].refName[0].exclude'
