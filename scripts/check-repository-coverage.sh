@@ -60,8 +60,8 @@ abort() {
 # declared intent with a tracked reason; the check fails on a stale entry, so
 # this list cannot rot.
 exemptions=(
-  # actions is merged into this repository and then archived (#164). It is
-  # declared in archived-repositories/ at that point (#240), not adopted first.
+  # actions stays outside Repository management until verified full deletion
+  # (#240). Remove this exemption immediately after deletion is verified.
   "actions"
 )
 

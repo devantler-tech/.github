@@ -53,8 +53,8 @@ dimensions=(
 # silence a fresh failure without a tracked reason. The guard fails on a stale
 # exemption, so this list cannot rot.
 exemptions=(
-  # actions is merged into this repository and then archived (#164). It is
-  # declared in archived-repositories/ at that point (#240), not adopted first.
+  # actions stays outside Repository management until verified full deletion
+  # (#240); its other managed dimensions remain during consumer migration.
   "repositories/actions"
   # fleet-gitops is private; the Maintainers team deliberately stays off it
   # (maintainer decision on #115, 2026-09-25).

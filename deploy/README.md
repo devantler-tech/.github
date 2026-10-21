@@ -20,12 +20,6 @@ out-of-band changes made in the GitHub UI.
   it (no `source`, and a `cname` only where one is set). Any difference would
   retry a Pages update forever
   ([#232](https://github.com/devantler-tech/.github/issues/232)).
-- `archived-repositories/` — one `Repository` per archived (or archival-bound)
-  repo, kept outside `repositories/` so its shared merge-policy patch never
-  targets a read-only repo (each patched reconcile would 422). Observe-first,
-  perform the single `archived: true` update, then return the live archived
-  resource to Observe-only; the three-phase lifecycle is documented in that
-  directory's `kustomization.yaml`.
 - `teams/` — one `Team` per file. `maintainers` is Observe-adopted; the
   separate `admins` policy actively manages explicit repository-admin grants.
 - `team-memberships/` — one `TeamMembership` per file (`add-<user>-to-<team>.yaml`).
@@ -127,7 +121,7 @@ repository grants in both disabled and enabled states. Issue
 [#102](https://github.com/devantler-tech/.github/issues/102) activates that
 policy; it covers the 25 active portfolio repositories, including
 `kyverno-policies`, `world-at-ruin`, `cloudflare` and `data-product-controller`.
-The archived `reusable-workflows` repository remains excluded.
+Retired repositories are not part of the active policy.
 
 `client-orders` enforces the shared repository settings with `Observe` and
 `Update`, preserving its private visibility and enabled Issues. Its existing
@@ -138,8 +132,12 @@ cannot initialize a replacement repository or copy private values into the
 configuration. Labels remain Observe-only; team ownership and Actions SHA
 pinning follow the existing organization policies.
 
-`client-portal` is an Observe-only mirror in `archived-repositories/` and has
-no labels, permission or team grants.
+Archived repository mirrors are withdrawn before explicit repository deletion
+([#679](https://github.com/devantler-tech/.github/issues/679)). Removing a mirror
+does not delete its GitHub repository: its management policy excludes `Delete`.
+Any future archive must stay outside the active shared merge-policy patch and
+become Observe-only once archived. Required CI exercises both that refusal
+boundary and the legitimate zero-archive state.
 
 The active policy is fully declarative and omits both `Delete` management and
 external names, so it cannot delete teams, memberships, or grants. Validate the

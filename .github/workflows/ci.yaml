@@ -6281,6 +6281,9 @@ jobs:
       - name: 🧪 Test repository update policy
         run: bash tests/repository-update-policy.sh
 
+      - name: 🧪 Test repository retirement policy boundaries
+        run: bash tests/repository-update-policy-retirement.sh
+
       - name: 🧪 Test release contract
         run: bash tests/release-contract.sh
 
