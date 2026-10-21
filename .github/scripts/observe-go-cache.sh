@@ -19,7 +19,16 @@ diagnose_jobs() {
        fixture_jobs:($fixture | length), fixture_invalid:([$fixture[] | select(
          ((.id | positive) and .run_id == $run and .run_attempt == $attempt and .head_sha == $head and
           .status == "completed" and .conclusion == "success" and (.steps | type == "array") and
-          ([.steps[].name] | length == (unique | length))) | not)] | length)}
+          ([.steps[].name] | length == (unique | length))) | not)] | length),
+       # One count per rejected fixture invariant, so a rejection names its cause.
+       fixture_bad_id:([$fixture[] | select(.id | positive | not)] | length),
+       fixture_wrong_run:([$fixture[] | select(.run_id != $run)] | length),
+       fixture_wrong_attempt:([$fixture[] | select(.run_attempt != $attempt)] | length),
+       fixture_wrong_head:([$fixture[] | select(.head_sha != $head)] | length),
+       fixture_not_completed:([$fixture[] | select(.status != "completed")] | length),
+       fixture_not_success:([$fixture[] | select(.conclusion != "success")] | length),
+       fixture_bad_steps:([$fixture[] | select((.steps | type == "array" and
+         ([.[] | .name?] | length == (unique | length))) | not)] | length)}
     else {state:"invalid_shape"} end
   ' "$jobs" 2>/dev/null)" || summary='{"state":"unreadable"}'
   printf 'native-go-cache: job-evidence-summary=%s\n' "$summary" >&2
