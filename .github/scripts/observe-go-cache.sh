@@ -3,10 +3,12 @@
 set -euo pipefail
 export LC_ALL=C
 prefix='[Test] Validate Go Project - Isolated PostgreSQL / '
+# The nine fixture jobs the observer requires, shared by the check and its diagnostic.
+fixture_names='["🔍 Detect Changes","🏗️ Build","🧹 Lint - golangci-lint","🔍 Dead Code Analysis","📦 Tidy","🧪 Test","📊 Code Coverage","🧹 Lint - mega-linter","🛡️ Vulnerability Scan"]'
 fail() { printf 'native-go-cache: %s\n' "$*" >&2; exit 2; }
 diagnose_jobs() {
   local summary
-  summary="$(jq -cse --argjson run "$run" --argjson attempt "$attempt" --arg head "$head" --arg prefix "$prefix" '
+  summary="$(jq -cse --argjson run "$run" --argjson attempt "$attempt" --arg head "$head" --arg prefix "$prefix" --argjson names "$fixture_names" '
     def positive: type == "number" and . > 0 and floor == .;
     # Malformed step entries count as bad steps instead of aborting the diagnostic.
     def good_steps: .steps | type == "array" and all(.[]; type == "object") and
@@ -29,13 +31,15 @@ diagnose_jobs() {
        fixture_wrong_head:([$fixture[] | select(.head_sha != $head)] | length),
        fixture_not_completed:([$fixture[] | select(.status != "completed")] | length),
        fixture_not_success:([$fixture[] | select(.conclusion != "success")] | length),
-       fixture_bad_steps:([$fixture[] | select(good_steps | not)] | length)}
+       fixture_bad_steps:([$fixture[] | select(good_steps | not)] | length),
+       fixture_unexpected_names:([$fixture[] | select(.name | ltrimstr($prefix) | IN($names[]) | not)] | length),
+       fixture_missing_names:($names - [$fixture[].name | ltrimstr($prefix)] | length)}
     else {state:"invalid_shape"} end
   ' "$jobs" 2>/dev/null)" || summary='{"state":"unreadable"}'
   printf 'native-go-cache: job-evidence-summary=%s\n' "$summary" >&2
 }
 validate_jobs() {
-  jq -e --argjson run "$run" --argjson attempt "$attempt" --arg head "$head" --arg prefix "$prefix" '
+  jq -e --argjson run "$run" --argjson attempt "$attempt" --arg head "$head" --arg prefix "$prefix" --argjson names "$fixture_names" '
     def positive: type == "number" and . > 0 and floor == .;
     type == "array" and length > 0 and
     all(.[]; (.total_count | positive) and (.jobs | type == "array")) and
@@ -45,7 +49,7 @@ validate_jobs() {
     ([.[].jobs[] | select(.name | startswith($prefix))] as $fixture |
       ($fixture | length == 9) and
       ($fixture | map(.name | ltrimstr($prefix)) | sort) ==
-        (["🔍 Detect Changes","🏗️ Build","🧹 Lint - golangci-lint","🔍 Dead Code Analysis","📦 Tidy","🧪 Test","📊 Code Coverage","🧹 Lint - mega-linter","🛡️ Vulnerability Scan"] | sort) and
+        ($names | sort) and
       all($fixture[]; (.id | positive) and .run_id == $run and .run_attempt == $attempt and .head_sha == $head and
         .status == "completed" and .conclusion == "success" and (.steps | type == "array") and
         ([.steps[].name] | length == (unique | length))))
