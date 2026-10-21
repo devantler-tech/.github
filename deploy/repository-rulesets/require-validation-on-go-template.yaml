@@ -1,0 +1,30 @@
+# Require the repository-owned aggregate while the old organization source overlaps.
+# The producer binding authenticates GitHub Actions, not immutable workflow contents.
+apiVersion: repo.github.m.upbound.io/v1alpha1
+kind: RepositoryRuleset
+metadata:
+  name: go-template-require-validation
+spec:
+  managementPolicies:
+    - Observe
+    - Create
+    - Update
+    - LateInitialize
+  forProvider:
+    repository: go-template
+    name: Require local Go template validation
+    target: branch
+    enforcement: active
+    conditions:
+      - refName:
+          - include: ["~DEFAULT_BRANCH"]
+            exclude: []
+    rules:
+      - requiredStatusChecks:
+          - requiredCheck:
+              - context: CI - Required Checks
+                integrationId: 15368
+            strictRequiredStatusChecksPolicy: false
+  providerConfigRef:
+    kind: ProviderConfig
+    name: default
