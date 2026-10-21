@@ -6315,6 +6315,9 @@ jobs:
       - name: 🧪 Test Go template validation ruleset
         run: bash tests/go-template-validation-ruleset.sh
 
+      - name: 🧪 Test repository-owned Go template validation
+        run: bash tests/go-repository-validation-ruleset.sh
+
       - name: 🧪 Test .NET template tests ruleset
         run: bash tests/dotnet-template-tests-ruleset.sh
 
