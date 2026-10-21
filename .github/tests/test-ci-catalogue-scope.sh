@@ -204,8 +204,8 @@ git -C "${current}" remote add origin "${current}"
 
 # Compose real Git classification, the production selector and the actual
 # required reducer. A false scope omits 48 gated smoke jobs plus the separately
-# event-gated dependency-review smoke, not the other 32 selectable jobs or
-# the three independently admitted native cleanup callers.
+# event-gated dependency-review smoke, not the other 32 selectable jobs. Only
+# the retired policy-sync and three cleanup fixtures leave the previous floor.
 yq -o=json . "${ci}" >"${fixture}/workflow.json"
 selection_output="${fixture}/selection-output"
 : >"${selection_output}"
@@ -213,7 +213,42 @@ scope="$(sed -n 's/^catalogue=//p' "${output}")"
 EVENT_NAME=pull_request RUN_CATALOGUE=true CATALOGUE_SCOPE="${scope}" BASE_SHA="${base}" HEAD_SHA="${head}" GITHUB_OUTPUT="${selection_output}" \
   go -C "${repo_root}/.github/scripts/ci-selection" run . "${current}" "${repo_root}/.github/scripts/ci-selection/inventory.json" "${fixture}/workflow.json"
 selected="$(sed -n 's/^selected=//p' "${selection_output}")"
-[[ "$(jq 'length' <<<"${selected}")" == 36 ]] || fail 'deployment-only selection changed the independent coverage floor'
+expected_selected='[
+  "test-aggregate-job-checks-unknown",
+  "test-approve-pr-credential-boundary",
+  "test-create-release-config",
+  "test-enable-auto-merge-author-gate",
+  "test-enable-auto-merge-on-pr-credential-boundary",
+  "test-enable-auto-merge-pentad-gate",
+  "test-ensure-gh-skill-script",
+  "test-go-cache-native-observer",
+  "test-go-filter-nested-modules",
+  "test-go-filter-nested-modules-blocks",
+  "test-govulncheck-action-lockstep",
+  "test-govulncheck-main-coverage",
+  "test-govulncheck-main-coverage-blocks",
+  "test-govulncheck-timeout",
+  "test-lint-gate-lockstep",
+  "test-lint-workflow",
+  "test-lint-workflow-manual-fixes",
+  "test-release-please-semantics",
+  "test-run-dotnet-tests-mtp",
+  "test-run-dotnet-tests-workflow",
+  "test-setup-ksail-cli",
+  "test-suite-default-branch-coverage",
+  "test-suite-default-branch-coverage-blocks",
+  "test-update-agent-skills-mark-internal",
+  "test-validate-go-gate-lockstep",
+  "test-validate-go-lint-blocks",
+  "test-validate-go-postgresql-fixture",
+  "test-validate-go-project",
+  "test-validate-go-project-apply-signed-fixes",
+  "test-validate-go-project-maintenance-default-branch",
+  "test-validate-go-project-manual-fixes",
+  "test-validate-go-project-test-default-branch"
+]'
+jq -en --argjson actual "$selected" --argjson expected "$expected_selected" '$actual == $expected' >/dev/null ||
+  fail 'deployment-only selection changed the independent coverage floor'
 jq -e 'index("test-validate-go-postgresql-fixture") != null' <<<"${selected}" >/dev/null || fail 'native PostgreSQL caller left the independent coverage floor'
 jq -e 'index("test-go-cache-native-observer") != null' <<<"${selected}" >/dev/null || fail 'native Go cache observer left the independent coverage floor'
 jq -en --argjson selected "${selected}" --slurpfile inventory "${repo_root}/.github/scripts/ci-selection/inventory.json" '

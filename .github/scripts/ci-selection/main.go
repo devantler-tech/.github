@@ -18,18 +18,12 @@ import (
 
 const scheduling = "github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ')"
 
-const cleanupWorkflow = ".github/workflows/delete-workflow-runs.yaml"
-const cleanupProjection = ".github/workflows/delete-workflow-runs-readonly.yaml"
-const cleanupImplementation = ".github/scripts/delete-workflow-runs/main.go"
-const cleanupModule = ".github/scripts/delete-workflow-runs/go.mod"
 const dotnetWorkflow = ".github/workflows/run-dotnet-tests.yaml"
 const goCacheObserver = "test-go-cache-native-observer"
 const goCacheFixture = "test-validate-go-postgresql-fixture"
 
 var ordinarySelectiveFiles = map[string]bool{
-	cleanupImplementation: true,
-	cleanupModule:         true,
-	dotnetWorkflow:        true,
+	dotnetWorkflow: true,
 }
 
 // These include inline hosted and credential controls, not just reusable callers.
@@ -66,22 +60,6 @@ func validateInventory(i inventory, w workflow) ([]string, error) {
 	if err := validateGoCacheOwners(i, w); err != nil {
 		return nil, err
 	}
-	// All native cleanup callers depend on the exact production source, module,
-	// and generated read-only projection. Test files remain unclassified so their
-	// changes retain complete catalogue coverage.
-	for id, j := range w.Jobs {
-		if j.Uses == "./"+cleanupProjection {
-			paths := i.Jobs[id]
-			owners := map[string]bool{}
-			for _, path := range paths {
-				owners[path] = true
-			}
-			if len(paths) != 4 || len(owners) != 4 || !owners[cleanupWorkflow] ||
-				!owners[cleanupProjection] || !owners[cleanupImplementation] || !owners[cleanupModule] {
-				return nil, fmt.Errorf("incomplete cleanup workflow owners for %s", id)
-			}
-		}
-	}
 	seen := map[string]bool{"select-ci-tests": true, "ci-required-checks": true}
 	for _, id := range i.Always {
 		if seen[id] {
@@ -105,9 +83,7 @@ func validateInventory(i inventory, w workflow) ([]string, error) {
 		seen[id] = true
 		for _, p := range paths {
 			if !regexp.MustCompile(`^actions/[a-z0-9-]+/$`).MatchString(p) &&
-				!((p == cleanupWorkflow || p == cleanupProjection || p == cleanupImplementation || p == cleanupModule) &&
-					j.Uses == "./"+cleanupProjection) &&
-				!(p == dotnetWorkflow && hasDotnetOwner(id)) {
+				(p != dotnetWorkflow || !hasDotnetOwner(id)) {
 				return nil, fmt.Errorf("invalid selective owner %q", p)
 			}
 		}
@@ -305,10 +281,9 @@ func load(path string, value any) error {
 	if err != nil {
 		return err
 	}
-	defer f.Close()
 	d := json.NewDecoder(f)
 	d.DisallowUnknownFields()
-	return d.Decode(value)
+	return errors.Join(d.Decode(value), f.Close())
 }
 
 func writeSelectionOutput(output io.WriteCloser, encoded []byte) error {
@@ -379,13 +354,6 @@ func run() error {
 				gatedCount++
 			}
 		}
-		// These callers retain their existing unconditional admission. Include
-		// affected callers in the reducer so an unexpected skip cannot pass.
-		for id := range i.Preserved {
-			if chosen[id] && w.Jobs[id].Uses == "./"+cleanupProjection {
-				result = append(result, id)
-			}
-		}
 	}
 	sort.Strings(result)
 	encoded, err := json.Marshal(result)
@@ -399,7 +367,7 @@ func run() error {
 	if err := writeSelectionOutput(f, encoded); err != nil {
 		return err
 	}
-	fmt.Printf("Selected %d of %d gated catalogue jobs and %d required native cleanup callers; existing admission is unchanged.\n", gatedCount, len(gated), len(result)-gatedCount)
+	fmt.Printf("Selected %d of %d gated catalogue jobs; existing admission is unchanged.\n", gatedCount, len(gated))
 	return nil
 }
 
