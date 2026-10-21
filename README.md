@@ -122,6 +122,13 @@ single-product pipeline.
 | [Update agent skills](.github/workflows/update-agent-skills.yaml) | Open reviewed updates to installed skills |
 | [Validate Go project](.github/workflows/validate-go-project.yaml) | Validate Go modules; also an organization PR gate |
 | [Validate Go project, read-only](.github/workflows/validate-go-project-readonly.yaml) | Run Go validation without repository-mutation credentials |
+
+## Repository-owned manual workflows
+
+These operate this catalogue itself; they are not reusable consumer interfaces.
+
+| Workflow | Description |
+|---|---|
 | [Inspect release recovery](.github/workflows/inspect-release-recovery.yaml) | Diagnose a stranded stable release without publication authority |
 
 ## Organization-required workflow sources
@@ -1197,12 +1204,12 @@ bash .github/tests/test-inspect-release-recovery.sh
 The test exercises the actual inspector against disposable local HTTP servers, including failed,
 changed and conflicting observations. It makes no live GitHub requests and publishes nothing.
 
-To inspect a real incident, run the workflow manually from the default branch after supplying the
-original identities, or call the reusable workflow at a reviewed full commit SHA. Explicitly set
+To inspect a real incident, run this repository-owned workflow manually from the default branch
+after supplying the original identities. It is not a reusable workflow. Explicitly set
 `enable-inspection: true`. The App identified by `APP_CLIENT_ID` must be installed on the target
 repository with Contents and Actions read access, and `APP_PRIVATE_KEY` must be available to the
-caller. The workflow requests a token for that one repository, builds its own immutable inspector
-before obtaining the token, then prints and returns one JSON diagnosis. Omitted enablement skips
+repository. The workflow requests a token for that one repository, builds its own immutable inspector
+before obtaining the token, then prints one JSON diagnosis. Omitted enablement skips
 inspection; a skipped job is not an inspected release.
 
 This first version accepts only public active `devantler-tech` repositories, stable `vX.Y.Z` tags,
@@ -1230,9 +1237,8 @@ the independently checked tag remains authoritative for the source in both cases
 | `producer-ref` | Input (string) | — | Yes | Original catalogue workflow path at its full commit SHA |
 | `APP_PRIVATE_KEY` | Secret | — | When enabled | App key used only for a repository-scoped read-only token |
 
-The reusable output `diagnosis` contains the same JSON printed by the inspector. Failed or
-ambiguous reads fail the job and produce no successful diagnosis. No tags, release records,
-channel notes or aliases are written.
+The manual job prints the JSON diagnosis. Failed or ambiguous reads fail the job and produce
+no successful diagnosis. No tags, release records, channel notes or aliases are written.
 
 </details>
 

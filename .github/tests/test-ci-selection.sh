@@ -86,7 +86,7 @@ jq -e 'index("test-go-cache-native-observer") != null' <<<"$selected" >/dev/null
 # intentionally excluded (dry-run, repository exclusion, or dependency-bot
 # suppression). They still exercise interfaces and retain original admission;
 # selection must not promise an executed test where no job can run.
-interface_callers='["test-apply-signed-fixes-suppresses-bots","test-inspect-release-recovery-disabled","test-template-sync","test-template-sync-merge-ignore","test-update-agent-skills","test-update-agent-skills-per-skill","test-validate-go-project-interface"]'
+interface_callers='["test-apply-signed-fixes-suppresses-bots","test-template-sync","test-template-sync-merge-ignore","test-update-agent-skills","test-update-agent-skills-per-skill","test-validate-go-project-interface"]'
 needs="$(jq -cn --argjson skipped "$interface_callers" --slurpfile workflow "$work/workflow.json" '
   reduce ($workflow[0].jobs | keys[]) as $id ({};
     .[$id] = {result: (if ($skipped | index($id)) != null then "skipped" else "success" end)})
