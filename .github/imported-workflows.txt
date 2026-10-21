@@ -7,7 +7,6 @@ deploy-github-pages.yaml
 enable-auto-merge.yaml
 lint.yaml
 publish-app.yaml
-publish-dotnet-library.yaml
 publish-manifests.yaml
 run-dotnet-tests.yaml
 scan-for-todo-comments.yaml

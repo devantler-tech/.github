@@ -7,10 +7,9 @@
 #        dotnet tool install --global <tool> --version <exact version>
 #
 #      on a line of its own, with nothing before or after it. An unpinned install takes
-#      whatever upstream released last, and publish-dotnet-library.yaml runs dotnet-releaser
-#      with the NuGet API key and a write-capable token.
-#   2. dotnet-releaser in particular stays pinned, so removing its install line cannot make
-#      this check pass vacuously.
+#      whatever upstream released last.
+#   2. The shared test action's coverage tool stays pinned, so removing its install
+#      line cannot make this check pass vacuously. Publication belongs to its consumer.
 #
 # The check is an allow-list, not a shell parser. Chained commands, trailing comments,
 # quoting, escapes and line continuations each gave an earlier parser a way to miss an
@@ -150,28 +149,35 @@ for f in "${target_files[@]}"; do
   [[ -n "$found" ]] && installs+="${installs:+$'\n'}$found"
 done
 [[ -n "$installs" ]] || fail "found no 'dotnet tool install' lines — refusing to pass vacuously"
-# does not pin dotnet-releaser.
+# Every examined installation must be pinned; the real coverage action must install its tool.
 check() {
-  local line where command releaser_pinned=false
+  local line where command coverage_pinned=false
   while IFS= read -r line; do
     where="${line%%:*}:$(printf '%s' "$line" | cut -d: -f2)"
     command="${line#*:*:}"
     [[ "$command" =~ $allowed ]] ||
       fail "$where must be exactly 'dotnet tool install --global <tool> --version <x.y.z>' on its own line: ${command#"${command%%[![:space:]]*}"}"
-    if [[ "$where" == .github/workflows/publish-dotnet-library.yaml:* && "${BASH_REMATCH[1]}" == dotnet-releaser ]]; then
-      releaser_pinned=true
+    if [[ "$where" == actions/run-dotnet-tests/action.yaml:* && "${BASH_REMATCH[1]}" == dotnet-reportgenerator-globaltool ]]; then
+      coverage_pinned=true
     fi
   done <<<"$1"
-  "$releaser_pinned" || fail "publish-dotnet-library.yaml does not install dotnet-releaser at an exact --version"
+  "$coverage_pinned" || fail "run-dotnet-tests action does not install its coverage tool at an exact --version"
 }
 
+# The still-shared test action must not use an unreviewed preinstalled coverage
+# tool after the single-consumer publisher moves into its owning repository.
+# A publisher pin is not evidence that the actual coverage action installs its tool.
+if (check '.github/workflows/other.yaml:1:          dotnet tool install --global dotnet-releaser --version 0.24.0') 2>/dev/null; then
+  fail 'negative control passed: missing coverage-tool install was accepted'
+fi
+
 # Negative controls: shapes that earlier versions of this check let through, each placed on
-# a line after a correctly pinned releaser install so only the shape itself can fail it.
-pinned='.github/workflows/publish-dotnet-library.yaml:1:          dotnet tool install --global dotnet-releaser --version 0.24.0'
+# a line after a correctly pinned coverage install so only the shape itself can fail it.
+pinned='actions/run-dotnet-tests/action.yaml:1:          dotnet tool install --global dotnet-reportgenerator-globaltool --version 5.5.10'
 (check "$pinned") || fail "positive control failed: a correctly pinned install was rejected"
 while IFS= read -r bad; do
   if (check "$pinned
-.github/workflows/publish-dotnet-library.yaml:2:$bad") 2>/dev/null; then
+actions/run-dotnet-tests/action.yaml:2:$bad") 2>/dev/null; then
     fail "negative control passed: $bad"
   fi
 done <<'EOF'
@@ -192,7 +198,8 @@ continued_scan="$(printf '%s\n' \
   '          dotnet tool install --global dotnet-releaser --version 0.24.0' \
   "          dotnet tool \\" \
   '            install --global dotnet-releaser' | scan_installs)"
-if (check "$continued_scan") 2>/dev/null; then
+if (check "$pinned
+$continued_scan") 2>/dev/null; then
   fail "negative control passed: unpinned install split across lines was not rejected"
 fi
 
@@ -202,7 +209,8 @@ eof_comment_scan="$(printf '%s\n' \
   '          dotnet tool install --global dotnet-releaser --version 0.24.0' \
   "          dotnet tool install --global evil-tool \\" \
   '          # end of file comment' | scan_installs)"
-if (check "$eof_comment_scan") 2>/dev/null; then
+if (check "$pinned
+$eof_comment_scan") 2>/dev/null; then
   fail "negative control passed: unpinned install before EOF comment was not rejected"
 fi
 
@@ -211,7 +219,8 @@ fi
 raw_eof_scan="$(printf '%s\n' \
   '          dotnet tool install --global dotnet-releaser --version 0.24.0' \
   "          dotnet tool install --global evil-tool \\" | scan_installs)"
-if (check "$raw_eof_scan") 2>/dev/null; then
+if (check "$pinned
+$raw_eof_scan") 2>/dev/null; then
   fail "negative control passed: unpinned install at raw EOF was not rejected"
 fi
 
@@ -227,10 +236,10 @@ printf '%s\n' \
   '    steps:' \
   '      - name: Publish' \
   '        run: |' \
-  '          dotnet tool install --global dotnet-releaser --version 0.24.0' >"$fixture_dir/pinned.yaml"
+  '          dotnet tool install --global dotnet-reportgenerator-globaltool --version 5.5.10' >"$fixture_dir/pinned.yaml"
 pinned_yaml_scan="$(scan_yaml "$fixture_dir/pinned.yaml")" || fail "positive control failed: pinned fixture did not parse"
 [[ -n "$pinned_yaml_scan" ]] || fail "positive control failed: a pinned install in a run: block was not found"
-(check "${pinned_yaml_scan//$fixture_dir\/pinned.yaml/.github/workflows/publish-dotnet-library.yaml}") ||
+(check "${pinned_yaml_scan//$fixture_dir\/pinned.yaml/actions/run-dotnet-tests/action.yaml}") ||
   fail "positive control failed: a pinned install in a run: block was rejected"
 
 for header in '>' '>- # explanation' '>1'; do
@@ -281,7 +290,8 @@ split_keyword_scan="$(printf '%s\n' \
   '          dotnet tool install --global dotnet-releaser --version 0.24.0' \
   '          dotnet tool' \
   '          install --global evil-tool' | scan_installs)"
-if (check "$split_keyword_scan") 2>/dev/null; then
+if (check "$pinned
+$split_keyword_scan") 2>/dev/null; then
   fail "negative control passed: split dotnet tool command was not rejected"
 fi
 
@@ -290,12 +300,14 @@ fi
 quoted_cmd_scan="$(printf '%s\n' \
   '          dotnet tool install --global dotnet-releaser --version 0.24.0' \
   '          "dotnet" tool install --global evil-tool' | scan_installs)"
-if (check "$quoted_cmd_scan") 2>/dev/null; then
+if (check "$pinned
+$quoted_cmd_scan") 2>/dev/null; then
   fail "negative control passed: quoted dotnet executable was not rejected"
 fi
 
 # Negative control: variable-invoked tool install ("$DOTNET" tool install) must reach
 # the check and be rejected.
+# shellcheck disable=SC2016 # The fixture must retain its literal variable invocation.
 var_cmd_scan="$(printf '%s\n' \
   '          "$DOTNET" tool install --global evil-tool' | scan_installs)"
 [[ "$var_cmd_scan" == *evil-tool* ]] || fail "negative control found no install under variable invocation"
@@ -318,7 +330,8 @@ non_install_scan="$(printf '%s\n' \
 name_prefix_scan="$(printf '%s\n' \
   '          dotnet tool install --global dotnet-releaser --version 0.24.0' \
   '          name: || dotnet tool install --global evil-tool' | scan_installs)"
-if (check "$name_prefix_scan") 2>/dev/null; then
+if (check "$pinned
+$name_prefix_scan") 2>/dev/null; then
   fail "negative control passed: tool install after name: prefix was not rejected"
 fi
 
@@ -327,7 +340,8 @@ fi
 escaped_tool_scan="$(printf '%s\n' \
   '          dotnet tool install --global dotnet-releaser --version 0.24.0' \
   '          dotnet t\ool install --global evil-tool' | scan_installs)"
-if (check "$escaped_tool_scan") 2>/dev/null; then
+if (check "$pinned
+$escaped_tool_scan") 2>/dev/null; then
   fail "negative control passed: escaped tool subcommand was not rejected"
 fi
 
@@ -336,7 +350,8 @@ fi
 escaped_dotnet_scan="$(printf '%s\n' \
   '          dotnet tool install --global dotnet-releaser --version 0.24.0' \
   '          d\otnet tool install --global evil-tool' | scan_installs)"
-if (check "$escaped_dotnet_scan") 2>/dev/null; then
+if (check "$pinned
+$escaped_dotnet_scan") 2>/dev/null; then
   fail "negative control passed: escaped dotnet executable was not rejected"
 fi
 
@@ -346,15 +361,16 @@ token_split_scan="$(printf '%s\n' \
   '          dotnet tool install --global dotnet-releaser --version 0.24.0' \
   "          dot\\" \
   '          net tool install --global evil-tool' | scan_installs)"
-if (check "$token_split_scan") 2>/dev/null; then
+if (check "$pinned
+$token_split_scan") 2>/dev/null; then
   fail "negative control passed: tool command split inside a token was not rejected"
 fi
 
-# Negative control: dotnet-releaser pinned only in an unrelated workflow must not satisfy
-# the publishing workflow requirement.
-unrelated_workflow='.github/workflows/other.yaml:1:          dotnet tool install --global dotnet-releaser --version 0.24.0'
+# Negative control: a coverage tool pinned only in an unrelated workflow must not
+# satisfy the actual test action's installation requirement.
+unrelated_workflow='.github/workflows/other.yaml:1:          dotnet tool install --global dotnet-reportgenerator-globaltool --version 5.5.10'
 if (check "$unrelated_workflow") 2>/dev/null; then
-  fail "negative control passed: dotnet-releaser pinned in an unrelated workflow satisfied the publishing workflow requirement"
+  fail "negative control passed: coverage tool in an unrelated workflow satisfied the test action requirement"
 fi
 
 check "$installs"

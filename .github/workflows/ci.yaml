@@ -3761,6 +3761,7 @@ jobs:
           export TESTED_JOB_CONDITION='$'"{{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
           export TESTED_SELECTOR_PREFIX='$'"{{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), '"
           export TESTED_SELECTOR_SUFFIX="') }}"
+          # shellcheck disable=SC2016 # These are yq variables, not shell variables.
           invoked_tests="$(
             yq -r '
               select(.defaults.run.shell == null or .defaults.run.shell == "bash")
@@ -4322,16 +4323,6 @@ jobs:
       contents: read
       pages: write
       id-token: write
-    with:
-      dry-run: true
-
-  test-publish-dotnet-library:
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
-    name: "[Test] Publish .NET Library - Dry Run"
-    uses: ./.github/workflows/publish-dotnet-library.yaml
-    permissions:
-      contents: read
-      packages: write
     with:
       dry-run: true
 
@@ -6450,7 +6441,6 @@ jobs:
       - test-create-release-no-issue-side-effects
       - test-release-please-semantics
       - test-deploy-github-pages
-      - test-publish-dotnet-library
       - test-publish-app
       - test-publish-app-caller-pin
       - test-publish-manifests
@@ -6594,7 +6584,6 @@ jobs:
             ${{ needs.test-create-release-no-issue-side-effects.result }}
             ${{ needs.test-release-please-semantics.result }}
             ${{ needs.test-deploy-github-pages.result }}
-            ${{ needs.test-publish-dotnet-library.result }}
             ${{ needs.test-publish-app.result }}
             ${{ needs.test-publish-app-caller-pin.result }}
             ${{ needs.test-publish-manifests.result }}
