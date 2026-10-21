@@ -20,9 +20,9 @@ jq -e '
   (.forProvider.bypassActors // []) == [] and
   .forProvider.rules == [{"requiredStatusChecks":[{
     "requiredCheck":[
-      {"context":"test (ubuntu-latest)","integrationId":15368},
-      {"context":"test (windows-latest)","integrationId":15368},
-      {"context":"test (macos-latest)","integrationId":15368}
+      {"context":".NET template tests (ubuntu-latest)","integrationId":15368},
+      {"context":".NET template tests (windows-latest)","integrationId":15368},
+      {"context":".NET template tests (macos-latest)","integrationId":15368}
     ],
     "strictRequiredStatusChecksPolicy":false
   }]}] and

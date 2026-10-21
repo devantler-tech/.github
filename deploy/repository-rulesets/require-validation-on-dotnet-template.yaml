@@ -24,11 +24,11 @@ spec:
     rules:
       - requiredStatusChecks:
           - requiredCheck:
-              - context: test (ubuntu-latest)
+              - context: .NET template tests (ubuntu-latest)
                 integrationId: 15368
-              - context: test (windows-latest)
+              - context: .NET template tests (windows-latest)
                 integrationId: 15368
-              - context: test (macos-latest)
+              - context: .NET template tests (macos-latest)
                 integrationId: 15368
             strictRequiredStatusChecksPolicy: false
   providerConfigRef:

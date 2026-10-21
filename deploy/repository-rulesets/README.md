@@ -21,7 +21,9 @@ observes.
 | `require-merge-queue-on-platform.yaml` | `platform` | Require merge queue | Managed import (Observe + Update; full ruleset backfilled, no LateInitialize, no Delete) |
 | `require-validation-on-dotnet-template.yaml` | `dotnet-template` | Require local .NET template validation | Managed (net-new; Observe + Create + Update + LateInitialize) |
 
-The .NET rule requires the three repository-owned matrix results from GitHub Actions.
+The .NET rule requires the three repository-owned `.NET template tests (<runner>)`
+matrix results from GitHub Actions. These names are intentionally distinct from
+the old injected `test (<runner>)` results, which must not satisfy the new rule.
 The temporary organization-required source remains active during rollout. Before
 retiring it, verify the repository rule through the native API and an ordinary
 consumer pull request with all three local platform jobs completed. A rendered
