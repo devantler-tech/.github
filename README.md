@@ -110,9 +110,7 @@ single-product pipeline.
 | Workflow | Description |
 |---|---|
 | [Create release](.github/workflows/create-release.yaml) | Calculate a version and publish a GitHub release |
-| [Delete workflow runs](.github/workflows/delete-workflow-runs.yaml) | Preview or perform bounded history cleanup |
 | [Dependency review](.github/workflows/dependency-review.yaml) | Review changed dependencies; also an organization PR gate |
-| [Deploy GitHub Pages](.github/workflows/deploy-github-pages.yaml) | Build and publish a GitHub Pages site |
 | [Enable auto-merge](.github/workflows/enable-auto-merge.yaml) | Apply the shared trusted-author merge policy; also an organization PR gate |
 | [Lint](.github/workflows/lint.yaml) | Run MegaLinter with isolated signed-fix handling |
 | [Publish app](.github/workflows/publish-app.yaml) | Build, sign and publish an application image |
@@ -120,7 +118,6 @@ single-product pipeline.
 | [Run .NET tests](.github/workflows/run-dotnet-tests.yaml) | Compatibility wrapper while the template completes native enforcement |
 | [Scan TODO comments](.github/workflows/scan-for-todo-comments.yaml) | Turn actionable TODOs into tracked work |
 | [Scan workflow vulnerabilities](.github/workflows/scan-for-workflow-vulnerabilities.yaml) | Analyze workflow security; also an organization PR gate |
-| [Sync cluster policies](.github/workflows/sync-cluster-policies.yaml) | Synchronize shared cluster policy content |
 | [Template sync](.github/workflows/template-sync.yaml) | Open updates from an upstream template |
 | [Update agent skills](.github/workflows/update-agent-skills.yaml) | Open reviewed updates to installed skills |
 | [Validate Go project](.github/workflows/validate-go-project.yaml) | Validate Go modules; also an organization PR gate |
@@ -157,7 +154,6 @@ do not establish a product need for a shared workflow.
 | Workflow | Description |
 |---|---|
 | [Applied-fix signing](.github/workflows/apply-signed-fixes.yaml) | Isolated, shared signer for eligible fixer artifacts |
-| [Cleanup preview](.github/workflows/delete-workflow-runs-readonly.yaml) | Generated read-only projection for cleanup evaluation |
 | [TODO read-only smoke](.github/workflows/scan-for-todo-comments-readonly.yaml) | Generated projection for credential-free scanner tests |
 | [TODO default fixture](.github/workflows/scan-for-todo-comments-default-fixture.yaml) | Offline dependencies for testing the production defaults |
 
@@ -323,108 +319,6 @@ jobs:
 
 </details>
 
-### 🗑️ Delete Workflow Runs
-
-<details>
-<summary>Purpose, interface and usage</summary>
-
-[.github/workflows/delete-workflow-runs.yaml](.github/workflows/delete-workflow-runs.yaml) is a workflow used to clean up old workflow runs from a repository.
-
-#### Usage
-
-```yaml
-jobs:
-  delete-runs:
-    uses: devantler-tech/.github/.github/workflows/delete-workflow-runs.yaml@<full-commit-sha> # vX.Y.Z
-    permissions:
-      actions: write
-      contents: read
-    with:
-      days: 30 # optional
-      minimum-runs: 6 # optional
-      dry-run: false # required to perform actual deletions (defaults to true)
-```
-
-#### Secrets and Inputs
-
-| Key                                | Type            | Default      | Required | Description                                        |
-|------------------------------------|-----------------|--------------|----------|----------------------------------------------------|
-| `repository`                       | Input (string)  | Calling repo | No       | Repository to target for workflow run deletion     |
-| `days`                             | Input (number)  | `30`         | No       | Days-worth of runs to keep for each workflow       |
-| `minimum-runs`                     | Input (number)  | `6`          | No       | Minimum runs to keep for each workflow             |
-| `delete-workflow-pattern`          | Input (string)  | -            | No       | Name or filename of the workflow to target         |
-| `delete-workflow-by-state-pattern` | Input (string)  | `ALL`        | No       | Filter workflows by state (comma or pipe separated) |
-| `delete-run-by-conclusion-pattern` | Input (string)  | `ALL`        | No       | Remove runs by conclusion (comma or pipe separated) |
-| `dry-run`                          | Input (boolean) | `true`       | No       | Logs simulated changes, no deletions are performed |
-
-> **Note:** The calling workflow must grant `actions: write` and `contents: read` permissions.
-
-Cleanup uses a Go driver from the reusable workflow's exact commit. It first lists
-all workflows and runs, then applies the age, minimum-run and conclusion filters.
-Every workflow's retention decision uses that same complete repository-run snapshot,
-avoiding repeated scans of the same history through separate workflow endpoints.
-Run enumeration ends at the last complete second before cleanup starts, so new
-runs wait for the next cleanup instead of shifting pagination. Searches reaching
-GitHub's 1,000-result limit are split into disjoint creation-time ranges: the whole
-history first separates its latest day, where runs are usually densest, and every other
-range is halved. Each split
-must recover at least the count its parent advertised before cleanup may proceed.
-A range that still reaches the limit within one second fails rather than skipping history.
-The newest `minimum-runs` matching old runs are retained in addition to recent runs.
-Runs whose workflow is no longer listed are selected independently of those filters
-only after an individual workflow lookup confirms absence. Workflows that appear
-during enumeration are retained; an uncertain lookup fails before deletion.
-A successful run ends with one summary line giving how many runs it selected and how
-many read and delete requests it sent, retries included, so its API cost can be compared
-between runs without exposing run details.
-Workflow patterns match names or filenames
-without case sensitivity. Workflow, state and conclusion filters accept comma or
-pipe separated values.
-
-Invalid or incomplete API responses fail before deletion starts. If run-history
-page totals change, cleanup discards that inventory and tries once more with the
-same creation-time cutoff. Both attempts share partition and rate-limit wait
-budgets; a second inconsistency still fails before deletion. Transient read
-failures receive at most two retries; a deletion is attempted once, requires HTTP
-204 confirmation, and stops cleanup on rejection or an unknown outcome. Confirmed
-deletions are spaced by at least one second; cancellation interrupts that pause.
-Previews do not wait between selected runs. A rerun
-lists the current history again. `days` must be finite and nonnegative;
-`minimum-runs` must be a nonnegative integer.
-
-</details>
-
-### 🗑️ Delete Workflow Runs (Read-Only)
-
-<details>
-<summary>Purpose, interface and usage</summary>
-
-[.github/workflows/delete-workflow-runs-readonly.yaml](.github/workflows/delete-workflow-runs-readonly.yaml)
-executes the same cleanup driver with `actions: read` and `contents: read` only.
-Use it for previews and catalogue tests that must have no authority to delete workflow history.
-Deletion requires the production entrypoint above and an explicit `dry-run: false`.
-
-The read-only entrypoint is generated from the complete production wrapper by
-`bash .github/scripts/generate-cleanup-readonly.sh`. Required CI checks preserve its
-input behavior and source parity. Hosted dry-runs prove execution and the credential
-boundary. Native HTTP fixtures exercise retention, pagination, filters, repository
-selection, command exit codes and rejected or unconfirmed deletion without live
-deletion authority.
-
-#### Inputs
-
-| Key | Type | Default | Required | Description |
-| --- | --- | --- | --- | --- |
-| `repository` | Input (string) | Calling repo | No | Repository whose workflow runs are previewed |
-| `days` | Input (number) | `30` | No | Days-worth of runs to retain |
-| `minimum-runs` | Input (number) | `6` | No | Minimum runs to retain per workflow |
-| `delete-workflow-pattern` | Input (string) | - | No | Workflow name or filename to match |
-| `delete-workflow-by-state-pattern` | Input (string) | `ALL` | No | Comma or pipe separated workflow state filters |
-| `delete-run-by-conclusion-pattern` | Input (string) | `ALL` | No | Comma or pipe separated run conclusion filters |
-| `dry-run` | Input (boolean) | `true` | No | Log proposed deletions; a false value still cannot grant deletion authority |
-
-</details>
-
 ### 🛡️ Dependency Review
 
 <details>
@@ -489,54 +383,6 @@ the API enforces the supplied token's actual permissions. Secretless callers and
 organization-required runs retain the comments-off default. Secrets are unavailable
 to fork pull requests, so use the default there and enable comments only in trusted
 caller contexts where the independent credential is available.
-
-</details>
-
-### 🚀 Deploy GitHub Pages
-
-<details>
-<summary>Purpose, interface and usage</summary>
-
-[.github/workflows/deploy-github-pages.yaml](.github/workflows/deploy-github-pages.yaml) is a workflow used to build and deploy a Jekyll site to GitHub Pages.
-
-The selected `working-directory` must contain a Jekyll site and a `Gemfile` declaring its Jekyll
-dependencies; commit its lockfile for reproducible builds. Ruby setup installs dependencies before
-`bundle exec jekyll build`. Configure the caller repository's Pages publishing source as GitHub
-Actions before an authorized deployment. This is not a generic static-file uploader.
-`dry-run: true` skips the build and deployment; it checks the interface, not whether the site builds.
-
-#### Usage
-
-```yaml
-jobs:
-  pages:
-    uses: devantler-tech/.github/.github/workflows/deploy-github-pages.yaml@<full-commit-sha> # vX.Y.Z
-    permissions:
-      contents: read
-      pages: write
-      id-token: write
-    with:
-      ruby-version: "3.3" # optional
-      jekyll-env: production # optional
-      extra-build-args: "" # optional, e.g. '--future'
-      working-directory: "." # optional, e.g. 'docs' if Jekyll site is in a subdirectory
-```
-
-#### Secrets and Inputs
-
-| Key                 | Type            | Default      | Required | Description                                                     |
-|---------------------|-----------------|--------------|----------|-----------------------------------------------------------------|
-| `dry-run`           | Input (boolean) | `false`      | No       | Skip build and deploy (validate workflow interface only)        |
-| `ruby-version`      | Input (string)  | `3.3`        | No       | Ruby version to install                                         |
-| `jekyll-env`        | Input (string)  | `production` | No       | Jekyll environment                                              |
-| `extra-build-args`  | Input (string)  | `""`         | No       | Extra args appended before the automatically supplied --baseurl |
-| `working-directory` | Input (string)  | `"."`        | No       | Working directory for the Jekyll site (e.g., 'docs')            |
-
-#### Outputs
-
-| Key        | Description             |
-|------------|-------------------------|
-| `page-url` | Deployed Pages site URL |
 
 </details>
 
@@ -1041,55 +887,6 @@ jobs:
       actions: read
       security-events: write
 ```
-
-</details>
-
-### 🔄 Sync Cluster Policies
-
-<details>
-<summary>Purpose, interface and usage</summary>
-
-[.github/workflows/sync-cluster-policies.yaml](.github/workflows/sync-cluster-policies.yaml) is a workflow used to sync upstream Kyverno policies to a target directory.
-
-Which policies are synced is controlled by a `.policyignore` file at the repo root. It uses gitignore-style syntax — ordered glob patterns, one per line, where a leading `!` re-includes a previously excluded path — so you can exclude everything by default and whitelist just the policies you want:
-
-```gitignore
-# Ignore every category…
-other*
-# …except these two policies.
-!other/create-pod-antiaffinity/create-pod-antiaffinity.yaml
-!other/spread-pods-across-topology/spread-pods-across-topology.yaml
-```
-
-Patterns are evaluated per file with last-match-wins, so a `!` re-include still applies even when a broad earlier pattern matched its parent directory.
-
-The file must exist and be readable. A missing or unreadable file stops the sync before any policy changes; an explicitly empty file includes every upstream policy. Matching follows Git's path rules: basename patterns apply at every depth, a leading `/` anchors at the upstream root, `*` stays within a path component, `**` can span directories, and a trailing `/` matches directories only.
-
-A literal `!` re-include (one without glob characters) must still exist upstream. If upstream moves or drops that policy, the run fails and names the path before the target directory changes. Without that check it would open a pull request that deletes your vendored copy.
-
-The selected policies are copied and checked beside the target directory before it changes. If the copy or the swap fails, the run fails and the target keeps its previous policies. A run that selects nothing empties the target only when `.policyignore` excludes every upstream policy; otherwise it fails. Entries in the target whose names start with a dot are left in place.
-
-Set `dry-run: true` and omit `APP_PRIVATE_KEY` to validate the interface without syncing or opening a pull request. A real sync requires the App key and fails before token creation if it is missing.
-
-#### Usage
-
-```yaml
-jobs:
-  sync-cluster-policies:
-    uses: devantler-tech/.github/.github/workflows/sync-cluster-policies.yaml@<full-commit-sha> # vX.Y.Z
-    secrets:
-      APP_PRIVATE_KEY: ${{ secrets.APP_PRIVATE_KEY }}
-    with:
-      kyverno-policies-dir: policies/kyverno
-```
-
-#### Secrets and Inputs
-
-| Key                    | Type            | Default | Required | Description                                              |
-|------------------------|-----------------|---------|----------|----------------------------------------------------------|
-| `APP_PRIVATE_KEY`      | Secret          | -       | For a real sync | GitHub App private key; omit for dry-runs             |
-| `kyverno-policies-dir` | Input (string)  | -       | Yes      | Directory to sync Kyverno policies to                    |
-| `dry-run`              | Input (boolean) | `false` | No       | Skip sync and PR creation (validate workflow interface only) |
 
 </details>
 
