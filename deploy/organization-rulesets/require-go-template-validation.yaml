@@ -1,5 +1,6 @@
 # Complete native policy observed before migration (#237 / #674).
-# Preserve selectors, bypasses and lifecycle; change only the required source.
+# Native repository enforcement proved in .github#692 and go-template#422.
+# Retain the complete disabled policy for identity and rollback, without Delete.
 apiVersion: enterprise.github.m.upbound.io/v1alpha1
 kind: OrganizationRuleset
 metadata:
@@ -18,7 +19,7 @@ spec:
             exclude: []
         repositoryId:
           - 1065308377
-    enforcement: active
+    enforcement: disabled
     name: Require workflow - Go template validation
     rules:
       - creation: false

@@ -72,10 +72,30 @@ evidence, not repository-inherited API projections, which omit organization sele
 
 Run `bash tests/legacy-workflow-observation.sh` from the repository root. It renders
 the real configuration, compares every policy field with those observations and
-allows only the reviewed source switch and provider-required encodings. Its 113
+allows the reviewed source switch, provider-required encodings and the two proven
+template cutovers below. Its 113
 rejection controls cover policy drift, excess authority, duplicate adoption,
 incomplete input, additional legacy sources and weakened required CI invocation. Native readback and actual
 ordinary consumer executions remain separate delivery gates under #237.
+
+### Repository-owned template validation
+
+The template-only organization policies are declared disabled after native overlap
+proof: [Go control #422](https://github.com/devantler-tech/go-template/pull/422)
+passed ordinary CI and then failed its required aggregate on an intentional test
+failure; [.NET control #543](https://github.com/devantler-tech/dotnet-template/pull/543)
+passed all three native platforms and then blocked on an intentional Windows
+assertion failure (the unchanged fail-fast matrix cancelled its other two legs).
+Neither control was merged.
+
+`go-template-require-validation` requires the native `CI - Required Checks` aggregate.
+`dotnet-template-require-validation` separately requires `.NET template tests`
+for `ubuntu-latest`, `windows-latest` and `macos-latest`. Both remain active,
+default-branch-only, without bypasses and bound to GitHub Actions integration `15368`.
+The disabled organization resources retain their complete selectors, source identity
+and non-deleting lifecycle. The workflow source stays until disabled live enforcement
+is confirmed; source removal is a separate step. Publication and native readback for
+this cutover are tracked in [#698](https://github.com/devantler-tech/.github/issues/698).
 
 ### Organization Go workflow policy
 
