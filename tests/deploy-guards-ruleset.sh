@@ -69,6 +69,7 @@ ac() { yq -r "$1" "$action"; }
 # Check the actual action interface and every GitHub-to-validator identity bind.
 check_action_boundary() {
   yq -o=json '.' "$1" | jq -e '
+    .author == "devantler-tech" and
     (.inputs | keys) == ["candidate-sha"] and
     .inputs["candidate-sha"].required == true and
     .runs.using == "composite" and (.runs.steps | length) == 4 and
@@ -103,6 +104,7 @@ check_action_boundary() {
 check_action_boundary "$action" || fail 'product action loses an immutable identity or execution boundary'
 # shellcheck disable=SC2016 # These are literal GitHub-expression mutation controls.
 for mutation in \
+  'del(.author)' \
   '.runs.steps[0].if = "false"' \
   '.runs.steps[0]["continue-on-error"] = true' \
   '.runs.steps[0].env.CANDIDATE_SHA = "main"' \

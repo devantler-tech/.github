@@ -1,5 +1,6 @@
 name: Deploy admission
 description: Apply reviewed release and deletion validators to candidate manifests and PR metadata as data.
+author: devantler-tech
 inputs:
   candidate-sha:
     description: Immutable candidate integration commit supplied by GitHub.
