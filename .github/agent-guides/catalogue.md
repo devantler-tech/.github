@@ -118,6 +118,7 @@ These workflows do not declare `workflow_call`. Required CI checks this inventor
 | `ci.yaml` | This repository |
 | `deploy-guards.yaml` | This repository |
 | `governance-audits.yaml` | This repository |
+| `inspect-release-recovery.yaml` | This repository; default-off manual diagnosis, not a reusable consumer interface |
 | `measure-go-disk.yaml` | This repository |
 | `organization-settings-audit.yaml` | This repository |
 | `pr-metadata-guards.yaml` | This repository |

@@ -1,44 +1,8 @@
 name: 🔎 Inspect Release Recovery
 
-# Diagnosis only. Publication and channel-note recovery remain tracked in #587.
+# Repository-owned manual diagnosis only; no reusable production consumer exists.
+# Publication and channel-note recovery remain tracked in #587.
 on:
-  workflow_call:
-    inputs:
-      enable-inspection:
-        description: "Explicitly enable read-only inspection; never authorizes publication"
-        type: boolean
-        default: false
-      repository:
-        description: "Public devantler-tech repository containing the stranded release"
-        type: string
-        required: true
-      tag:
-        description: "Existing stable version tag, such as v1.2.3"
-        type: string
-        required: true
-      source-sha:
-        description: "Full original source commit SHA"
-        type: string
-        required: true
-      run-id:
-        description: "Original failed release workflow run ID"
-        type: string
-        required: true
-      run-attempt:
-        description: "Original failed release workflow attempt"
-        type: string
-        required: true
-      producer-ref:
-        description: "Original catalogue create-release workflow path at its full commit SHA"
-        type: string
-        required: true
-    secrets:
-      APP_PRIVATE_KEY:
-        required: false
-    outputs:
-      diagnosis:
-        description: "Read-only JSON diagnosis; not publication success or write authorization"
-        value: ${{ jobs.inspect.outputs.diagnosis }}
   workflow_dispatch:
     inputs:
       enable-inspection:
@@ -106,8 +70,9 @@ jobs:
         id: source
         shell: bash
         env:
-          CATALOGUE_REPOSITORY: ${{ job.workflow_repository }}
-          CATALOGUE_SHA: ${{ job.workflow_sha }}
+          # Manual-only: the repository and workflow source are unambiguous.
+          CATALOGUE_REPOSITORY: ${{ github.repository }}
+          CATALOGUE_SHA: ${{ github.workflow_sha }}
         run: |
           set -euo pipefail
           [[ "$CATALOGUE_REPOSITORY" == devantler-tech/.github && "$CATALOGUE_SHA" =~ ^[0-9a-f]{40}$ ]] || {
