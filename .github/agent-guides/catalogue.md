@@ -111,6 +111,21 @@ committed as `fix:` (or `feat:`), not `ci:`/`refactor:`.
 
 These workflows do not declare `workflow_call`. Required CI checks this inventory against their actual triggers.
 
+`repository-pr-admission.yaml` shares only trusted-source resolution and a read-only runner.
+Each enrolled product owns `.github/actions/pr-admission/action.yaml`, with the fixed
+`candidate-sha` interface, and a closed `.github/pr-admission.json` containing version `1`
+and its preserved `timeout-minutes` budget. Both are loaded from GitHub's immutable product
+base, never the candidate. The shared runner is not enrolled by this source preparation.
+Retain all existing rules until managed enrollment is published, reconciled, read back through
+GitHub's API, and exercised with native positive and candidate-tampering refusal controls.
+
+GitHub ignores activity filters for ruleset-injected workflows: only the default PR activity
+types run. Do not claim `edited` revalidates required metadata; this repository retains its
+existing full-CI edit feedback and manual reviewed-main metadata workflow during the migration.
+See [GitHub's ruleset event documentation](https://docs.github.com/en/enterprise-cloud@latest/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/troubleshooting-rules#supported-ruleset-workflow-events).
+World at Ruin's runtime blocker (#1495 in that repository) still has to clear before its admission
+cutover; the generic budget bound is not permission to omit tests or declare that outcome fixed.
+
 | Workflow | Ownership |
 |---|---|
 | `apply-workflow-execution-policies.yaml` | This repository |
@@ -126,5 +141,6 @@ These workflows do not declare `workflow_call`. Required CI checks this inventor
 | `repository-admin-team-audit.yaml` | This repository |
 | `repository-coverage-check.yaml` | This repository |
 | `repository-drift-check.yaml` | This repository |
+| `repository-pr-admission.yaml` | Shared read-only organization admission plumbing; product validators remain local |
 | `stale-repository-identifier.yaml` | This repository |
 | `world-at-ruin-required-regressions.yaml` | This repository |
