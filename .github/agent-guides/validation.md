@@ -29,6 +29,22 @@ required; this fixture never proves live token generation or project association
 
 **Explicit application recovery:** The same default-off mode verifies both original signatures with all nine paired publication claims before reading both version aliases. Any conflict or unknown read prevents all writes; only missing aliases are restored, with digest readback and matching retries producing no writes. Keep `.github/tests/test-app-recovery.sh` and the native single-platform Buildx/Flux proof required. Never rebuild, re-sign or move `latest` during recovery. Registry writes have no compare-and-set or cross-repository transaction; the shared queue and final readback cannot fence unrelated writers.
 
+**Prebuilt WebApp publication:** Default-off `enable-prebuilt-webapp` requires
+caller pinning and signed promotion, and cannot combine with recovery. Before
+any registry write, verify the original caller-owned public main-push CI attempt,
+image signature and complete production-template SLSA statement against the
+tagged source, public artifact digest and fixed caller CI identity. A private,
+incomplete, failed or changed attempt is unsupported. Do not accept an arbitrary
+image repository, signer or caller-provided source identity. Pin only the image
+of one source-owned WebApp whose name, namespace and spec name match the caller;
+reject linked/special deployment files. This is not complete controller schema
+validation. Sign and verify both promoted digests with all fourteen paired
+claims, retaining the original image provenance. Keep helper refusal/pinning,
+promotion mutation, native cryptographic and workflow-interface controls in
+required CI. Legacy recovery must refuse prebuilt-marked evidence even when the
+new mode input is omitted. Caller/verifier adoption remains separate; #684 owns
+the finite rollout gate review and retirement.
+
 **Manifest naming:** Every `validate-naming` call validates the caller's versioned
 configuration. Keep the Linux/macOS clean fixtures, seeded naming violations and
 missing-configuration failures required in CI. Failed calls never report a

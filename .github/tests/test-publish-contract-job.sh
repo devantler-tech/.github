@@ -13,6 +13,7 @@ cat >"$work/check.jq" <<'JQ'
    "test-publish-preflight", "test-unpublished-version",
    "test-manifests-recovery", "test-app-recovery",
    "test-unpublished-version-native", "test-app-signed-promotion",
+   "test-prebuilt-webapp",
    "test-publish-manifests-promotion"] as $tests |
   ($j != null) and
   ($j.needs == null) and
@@ -45,6 +46,7 @@ if ! check "$work/ci.json"; then
   exit 1
 fi
 for mutation in \
+  '.jobs["test-publish-contracts"].steps |= map(select(.run != "bash .github/tests/test-prebuilt-webapp.sh"))' \
   'del(.jobs["test-publish-contracts"].steps[2])' \
   '.jobs["test-publish-contracts"].steps[2].if = "false"' \
   '.jobs["test-publish-contracts"].steps[2]."continue-on-error" = true' \

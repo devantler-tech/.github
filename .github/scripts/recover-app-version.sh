@@ -31,13 +31,18 @@ annotations=(
   -a "devantler.image-digest=$RECOVERY_IMAGE_DIGEST"
   -a "devantler.manifests-digest=$RECOVERY_MANIFESTS_DIGEST"
 )
+work="$(mktemp -d)"
+trap 'rm -rf "$work"' EXIT
 for target in "$image@$RECOVERY_IMAGE_DIGEST" "$artifact@$RECOVERY_MANIFESTS_DIGEST"; do
   cosign verify --certificate-identity "$SERVER_URL/$original_workflow" \
     --certificate-oidc-issuer https://token.actions.githubusercontent.com "${annotations[@]}" \
-    "$target" >/dev/null || fail 'original signature or paired publication claims failed verification'
+    "$target" > "$work/signature.json" || fail 'original signature or paired publication claims failed verification'
+  # This legacy recovery contract cannot silently drop the additional evidence
+  # required by prebuilt publication, even if the caller omits its mode input.
+  jq -se 'length == 1 and (.[0] | type == "array" and length > 0 and all(.[];
+    (.optional | type) == "object" and (.optional | has("devantler.public-profile") | not)))' \
+    "$work/signature.json" >/dev/null || fail 'prebuilt or incomplete signature evidence is not supported by legacy recovery'
 done
-work="$(mktemp -d)"
-trap 'rm -rf "$work"' EXIT
 accept='application/vnd.oci.image.manifest.v1+json, application/vnd.oci.image.index.v1+json, application/vnd.docker.distribution.manifest.v2+json, application/vnd.docker.distribution.manifest.list.v2+json'
 read_version() {
   local repository="$1" expected="$2" status token observed

@@ -3,7 +3,7 @@ on:
   workflow_call:
     inputs:
       app-name:
-        description: "Container name in the deployment manifest to pin to the built image digest."
+        description: "Deployment container name, or WebApp metadata name/namespace and spec name in prebuilt mode."
         required: true
         type: string
       deploy-path:
@@ -31,6 +31,31 @@ on:
         required: false
         default: false
         type: boolean
+      enable-prebuilt-webapp:
+        description: "Use the caller's verified public main-CI production-template image and source-owned WebApp instead of rebuilding a Deployment image. Requires caller pinning and signed promotion; incompatible with recovery."
+        required: false
+        default: false
+        type: boolean
+      prebuilt-image-digest:
+        description: "Original main-CI image sha256 digest; required only for prebuilt WebApp publication."
+        required: false
+        default: ""
+        type: string
+      prebuilt-public-digest:
+        description: "Public artifact SHA-256 recorded by the original image producer."
+        required: false
+        default: ""
+        type: string
+      prebuilt-ci-run-id:
+        description: "Successful original public main-push CI run ID."
+        required: false
+        default: ""
+        type: string
+      prebuilt-ci-run-attempt:
+        description: "Successful original CI attempt, which must still be current."
+        required: false
+        default: ""
+        type: string
       recovery-image-digest:
         description: "Original signed image sha256 digest, required for explicit recovery."
         required: false
@@ -89,6 +114,18 @@ jobs:
         run: |
           [[ "$ENABLE_SIGNED_PROMOTION" == true && "$ENABLE_CALLER_PIN" == true ]] || {
             echo '::error::recovery requires signed promotion and caller pinning'
+            exit 1
+          }
+
+      - name: 🔒 Admit prebuilt WebApp mode
+        if: ${{ inputs.enable-prebuilt-webapp }}
+        env:
+          ENABLE_SIGNED_PROMOTION: ${{ inputs.enable-signed-promotion }}
+          ENABLE_CALLER_PIN: ${{ inputs.enable-caller-pin }}
+          ENABLE_SIGNED_RECOVERY: ${{ inputs.enable-signed-recovery }}
+        run: |
+          [[ "$ENABLE_SIGNED_PROMOTION" == true && "$ENABLE_CALLER_PIN" == true && "$ENABLE_SIGNED_RECOVERY" == false ]] || {
+            echo '::error::prebuilt WebApp requires caller pinning and signed promotion, with recovery disabled'
             exit 1
           }
 
@@ -172,7 +209,7 @@ jobs:
           persist-credentials: false
 
       - name: 🔍 Validate the deployment manifest
-        if: ${{ !inputs.enable-signed-recovery }}
+        if: ${{ !inputs.enable-signed-recovery && !inputs.enable-prebuilt-webapp }}
         env:
           APP_NAME: ${{ inputs.app-name }}
           DEPLOY_PATH: ${{ inputs.deploy-path }}
@@ -224,7 +261,22 @@ jobs:
         run: |
           cp .devantler-tech-publisher/.github/scripts/require-unpublished-version.sh "$RUNNER_TEMP/require-unpublished-version.sh"
           cp .devantler-tech-publisher/.github/scripts/recover-app-version.sh "$RUNNER_TEMP/recover-app-version.sh"
+          cp .devantler-tech-publisher/.github/scripts/prepare-prebuilt-webapp.sh "$RUNNER_TEMP/prepare-prebuilt-webapp.sh"
           rm -rf -- .devantler-tech-publisher
+
+      - name: 🔎 Verify original image and pin the WebApp
+        id: prebuilt
+        if: ${{ inputs.enable-prebuilt-webapp }}
+        env:
+          REPOSITORY: ${{ github.repository }}
+          SOURCE_SHA: ${{ github.sha }}
+          APP_NAME: ${{ inputs.app-name }}
+          DEPLOY_PATH: ${{ inputs.deploy-path }}
+          PREBUILT_IMAGE_DIGEST: ${{ inputs.prebuilt-image-digest }}
+          PREBUILT_PUBLIC_DIGEST: ${{ inputs.prebuilt-public-digest }}
+          PREBUILT_CI_RUN_ID: ${{ inputs.prebuilt-ci-run-id }}
+          PREBUILT_CI_RUN_ATTEMPT: ${{ inputs.prebuilt-ci-run-attempt }}
+        run: bash "$RUNNER_TEMP/prepare-prebuilt-webapp.sh"
 
       - name: 🔒 Refuse an occupied release version
         if: ${{ !inputs.enable-signed-recovery }}
@@ -278,7 +330,7 @@ jobs:
             type=sha
 
       - name: 🐳 Build & push image
-        if: ${{ !inputs.enable-signed-recovery }}
+        if: ${{ !inputs.enable-signed-recovery && !inputs.enable-prebuilt-webapp }}
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         id: build
         with:
@@ -288,7 +340,7 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
 
       - name: 📌 Pin image digest in manifests
-        if: ${{ !inputs.enable-signed-recovery }}
+        if: ${{ !inputs.enable-signed-recovery && !inputs.enable-prebuilt-webapp }}
         env:
           IMAGE: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           DIGEST: ${{ steps.build.outputs.digest }}
@@ -386,7 +438,11 @@ jobs:
         if: ${{ !inputs.enable-signed-recovery && (inputs.enable-signed-promotion == true || inputs.enable-signed-promotion == 'true') }}
         shell: bash
         env:
-          DIGEST: ${{ steps.build.outputs.digest }}
+          DIGEST: ${{ inputs.enable-prebuilt-webapp && steps.prebuilt.outputs.digest || steps.build.outputs.digest }}
+          PREBUILT_WEBAPP: ${{ inputs.enable-prebuilt-webapp }}
+          PUBLIC_DIGEST: ${{ steps.prebuilt.outputs.public-digest }}
+          ORIGINAL_CI_RUN_ID: ${{ inputs.prebuilt-ci-run-id }}
+          ORIGINAL_CI_RUN_ATTEMPT: ${{ inputs.prebuilt-ci-run-attempt }}
           DEPLOY_PATH: ${{ inputs.deploy-path }}
           VERSION: ${{ steps.version.outputs.version }}
           REF_NAME: ${{ github.ref_name }}
@@ -407,6 +463,14 @@ jobs:
           }
           IMAGE="$(printf '%s' "${REGISTRY}/${IMAGE_NAME}" | tr '[:upper:]' '[:lower:]')"
           ARTIFACT="${IMAGE}/manifests"
+          if [[ "${PREBUILT_WEBAPP:-false}" == true ]]; then
+            [[ "${PUBLIC_DIGEST:-}" =~ ^[0-9a-f]{64}$ &&
+               "${ORIGINAL_CI_RUN_ID:-}" =~ ^[1-9][0-9]{0,14}$ &&
+               "${ORIGINAL_CI_RUN_ATTEMPT:-}" =~ ^[1-9][0-9]{0,5}$ ]] || {
+              echo '::error::missing verified original-image publication evidence'
+              exit 1
+            }
+          fi
           PUSHED="$(flux push artifact "oci://${ARTIFACT}:staging-${RUN_ID}-${RUN_ATTEMPT}" \
             --path="${DEPLOY_PATH}" --source="${SERVER_URL}/${REPOSITORY}" \
             --revision="${REF_NAME}@sha1:${SHA}" --creds "${ACTOR}:${GH_TOKEN}" --output json)"
@@ -430,6 +494,15 @@ jobs:
             -a "devantler.image-digest=$DIGEST"
             -a "devantler.manifests-digest=$ARTIFACT_DIGEST"
           )
+          if [[ "${PREBUILT_WEBAPP:-false}" == true ]]; then
+            annotations+=(
+              -a "devantler.public-digest=$PUBLIC_DIGEST"
+              -a devantler.public-profile=production-template
+              -a "devantler.ci-run-id=$ORIGINAL_CI_RUN_ID"
+              -a "devantler.ci-run-attempt=$ORIGINAL_CI_RUN_ATTEMPT"
+              -a "devantler.image-producer=https://github.com/$REPOSITORY/.github/workflows/ci.yaml@refs/heads/main"
+            )
+          fi
           cosign sign --yes "${annotations[@]}" "${IMAGE}@${DIGEST}"
           cosign sign --yes "${annotations[@]}" "${ARTIFACT}@${ARTIFACT_DIGEST}"
           cosign verify --certificate-identity "${SERVER_URL}/${JOB_WORKFLOW_REF}" \

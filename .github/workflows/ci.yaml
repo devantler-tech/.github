@@ -3411,6 +3411,10 @@ jobs:
         shell: bash
         run: bash .github/tests/test-app-signed-promotion.sh
 
+      - name: 🔒 Verify prebuilt WebApp image evidence and pinning
+        shell: bash
+        run: bash .github/tests/test-prebuilt-webapp.sh
+
       - name: 🔏 Check manifests promotion never exposes an unsigned release
         shell: bash
         run: bash .github/tests/test-publish-manifests-promotion.sh
@@ -4367,6 +4371,12 @@ jobs:
       # this is a schema check, and the enabled BEHAVIOUR stays covered by
       # test-publish-caller-pin.sh and the push-only live job.
       enable-caller-pin: true
+      enable-signed-promotion: true
+      enable-prebuilt-webapp: true
+      prebuilt-image-digest: sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+      prebuilt-public-digest: bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+      prebuilt-ci-run-id: "123"
+      prebuilt-ci-run-attempt: "2"
 
   # The caller-pin guard lives inside the publish job, which the dry-run tests skip, so nothing else
   # in CI ever performs the live OIDC request and JWT decode it depends on. Without this job that
