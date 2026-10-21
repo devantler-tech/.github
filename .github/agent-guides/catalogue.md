@@ -61,6 +61,13 @@ repository's own `validate-manifests` job, all behind the single `CI - Required 
 catalogue's documentation is the root [README](../../README.md), between its catalogue markers; each
 action also has its own README.
 
+Keep the Actions and Reusable workflows indexes parallel: a component reference and its purpose.
+List organization-required compatibility sources and internal projections/fixtures separately;
+neither is an invitation to add a new consumer. Each workflow's existing level-three reference
+owns one `Purpose, interface and usage` collapsible, closed before the next peer heading. Keep
+shared Go behavior with the main Go interface rather than accidentally nesting it under the
+read-only projection. Preserve every declared input/secret table and the fail-closed parity tests.
+
 ### Self-references (read before referencing one part of the catalogue from another)
 
 One component may reference another **in this repository**. GitHub resolves these differently — follow the matching rule:

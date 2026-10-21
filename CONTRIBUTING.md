@@ -23,7 +23,14 @@ git switch -c docs/first-contribution
 
 From the repository root, make a small wording correction in `README.md`. If it describes a
 workflow input or secret, check the actual declaration under `.github/workflows/`; its table must
-remain in that workflow's own level-three README section. Then run:
+remain in that workflow's own level-three README section.
+
+The root README has parallel action and workflow indexes. Keep consumer interfaces separate from
+organization-required sources and internal fixtures. Give each workflow reference one peer
+level-three heading and one `Purpose, interface and usage` collapsible; do not nest the next
+workflow inside it. Action interfaces stay in their linked per-action READMEs.
+
+Run:
 
 ```sh
 bash .scripts/check-workflow-readme.sh
