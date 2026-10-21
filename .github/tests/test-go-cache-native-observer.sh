@@ -75,6 +75,8 @@ reject_jobs_with_summary 'map(.jobs |= map(.status = "in_progress" | .conclusion
   '.fixture_invalid == 9 and .fixture_not_completed == 9 and .fixture_not_success == 9 and .fixture_wrong_head == 0 and .fixture_bad_steps == 0'
 reject_jobs_with_summary '.[0].jobs[1].head_sha = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" | .[1].jobs[1].steps += .[1].jobs[1].steps' \
   '.fixture_invalid == 2 and .fixture_wrong_head == 1 and .fixture_bad_steps == 1 and .fixture_wrong_run == 0 and .fixture_bad_id == 0'
+reject_jobs_with_summary '.[1].jobs[2].steps += ["not-a-step"]' \
+  '.fixture_invalid == 1 and .fixture_bad_steps == 1 and .fixture_not_completed == 0'
 reject_jobs_with_summary '. + [range(10;22) | {total_count:.,jobs:[]}]' \
   '.pages == 14 and .total_count_variants == 13 and (.reported_totals | length == 8)'
 # Only scalar counts may leave rejected evidence; never echo native names,

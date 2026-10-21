@@ -8,6 +8,9 @@ diagnose_jobs() {
   local summary
   summary="$(jq -cse --argjson run "$run" --argjson attempt "$attempt" --arg head "$head" --arg prefix "$prefix" '
     def positive: type == "number" and . > 0 and floor == .;
+    # Malformed step entries count as bad steps instead of aborting the diagnostic.
+    def good_steps: .steps | type == "array" and all(.[]; type == "object") and
+      ([.[].name] | length == (unique | length));
     (if length == 1 then .[0] else error("expected one job inventory") end) |
     if type == "array" and length > 0 and
       all(.[]; type == "object" and (.total_count | positive) and (.jobs | type == "array"))
@@ -18,8 +21,7 @@ diagnose_jobs() {
        fetched_jobs:($all | length), duplicate_ids:(($all | length) - ($all | map(.id) | unique | length)),
        fixture_jobs:($fixture | length), fixture_invalid:([$fixture[] | select(
          ((.id | positive) and .run_id == $run and .run_attempt == $attempt and .head_sha == $head and
-          .status == "completed" and .conclusion == "success" and (.steps | type == "array") and
-          ([.steps[].name] | length == (unique | length))) | not)] | length),
+          .status == "completed" and .conclusion == "success" and good_steps) | not)] | length),
        # One count per rejected fixture invariant, so a rejection names its cause.
        fixture_bad_id:([$fixture[] | select(.id | positive | not)] | length),
        fixture_wrong_run:([$fixture[] | select(.run_id != $run)] | length),
@@ -27,8 +29,7 @@ diagnose_jobs() {
        fixture_wrong_head:([$fixture[] | select(.head_sha != $head)] | length),
        fixture_not_completed:([$fixture[] | select(.status != "completed")] | length),
        fixture_not_success:([$fixture[] | select(.conclusion != "success")] | length),
-       fixture_bad_steps:([$fixture[] | select((.steps | type == "array" and
-         ([.[] | .name?] | length == (unique | length))) | not)] | length)}
+       fixture_bad_steps:([$fixture[] | select(good_steps | not)] | length)}
     else {state:"invalid_shape"} end
   ' "$jobs" 2>/dev/null)" || summary='{"state":"unreadable"}'
   printf 'native-go-cache: job-evidence-summary=%s\n' "$summary" >&2
