@@ -151,6 +151,14 @@ lookup_expr() { # <expression> — the value GitHub would substitute for ${{ <ex
     env.*) lookup_line "$scratch/job-env" "${1#env.}" ;;
     inputs.*)
       case "$1" in
+        "inputs.enable-prebuilt-webapp && steps.prebuilt.outputs.digest || steps.build.outputs.digest")
+          if [[ "$(lookup_expr inputs.enable-prebuilt-webapp)" == true ]]; then
+            lookup_expr steps.prebuilt.outputs.digest
+          else
+            lookup_expr steps.build.outputs.digest
+          fi
+          return 0
+          ;;
         "inputs.enable-signed-promotion == true || inputs.enable-signed-promotion == 'true'")
           [[ "$(lookup_expr inputs.enable-signed-promotion)" == true ]] && printf true || printf false
           return 0
@@ -178,6 +186,9 @@ lookup_expr() { # <expression> — the value GitHub would substitute for ${{ <ex
       ;;
     "!inputs.enable-signed-recovery")
       [[ "$(lookup_expr inputs.enable-signed-recovery)" != true ]] && printf true || printf false
+      ;;
+    "!inputs.enable-signed-recovery && !inputs.enable-prebuilt-webapp")
+      [[ "$(lookup_expr inputs.enable-signed-recovery)" != true && "$(lookup_expr inputs.enable-prebuilt-webapp)" != true ]] && printf true || printf false
       ;;
     "!inputs.enable-signed-recovery && (inputs.enable-signed-promotion == true || inputs.enable-signed-promotion == 'true')")
       [[ "$(lookup_expr inputs.enable-signed-recovery)" != true && "$(lookup_expr inputs.enable-signed-promotion)" == true ]] && printf true || printf false
@@ -332,6 +343,7 @@ run_job() {
               "$(resolve "$(step '.with.ref')")" == "$sha40" ]] || fail 'helper checkout does not select immutable publisher source'
             mkdir -p "$workdir/.devantler-tech-publisher/.github/scripts"
             cp "$repo_root/.github/scripts/require-unpublished-version.sh" \
+              "$repo_root/.github/scripts/prepare-prebuilt-webapp.sh" \
               "$repo_root/.github/scripts/recover-app-version.sh" "$repo_root/.github/scripts/recover-manifests-version.sh" \
               "$workdir/.devantler-tech-publisher/.github/scripts/"
           fi
@@ -545,6 +557,26 @@ for prerequisites in 'enable-signed-promotion=false enable-caller-pin=true' 'ena
 done
 done
 echo 'ok   explicit recovery cannot fall through to legacy publication'
+
+# The prebuilt path cannot fall through to the legacy builder or publisher.
+for prerequisites in 'enable-signed-promotion=false enable-caller-pin=true' 'enable-signed-promotion=true enable-caller-pin=false' 'enable-signed-promotion=false enable-caller-pin=false' 'enable-signed-promotion=true enable-caller-pin=true enable-signed-recovery=true'; do
+  wd="$scratch/prebuilt-refused"
+  mkdir -p "$wd"
+  # shellcheck disable=SC2086 # Fixed boolean input pairs, not repository content.
+  if run_job "$app" publish "$wd" tag v1.2.3 app-name=app enable-prebuilt-webapp=true $prerequisites; then
+    fail 'prebuilt WebApp bypassed admission'
+  fi
+  nothing_pushed 'prebuilt WebApp without prerequisites'
+  refused_with 'prebuilt WebApp without prerequisites' 'prebuilt WebApp requires caller pinning and signed promotion'
+done
+wd="$scratch/prebuilt-missing"
+new_app "$wd"
+if run_job "$app" publish "$wd" tag v1.2.3 app-name=app enable-prebuilt-webapp=true enable-signed-promotion=true enable-caller-pin=true; then
+  fail 'prebuilt WebApp accepted missing original evidence'
+fi
+nothing_pushed 'prebuilt WebApp missing original evidence'
+refused_with 'prebuilt WebApp missing original evidence' 'require an immutable image digest'
+echo 'ok   prebuilt mode requires verified-image admission before any registry write'
 
 # A repository name with uppercase letters: docker/metadata-action lowercases the image it pushes,
 # so the pinned reference and the manifests path must be lowercase too, or the push after the

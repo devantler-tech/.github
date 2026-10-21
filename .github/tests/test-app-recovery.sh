@@ -15,9 +15,12 @@ yq -o=json '.' "$workflow" | jq -e '
 # shellcheck disable=SC2016 # Literal GitHub expressions are the admission contract.
 yq -o=json '.' "$workflow" | jq -e '
   .jobs.publish.steps as $steps |
-  (["🔍 Validate the deployment manifest", "🔒 Prepare signed image staging", "🏷️ Derive image tags", "🐳 Build & push image", "📌 Pin image digest in manifests"] |
+  (["🔒 Prepare signed image staging", "🏷️ Derive image tags"] |
     all(. as $name | ($steps | map(select(.name == $name)) | length == 1) and
       ($steps | map(select(.name == $name))[0].if == "${{ !inputs.enable-signed-recovery }}"))) and
+  (["🔍 Validate the deployment manifest", "🐳 Build & push image", "📌 Pin image digest in manifests"] |
+    all(. as $name | ($steps | map(select(.name == $name)) | length == 1) and
+      ($steps | map(select(.name == $name))[0].if == "${{ !inputs.enable-signed-recovery && !inputs.enable-prebuilt-webapp }}"))) and
   (["📦 Sign & promote image and manifests"] |
     all(. as $name | ($steps | map(select(.name == $name))[0].if == "${{ !inputs.enable-signed-recovery && (inputs.enable-signed-promotion == true || inputs.enable-signed-promotion == '\''true'\'') }}"))) and
   ($steps | map(select(.name == "🔏 Recover original application version"))[0] |
@@ -70,6 +73,11 @@ expected+=("$target")
 index=0
 for arg in "$@"; do [[ "$arg" == "${expected[index]}" ]] || exit 95; index=$((index + 1)); done
 [[ "$SCENARIO" != "signature-$kind" ]] || exit 1
+if [[ "$SCENARIO" == "prebuilt-$kind" ]]; then
+  printf '[{"optional":{"devantler.public-profile":"production-template"}}]\n'
+else
+  printf '[{"optional":{}}]\n'
+fi
 COSIGN
 cat >"$work/bin/curl" <<'CURL'
 #!/usr/bin/env bash
@@ -136,7 +144,7 @@ run() {
     RECOVERY_IMAGE_DIGEST="$image_digest" RECOVERY_MANIFESTS_DIGEST="$manifests_digest" RECOVERY_RUN_ID=123 RECOVERY_RUN_ATTEMPT=2 RECOVERY_WORKFLOW_SHA=0123456789abcdef0123456789abcdef01234567 \
     ENABLE_SIGNED_PROMOTION=true ENABLE_CALLER_PIN=true "$@" bash "$root/.github/scripts/recover-app-version.sh" >"$work/log" 2>&1
 }
-for scenario in missing matching image-only manifests-only signature-image signature-manifests auth-partial partial-image partial-manifests forbidden-image forbidden-manifests redirect-image redirect-manifests mixed-image mixed-manifests conflict-image conflict-manifests readback-image readback-manifests interrupted-image interrupted-manifests; do
+for scenario in missing matching image-only manifests-only signature-image signature-manifests prebuilt-image prebuilt-manifests auth-partial partial-image partial-manifests forbidden-image forbidden-manifests redirect-image redirect-manifests mixed-image mixed-manifests conflict-image conflict-manifests readback-image readback-manifests interrupted-image interrupted-manifests; do
   : >"$work/trace"
   rm -f "$work/present-image" "$work/present-manifests"
   case "$scenario" in

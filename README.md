@@ -679,17 +679,32 @@ jobs:
 
 | Key           | Type           | Default    | Required | Description                                                                |
 |---------------|----------------|------------|----------|----------------------------------------------------------------------------|
-| `app-name`    | Input (string) | -          | Yes      | Container name in the deployment manifest to pin to the built image digest |
+| `app-name`    | Input (string) | -          | Yes      | Deployment container name, or the matching WebApp metadata name/namespace and spec name |
 | `deploy-path` | Input (string) | `./deploy` | No       | Path to the Kubernetes manifests directory packaged as the OCI artifact    |
 | `dry-run` | Input (boolean) | `false` | No | Skip publication and validate only the workflow interface |
 | `enable-caller-pin` | Input (boolean) | `true` | No | Require a 40-character commit-SHA caller before signing. The authenticated OIDC calling ref is the certificate identity. Explicit false remains supported during caller cleanup in #284 |
 | `enable-signed-promotion` | Input (boolean) | `false` | No | Verify both signature identities and paired publication claims before exposing version tags, then move latest only for stable releases. Requires `enable-caller-pin`; rollout is tracked in #371 |
 | `enable-signed-recovery` | Input (boolean) | `false` | No | Restore missing version tags from the original signed pair; requires signed promotion and caller pinning, and preserves both latest tags |
+| `enable-prebuilt-webapp` | Input (boolean) | `false` | No | Verify and reuse a public main-CI production-template image with a source-owned WebApp; requires caller pinning and signed promotion, with recovery off |
+| `prebuilt-image-digest` | Input (string) | empty | No | Original image SHA-256 digest, required in prebuilt mode |
+| `prebuilt-public-digest` | Input (string) | empty | No | Public artifact SHA-256 from the original producer, required in prebuilt mode |
+| `prebuilt-ci-run-id` | Input (string) | empty | No | Successful public main-push CI run, required in prebuilt mode |
+| `prebuilt-ci-run-attempt` | Input (string) | empty | No | Original completed attempt, which must still be current; required in prebuilt mode |
 | `recovery-image-digest` | Input (string) | empty | No | Original signed image `sha256` digest, required for recovery |
 | `recovery-manifests-digest` | Input (string) | empty | No | Original signed manifests `sha256` digest, required for recovery |
 | `recovery-run-id` | Input (string) | empty | No | Original publication run ID, required for recovery |
 | `recovery-run-attempt` | Input (string) | empty | No | Original publication attempt, required for recovery |
 | `recovery-workflow-sha` | Input (string) | empty | No | Original publisher commit in this catalogue repository, required for recovery |
+
+#### Prebuilt WebApp publication
+
+Enable `enable-prebuilt-webapp`, `enable-caller-pin` and `enable-signed-promotion` together to reuse the caller's tested image without a raw-source build. Supply all four prebuilt evidence inputs. The image must belong to the calling repository, with the same source commit as the release tag. Its original signer must be that repository's exact `.github/workflows/ci.yaml@refs/heads/main` identity. Complete public GitHub observations must establish successful main-push CI at the specified current attempt. Private or unreadable CI is not supported by this mode; it adds no token permissions.
+
+Before any registry content write, Cosign verifies the original signature and SLSA source, subject, build, production-template profile, public digest and CI claims. A regular `webapp.yaml` in the bounded relative deployment directory must contain exactly one `kro.run/v1alpha1` WebApp. Its metadata name, namespace and spec name must equal `app-name`. Only its image is pinned; unrelated document values are preserved. Linked directories, linked files and special files are refused. This validates image selection, not the full Platform schema or controller behavior.
+
+The existing signed-promotion path then signs and verifies both unchanged digests with the paired publication claims plus the public digest, profile and original CI/producer binding. Stable/prerelease tag behavior is unchanged. Prebuilt recovery is unsupported: admission rejects the combined inputs, and legacy recovery independently refuses prebuilt-marked signatures even when the mode input is omitted. Original main-CI provenance remains attached to the image. Caller and Platform verifier adoption require a separately reviewed immutable publisher pin; no consumer is activated here. Rollout review and gate retirement are tracked in #684.
+
+#### Signed promotion and recovery
 
 Opt in with both `enable-signed-promotion: true` and `enable-caller-pin: true` to stage the image and manifests under run-specific tags. Authenticated registry reads must establish that the normalized version is absent from both repositories before staging, and again before promotion. Existing versions and failed or ambiguous reads stop publication. Both signatures bind the publishing repository, source revision and tag, normalized version, run and attempt, immutable workflow identity, and the exact image/manifests digest pair. Both exact digests must pass signing, identity and claim verification before version tags are exposed; prereleases never move `latest`. Image promotion preserves the verified manifest format and checks its produced digest. Default, opted-in and recovery publishers for the same target in one caller repository wait in a shared queue without canceling pending releases. Registry tag writes are sequential; other writers can race the final absence check, and a promotion failure can leave only one version or latest tag updated. Production caller adoption remains in #371 and #242.
 

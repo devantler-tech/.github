@@ -104,36 +104,52 @@ cp "$work/index.json" "$work/manifests.json"
 put devantler-tech/app/manifests claims-staging
 export REPOSITORY=devantler-tech/native-fixture SHA=fedcba9876543210fedcba9876543210fedcba98
 export REF_NAME=v1.2.4+proof VERSION=1.2.4 RUN_ID=123 RUN_ATTEMPT=2
-for family in app manifests; do
-  export JOB_WORKFLOW_REF="devantler-tech/.github/.github/workflows/publish-$family.yaml@0123456789abcdef0123456789abcdef01234567"
-  workflow="$root/.github/workflows/publish-$family.yaml"
+for family in app manifests app-prebuilt; do
+  publisher="${family%-prebuilt}"
+  export PREBUILT_WEBAPP=false
+  if [[ "$family" == app-prebuilt ]]; then
+    PUBLIC_DIGEST="$(printf 'b%.0s' {1..64})"
+    export PREBUILT_WEBAPP=true PUBLIC_DIGEST ORIGINAL_CI_RUN_ID=456 ORIGINAL_CI_RUN_ATTEMPT=3
+    export REF_NAME=v1.2.40+proof VERSION=1.2.40
+  fi
+  export JOB_WORKFLOW_REF="devantler-tech/.github/.github/workflows/publish-$publisher.yaml@0123456789abcdef0123456789abcdef01234567"
+  workflow="$root/.github/workflows/publish-$publisher.yaml"
   step='📦 Sign & promote manifests artifact'
-  [[ "$family" != app ]] || step='📦 Sign & promote image and manifests'
+  [[ "$publisher" != app ]] || step='📦 Sign & promote image and manifests'
   STEP="$step" yq -r '.jobs[].steps[] | select(.name == strenv(STEP)) | .run' "$workflow" >"$work/production.sh"
-  awk '/^annotations=\(/ {copy=1} copy {print} copy && /^\)/ {exit}' "$work/production.sh" >"$work/annotations.sh"
+  awk '/^annotations=\(/ {copy=1} copy && /^cosign sign / {exit} copy {print}' "$work/production.sh" >"$work/annotations.sh"
   [[ -s "$work/annotations.sh" ]] || { echo 'FAIL: production has no signed publication claims'; exit 1; }
   export DIGEST="$image_digest" ARTIFACT_DIGEST="$manifest_digest"
-  [[ "$family" != manifests ]] || DIGEST="$manifest_digest"
+  [[ "$publisher" != manifests ]] || DIGEST="$manifest_digest"
   annotations=()
   # shellcheck source=/dev/null # Extracted from our trusted production workflow.
   source "$work/annotations.sh"
   targets=("devantler-tech/app/manifests@$manifest_digest")
-  [[ "$family" != app ]] || targets=("devantler-tech/app@$image_digest" "devantler-tech/app/manifests@$manifest_digest")
+  [[ "$publisher" != app ]] || targets=("devantler-tech/app@$image_digest" "devantler-tech/app/manifests@$manifest_digest")
   for target in "${targets[@]}"; do
     reference="127.0.0.1:5000/$target"
     cosign sign --allow-http-registry --allow-insecure-registry --use-signing-config=false --tlog-upload=false --yes --key "$work/claims.key" "${annotations[@]}" "$reference" >"$work/sign.log" 2>&1
     cosign verify --allow-http-registry --allow-insecure-registry --insecure-ignore-tlog --key "$work/claims.pub" "${annotations[@]}" "$reference" >"$work/verified.json" 2>"$work/verify.log"
-    jq -e --arg workflow "$JOB_WORKFLOW_REF" '
+    jq -e --arg workflow "$JOB_WORKFLOW_REF" --arg version "$VERSION" --arg ref "$REF_NAME" '
       length > 0 and all(.[];
         .optional["devantler.repository"] == "devantler-tech/native-fixture" and
         .optional["devantler.source-sha"] == "fedcba9876543210fedcba9876543210fedcba98" and
-        .optional["devantler.source-ref"] == "v1.2.4+proof" and
-        .optional["devantler.version"] == "1.2.4" and
+        .optional["devantler.source-ref"] == $ref and
+        .optional["devantler.version"] == $version and
         .optional["devantler.run-id"] == "123" and
         .optional["devantler.run-attempt"] == "2" and
         .optional["devantler.workflow-ref"] == $workflow)
     ' "$work/verified.json" >/dev/null
-    [[ "$family" != app ]] || jq -e --arg image "$image_digest" --arg manifests "$manifest_digest" 'all(.[]; .optional["devantler.image-digest"] == $image and .optional["devantler.manifests-digest"] == $manifests)' "$work/verified.json" >/dev/null
+    [[ "$publisher" != app ]] || jq -e --arg image "$image_digest" --arg manifests "$manifest_digest" 'all(.[]; .optional["devantler.image-digest"] == $image and .optional["devantler.manifests-digest"] == $manifests)' "$work/verified.json" >/dev/null
+    if [[ "$family" == app-prebuilt ]]; then
+      jq -e --arg public "$PUBLIC_DIGEST" 'all(.[];
+        .optional["devantler.public-digest"] == $public and
+        .optional["devantler.public-profile"] == "production-template" and
+        .optional["devantler.ci-run-id"] == "456" and
+        .optional["devantler.ci-run-attempt"] == "3" and
+        .optional["devantler.image-producer"] == "https://github.com/devantler-tech/native-fixture/.github/workflows/ci.yaml@refs/heads/main")
+      ' "$work/verified.json" >/dev/null
+    fi
     for ((index=1; index<${#annotations[@]}; index+=2)); do
       wrong=("${annotations[@]}")
       key="${wrong[index]%%=*}"
@@ -146,6 +162,7 @@ for family in app manifests; do
     done
   done
 done
+export PREBUILT_WEBAPP=false REF_NAME=v1.2.4+proof VERSION=1.2.4
 echo 'PASS: actual cosign validates all publication claims and rejects every wrong source/run/version/pair claim'
 
 # Exercise the shipped recovery helper with actual Flux and registry bytes.

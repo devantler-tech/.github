@@ -56,6 +56,15 @@ expected=(
 if [[ -n "${IMAGE_DIGEST:-}" ]]; then
   expected+=("devantler.image-digest=$IMAGE_DIGEST" "devantler.manifests-digest=$MANIFEST_DIGEST")
 fi
+if [[ "${PREBUILT_WEBAPP:-false}" == true ]]; then
+  expected+=(
+    "devantler.public-digest=$PUBLIC_DIGEST"
+    "devantler.public-profile=production-template"
+    "devantler.ci-run-id=$ORIGINAL_CI_RUN_ID"
+    "devantler.ci-run-attempt=$ORIGINAL_CI_RUN_ATTEMPT"
+    "devantler.image-producer=https://github.com/$REPOSITORY/.github/workflows/ci.yaml@refs/heads/main"
+  )
+fi
 printf '%s\n' "${claims[@]}" >"$state/actual-claims"
 printf '%s\n' "${expected[@]}" >"$state/expected-claims"
 LC_ALL=C sort "$state/actual-claims" >"$state/actual-sorted"

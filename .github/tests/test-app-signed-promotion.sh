@@ -35,6 +35,7 @@ yq -r '.jobs.publish.steps[] | select(.name == "📦 Push & sign manifests artif
 [[ -s "$work/staging.sh" && -s "$work/promote.sh" ]] || fail 'missing production promotion steps'
 image_digest="sha256:$(printf 'b%.0s' {1..64})"
 manifest_digest="sha256:$(printf 'a%.0s' {1..64})"
+public_digest="$(printf 'c%.0s' {1..64})"
 cat >"$work/bin/flux" <<'FLUX'
 #!/usr/bin/env bash
 set -euo pipefail
@@ -78,6 +79,7 @@ run_step() {
     VERSION="$2" REF_NAME="v$2" SHA=fedcba9876543210fedcba9876543210fedcba98 \
     SERVER_URL=https://github.com REPOSITORY=devantler-tech/app ACTOR=fixture GH_TOKEN=fixture \
     JOB_WORKFLOW_REF="$3" RUN_ID=123 RUN_ATTEMPT=2 GITHUB_RUN_ID=123 GITHUB_RUN_ATTEMPT=2 RUNNER_TEMP="$work" \
+    PREBUILT_WEBAPP="${8:-false}" PUBLIC_DIGEST="${9-$public_digest}" ORIGINAL_CI_RUN_ID=456 ORIGINAL_CI_RUN_ATTEMPT=3 \
     GITHUB_OUTPUT="$work/output" bash --noprofile --norc -eo pipefail "$4"
 }
 identity=devantler-tech/.github/.github/workflows/publish-app.yaml@0123456789abcdef0123456789abcdef01234567
@@ -123,6 +125,29 @@ for version in 1.2.3 1.2.3-rc.1; do
   fi
 done
 echo 'app-promotion: healthy stable/prerelease and signing, verification, push and digest failures pass'
+
+for version in 1.2.3 1.2.3-rc.1; do
+  rm -f "$work/state/"* "$work/trace"
+  run_step none "$version" "$identity" "$work/promote.sh" "$image_digest" true '' true > "$work/log" 2>&1 ||
+    fail "prebuilt paired publication failed: $(cat "$work/log")"
+  [[ -e "$work/state/image-verified" && -e "$work/state/manifest-verified" ]] || fail 'prebuilt pair not verified'
+  for kind in image manifest; do
+    for key in public-digest public-profile ci-run-id ci-run-attempt image-producer; do
+      rm -f "$work/state/"* "$work/trace"
+      if run_step "claim-$kind-devantler.$key" "$version" "$identity" "$work/promote.sh" "$image_digest" true '' true > "$work/log" 2>&1; then
+        fail "prebuilt pair accepted conflicting $kind $key"
+      fi
+      grep -q 'claims: signed payload mismatch' "$work/log" || fail 'prebuilt claim failed for an unrelated reason'
+      ! grep -Eq '(latest|--tag 1.2.3|--tag ghcr.io/devantler-tech/app:1.2.3)' "$work/trace" || fail 'invalid prebuilt pair exposed a release'
+    done
+  done
+done
+rm -f "$work/state/"* "$work/trace"
+if run_step none 1.2.3 "$identity" "$work/promote.sh" "$image_digest" true '' true '' > "$work/log" 2>&1; then
+  fail 'prebuilt pair accepted absent public digest'
+fi
+[[ ! -s "$work/trace" ]] || fail 'absent prebuilt evidence reached a registry write'
+echo 'app-promotion: both prebuilt signatures bind original producer, CI and public artifact before tags'
 
 for fault in manifest-push image-sign manifest-sign changed-digest image-promotion; do
   rm -f "$work/state/"* "$work/trace"
