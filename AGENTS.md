@@ -140,7 +140,11 @@ The adopted dependency-review, auto-merge, workflow-scanning and language-select
 .NET rules permit only Observe and Update after complete native observation (#674).
 Run `bash tests/legacy-workflow-observation.sh` after changing these or the two
 template workflow rules: it binds all six complete policies to their captured
-native state, permitting only the maintained source and required provider encodings.
+native state, permitting only the maintained source, required provider encodings,
+and disabled enforcement for the two template-only rules after native repository
+validation proof (#698). Keep both replacement repository rules active, default-branch-only,
+without bypasses and bound to their exact GitHub Actions checks. The Go aggregate and all
+three distinct .NET platform checks were proven with positive and intentional-failure controls.
 Native application and ordinary consumer execution remain separate gates under #237.
 
 **Validate before every PR** (the sole required check, `CI - Required Checks`, gates on this):
