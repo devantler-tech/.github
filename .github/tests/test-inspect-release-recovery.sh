@@ -16,12 +16,11 @@ cat > "$work/guard.jq" <<'JQ'
   .w as $w | .c as $c | $w.jobs.inspect as $j | $j.steps as $s |
   def ordinary: .if == null and .["continue-on-error"] == null;
   ($w.permissions == {} and $j.permissions == {} and $j.if == "inputs.enable-inspection" and $j.needs == null and $j["continue-on-error"] == null) and
-  $w.on.workflow_call.secrets.APP_PRIVATE_KEY.required == false and
-  (["workflow_call","workflow_dispatch"] | all(. as $event |
-    $w.on[$event].inputs["enable-inspection"].default == false and
-    $w.on[$event].inputs["enable-inspection"].type == "boolean" and
-    (["repository","tag","source-sha","run-id","run-attempt","producer-ref"] | all(. as $name |
-      $w.on[$event].inputs[$name].type == "string" and $w.on[$event].inputs[$name].required == true)))) and
+  ($w.on | keys) == ["workflow_dispatch"] and
+  $w.on.workflow_dispatch.inputs["enable-inspection"].default == false and
+  $w.on.workflow_dispatch.inputs["enable-inspection"].type == "boolean" and
+  (["repository","tag","source-sha","run-id","run-attempt","producer-ref"] | all(. as $name |
+    $w.on.workflow_dispatch.inputs[$name].type == "string" and $w.on.workflow_dispatch.inputs[$name].required == true)) and
   ($s | length == 7 and all(ordinary)) and
   ($s[0].uses | test("^step-security/harden-runner@[a-f0-9]{40}$")) and $s[0].with["egress-policy"] == "audit" and
   $s[1].id == "admit" and
@@ -30,8 +29,8 @@ cat > "$work/guard.jq" <<'JQ'
   $s[1].env.DEFAULT_BRANCH == "${{ github.event.repository.default_branch }}" and
   ($s[1].run | contains("refs/heads/$DEFAULT_BRANCH")) and
   $s[2].id == "source" and
-  $s[2].env.CATALOGUE_REPOSITORY == "${{ job.workflow_repository }}" and
-  $s[2].env.CATALOGUE_SHA == "${{ job.workflow_sha }}" and
+  $s[2].env.CATALOGUE_REPOSITORY == "${{ github.repository }}" and
+  $s[2].env.CATALOGUE_SHA == "${{ github.workflow_sha }}" and
   ($s[2].run | contains("[[ \"$CATALOGUE_REPOSITORY\" == devantler-tech/.github && \"$CATALOGUE_SHA\" =~ ^[0-9a-f]{40}$ ]]")) and
   ($s[2].run | contains("env -i PATH=\"$PATH\" curl --disable")) and
   ($s[2].run | contains("https://codeload.github.com/$CATALOGUE_REPOSITORY/tar.gz/$CATALOGUE_SHA")) and
@@ -49,21 +48,18 @@ cat > "$work/guard.jq" <<'JQ'
   ($s[6].run | contains("--repository \"$REPOSITORY\" --tag \"$TAG\" --source-sha \"$SOURCE_SHA\"")) and
   ($s[6].run | contains("--run-id \"$RUN_ID\" --run-attempt \"$RUN_ATTEMPT\" --producer-ref \"$PRODUCER_REF\"")) and
   ($s[6].run | contains("set -euo pipefail")) and
-  $c.jobs["test-inspect-release-recovery-disabled"].uses == "./.github/workflows/inspect-release-recovery.yaml" and
-  $c.jobs["test-inspect-release-recovery-disabled"].permissions == {} and
-  $c.jobs["test-inspect-release-recovery-disabled"].secrets == null and
-  $c.jobs["test-inspect-release-recovery-disabled"].with["enable-inspection"] == false and
-  ($c.jobs["ci-required-checks"].needs | index("test-inspect-release-recovery-disabled") != null) and
-  ($c.jobs["ci-required-checks"].steps | any((.env.JOB_RESULTS // "") | contains("needs.test-inspect-release-recovery-disabled.result"))) and
+  ($c.jobs | has("test-inspect-release-recovery-disabled") | not) and
+  ($c.jobs["ci-required-checks"].needs | index("test-inspect-release-recovery-disabled") == null) and
+  ($c.jobs["ci-required-checks"].steps | all((.env.JOB_RESULTS // "") | contains("needs.test-inspect-release-recovery-disabled.result") | not)) and
   ($c.jobs["test-create-release-config"].steps | any(.run == "bash .github/tests/test-inspect-release-recovery.sh" and ordinary)) and
   ($c.jobs["ci-required-checks"].needs | index("test-create-release-config") != null)
 JQ
 jq -e -f "$work/guard.jq" "$work/bundle.json" >/dev/null || fail 'workflow authority, provenance or required coverage is unsafe'
 # shellcheck disable=SC2016 # Keep GitHub expressions literal in refusal controls.
 for mutation in \
-  '.w.on.workflow_call.inputs["enable-inspection"].default=true' \
+  '.w.on.workflow_call={}' \
   '.w.on.workflow_dispatch.inputs["enable-inspection"].default=true' \
-  '.w.on.workflow_call.secrets.APP_PRIVATE_KEY.required=true' \
+  '.w.on.pull_request={}' \
   '.w.jobs.inspect.if=null' \
   '.w.jobs.inspect.permissions.contents="write"' \
   '.w.jobs.inspect.steps[1].if="false"' \
@@ -74,8 +70,8 @@ for mutation in \
   '.w.jobs.inspect.steps[5].with["permission-contents"]="write"' \
   '.w.jobs.inspect.steps[5].with.repositories=null' \
   '.w.jobs.inspect.steps[6].env.GH_TOKEN="${{ github.token }}"' \
-  '.c.jobs["test-inspect-release-recovery-disabled"].with["enable-inspection"]=true' \
-  '.c.jobs["test-inspect-release-recovery-disabled"].secrets="inherit"' \
+  '.w.on.workflow_dispatch.inputs.repository.required=false' \
+  '.w.jobs.inspect.steps[5].with["permission-actions"]="write"' \
   '.c.jobs["test-create-release-config"].steps |= map(select(.run != "bash .github/tests/test-inspect-release-recovery.sh"))'; do
   jq "$mutation" "$work/bundle.json" > "$work/mutated.json"
   if jq -e -f "$work/guard.jq" "$work/mutated.json" >/dev/null; then fail "accepted mutation: $mutation"; fi
