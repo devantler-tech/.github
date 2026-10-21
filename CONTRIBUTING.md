@@ -52,9 +52,11 @@ advertised workflows, deploy manifests, contact the organization, or prove crede
 | Organization community defaults | Files under `.github/` can be inherited by other repositories. Keep them repository-neutral, and check existing target-specific policies |
 | Generated workflow projection | Change its production workflow or named generator and regenerate; never hand-edit the projection |
 
-The catalogue was imported once; it is maintained here now. Do not rerun
-`scripts/import-actions-catalogue.sh` as a documentation updater: it replaces the historical
-snapshot's files. The frozen `devantler-tech/actions` repository is not the source for new changes.
+The catalogue was imported once; its documentation and components are authored here now.
+The obsolete, destructive importer has been removed; Git history retains that migration procedure
+and `actions/.imported-from` retains its provenance. The frozen `devantler-tech/actions` repository
+is not the source for new changes. The documentation check rejects restoring the old importer or
+its generated-block marker.
 
 The [CI workflow](.github/workflows/ci.yaml) runs broader catalogue, security, interface, credential
 boundary and declarative-governance checks, then aggregates required results. The small local path
