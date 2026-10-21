@@ -63,7 +63,9 @@ jq -se '
     .type == "file" and .encoding == "base64" and
     (.content | type == "string" and length > 0 and length <= 8192))
 ' "$scratch/response.json" >/dev/null || fail 'contract response is incomplete or unsupported'
-jq -er '.content | @base64d' "$scratch/response.json" >"$scratch/contract.json" || fail 'contract encoding is invalid'
+# GitHub's Contents API wraps base64 with line feeds. Normalize only that
+# transport formatting; malformed bytes and decoded contracts still fail closed.
+jq -er '.content | gsub("\n"; "") | @base64d' "$scratch/response.json" >"$scratch/contract.json" || fail 'contract encoding is invalid'
 [[ "$(wc -c <"$scratch/contract.json" | tr -d ' ')" -le 4096 ]] || fail 'contract is too large'
 # Parsing must not silently accept a repeated decoded JSON key.
 jq --stream -se '

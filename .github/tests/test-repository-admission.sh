@@ -72,6 +72,11 @@ run_case 'pull request base' "$expected"
 [[ "$(wc -l <"$scratch/trace" | tr -d ' ')" == 1 ]] || fail 'expected exactly one bounded contract read'
 run_case 'merge group base' "$expected" EVENT_NAME=merge_group MERGE_GROUP_BASE_SHA="$base_sha" PULL_REQUEST_BASE_SHA=invalid
 run_case 'source repository required invocation' "$expected" TARGET_REPOSITORY=devantler-tech/.github EXPECTED_REPOSITORY=devantler-tech/.github
+run_case 'Contents API wraps the payload before padding' "$expected" \
+  API_RESPONSE="$(response $'{\n  "version": 1,\n  "timeout-minutes": 10\n}\r\n\n' | jq '.content = .content[:60] + "\n" + .content[60:] + "\n"')"
+run_case 'Contents API appends a line feed to unpadded base64' \
+  "$(printf 'run=true\ntrusted-sha=%s\ntimeout-minutes=90' "$base_sha")" \
+  API_RESPONSE="$(response $'{"version": 1, "timeout-minutes": 90}\n' | jq '.content += "\n"')"
 run_case 'product default branch need not be main' "$expected" DEFAULT_BRANCH=develop PULL_REQUEST_BASE_REF=develop
 run_case 'minimum budget' "$(printf 'run=true\ntrusted-sha=%s\ntimeout-minutes=1' "$base_sha")" \
   API_RESPONSE="$(response '{"version":1,"timeout-minutes":1}')"
@@ -105,6 +110,7 @@ run_case 'linked contract' reject API_RESPONSE='{"type":"symlink","encoding":"ba
 run_case 'unknown encoding' reject API_RESPONSE='{"type":"file","encoding":"none","content":"e30="}'
 run_case 'missing content' reject API_RESPONSE='{"type":"file","encoding":"base64"}'
 run_case 'invalid encoded content' reject API_RESPONSE='{"type":"file","encoding":"base64","content":"?"}'
+run_case 'line feeds alone do not become a contract' reject API_RESPONSE='{"type":"file","encoding":"base64","content":"\n\n"}'
 for invalid in \
   '' '{' '{} {}' '{"version":1}' \
   '{"version":2,"timeout-minutes":10}' \
