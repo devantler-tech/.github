@@ -30,15 +30,16 @@ archived_repositories="$(
   ' "$render"
 )"
 archived_count="$(printf '%s\n' "$archived_repositories" | grep -c . || true)"
-[[ "$archived_count" -ge 2 ]] ||
-  fail "archived Repository set collapsed to $archived_count entries"
+# Zero is legitimate after explicit retirement; active coverage below still
+# rejects an empty/collapsed render. The retirement regression executes this
+# guard with zero, one and unsafe synthetic archived repositories.
 
 write_enabled_archived_repositories="$(
   yq -N '
     select(
       .kind == "Repository" and
       .spec.forProvider.archived == true and
-      ((.spec.managementPolicies | sort | join(",")) != "Observe")
+      (((.spec.managementPolicies // []) | sort | join(",")) != "Observe")
     ) |
     .metadata.name
   ' "$render"
@@ -46,9 +47,9 @@ write_enabled_archived_repositories="$(
 [[ -z "$write_enabled_archived_repositories" ]] ||
   fail "archived Repository resources must be Observe-only after the archive update lands: $write_enabled_archived_repositories"
 
-# Active (non-archived) repositories only. Archived repos live in
-# deploy/archived-repositories/, get no shared patch, and are read-only for
-# settings, so the update contract below does not apply to them.
+# Active (non-archived) repositories only. Any future archived declaration must
+# stay outside the active shared patch and remain Observe-only, so the update
+# contract below does not apply to it.
 active_repositories="$(
   yq -N '
     select(.kind == "Repository" and .spec.forProvider.archived != true) |
