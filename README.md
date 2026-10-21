@@ -160,6 +160,24 @@ do not establish a product need for a shared workflow.
 Every peer entry has one independently collapsible reference. Internal components and compatibility
 sources retain their interfaces here so the same input/secret parity check covers them.
 
+### Organization-required: Deploy guards
+
+<details>
+<summary>Purpose, interface and usage</summary>
+
+[`deploy-guards.yaml`](.github/workflows/deploy-guards.yaml) is selected by an organization
+ruleset from this repository's reviewed `main`. It validates the pull request's release contract
+and requires explicit acknowledgement of removed `deploy/` resources. The candidate supplies
+only manifests, history and PR metadata; the validator implementation comes from
+`github.workflow_sha`.
+
+This is not a reusable export and has no `workflow_call` inputs or secrets. There is no
+`merge_group` entrypoint: that event lacks the PR title, commits and body needed by the guards,
+so a future merge queue cannot bypass them through an empty validation. Retain the rule until
+its replacement has native positive and refusal evidence.
+
+</details>
+
 ### Ruleset workflow source: World at Ruin trusted regressions
 
 <details>
