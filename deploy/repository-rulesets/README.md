@@ -19,6 +19,13 @@ observes.
 |---|---|---|---|
 | `require-cla-gate-on-world-at-ruin.yaml` | `world-at-ruin` | Require CLA gate | Managed (net-new; Observe + Create + Update + LateInitialize) |
 | `require-merge-queue-on-platform.yaml` | `platform` | Require merge queue | Managed import (Observe + Update; full ruleset backfilled, no LateInitialize, no Delete) |
+| `require-validation-on-dotnet-template.yaml` | `dotnet-template` | Require local .NET template validation | Managed (net-new; Observe + Create + Update + LateInitialize) |
+
+The .NET rule requires the three repository-owned matrix results from GitHub Actions.
+The temporary organization-required source remains active during rollout. Before
+retiring it, verify the repository rule through the native API and an ordinary
+consumer pull request with all three local platform jobs completed. A rendered
+manifest or an old organization-run check does not establish that overlap.
 
 Most files here are Observe-first imports of a ruleset created out of band, so they carry a
 numeric `crossplane.io/external-name`. A **net-new** ruleset is the exception: it has no
