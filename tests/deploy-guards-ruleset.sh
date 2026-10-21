@@ -81,23 +81,28 @@ check_action_boundary() {
       HEAD_SHA:"${{ github.event.pull_request.head.sha }}",
       COMMIT_COUNT:"${{ github.event.pull_request.commits }}"
     } and
-    (.runs.steps[1].uses | test("^actions/checkout@[0-9a-f]{40}$")) and
-    .runs.steps[1].with == {
-      repository:"${{ github.repository }}",ref:"${{ inputs.candidate-sha }}",
-      path:"candidate","fetch-depth":0,"persist-credentials":false
+    .runs.steps[1].id == "data" and
+    .runs.steps[1].uses == null and
+    .runs.steps[1].run == "bash \"$TRUSTED_ROOT/.github/scripts/prepare-deploy-admission-data.sh\"" and
+    .runs.steps[1].env == {
+      TRUSTED_ROOT:"${{ github.action_path }}/../../..",
+      BASE_SHA:"${{ github.event.pull_request.base.sha }}",
+      HEAD_SHA:"${{ github.event.pull_request.head.sha }}",
+      CANDIDATE_SHA:"${{ inputs.candidate-sha }}"
     } and
     .runs.steps[2].env == {
       TRUSTED_ROOT:"${{ github.action_path }}/../../..",
       BASE_SHA:"${{ github.event.pull_request.base.sha }}",
       HEAD_SHA:"${{ github.event.pull_request.head.sha }}",
       PR_TITLE:"${{ github.event.pull_request.title }}",
-      COMMIT_COUNT:"${{ github.event.pull_request.commits }}"
+      COMMIT_COUNT:"${{ github.event.pull_request.commits }}",
+      ADMISSION_HISTORY:"${{ steps.data.outputs.history }}"
     } and
     .runs.steps[3].env == {
       TRUSTED_ROOT:"${{ github.action_path }}/../../..",
-      BASE_SHA:"${{ github.event.pull_request.base.sha }}",
-      HEAD_SHA:"${{ github.event.pull_request.head.sha }}",
-      PR_BODY:"${{ github.event.pull_request.body }}"
+      PR_BODY:"${{ github.event.pull_request.body }}",
+      BASE_DEPLOY:"${{ steps.data.outputs.base-deploy }}",
+      CANDIDATE_DEPLOY:"${{ steps.data.outputs.candidate-deploy }}"
     }
   ' >/dev/null
 }
@@ -109,16 +114,17 @@ for mutation in \
   '.runs.steps[0]["continue-on-error"] = true' \
   '.runs.steps[0].env.CANDIDATE_SHA = "main"' \
   '.runs.steps[0].env.COMMIT_COUNT = "1"' \
-  '.runs.steps[1].with.ref = "main"' \
-  '.runs.steps[1].with.repository = "other/repository"' \
-  '.runs.steps[1].with["persist-credentials"] = true' \
+  '.runs.steps[1].env.CANDIDATE_SHA = "main"' \
+  '.runs.steps[1].env.TRUSTED_ROOT = "candidate"' \
+  '.runs.steps[1].uses = "actions/checkout@aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"' \
+  '.runs.steps[1].run = "true"' \
   '.runs.steps[2].env.BASE_SHA = "${{ github.sha }}"' \
   '.runs.steps[2].env.PR_TITLE = "fix: bypass"' \
   '.runs.steps[2].env.TRUSTED_ROOT = "candidate"' \
   '.runs.steps[2].shell = "sh"' \
   '.runs.steps[2].if = "false"' \
   '.runs.steps[3].env.PR_BODY = ""' \
-  '.runs.steps[3].env.HEAD_SHA = "main"' \
+  '.runs.steps[3].env.CANDIDATE_DEPLOY = "candidate/deploy"' \
   '.runs.steps[3]["continue-on-error"] = true'; do
   yq "$mutation" "$action" >"$scratch/unsafe-action.yaml"
   if check_action_boundary "$scratch/unsafe-action.yaml"; then
@@ -184,11 +190,7 @@ trusted_checkouts="$(wf '[.jobs[].steps[] | select(.uses // "" | test("^actions/
 
 unsafe_checkouts="$(wf '[.jobs[].steps[] | select(.uses // "" | test("^actions/checkout@")) | select(.with["persist-credentials"] != false)] | length')"
 [[ "${unsafe_checkouts}" == "0" ]] || fail "every checkout must set persist-credentials: false (${unsafe_checkouts} do not)"
-[[ "$(ac '[.runs.steps[] | select(.uses // "" | test("^actions/checkout@")) | select(.with["persist-credentials"] != false)] | length')" == 0 ]] || fail 'candidate checkout must not persist authorization'
-# shellcheck disable=SC2016 # Neither expression may resolve through candidate content.
-[[ "$(ac '.runs.steps[] | select(.uses // "" | test("^actions/checkout@")) | .with.ref')" == '${{ inputs.candidate-sha }}' &&
-"$(ac '.runs.steps[] | select(.uses // "" | test("^actions/checkout@")) | .with.path')" == candidate &&
-"$(ac '.runs.steps[] | select(.uses // "" | test("^actions/checkout@")) | .with."fetch-depth"')" == 0 ]] || fail 'candidate data checkout is unbound'
+[[ "$(ac '[.runs.steps[] | select(.uses // "" | test("^actions/checkout@"))] | length')" == 0 ]] || fail 'product admission must never check out the candidate implementation'
 
 for validator in validate-release-contract.sh validate-deploy-deletions.sh; do
   runs="$(ac "[.runs.steps[] | select(.run // \"\" | contains(\"${validator}\"))] | length")"
@@ -215,8 +217,8 @@ esac
 cat >"$scratch/bin/git" <<'GIT'
 #!/usr/bin/env bash
 set -euo pipefail
-[[ "$1 $2" == '-C candidate' ]] || exit 92
-shift 2
+[[ "$1" == "--git-dir=$ADMISSION_HISTORY" ]] || exit 92
+shift
 case "$1" in
   log)
     printf 'log\n' >>"$TRACE"
@@ -238,7 +240,7 @@ for mode in healthy-deploy healthy-other log-empty log-partial diff-empty diff-p
   : >"$scratch/trace"
   status=0
   (cd "$scratch" && env -i PATH="$scratch/bin:$PATH" MODE="$mode" TRACE="$scratch/trace" \
-    BASE_SHA=base HEAD_SHA=head TRUSTED_ROOT="$scratch/trusted" PR_TITLE='fix: preserve required guard failures' COMMIT_COUNT=2 \
+    BASE_SHA=base HEAD_SHA=head ADMISSION_HISTORY="$scratch/history.git" TRUSTED_ROOT="$scratch/trusted" PR_TITLE='fix: preserve required guard failures' COMMIT_COUNT=2 \
     bash "${runner_flags[@]}" step.sh) >"$scratch/result" 2>&1 || status=$?
   if [[ "$mode" == healthy-* ]]; then
     [[ "$status" == 0 ]] || {

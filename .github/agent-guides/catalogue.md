@@ -116,6 +116,11 @@ Each enrolled product owns `.github/actions/pr-admission/action.yaml`, with the 
 `candidate-sha` interface, and a closed `.github/pr-admission.json` containing version `1`
 and its preserved `timeout-minutes` budget. Both are loaded from GitHub's immutable product
 base, never the candidate. The shared runner is not enrolled by this source preparation.
+The resolver admits only the product's actual default branch, and the checkout binds directly
+to GitHub's immutable base SHA. Source-only skipped checks have a different name from product
+admission. The catalogue's product action reads full Git history in a bare object store and
+materializes only ordinary `deploy/` blobs; candidate actions, scripts, symlinks and submodules
+are never checked out. Tree reads do not apply candidate archive attributes.
 Retain all existing rules until managed enrollment is published, reconciled, read back through
 GitHub's API, and exercised with native positive and candidate-tampering refusal controls.
 

@@ -40,9 +40,16 @@ if [[ "$source_only" == true ]]; then
   exit 0
 fi
 [[ "$WORKFLOW_REF" == "$source_path@refs/heads/main" ]] || fail 'workflow origin is not reviewed shared main'
+[[ -n "${DEFAULT_BRANCH:-}" ]] || fail 'GitHub supplied no product default branch'
 case "$EVENT_NAME" in
-pull_request) trusted_sha=${PULL_REQUEST_BASE_SHA:-} ;;
-merge_group) trusted_sha=${MERGE_GROUP_BASE_SHA:-} ;;
+pull_request)
+  [[ "${PULL_REQUEST_BASE_REF:-}" == "$DEFAULT_BRANCH" ]] || fail 'PR base is not the product default branch'
+  trusted_sha=${PULL_REQUEST_BASE_SHA:-}
+  ;;
+merge_group)
+  [[ "${MERGE_GROUP_BASE_REF:-}" == "refs/heads/$DEFAULT_BRANCH" ]] || fail 'merge-group base is not the product default branch'
+  trusted_sha=${MERGE_GROUP_BASE_SHA:-}
+  ;;
 esac
 [[ "$trusted_sha" =~ ^[0-9a-f]{40}$ ]] || fail 'GitHub supplied no immutable trusted base'
 [[ -n "${GH_TOKEN:-}" ]] || fail 'read-only API authorization is missing'

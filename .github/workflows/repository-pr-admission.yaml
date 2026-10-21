@@ -45,10 +45,13 @@ jobs:
           CANDIDATE_SHA: ${{ github.sha }}
           PULL_REQUEST_BASE_SHA: ${{ github.event.pull_request.base.sha }}
           MERGE_GROUP_BASE_SHA: ${{ github.event.merge_group.base_sha }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          PULL_REQUEST_BASE_REF: ${{ github.event.pull_request.base.ref }}
+          MERGE_GROUP_BASE_REF: ${{ github.event.merge_group.base_ref }}
         run: bash .admission-runner/.github/scripts/resolve-repository-admission.sh
 
   admission:
-    name: Run reviewed product admission
+    name: "${{ needs.resolve.outputs.run == 'true' && 'Run reviewed product admission' || 'Admission not selected' }}"
     needs: resolve
     if: needs.resolve.outputs.run == 'true'
     runs-on: ubuntu-latest
@@ -64,7 +67,9 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: ${{ github.repository }}
-          ref: ${{ needs.resolve.outputs.trusted-sha }}
+          # Direct GitHub base identity makes provenance explicit to security
+          # analysis too; the resolver has admitted this exact default-branch base.
+          ref: ${{ github.event_name == 'merge_group' && github.event.merge_group.base_sha || github.event.pull_request.base.sha }}
           path: .repository-admission
           persist-credentials: false
       - name: Execute the product-owned admission action

@@ -24,14 +24,15 @@ runs:
           echo '::error::Deploy admission requires complete pull-request metadata' >&2
           exit 2
         }
-    - name: Check out candidate manifests and history as data
-      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      with:
-        repository: ${{ github.repository }}
-        ref: ${{ inputs.candidate-sha }}
-        path: candidate
-        fetch-depth: 0
-        persist-credentials: false
+    - name: Read immutable history and deploy files without a candidate checkout
+      id: data
+      shell: bash
+      env:
+        TRUSTED_ROOT: ${{ github.action_path }}/../../..
+        BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        CANDIDATE_SHA: ${{ inputs.candidate-sha }}
+      run: bash "$TRUSTED_ROOT/.github/scripts/prepare-deploy-admission-data.sh"
     - name: 🚦 Validate release contract
       shell: bash
       env:
@@ -40,23 +41,22 @@ runs:
         HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         PR_TITLE: ${{ github.event.pull_request.title }}
         COMMIT_COUNT: ${{ github.event.pull_request.commits }}
+        ADMISSION_HISTORY: ${{ steps.data.outputs.history }}
       run: |
-        first_subject="$(git -C candidate log --format=%s "$BASE_SHA..$HEAD_SHA" | tail -1)"
-        git -C candidate diff --name-only -z "$BASE_SHA...$HEAD_SHA" |
+        first_subject="$(git --git-dir="$ADMISSION_HISTORY" log --format=%s "$BASE_SHA..$HEAD_SHA" | tail -1)"
+        git --git-dir="$ADMISSION_HISTORY" diff --name-only -z "$BASE_SHA...$HEAD_SHA" |
           bash "$TRUSTED_ROOT/scripts/validate-release-contract.sh" "$PR_TITLE" "$COMMIT_COUNT" "$first_subject"
     - name: 🗑️ Validate deploy/ deletions are acknowledged
       shell: bash
       env:
         TRUSTED_ROOT: ${{ github.action_path }}/../../..
-        BASE_SHA: ${{ github.event.pull_request.base.sha }}
         PR_BODY: ${{ github.event.pull_request.body }}
-        HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        BASE_DEPLOY: ${{ steps.data.outputs.base-deploy }}
+        CANDIDATE_DEPLOY: ${{ steps.data.outputs.candidate-deploy }}
       run: |
-        MERGE_BASE="$(git -C candidate merge-base "$BASE_SHA" "$HEAD_SHA")"
-        git -C candidate worktree add --detach "$RUNNER_TEMP/base" "$MERGE_BASE"
-        kubectl kustomize "$RUNNER_TEMP/base/deploy" > "$RUNNER_TEMP/base-render.yaml" ||
+        kubectl kustomize "$BASE_DEPLOY" > "$RUNNER_TEMP/base-render.yaml" ||
           { echo 'deploy-deletions: UNKNOWN — base manifests do not render' >&2; exit 2; }
-        kubectl kustomize candidate/deploy > "$RUNNER_TEMP/head-render.yaml" ||
+        kubectl kustomize "$CANDIDATE_DEPLOY" > "$RUNNER_TEMP/head-render.yaml" ||
           { echo 'deploy-deletions: UNKNOWN — candidate manifests do not render' >&2; exit 2; }
         printf '%s' "$PR_BODY" > "$RUNNER_TEMP/pr-body.txt"
         bash "$TRUSTED_ROOT/scripts/validate-deploy-deletions.sh" \
