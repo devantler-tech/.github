@@ -8,4 +8,5 @@ kind: Kustomization
 resources:
   - require-cla-gate-on-world-at-ruin.yaml
   - require-merge-queue-on-platform.yaml
+  - require-validation-on-dotnet-template.yaml
   - require-validation-on-go-template.yaml

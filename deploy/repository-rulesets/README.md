@@ -19,8 +19,16 @@ observes.
 |---|---|---|---|
 | `require-cla-gate-on-world-at-ruin.yaml` | `world-at-ruin` | Require CLA gate | Managed (net-new; Observe + Create + Update + LateInitialize) |
 | `require-merge-queue-on-platform.yaml` | `platform` | Require merge queue | Managed import (Observe + Update; full ruleset backfilled, no LateInitialize, no Delete) |
+| `require-validation-on-dotnet-template.yaml` | `dotnet-template` | Require local .NET template validation | Managed (net-new; Observe + Create + Update + LateInitialize) |
 | `require-validation-on-go-template.yaml` | `go-template` | Require local Go template validation | Managed (net-new; Observe + Create + Update + LateInitialize) |
 
+The .NET rule requires the three repository-owned `.NET template tests (<runner>)`
+matrix results from GitHub Actions. These names are intentionally distinct from
+the old injected `test (<runner>)` results, which must not satisfy the new rule.
+The temporary organization-required source remains active during rollout. Before
+retiring it, verify the repository rule through the native API and an ordinary
+consumer pull request with all three local platform jobs completed. A rendered
+manifest or an old organization-run check does not establish that overlap.
 The Go template rule requires its repository-owned `CI - Required Checks` aggregate from
 GitHub Actions. The native caller must be merged before the old organization-required Go
 validator is retired. Verify the repository rule natively and use an ordinary consumer PR
