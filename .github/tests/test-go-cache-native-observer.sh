@@ -54,7 +54,7 @@ reject_jobs_with_summary() {
   [[ -n "$summary" ]] || fail 'rejected jobs have no sanitized diagnostic'
   jq -e '
     if keys == ["state"] then .state | IN("invalid_shape", "unreadable")
-    else keys == ["duplicate_ids", "fetched_jobs", "fixture_invalid", "fixture_jobs", "pages", "reported_totals", "total_count_variants"] and
+    else keys == ["duplicate_ids", "fetched_jobs", "fixture_bad_id", "fixture_bad_steps", "fixture_invalid", "fixture_jobs", "fixture_missing_names", "fixture_not_completed", "fixture_not_success", "fixture_unexpected_names", "fixture_wrong_attempt", "fixture_wrong_head", "fixture_wrong_run", "pages", "reported_totals", "total_count_variants"] and
       (.reported_totals | length <= 8 and all(.[]; type == "number" and . > 0 and floor == .)) and
       (del(.reported_totals) | all(.[]; type == "number" and . >= 0 and floor == .)) end
   ' <<<"$summary" >/dev/null || fail 'diagnostic exposed unapproved fields or unbounded values'
@@ -67,9 +67,18 @@ reject_jobs_with_summary '.[1].jobs |= .[1:]' \
 reject_jobs_with_summary '.[1].jobs[0] = .[1].jobs[1]' \
   '.fetched_jobs == 9 and .duplicate_ids == 1 and .fixture_jobs == 9'
 reject_jobs_with_summary '.[1].jobs[0].run_attempt = 1' \
-  '.fixture_invalid == 1 and .fixture_jobs == 9 and .duplicate_ids == 0'
+  '.fixture_invalid == 1 and .fixture_jobs == 9 and .duplicate_ids == 0 and .fixture_wrong_attempt == 1 and .fixture_not_completed == 0 and .fixture_wrong_run == 0'
 reject_jobs_with_summary '.[1].jobs[0].status = "in_progress"' \
-  '.fixture_invalid == 1 and .fixture_jobs == 9'
+  '.fixture_invalid == 1 and .fixture_jobs == 9 and .fixture_not_completed == 1 and .fixture_wrong_attempt == 0 and .fixture_not_success == 0'
+# Every fixture rejected at once must still say which invariant each job failed.
+reject_jobs_with_summary 'map(.jobs |= map(.status = "in_progress" | .conclusion = null))' \
+  '.fixture_invalid == 9 and .fixture_not_completed == 9 and .fixture_not_success == 9 and .fixture_wrong_head == 0 and .fixture_bad_steps == 0'
+reject_jobs_with_summary '.[0].jobs[1].head_sha = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" | .[1].jobs[1].steps += .[1].jobs[1].steps' \
+  '.fixture_invalid == 2 and .fixture_wrong_head == 1 and .fixture_bad_steps == 1 and .fixture_wrong_run == 0 and .fixture_bad_id == 0'
+reject_jobs_with_summary '.[1].jobs[0].name += " unexpected"' \
+  '.fixture_jobs == 9 and .fixture_invalid == 0 and .fixture_unexpected_names == 1 and .fixture_missing_names == 1'
+reject_jobs_with_summary '.[1].jobs[2].steps += ["not-a-step"]' \
+  '.fixture_invalid == 1 and .fixture_bad_steps == 1 and .fixture_not_completed == 0'
 reject_jobs_with_summary '. + [range(10;22) | {total_count:.,jobs:[]}]' \
   '.pages == 14 and .total_count_variants == 13 and (.reported_totals | length == 8)'
 # Only scalar counts may leave rejected evidence; never echo native names,
