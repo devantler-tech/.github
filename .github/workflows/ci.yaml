@@ -3640,13 +3640,7 @@ jobs:
         shell: bash
         run: bash .github/tests/test-test-script-wiring.sh
 
-      - name: 🔐 Check cleanup self-tests cannot delete workflow history
-        shell: bash
-        run: bash .github/tests/test-cleanup-credentials.sh
 
-      - name: 🧪 Check cleanup credential and input regressions are rejected
-        shell: bash
-        run: bash .github/tests/test-cleanup-credentials-controls.sh
 
       - name: 🔐 Check TODO self-tests have no issue-write ceiling
         shell: bash
@@ -3694,15 +3688,6 @@ jobs:
             grep -qE "^[[:space:]]+workflow_call:" "$wf" || continue
             wname="$(basename "$wf")"
             if ! grep -qE "uses:[[:space:]]*\./\.github/workflows/$wname([[:space:]]|\$)" "$ci"; then
-              # Cleanup is exercised through its complete source-derived projection.
-              # Verify its executed callers, credentials and source parity before
-              # accepting it as coverage of the production wrapper.
-              if [[ "$wname" == delete-workflow-runs.yaml ]]; then
-                if ! bash .github/tests/test-cleanup-credentials.sh; then
-                  status=1
-                fi
-                continue
-              fi
               # TODO smoke calls use the complete read-only projection. Accept
               # production coverage only after permission, execution and parity
               # checks pass; a copied or truncated workflow is insufficient.
@@ -3820,45 +3805,6 @@ jobs:
     permissions:
       contents: read
 
-  test-delete-workflow-runs-all:
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
-    name: "[Test] Delete Workflow Runs - All Workflows"
-    uses: ./.github/workflows/delete-workflow-runs-readonly.yaml
-    with:
-      days: 30
-      minimum-runs: 6
-      delete-workflow-by-state-pattern: "ALL"
-      delete-run-by-conclusion-pattern: "ALL"
-      dry-run: true
-    permissions:
-      actions: read
-      contents: read
-
-  test-delete-workflow-runs-specific:
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
-    name: "[Test] Delete Workflow Runs - Specific Pattern"
-    uses: ./.github/workflows/delete-workflow-runs-readonly.yaml
-    with:
-      days: 7
-      minimum-runs: 3
-      delete-workflow-pattern: "ci.yaml"
-      delete-run-by-conclusion-pattern: "cancelled,failure"
-      dry-run: true
-    permissions:
-      actions: read
-      contents: read
-
-  test-delete-workflow-runs-minimal:
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
-    name: "[Test] Delete Workflow Runs - Minimal Parameters"
-    uses: ./.github/workflows/delete-workflow-runs-readonly.yaml
-    permissions:
-      actions: read
-      contents: read
-
-  # Validate the production workflow interface without selecting a Go module.
-  # Its repository exclusion skips every executed job here; behavior is tested
-  # through the source-derived read-only entrypoint below.
   test-validate-go-project-interface:
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
     name: "[Test] Validate Go Project - Production Interface"
@@ -4302,35 +4248,11 @@ jobs:
         run: bash .github/tests/test-check-release-pr-lifecycle.sh
 
 
-  test-deploy-github-pages:
-    if: "${{ github.event_name == 'push' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
-    name: "[Test] Deploy GitHub Pages - Dry Run"
-    uses: ./.github/workflows/deploy-github-pages.yaml
-    # PUSH-ONLY, deliberately, like test-publish-caller-pin-live below. This job
-    # holds id-token: write, and on a pull_request the workspace it would hand to
-    # deploy-github-pages.yaml is PR-controlled — a PR that adds an ungated job to
-    # that called workflow inherits the grant and can mint a real OIDC token.
-    #
-    # The grant cannot simply be dropped instead: a called workflow's job declares
-    # its own permissions, and GitHub validates them against the caller's grant when
-    # the run STARTS, before the `if: ${{ !inputs.dry-run }}` gate skips the job. A
-    # caller granting less than the called job declares fails the whole workflow at
-    # startup, so restricting the event is the available fix.
-    #
-    # The trade-off is the one the live-OIDC job already accepts: these dry-runs
-    # surface a regression after merge rather than on the PR.
-    permissions:
-      contents: read
-      pages: write
-      id-token: write
-    with:
-      dry-run: true
-
   test-publish-app:
     if: "${{ github.event_name == 'push' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
     name: "[Test] Publish App - Dry Run"
     uses: ./.github/workflows/publish-app.yaml
-    # PUSH-ONLY — see test-deploy-github-pages for why the grant cannot just be
+    # PUSH-ONLY — the callee's static write grant cannot just be
     # dropped. The signing step lives in publish-app.yaml's publish job.
     permissions:
       contents: read
@@ -4346,7 +4268,7 @@ jobs:
     if: "${{ github.event_name == 'push' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
     name: "[Test] Publish App - Dry Run (caller-pin enabled)"
     uses: ./.github/workflows/publish-app.yaml
-    # PUSH-ONLY — see test-deploy-github-pages. This job is a schema check; the
+    # PUSH-ONLY — candidate reusable code must not receive write authority. The
     # guard it covers runs in the skipped publish job.
     permissions:
       contents: read
@@ -4441,7 +4363,7 @@ jobs:
     if: "${{ github.event_name == 'push' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
     name: "[Test] Publish Manifests - Dry Run"
     uses: ./.github/workflows/publish-manifests.yaml
-    # PUSH-ONLY — see test-deploy-github-pages for why the grant cannot just be
+    # PUSH-ONLY — the callee's static write grant cannot just be
     # dropped. The signing step lives in publish-manifests.yaml's publish job.
     permissions:
       contents: read
@@ -4455,7 +4377,7 @@ jobs:
     if: "${{ github.event_name == 'push' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
     name: "[Test] Publish Manifests - Dry Run (caller-pin and signed-promotion enabled)"
     uses: ./.github/workflows/publish-manifests.yaml
-    # PUSH-ONLY — see test-deploy-github-pages. This job is a schema check; the
+    # PUSH-ONLY — candidate reusable code must not receive write authority. The
     # guard it covers runs in the skipped publish job.
     permissions:
       contents: read
@@ -4517,44 +4439,6 @@ jobs:
     with:
       dry-run: true
       ignore: '^\.github/tests/'
-
-  test-sync-cluster-policies:
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
-    name: "[Test] Sync Cluster Policies - Dry Run"
-    uses: ./.github/workflows/sync-cluster-policies.yaml
-    permissions: {}
-    with:
-      kyverno-policies-dir: /tmp/test-policies
-      dry-run: true
-
-  test-sync-cluster-policies-allowlist:
-    needs: [select-ci-tests]
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-sync-cluster-policies-allowlist') }}"
-    name: "[Test] Sync Cluster Policies - Allowlist Miss Fails Closed"
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    steps:
-      - name: 🛡️ Harden runner
-        uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
-        with:
-          egress-policy: audit
-
-      - name: 📄 Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-
-      - name: 🧪 Assert a vanished allowlisted policy fails the sync before the target changes
-        run: bash .github/tests/test-sync-cluster-policies-allowlist.sh
-      - name: Verify policyignore matching and failed reads before filtering
-        run: bash .github/tests/test-sync-cluster-policies-filter.sh
-      - name: Verify the target keeps its policies when the copy fails
-        run: bash .github/tests/test-sync-cluster-policies-copy.sh
-      - name: Verify secret-free dry-runs and required production authentication
-        run: bash .github/tests/test-sync-cluster-policies-credentials.sh
-      - name: Reject restored dry-run secrets and weakened production authentication
-        run: bash .github/tests/test-sync-cluster-policies-credentials-blocks.sh
 
   test-update-agent-skills:
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
@@ -6419,9 +6303,6 @@ jobs:
       - test-publish-contracts
       - test-zizmor
       - test-dependency-review-workflow
-      - test-delete-workflow-runs-all
-      - test-delete-workflow-runs-specific
-      - test-delete-workflow-runs-minimal
       - test-validate-go-project
       - test-validate-go-postgresql-fixture
       - test-go-cache-native-observer
@@ -6443,7 +6324,6 @@ jobs:
       - test-inspect-release-recovery-disabled
       - test-create-release-no-issue-side-effects
       - test-release-please-semantics
-      - test-deploy-github-pages
       - test-publish-app
       - test-publish-app-caller-pin
       - test-publish-manifests
@@ -6454,8 +6334,6 @@ jobs:
       - test-scan-for-todo-comments-no-project
       - test-scan-for-todo-comments-default
       - test-scan-for-todo-comments-default-control
-      - test-sync-cluster-policies
-      - test-sync-cluster-policies-allowlist
       - test-update-agent-skills
       - test-update-agent-skills-per-skill
       - test-template-sync
@@ -6562,9 +6440,6 @@ jobs:
             ${{ needs.test-publish-contracts.result }}
             ${{ needs.test-zizmor.result }}
             ${{ needs.test-dependency-review-workflow.result }}
-            ${{ needs.test-delete-workflow-runs-all.result }}
-            ${{ needs.test-delete-workflow-runs-specific.result }}
-            ${{ needs.test-delete-workflow-runs-minimal.result }}
             ${{ needs.test-validate-go-project.result }}
             ${{ needs.test-validate-go-postgresql-fixture.result }}
             ${{ needs.test-go-cache-native-observer.result }}
@@ -6586,7 +6461,6 @@ jobs:
             ${{ needs.test-inspect-release-recovery-disabled.result }}
             ${{ needs.test-create-release-no-issue-side-effects.result }}
             ${{ needs.test-release-please-semantics.result }}
-            ${{ needs.test-deploy-github-pages.result }}
             ${{ needs.test-publish-app.result }}
             ${{ needs.test-publish-app-caller-pin.result }}
             ${{ needs.test-publish-manifests.result }}
@@ -6597,8 +6471,6 @@ jobs:
             ${{ needs.test-scan-for-todo-comments-no-project.result }}
             ${{ needs.test-scan-for-todo-comments-default.result }}
             ${{ needs.test-scan-for-todo-comments-default-control.result }}
-            ${{ needs.test-sync-cluster-policies.result }}
-            ${{ needs.test-sync-cluster-policies-allowlist.result }}
             ${{ needs.test-update-agent-skills.result }}
             ${{ needs.test-update-agent-skills-per-skill.result }}
             ${{ needs.test-template-sync.result }}

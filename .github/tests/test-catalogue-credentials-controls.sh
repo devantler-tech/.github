@@ -57,7 +57,6 @@ restored skills writer	.github/workflows/update-agent-skills.yaml	del(.jobs["upd
 removed skipped dependency	.github/workflows/update-agent-skills.yaml	del(.jobs["open-skill-pull-requests"].needs)	1	write authority
 always restores skipped writer	.github/workflows/update-agent-skills.yaml	.jobs["open-skill-pull-requests"].if="${{ always() }}"	1	write authority
 restored auto merge	.github/workflows/enable-auto-merge.yaml	.jobs["disarm-untrusted-update"].if="${{ always() }}"	1	write authority
-restored pages writer	.github/workflows/deploy-github-pages.yaml	del(.jobs.build.if)	1	write authority
 restored test package writer	.github/workflows/run-dotnet-tests.yaml	.jobs.test.permissions.packages="write"	1	write authority
 restored application writer	.github/workflows/publish-app.yaml	del(.jobs.publish.if)	1	write authority
 restored manifest writer	.github/workflows/publish-manifests.yaml	del(.jobs["publish-manifests"].if)	1	write authority
@@ -88,5 +87,5 @@ format replacement identity	.github/workflows/ci.yaml	.jobs.new={"if":"${{ forma
 unverified recovery helper	.github/workflows/validate-go-project-readonly.yaml	(.jobs.lint.steps[]|select(.id == "fixes")).if |= sub("steps.fix-exporter.outcome == 'success' && ";"")	2	UNKNOWN successful local action checkout
 unverified best-effort helper	.github/workflows/validate-go-project-readonly.yaml	del(.jobs.coverage.steps[]|select((.uses // "")|endswith("/actions/upload-coverage"))|.if)	2	UNKNOWN successful local action checkout
 CASES
-[[ "$controls" == 45 ]] || { echo 'FAIL: incomplete control set' >&2; exit 1; }
+[[ "$controls" == 44 ]] || { echo 'FAIL: incomplete control set' >&2; exit 1; }
 echo "PASS: complete source graph rejects $controls real-source credential regressions"

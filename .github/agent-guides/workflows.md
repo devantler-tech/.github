@@ -6,6 +6,13 @@ Read this guide before changing catalogue implementations, tests or workflows. R
 
 #### All reusable workflows must
 
+Choose the ownership boundary before adding a workflow. Organization-required workflows are
+PR-only, cross-product concerns such as scanning and linting. A reusable workflow needs more
+than one real job-level consumer; fixture-only calls do not establish that need. A single-product
+pipeline or reusable-workflow callsite belongs in its consuming repository, using local actions
+for manageable step groups. Retired Pages, policy-sync and run-cleanup exports must not be
+restored without a new ownership decision; immutable historical releases remain available.
+
 1. **Use the `workflow_call` trigger** — this is what makes them reusable.
 2. **Pin all remote actions to commit SHAs** — `uses: owner/repo@<sha> # <version>`; first-party self-references are never remote — they resolve by local path after the same-commit self-checkout (see the self-reference rule above).
 3. **Include `step-security/harden-runner`** as the first step of every job (`egress-policy: audit`).
@@ -45,28 +52,6 @@ inline observer from `ci.yaml` without network access.
 Actions and reusable workflows are exercised as jobs inside [`ci.yaml`](../../.github/workflows/ci.yaml): `test-<action>` jobs call the action via `uses: ./actions/<action>`; `[Test] <Workflow> - <Scenario>` jobs call the workflow via `uses: ./.github/workflows/<x>.yaml` with safe parameters (dry-run, fixtures from `.github/tests/` or `.github/fixtures/` — never destructive). Every new action/workflow gets a job, wired into the `ci-required-checks` job (display `CI - Required Checks`) in **two** places: the `needs:` list **and** `${{ needs.<job-id>.result }}` in the inline summary step's `JOB_RESULTS` value. `ci-required-checks` runs `if: ${{ always() }}`, holds `permissions: {}`, executes no checked-out action, and fails if any listed result is not `success` or `skipped`, so it is the single required status check — a job added to `needs:` but omitted from `JOB_RESULTS` would have its failure silently ignored. The `lint-ci-coverage-parity` job **guards this**: it fails the PR if any composite action lacks a `uses: ./actions/<action>` test job, if any reusable workflow (`workflow_call`) lacks a `uses: ./.github/workflows/<x>.yaml` test job, if `ci-required-checks.needs` and `JOB_RESULTS` name different sets of jobs, or if the gate regains a workspace-dependent step (so the silent-ignore and candidate-code footguns cannot recur). When a reusable-workflow test-job id would collide with an action's (`test-dependency-review`, `test-run-dotnet-tests`), the workflow job carries a `-workflow` suffix.
 
 `ci-required-checks` is the sole exception to the harden-runner-first rule: adding any action would weaken its workspace-independent trust boundary. Every other step-bearing job must start with SHA-pinned `step-security/harden-runner` in audit mode, and `lint-ci-coverage-parity` enforces both sides of that contract.
-
-**Cleanup coverage:** the production `delete-workflow-runs.yaml` wrapper is exercised
-through its complete generated `delete-workflow-runs-readonly.yaml` projection. The
-coverage guard accepts this pair only after `.github/tests/test-cleanup-credentials.sh`
-verifies source parity, all three executed callers and their read-only permissions.
-Regenerate with `bash .github/scripts/generate-cleanup-readonly.sh`; never edit the
-projection by hand. Input behavior and credential restoration have independent
-negative controls. The owned Go driver under `.github/scripts/delete-workflow-runs/`
-completes enumeration and individual orphan-parent revalidation before mutation,
-freezes run creation time and partitions searches at GitHub's 1,000-result cap
-(the whole history splits off its latest day first, then halves every other range),
-requires every split to recover its own advertised minimum before deletion,
-uses the complete repository snapshot for every workflow's retention decisions,
-retries transient reads twice and never replays a deletion. Changed page totals
-permit one fresh run inventory with the original cutoff and shared partition and
-rate-limit wait budgets. Newly observed workflows
-retain their runs; unknown absence fails closed. The completion line reports only
-the totals of read and delete requests sent, retries included, as the privacy-safe hosted
-request observer. Its real HTTP and native-command tests run through the same
-coverage guard, including retention, pagination, partial reads, ambiguous identities,
-lost mutation responses and rejected or unconfirmed deletions. Fixtures use only
-synthetic credentials; all three hosted callers retain read-only permissions.
 
 **TODO coverage:** both TODO smoke callers use the complete generated
 `scan-for-todo-comments-readonly.yaml` projection with contents-read permissions and no
