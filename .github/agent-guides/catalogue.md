@@ -7,7 +7,8 @@ Read this guide before adding or moving catalogue components, referencing anothe
 This repository also hosts the suite's shared CI/CD building blocks: composite actions under
 [`actions/`](../../actions/) and reusable `workflow_call` workflows in
 [`.github/workflows/`](../../.github/workflows/). They were imported from `devantler-tech/actions` as one
-snapshot (#235) by [`scripts/import-actions-catalogue.sh`](../../scripts/import-actions-catalogue.sh).
+snapshot (#235). The one-time importer is retired and preserved in Git history; the current
+catalogue and its documentation are authored here, not generated from that historical source.
 That repository is frozen and is archived once nothing references it (#164). Consumers reference
 the catalogue here as:
 
@@ -58,8 +59,15 @@ actions/<action-name>/            # One directory per composite action
 
 `ci.yaml` holds one `test-<action>` job per action, one `[Test]` job per reusable workflow, and this
 repository's own `validate-manifests` job, all behind the single `CI - Required Checks` gate. The
-catalogue's documentation is the root [README](../../README.md), between its catalogue markers; each
+catalogue's documentation is the root [README](../../README.md); each
 action also has its own README.
+
+Keep the Actions and Reusable workflows indexes parallel: a component reference and its purpose.
+List organization-required compatibility sources and internal projections/fixtures separately;
+neither is an invitation to add a new consumer. Each workflow's existing level-three reference
+owns one `Purpose, interface and usage` collapsible, closed before the next peer heading. Keep
+shared Go behavior with the main Go interface rather than accidentally nesting it under the
+read-only projection. Preserve every declared input/secret table and the fail-closed parity tests.
 
 ### Self-references (read before referencing one part of the catalogue from another)
 
