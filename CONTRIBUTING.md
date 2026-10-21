@@ -23,7 +23,14 @@ git switch -c docs/first-contribution
 
 From the repository root, make a small wording correction in `README.md`. If it describes a
 workflow input or secret, check the actual declaration under `.github/workflows/`; its table must
-remain in that workflow's own level-three README section. Then run:
+remain in that workflow's own level-three README section.
+
+The root README has parallel action and workflow indexes. Keep consumer interfaces separate from
+organization-required sources and internal fixtures. Give each workflow reference one peer
+level-three heading and one `Purpose, interface and usage` collapsible; do not nest the next
+workflow inside it. Action interfaces stay in their linked per-action READMEs.
+
+Run:
 
 ```sh
 bash .scripts/check-workflow-readme.sh
@@ -45,9 +52,11 @@ advertised workflows, deploy manifests, contact the organization, or prove crede
 | Organization community defaults | Files under `.github/` can be inherited by other repositories. Keep them repository-neutral, and check existing target-specific policies |
 | Generated workflow projection | Change its production workflow or named generator and regenerate; never hand-edit the projection |
 
-The catalogue was imported once; it is maintained here now. Do not rerun
-`scripts/import-actions-catalogue.sh` as a documentation updater: it replaces the historical
-snapshot's files. The frozen `devantler-tech/actions` repository is not the source for new changes.
+The catalogue was imported once; its documentation and components are authored here now.
+The obsolete, destructive importer has been removed; Git history retains that migration procedure
+and `actions/.imported-from` retains its provenance. The frozen `devantler-tech/actions` repository
+is not the source for new changes. The documentation check rejects restoring the old importer or
+its generated-block marker.
 
 The [CI workflow](.github/workflows/ci.yaml) runs broader catalogue, security, interface, credential
 boundary and declarative-governance checks, then aggregates required results. The small local path
