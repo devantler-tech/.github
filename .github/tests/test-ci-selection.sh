@@ -142,12 +142,13 @@ git init -q "$dotnet"
 git -C "$dotnet" config user.name 'CI fixture'
 git -C "$dotnet" config user.email 'fixture@example.invalid'
 git -C "$dotnet" config commit.gpgsign false
-printf 'base\n' > "$dotnet/.github/workflows/run-dotnet-tests.yaml"
-git -C "$dotnet" add -- .github/workflows/run-dotnet-tests.yaml
+mkdir -p "$dotnet/.github/actions/test-dotnet-fixture"
+printf 'base\n' > "$dotnet/.github/actions/test-dotnet-fixture/action.yaml"
+git -C "$dotnet" add -- .github/actions/test-dotnet-fixture/action.yaml
 git -C "$dotnet" commit -qm 'test: dotnet baseline'
 base="$(git -C "$dotnet" rev-parse HEAD)"
-printf 'changed\n' > "$dotnet/.github/workflows/run-dotnet-tests.yaml"
-git -C "$dotnet" add -- .github/workflows/run-dotnet-tests.yaml
+printf 'changed\n' > "$dotnet/.github/actions/test-dotnet-fixture/action.yaml"
+git -C "$dotnet" add -- .github/actions/test-dotnet-fixture/action.yaml
 git -C "$dotnet" commit -qm 'test: dotnet change'
 head="$(git -C "$dotnet" rev-parse HEAD)"
 : > "$work/output"

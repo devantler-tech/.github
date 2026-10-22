@@ -1256,7 +1256,7 @@ jobs:
       - name: 🧪 Exercise consumer-root testing with the workflow helper checkout
         if: runner.os == 'Linux'
         shell: bash
-        run: bash .github/tests/test-dotnet-helper-checkout.sh .github/workflows/run-dotnet-tests.yaml hosted
+        run: bash .github/tests/test-dotnet-helper-checkout.sh .github/actions/test-dotnet-fixture/action.yaml hosted
 
   test-run-dotnet-tests-preserves-source-mapping:
     needs: [select-ci-tests]
@@ -3099,62 +3099,9 @@ jobs:
           fi
           echo "Credential-free tests cannot reach the token-bearing coverage upload ✅"
 
-      - name: 🔒 Assert the authenticated opt-in rejects fork and bot pull requests
+      - name: 🔒 Assert native fixture OS, credential and source-state boundaries
         shell: bash
-        env:
-          WORKFLOW: .github/workflows/run-dotnet-tests.yaml
-        run: |
-          set -euo pipefail
-          token_expr="$(yq -r '.jobs.test.steps[] | select(.name == "🧪 Test .NET solution or project") | .with.github-token' "$WORKFLOW")"
-          for required_guard in \
-            "inputs.enable-github-packages" \
-            "github.event.pull_request.head.repo.full_name" \
-            "github.repository" \
-            "github.event.pull_request.user.login" \
-            "[bot]"; do
-            if [[ "$token_expr" != *"$required_guard"* ]]; then
-              echo "::error::$WORKFLOW authenticated pull-request path is missing the '$required_guard' trust guard"
-              exit 1
-            fi
-          done
-          if [[ "$token_expr" == *"github.actor"* ]]; then
-            echo "::error::$WORKFLOW must trust the immutable pull-request author, not the actor who triggered this event"
-            exit 1
-          fi
-
-          for source_step in \
-            "🔎 Snapshot authenticated GitHub Packages source" \
-            "🔒 Verify authenticated GitHub Packages source state is preserved"; do
-            source_if="$(SOURCE_STEP="$source_step" yq -r '.jobs.test.steps[] | select(.name == strenv(SOURCE_STEP)) | .if' "$WORKFLOW")"
-            for required_guard in \
-              "inputs.enable-github-packages" \
-              "github.event.pull_request.head.repo.full_name" \
-              "github.repository" \
-              "github.event.pull_request.user.login" \
-              "[bot]"; do
-              if [[ "$source_if" != *"$required_guard"* ]]; then
-                echo "::error::$WORKFLOW '$source_step' is missing the '$required_guard' trust guard"
-                exit 1
-              fi
-            done
-            if [[ "$source_if" == *"github.actor"* ]]; then
-              echo "::error::$WORKFLOW '$source_step' must trust the pull-request author, not the event actor"
-              exit 1
-            fi
-          done
-
-          verify_run="$(yq -r '.jobs.test.steps[] | select(.name == "🔒 Verify authenticated GitHub Packages source state is preserved") | .run' "$WORKFLOW")"
-          verify_before_state="$(yq -r '.jobs.test.steps[] | select(.name == "🔒 Verify authenticated GitHub Packages source state is preserved") | .env.BEFORE_STATE' "$WORKFLOW")"
-          expected_comparison="if [[ \"\$after_state\" != \"\$BEFORE_STATE\" ]]; then"
-          if [[ "$verify_run" != *'after_state'* || "$verify_run" != *"$expected_comparison"* ]]; then
-            echo "::error::$WORKFLOW authenticated-source assertion must compare the post-action state with its snapshot"
-            exit 1
-          fi
-          if [[ "$verify_before_state" != *"steps.github-source-before.outputs.state"* ]]; then
-            echo "::error::$WORKFLOW authenticated-source assertion must consume the pre-action snapshot"
-            exit 1
-          fi
-          echo "Only an explicit same-repository non-bot pull request can receive the ephemeral restore token, and its source state is preserved ✅"
+        run: bash .github/tests/test-dotnet-native-fixtures.sh
 
   # run-dotnet-tests INLINES upload-coverage's single pinned step (a composite action
   # cannot `uses:` its own repo at the same commit), so nothing structural ties the two
@@ -3967,15 +3914,28 @@ jobs:
     needs: [select-ci-tests]
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-run-dotnet-tests-workflow') }}"
     name: "[Test] Run .NET Tests"
-    uses: ./.github/workflows/run-dotnet-tests.yaml
-    # Fixture-targeted: exercise the workflow against the known-good .NET fixture
-    # (this repo is not itself a .NET project).
-    with:
-      working-directory: .github/fixtures/run-dotnet-tests
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
     permissions:
       contents: read
       packages: read
-      code-quality: write # callers must grant this for the coverage upload (GitHub Code Quality)
+      code-quality: write
+    steps:
+      - name: Harden runner
+        uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
+        with:
+          egress-policy: audit
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Test credential-free pull-request fixture
+        uses: ./.github/actions/test-dotnet-fixture
+        with:
+          working-directory: .github/fixtures/run-dotnet-tests
+          github-token: ${{ github.event_name != 'pull_request' && secrets.GITHUB_TOKEN || '' }}
 
   test-run-dotnet-tests-workflow-authenticated:
     if: >-
@@ -3987,15 +3947,37 @@ jobs:
         github.event.pull_request.user.login == 'devantler'
       }}
     name: "[Test] Run .NET Tests - Authenticated Packages"
-    uses: ./.github/workflows/run-dotnet-tests.yaml
-    # Exercise the opt-in state only for the maintainer-authored code from this repository.
-    with:
-      working-directory: .github/fixtures/run-dotnet-tests
-      enable-github-packages: true
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
     permissions:
       contents: read
       packages: read
-      code-quality: write # callers must grant this for the coverage upload (GitHub Code Quality)
+      code-quality: write
+    steps:
+      - name: Harden runner
+        uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
+        with:
+          egress-policy: audit
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Test explicitly trusted authenticated fixture
+        uses: ./.github/actions/test-dotnet-fixture
+        with:
+          working-directory: .github/fixtures/run-dotnet-tests
+          github-token: >-
+            ${{
+              (
+                github.event_name != 'pull_request' ||
+                (
+                  github.event.pull_request.head.repo.full_name == github.repository &&
+                  !endsWith(github.event.pull_request.user.login, '[bot]')
+                )
+              ) && secrets.GITHUB_TOKEN || ''
+            }}
 
   test-enable-auto-merge:
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"

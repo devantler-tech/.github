@@ -3,14 +3,14 @@
 # test command from a consumer root. A full helper checkout must reproduce #258.
 set -euo pipefail
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-workflow="${1:-$root/.github/workflows/run-dotnet-tests.yaml}"
+workflow="${1:-$root/.github/actions/test-dotnet-fixture/action.yaml}"
 mode="${2:-offline}"
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
 fail() { echo "FAIL: $*" >&2; exit 1; }
 [[ "$mode" == offline || "$mode" == hosted ]] || fail 'unknown test mode'
 
-checkout="$(yq -o=json '.jobs.test.steps[] | select(.with.path == ".devantler-tech-actions") | .with' "$workflow")"
+checkout="$(yq -o=json '.runs.steps[] | select(.with.path == ".devantler-tech-actions") | .with' "$workflow")"
 [[ -n "$checkout" ]] || fail 'helper checkout is missing'
 patterns="$(jq -r '."sparse-checkout" // empty' <<<"$checkout")"
 cone="$(jq -r 'if has("sparse-checkout-cone-mode") then .["sparse-checkout-cone-mode"] else true end' <<<"$checkout")"

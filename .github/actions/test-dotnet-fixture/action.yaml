@@ -1,0 +1,76 @@
+name: Test catalogue .NET fixture
+description: Exercise the shared action and preserve authenticated package source state.
+inputs:
+  working-directory:
+    description: Catalogue fixture directory.
+    required: true
+  github-token:
+    description: Explicit ephemeral token; callers must exclude fork and bot pull requests.
+    required: false
+    default: ""
+runs:
+  using: composite
+  steps:
+    # Match an external consumer: helper projects and coverage must not pollute it.
+    - name: Checkout the tested action only
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        repository: ${{ job.workflow_repository }}
+        ref: ${{ job.workflow_sha }}
+        path: .devantler-tech-actions
+        sparse-checkout: /actions/run-dotnet-tests/
+        sparse-checkout-cone-mode: false
+        persist-credentials: false
+
+    - name: Snapshot authenticated GitHub Packages source
+      id: github-source-before
+      if: ${{ inputs.github-token != '' }}
+      working-directory: ${{ inputs.working-directory }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        source_listing="$(dotnet nuget list source --format Detailed)"
+        github_source_state="$(
+          awk '
+            tolower($0) ~ /^[[:space:]]*[0-9]+\.[[:space:]]+github[[:space:]]+\[(enabled|disabled)\][[:space:]]*$/ {
+              status = $0
+              getline
+              sub(/^[[:space:]]+/, "")
+              print status "|" $0
+              exit
+            }
+          ' <<<"$source_listing"
+        )"
+        echo "state=$github_source_state" >>"$GITHUB_OUTPUT"
+
+    - name: Test .NET solution or project
+      uses: ./.devantler-tech-actions/actions/run-dotnet-tests
+      with:
+        github-token: ${{ inputs.github-token }}
+        working-directory: ${{ inputs.working-directory }}
+
+    - name: Verify authenticated GitHub Packages source state is preserved
+      if: ${{ inputs.github-token != '' }}
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        BEFORE_STATE: ${{ steps.github-source-before.outputs.state }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        source_listing="$(dotnet nuget list source --format Detailed)"
+        after_state="$(
+          awk '
+            tolower($0) ~ /^[[:space:]]*[0-9]+\.[[:space:]]+github[[:space:]]+\[(enabled|disabled)\][[:space:]]*$/ {
+              status = $0
+              getline
+              sub(/^[[:space:]]+/, "")
+              print status "|" $0
+              exit
+            }
+          ' <<<"$source_listing"
+        )"
+        if [[ "$after_state" != "$BEFORE_STATE" ]]; then
+          echo "::error::Authenticated restore changed the caller's GitHub Packages source state"
+          exit 1
+        fi
+        echo "Authenticated GitHub Packages source state was preserved"

@@ -8,7 +8,7 @@ Test .NET solutions or projects across multiple platforms with code coverage rep
 
 | Name | Description | Required | Default |
 |------|-------------|----------|---------|
-| `github-token` | GitHub token for authenticated GHCR package restore and Code Quality upload. Omit it when testing untrusted pull-request code. | ❌ | `""` |
+| `github-token` | GitHub token for authenticated GitHub Packages restore and Code Quality upload. Omit it when testing untrusted pull-request code. | ❌ | `""` |
 | `working-directory` | Directory to run the tests in | ❌ | `.` |
 
 ## Usage
@@ -45,28 +45,34 @@ GitHub Packages. Authentication is scoped to that restore step, so subsequent te
 cannot read the credential from their process environment or the user NuGet configuration.
 Credential-free runs also skip the token-bearing GitHub Code Quality upload.
 
-## Reusable workflow
+## Repository-owned CI
 
-The reusable workflow checks out only this action in its helper directory. Catalogue test
-projects and sample coverage reports are excluded, so testing from the consumer repository's
-root detects coverage support and merges reports from the consumer's own files.
-
-The reusable workflow is credential-free on pull requests by default. Trusted same-repository
-human-authored pull requests that need private GitHub Packages can opt in explicitly:
+Put the job in your repository's own CI workflow and call this action. The action runs on
+the current runner; a matrix supplies multiple operating systems. No shared .NET test workflow
+is exported. This complete job keeps pull-request tests credential-free:
 
 ```yaml
 jobs:
   test:
-    uses: devantler-tech/.github/.github/workflows/run-dotnet-tests.yaml@<full-commit-sha> # vX.Y.Z
-    with:
-      enable-github-packages: true
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
     permissions:
       contents: read
       packages: read
       code-quality: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: devantler-tech/.github/actions/run-dotnet-tests@<full-commit-sha> # vX.Y.Z
+        with:
+          github-token: ${{ github.event_name != 'pull_request' && secrets.GITHUB_TOKEN || '' }}
 ```
 
-The workflow honors `enable-github-packages` only when the pull request head is in the
-same repository and the pull request author is not a bot. Fork and bot pull requests remain
-credential-free even if they set the input. Merge-group and direct non-pull-request runs
-retain authenticated restore and Code Quality upload without the opt-in.
+Omit `github-token` entirely when authenticated restore and coverage upload are unnecessary.
+Any explicit authenticated pull-request path belongs to the calling repository: require its
+own opt-in, a same-repository head and a non-bot pull-request author. Do not trust `github.actor`
+or let fork and bot code opt itself into credentials. The action does not decide whether its
+caller is trusted.
