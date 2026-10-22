@@ -81,6 +81,18 @@ for identity in 12345:.github actions:.github; do
     "$work/imported-team.yaml" >"$work/other-team.yaml"
   check 0 "$work/other-team.yaml"
 done
+# Syntactically valid but truncated managed resources are incomplete observations,
+# not evidence that a repository is no longer targeted. Empty provider objects
+# remain valid for the Observe-only import controls above.
+for kind in Repository IssueLabels RepositoryPermissions TeamRepository; do
+  for mutation in 'del(.spec)' '.spec = null' '.spec = []' '.spec = "truncated"' \
+    'del(.spec.forProvider)' '.spec.forProvider = null' '.spec.forProvider = []' \
+    '.spec.forProvider = "truncated"'; do
+    KIND="$kind" yq '.kind = strenv(KIND)' "$work/clean.yaml" |
+      yq "$mutation" >"$work/truncated.yaml"
+    check 2 "$work/truncated.yaml"
+  done
+done
 printf 'not: [valid\n' >"$work/invalid.yaml"
 check 2 "$work/invalid.yaml"
 : >"$work/empty.yaml"

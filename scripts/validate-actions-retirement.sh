@@ -15,7 +15,11 @@ fi
 if ! jq -se '
     length > 0 and all(type == "object" and
       (.kind | type == "string" and length > 0) and
-      (.metadata.name | type == "string" and length > 0))
+      (.metadata.name | type == "string" and length > 0) and
+      (if .kind == "Repository" or .kind == "IssueLabels" or
+          .kind == "RepositoryPermissions" or .kind == "TeamRepository"
+       then (.spec | type == "object") and (.spec.forProvider | type == "object")
+       else true end))
   ' "$work/documents.json" >/dev/null; then
   abort 'rendered resource inventory is empty or malformed'
 fi
