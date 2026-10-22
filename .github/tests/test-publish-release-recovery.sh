@@ -96,6 +96,7 @@ for mutation in \
   '.c.jobs["test-publish-release-recovery"].with["offline-test"]=false' \
   '.c.jobs["test-publish-release-recovery-disabled"].with["enable-recovery"]=true' \
   '.c.jobs["ci-required-checks"].needs |= map(select(. != "test-publish-release-recovery"))' \
+  '.c.jobs["ci-required-checks"].steps |= map(if .env.JOB_RESULTS then .env.JOB_RESULTS |= sub("needs.test-publish-release-recovery-disabled.result"; "") else . end)' \
   '.c.jobs["test-create-release-config"].steps |= map(select(.run != "bash .github/tests/test-publish-release-recovery.sh"))'; do
   jq "$mutation" "$work/bundle.json" > "$work/mutated.json"
   if jq -e -f "$work/guard.jq" "$work/mutated.json" >/dev/null; then fail "accepted mutation: $mutation"; fi
@@ -104,8 +105,11 @@ done
 # public portfolio repository may continue.
 yq -r '.jobs.recover.steps[1].run' "$workflow" > "$work/admit.sh"
 admit() {
+  local confirmation="$2" private="$4"
+  [[ "$confirmation" != EMPTY ]] || confirmation=""
+  [[ "$private" != EMPTY ]] || private=""
   rm -f "$work/output"
-  EVENT_NAME="$1" CONFIRMATION="$2" REPOSITORY="$3" PRIVATE="$4" CURRENT_REF="$5" DEFAULT_BRANCH=main \
+  EVENT_NAME="$1" CONFIRMATION="$confirmation" REPOSITORY="$3" PRIVATE="$private" CURRENT_REF="$5" DEFAULT_BRANCH=main \
     GITHUB_OUTPUT="$work/output" bash -euo pipefail "$work/admit.sh" >/dev/null 2>&1
 }
 admit workflow_dispatch true devantler-tech/platform false refs/heads/main || fail 'confirmed recovery refused'
@@ -117,11 +121,11 @@ while read -r event confirmation repository private ref; do
   [[ ! -e "$work/output" ]] || fail 'rejected admission emitted a repository scope'
 done <<'CASES'
 workflow_dispatch false devantler-tech/platform false refs/heads/main
-workflow_dispatch "" devantler-tech/platform false refs/heads/main
+workflow_dispatch EMPTY devantler-tech/platform false refs/heads/main
 push true devantler-tech/platform false refs/heads/main
 schedule true devantler-tech/platform false refs/heads/main
 workflow_dispatch true devantler-tech/platform true refs/heads/main
-workflow_dispatch true devantler-tech/platform "" refs/heads/main
+workflow_dispatch true devantler-tech/platform EMPTY refs/heads/main
 workflow_dispatch true devantler-tech/platform false refs/heads/feature
 workflow_dispatch true devantler-tech/platform false refs/tags/v1.2.3
 workflow_dispatch true other/platform false refs/heads/main
@@ -152,6 +156,8 @@ done
 yq -r '.jobs.recover.steps[2].run' "$workflow" > "$work/download.sh"
 yq -r '.jobs["offline-test"].steps[1].run' "$workflow" > "$work/offline-download.sh"
 cmp -s "$work/download.sh" "$work/offline-download.sh" || fail 'offline and production source retrieval differ'
+[[ "$(yq -r '.jobs.recover.steps[4].run' "$workflow")" == "$(yq -r '.jobs["offline-test"].steps[3].run' "$workflow")" ]] ||
+  fail 'offline and production builds differ'
 source_dir="$work/archive/catalogue/.github/scripts/inspect-release-recovery"
 mkdir -p "$work/bin" "$source_dir/cmd/publish-release-recovery"
 printf 'module fixture\n\ngo 1.23.0\n' > "$source_dir/go.mod"
@@ -164,7 +170,13 @@ set -euo pipefail
 fixture="$(cd "$(dirname "$0")/.." && pwd -P)"
 printf 'request\n' >> "$fixture/transport-used"
 [[ -z "${GH_TOKEN-}${GITHUB_TOKEN-}${CURL_HOME-}${HTTPS_PROXY-}" ]]
-[[ "${*: -1}" == https://codeload.github.com/devantler-tech/.github/tar.gz/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa ]]
+expected=(--disable --fail --silent --show-error --location
+  --proto '=https' --proto-redir '=https' --connect-timeout 10 --max-time 120 --retry 3
+  --output "$fixture/runner/recovery.tar.gz"
+  'https://codeload.github.com/devantler-tech/.github/tar.gz/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa')
+[[ "$#" == "${#expected[@]}" ]]
+index=0
+for arg in "$@"; do [[ "$arg" == "${expected[index]}" ]]; index=$((index+1)); done
 cp "$fixture/payload.tar.gz" "$fixture/runner/recovery.tar.gz"
 CURL
 chmod +x "$work/bin/curl"

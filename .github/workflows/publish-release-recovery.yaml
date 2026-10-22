@@ -58,8 +58,6 @@ jobs:
       cancel-in-progress: false
       queue: max
     permissions: {}
-    outputs:
-      result: ${{ steps.publish.outputs.result || steps.read-admission.outputs.diagnosis }}
     steps:
       - name: 🛡️ Harden runner
         uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
@@ -199,7 +197,6 @@ jobs:
             --run-id "$RUN_ID" --run-attempt "$RUN_ATTEMPT" --producer-ref "$PRODUCER_REF" \
             > "$RUNNER_TEMP/release-publication.json"
           cat "$RUNNER_TEMP/release-publication.json"
-          printf 'result=%s\n' "$(jq -er '.result' "$RUNNER_TEMP/release-publication.json")" >> "$GITHUB_OUTPUT"
 
   offline-test:
     if: inputs.enable-recovery && inputs.offline-test
