@@ -141,8 +141,9 @@ The adopted dependency-review, auto-merge, workflow-scanning and language-select
 Run `bash tests/legacy-workflow-observation.sh` after changing these or the two
 template workflow rules: it binds all six complete policies to their captured
 native state, permitting only the maintained source, required provider encodings,
-disabled Go-template enforcement after native proof (#698), and empty, disabled
-.NET policies after the complete effective-consumer census (#703).
+disabled Go-template enforcement after native proof (#698), and disabled .NET
+policies with one inert rule and no workflow association after the complete
+effective-consumer census (#703).
 Keep both replacement repository rules active, default-branch-only,
 without bypasses and bound to their exact GitHub Actions checks. The Go aggregate and all
 three distinct .NET platform checks were proven with positive and intentional-failure controls.

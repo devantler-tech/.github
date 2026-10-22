@@ -8,6 +8,8 @@ kubectl kustomize "$root/deploy" >"$render"
 selector='select(.kind == "OrganizationRuleset" and .metadata.name == "require-dotnet-template-tests")'
 count="$(yq -N "$selector | .metadata.name" "$render" | grep -c . || true)"
 [[ "$count" == 1 ]] || fail "expected one .NET template tests ruleset"
+# Compare the selected rendered policy expression ($2) with exact JSON ($1),
+# stopping this test with the expression and observed value on a mismatch.
 assert_json() {
   local expected="$1" expression="$2" actual
   actual="$(yq -o=json -I=0 "$selector | $expression" "$render")"

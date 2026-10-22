@@ -11,6 +11,8 @@ fixture="$root/tests/fixtures/legacy-workflow-rulesets-observed.jsonl"
 jq -se 'length==6 and ([.[].rulesetId]|unique|length)==6 and
   all(.[]; .forProvider.rules[0].requiredWorkflows[0].requiredWorkflow[0].repositoryId==948529001)' "$fixture" >/dev/null ||
   fail 'incomplete native policy inventory'
+# Compare the complete rendered JSON array in $1 with the captured policies,
+# allowing only the explicitly reviewed source, encoding and retirement changes.
 check_rules() {
   jq -e --slurpfile baseline "$fixture" '
     def expected:
@@ -41,6 +43,8 @@ check_rules() {
         .spec==$expected))
   ' "$1" >/dev/null 2>&1
 }
+# Require the workflow at $1 to invoke the observation test unconditionally in
+# the required manifest job. Return failure for missing or bypassable coverage.
 check_ci() {
   local steps
   steps="$(yq -o=json -I=0 '.jobs["validate-manifests"].steps' "$1")" || return 1

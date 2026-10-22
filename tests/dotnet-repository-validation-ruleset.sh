@@ -31,6 +31,8 @@ jq -e '
 
 # No dormant policy may retain a source association after its wrapper is removed.
 # The complete observation test separately pins selectors, bypasses and lifecycle.
+# Read one rendered provider payload from stdin. Return success only for the
+# disabled, provider-compatible inert rule; missing or duplicate payloads fail.
 retired_policy_valid() {
   jq -se 'length == 1 and (.[0] | .enforcement == "disabled" and .rules == [{"creation":false,"deletion":false,"nonFastForward":false,"requiredLinearHistory":false,"requiredSignatures":false,"update":false}])' >/dev/null
 }
