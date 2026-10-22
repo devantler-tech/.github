@@ -156,6 +156,7 @@ kubectl kustomize deploy/ > /dev/null   # must build clean
 bash tests/admin-team-policy.sh         # Admins policy invariants
 bash tests/declarative-coverage.sh      # every repo declared in every rendered dimension
 bash tests/declarative-coverage-fail-closed.sh # rendered-label reads fail closed
+bash tests/actions-retirement.sh       # retired catalogue has no rendered management
 bash tests/repository-update-policy.sh  # active Repository update invariants
 bash tests/signing-rule-retirement.sh  # retained signing-rule identity and safe lifecycle
 bash tests/release-contract.sh          # deploy/ changes must trigger a release
@@ -168,7 +169,7 @@ bash tests/workflow-execution-policies.sh # reviewed execution policies are vali
 bash tests/apply-workflow-execution-policies.sh # the policy reconciler, against an offline API stand-in
 ```
 
-Those fourteen commands are the baseline checks that `ci.yaml`'s `validate-manifests` job runs; the
+Those fifteen commands are the baseline checks that `ci.yaml`'s `validate-manifests` job runs; the
 same workflow also runs the catalogue's tests (see [Actions catalogue](#actions-catalogue)). Pull requests additionally pass
 their changed paths and title through `scripts/validate-release-contract.sh` and their base/head
 renders plus the pull-request body through `scripts/validate-deploy-deletions.sh` (every managed

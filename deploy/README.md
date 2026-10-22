@@ -51,6 +51,21 @@ out-of-band changes made in the GitHub UI.
   self-repository `$/` references stay allowed; reusable workflows can still be
   referenced by tag.
 
+## Legacy Actions retirement
+
+The legacy `actions` repository has no managed Repository, labels, permissions or
+team grants in this render. Its former resources did not claim `Delete`, so
+withdrawing their manifests leaves the hosted objects in place until the separately
+authorized repository deletion. `tests/actions-retirement.sh` checks the actual
+render, rejects reintroduced management and proves incomplete reads fail closed.
+
+This configuration change does not itself delete the repository or prove its last
+publisher migrated. [#240](https://github.com/devantler-tech/.github/issues/240)
+requires protected consumer migration, signed publication, observed GitOps
+withdrawal and a private recovery backup before deletion. The live-coverage
+exemption remains only while the repository is present; remove it after authenticated
+post-delete checks. Drift, complete-census and deletion-acknowledgement gates stay enabled.
+
 ## Roadmap
 
 GitHub Issues are the roadmap of record. Epic
