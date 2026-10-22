@@ -1,12 +1,13 @@
 name: 🩹 Publish Release Recovery
 
 # Default-off recovery of one GitHub release whose stable tag was pushed but never published (#602).
-# The caller is the affected public repository itself, dispatched manually from its default branch.
+# Repository-owned manual operation; no production reusable consumer exists (#722).
+# Other products must own their recovery workflow until real repeated use justifies extraction.
 # `enable-recovery` is the temporary rollout flag (#603); `confirm-publication` is the permanent
 # operator consent and stays when the flag is retired. Guarded by
 # .github/tests/test-publish-release-recovery.sh.
 on:
-  workflow_call:
+  workflow_dispatch:
     inputs:
       enable-recovery:
         description: "Temporary rollout flag; recovery is skipped unless true"
@@ -40,9 +41,6 @@ on:
         description: "Original catalogue create-release workflow path at its full commit SHA"
         type: string
         required: true
-    secrets:
-      APP_PRIVATE_KEY:
-        required: false
 
 permissions: {}
 
@@ -89,8 +87,8 @@ jobs:
       - name: 📑 Download immutable recovery source
         shell: bash
         env:
-          CATALOGUE_REPOSITORY: ${{ job.workflow_repository }}
-          CATALOGUE_SHA: ${{ job.workflow_sha }}
+          CATALOGUE_REPOSITORY: ${{ github.repository }}
+          CATALOGUE_SHA: ${{ github.workflow_sha }}
         run: |
           set -euo pipefail
           [[ "$CATALOGUE_REPOSITORY" == devantler-tech/.github && "$CATALOGUE_SHA" =~ ^[0-9a-f]{40}$ ]] || {
@@ -212,8 +210,8 @@ jobs:
       - name: 📑 Download immutable recovery source
         shell: bash
         env:
-          CATALOGUE_REPOSITORY: ${{ job.workflow_repository }}
-          CATALOGUE_SHA: ${{ job.workflow_sha }}
+          CATALOGUE_REPOSITORY: ${{ github.repository }}
+          CATALOGUE_SHA: ${{ github.workflow_sha }}
         run: |
           set -euo pipefail
           [[ "$CATALOGUE_REPOSITORY" == devantler-tech/.github && "$CATALOGUE_SHA" =~ ^[0-9a-f]{40}$ ]] || {

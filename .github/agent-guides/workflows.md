@@ -53,6 +53,11 @@ Actions and reusable workflows are exercised as jobs inside [`ci.yaml`](../../.g
 
 `ci-required-checks` is the sole exception to the harden-runner-first rule: adding any action would weaken its workspace-independent trust boundary. Every other step-bearing job must start with SHA-pinned `step-security/harden-runner` in audit mode, and `lint-ci-coverage-parity` enforces both sides of that contract.
 
+Reusable-workflow coverage reads parsed job-level `uses` values and requires an exact classic
+`./.github/workflows/` or native `$/.github/workflows/` match. New same-repository calls use native
+syntax. A comment, step-level reference, display name or filename prefix is not job execution.
+The real inline guard's behavioral controls cover both forms and those non-call refusals.
+
 **TODO coverage:** both TODO smoke callers use the complete generated
 `scan-for-todo-comments-readonly.yaml` projection with contents-read permissions and no
 App secret. Regenerate with `bash .github/scripts/generate-todo-readonly.sh`; never edit
@@ -240,7 +245,9 @@ A new job/step/behaviour must not go live for every consumer the moment it merge
 
 **Gotchas:**
 
-- `workflow_dispatch` passes booleans as **strings** while `workflow_call` passes real **booleans** — a workflow triggered by both must normalize before comparing: `if: ${{ inputs.<enable-x> == true || inputs.<enable-x> == 'true' }}`.
+- The `inputs` context preserves declared booleans for both `workflow_dispatch` and `workflow_call`.
+  Only `github.event.inputs` converts manual inputs to strings. Use `inputs.<enable-x>` for typed
+  gates; see [GitHub's input-context documentation](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/trigger-a-workflow#defining-inputs-for-manually-triggered-workflows).
 - You **cannot** wrap `if:` around an individual `with:` input — gate the whole **step** (or **job**), or select the value with a ternary in the `with:` value (`${{ inputs.<enable-x> && 'a' || 'b' }}`).
 - **Test both states.** Per the feature-flag-first "test both states" rule, cover the flag **off** (default) and **on** with `[Test]` jobs (see *Test jobs* above) — a flag whose off-path is untested can regress silently.
 

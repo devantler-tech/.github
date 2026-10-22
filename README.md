@@ -115,7 +115,6 @@ single-product pipeline.
 | [Lint](.github/workflows/lint.yaml) | Run MegaLinter with isolated signed-fix handling |
 | [Publish app](.github/workflows/publish-app.yaml) | Build, sign and publish an application image |
 | [Publish manifests](.github/workflows/publish-manifests.yaml) | Build, sign and publish a manifest bundle |
-| [Publish release recovery](.github/workflows/publish-release-recovery.yaml) | Publish a missing GitHub release for an existing stable tag; default-off, manual only |
 | [Scan TODO comments](.github/workflows/scan-for-todo-comments.yaml) | Turn actionable TODOs into tracked work |
 | [Scan workflow vulnerabilities](.github/workflows/scan-for-workflow-vulnerabilities.yaml) | Analyze workflow security; also an organization PR gate |
 | [Template sync](.github/workflows/template-sync.yaml) | Open updates from an upstream template |
@@ -130,6 +129,7 @@ These operate this catalogue itself; they are not reusable consumer interfaces.
 | Workflow | Description |
 |---|---|
 | [Inspect release recovery](.github/workflows/inspect-release-recovery.yaml) | Diagnose a stranded stable release without publication authority |
+| [Publish release recovery](.github/workflows/publish-release-recovery.yaml) | Recover this catalogue's stranded stable release; default-off and confirmation-gated |
 
 ## Organization-required workflow sources
 
@@ -166,6 +166,7 @@ do not establish a product need for a shared workflow.
 | [Applied-fix signing](.github/workflows/apply-signed-fixes.yaml) | Isolated, shared signer for eligible fixer artifacts |
 | [TODO read-only smoke](.github/workflows/scan-for-todo-comments-readonly.yaml) | Generated projection for credential-free scanner tests |
 | [TODO default fixture](.github/workflows/scan-for-todo-comments-default-fixture.yaml) | Offline dependencies for testing the production defaults |
+| [Release-recovery offline fixture](.github/workflows/release-recovery-offline-fixture.yaml) | Generated complete offline build/refusal job, with no publisher or secret interface |
 
 ## Workflow reference
 
@@ -1237,13 +1238,13 @@ no successful diagnosis. No tags, release records, channel notes or aliases are 
 <summary>Purpose, interface and usage</summary>
 
 [.github/workflows/publish-release-recovery.yaml](.github/workflows/publish-release-recovery.yaml)
-publishes the missing GitHub release for one stable tag whose original release run pushed the tag
-but failed before publishing. It is disabled by default. The affected public repository calls it
-from its own manually dispatched workflow on its default branch; it shares that repository's
-normal release queue, so it never overlaps a release.
+publishes this catalogue's missing GitHub release for one stable tag whose original release run
+pushed the tag but failed before publishing. It is a repository-owned manual workflow, disabled by
+default, not a reusable consumer interface. It shares this repository's normal release queue.
+No production consumer adopted the former export; internal validation does not justify one.
 
 `enable-recovery` is a temporary rollout flag. `confirm-publication` is the operator's explicit
-consent, and it stays when the flag is retired. Both must be true, and the caller's event must be
+consent, and it stays when the flag is retired. Both must be true, and the event must be
 `workflow_dispatch`. Production publication is never automatic.
 
 The job builds the inspector and publisher from this catalogue's immutable source before any
@@ -1255,32 +1256,17 @@ two complete release inventories, re-admits the incident and sends at most one c
 request with `make_latest` set to `"false"`; it never retries a write. Its JSON result is printed.
 An unknown outcome fails; dispatch again to reconcile through fresh reads.
 
-```yaml
-on:
-  workflow_dispatch:
-    inputs:
-      confirm-publication: { type: boolean, default: false }
-      tag: { type: string, required: true }
-      source-sha: { type: string, required: true }
-      run-id: { type: string, required: true }
-      run-attempt: { type: string, required: true }
-      producer-ref: { type: string, required: true }
-permissions: {}
-jobs:
-  recover:
-    uses: devantler-tech/.github/.github/workflows/publish-release-recovery.yaml@<sha> # <version>
-    permissions: {}
-    with:
-      enable-recovery: true
-      confirm-publication: ${{ inputs.confirm-publication }}
-      tag: ${{ inputs.tag }}
-      source-sha: ${{ inputs.source-sha }}
-      run-id: ${{ inputs.run-id }}
-      run-attempt: ${{ inputs.run-attempt }}
-      producer-ref: ${{ inputs.producer-ref }}
-    secrets:
-      APP_PRIVATE_KEY: ${{ secrets.APP_PRIVATE_KEY }}
-```
+1. Diagnose the incident with [Inspect release recovery](#inspect-a-stranded-github-release), saving the
+   exact stable tag, full original source SHA, failed run ID/attempt and immutable producer ref.
+2. Open this repository's **Actions → Publish Release Recovery → Run workflow**, selecting `main`.
+   Enter those original incident values, not the current main SHA or a replacement tag.
+3. Leave `offline-test` false. Enable `enable-recovery` and `confirm-publication` only when you intend
+   to publish. The existing repository App secret is read by the workflow; never paste it into inputs.
+4. Verify the run's publication readback. A retry uses the same original values; a matching published
+   release is a verified no-op, not a second publication.
+
+Other products must own their manual recovery workflow. Do not call this file as a reusable job.
+Any future extraction requires real repeated production use and protected rollout evidence.
 
 #### Secrets and Inputs
 
@@ -1294,13 +1280,34 @@ jobs:
 | `run-id` | Input (string) | — | Yes | Original failed release run ID |
 | `run-attempt` | Input (string) | — | Yes | Original failed run attempt |
 | `producer-ref` | Input (string) | — | Yes | Original catalogue workflow path at its full commit SHA |
-| `APP_PRIVATE_KEY` | Secret | — | When enabled | App key for the two repository-scoped tokens |
+| `APP_PRIVATE_KEY` | Repository secret | — | When enabled | Existing App key for the two repository-scoped tokens; not a dispatch input |
 
 Run `bash .github/tests/test-publish-release-recovery.sh` after changing the workflow. It checks the
-consent, scope, immutable-source and read-before-write boundaries with negative controls, and runs
-the shipped steps without credentials. It does not prove a real publication: protected consumer
+consent, scope, immutable-source and read-before-write boundaries with negative controls, verifies
+the complete internal offline projection, and runs the shipped steps without credentials. It does
+not prove a real publication: protected consumer
 rollout, the App's observed push permission and the flag decision remain tracked in
 [#603](https://github.com/devantler-tech/.github/issues/603).
+
+</details>
+
+### Internal release-recovery validation
+
+<details>
+<summary>Purpose, interface and usage</summary>
+
+[.github/workflows/release-recovery-offline-fixture.yaml](.github/workflows/release-recovery-offline-fixture.yaml)
+is generated by `.github/scripts/generate-release-recovery-fixture.sh` for this repository's two
+native CI controls. It retains the production workflow's complete offline build/refusal job, but
+contains no publisher job or secret interface. It is not a supported reusable consumer export.
+Regenerate it after changing the source; the independent parity and mutation checks reject drift.
+
+#### Inputs
+
+| Key | Type | Default | Required | Description |
+| --- | --- | --- | --- | --- |
+| `enable-recovery` | Input (boolean) | `false` | No | Select the offline fixture; never grants publication authority |
+| `offline-test` | Input (boolean) | `false` | No | Run the real build and credential-refusal control without credentials |
 
 </details>
 

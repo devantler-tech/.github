@@ -9,7 +9,7 @@ This repository also hosts the suite's shared CI/CD building blocks: composite a
 [`.github/workflows/`](../../.github/workflows/). They were imported from `devantler-tech/actions` as one
 snapshot (#235). The one-time importer is retired and preserved in Git history; the current
 catalogue and its documentation are authored here, not generated from that historical source.
-That repository is frozen and is archived once nothing references it (#164). Consumers reference
+That repository is frozen pending verified migration and retirement (#240). Consumers reference
 the catalogue here as:
 
 ```yaml
@@ -35,7 +35,7 @@ inside `test-create-release-config` in required CI. Never treat its diagnosis as
 or write authorization; #587 owns publication, legacy compatibility and protected consumer proof.
 
 The same Go module holds a separate `cmd/publish-release-recovery` command. Only the default-off
-reusable `publish-release-recovery.yaml` calls it, after a confirmed manual dispatch, a read-only
+repository-owned manual `publish-release-recovery.yaml` calls it, after a confirmed dispatch, a read-only
 admission and only then a writer token; run `bash .github/tests/test-publish-release-recovery.sh`
 after changing it. It re-runs the inspector's admission with its writer credential, so the inspection command
 stays read-only. It refuses to publish unless that credential can push, two complete release
@@ -47,6 +47,13 @@ independently, and its result reports only what it observed. A matching publicat
 that claims nothing it did not check. It never retries a write. A server
 error, a lost connection or a failed readback is reported as an unknown outcome, naming any release
 it created, and a later run reconciles it through fresh reads.
+
+No production consumer adopted this recovery workflow. It is not a public reusable interface:
+other products own their recovery workflow until real repeated use justifies extraction.
+`release-recovery-offline-fixture.yaml` is an internal generated projection containing only the
+complete credential-free offline job, with no publisher job or secret interface. Regenerate it
+with `bash .github/scripts/generate-release-recovery-fixture.sh`; the independent production
+parity, generator equality, native enabled/disabled controls and omission mutations stay required.
 
 The credential-free release fixture also exercises stranded stable tags with absent or matching
 default-channel notes, for both lightweight and annotated tags. It verifies no release at the tagged
@@ -63,8 +70,8 @@ actions/<action-name>/            # One directory per composite action
 .scripts/                         # Scripts shared by composite actions, reached as ${GITHUB_ACTION_PATH}/../../.scripts
 
 .github/
-├── workflows/                    # ALL workflows (GitHub requires it). A workflow with `workflow_call` is a
-│                                 # catalogue product; repository-owned workflows are listed below.
+├── workflows/                    # ALL workflows (GitHub requires it). Public `workflow_call` products
+│                                 # and explicitly internal generated fixtures are indexed separately.
 ├── actions/                      # internal composite actions the reusable workflows check out and run
 ├── fixtures/                     # fixtures for the action `test-<action>` jobs
 ├── scripts/                      # helpers the reusable workflows run
@@ -98,8 +105,10 @@ One component may reference another **in this repository**. GitHub resolves thes
 - **CI job → workspace action:** existing `uses: ./actions/<action>` references require
   `actions/checkout`. They resolve from workspace bytes, not the defining file; the
   broader native-reference migration and its cross-repository proof are tracked in #271.
-- **Reusable workflow → co-located reusable workflow:** normally
-  `uses: ./.github/workflows/<x>.yaml` (same repository, same commit). An organization-required
+- **Reusable workflow → co-located reusable workflow:** new calls use native
+  `uses: $/.github/workflows/<x>.yaml` (the defining file's repository and commit).
+  Existing classic `./.github/workflows/` calls retain their source-boundary controls during #271.
+  An organization-required
   workflow is injected into a consumer repository, where that path resolves against the consumer
   instead; it must call a sibling workflow through a full remote reference pinned to an immutable
   commit whose workflow content has been reviewed, and every caller job is covered by a regression
@@ -197,6 +206,7 @@ cutover; the generic budget bound is not permission to omit tests or declare tha
 | `measure-go-disk.yaml` | This repository |
 | `organization-settings-audit.yaml` | This repository |
 | `pr-metadata-guards.yaml` | This repository |
+| `publish-release-recovery.yaml` | This repository; default-off confirmed manual recovery, not a reusable consumer interface |
 | `refresh-gh-digests.yaml` | This repository |
 | `release.yaml` | This repository |
 | `repository-admin-team-audit.yaml` | This repository |
