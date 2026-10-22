@@ -32,7 +32,7 @@ jq -e '
 # No dormant policy may retain a source association after its wrapper is removed.
 # The complete observation test separately pins selectors, bypasses and lifecycle.
 retired_policy_valid() {
-  jq -se 'length == 1 and (.[0] | .enforcement == "disabled" and .rules == [])' >/dev/null
+  jq -se 'length == 1 and (.[0] | .enforcement == "disabled" and .rules == [{"creation":false,"deletion":false,"nonFastForward":false,"requiredLinearHistory":false,"requiredSignatures":false,"update":false}])' >/dev/null
 }
 for name in require-dotnet-template-tests require-workflows-dotnet; do
   legacy="$(NAME="$name" yq -o=json -I=0 'select(.kind == "OrganizationRuleset" and .metadata.name == strenv(NAME)) | .spec.forProvider' "$render")"
@@ -43,4 +43,4 @@ for name in require-dotnet-template-tests require-workflows-dotnet; do
     fi
   done
 done
-echo 'dotnet repository validation: all native legs required; both old policies empty and disabled'
+echo 'dotnet repository validation: all native legs required; both old policies inert and disabled'

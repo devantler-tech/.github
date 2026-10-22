@@ -20,5 +20,5 @@ assert_json '[825979604]' '.spec.forProvider.conditions[0].repositoryId'
 assert_json '["~DEFAULT_BRANCH"]' '.spec.forProvider.conditions[0].refName[0].include'
 assert_json '[]' '.spec.forProvider.conditions[0].refName[0].exclude'
 assert_json '[]' '(.spec.forProvider.bypassActors // [])'
-assert_json '[]' '.spec.forProvider.rules'
+assert_json '[{"creation":false,"deletion":false,"nonFastForward":false,"requiredLinearHistory":false,"requiredSignatures":false,"update":false}]' '.spec.forProvider.rules'
 echo "dotnet-template-tests-ruleset: OK"

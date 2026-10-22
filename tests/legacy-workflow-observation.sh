@@ -19,11 +19,11 @@ check_rules() {
          | if .name=="Require workflow - Go template validation" or .name=="Require workflow - .NET template tests"
            then .enforcement="disabled" else . end
          | if .name=="Require workflow - .NET template tests" or .name=="Require workflows to pass before merging for .NET"
-           then .enforcement="disabled" | .rules=[] else . end
+           then .enforcement="disabled" | .rules |= map(del(.requiredWorkflows)) else . end
          | if has("bypassActors") then .bypassActors |= map(
              if .actorType=="OrganizationAdmin" and .actorId==0 then del(.actorId) else . end) else . end
          | .conditions[0].refName[0].exclude=[]
-         | if (.rules | length)>0 then .rules[0].requiredWorkflows[0].requiredWorkflow[0].repositoryId=933213756 else . end),
+         | if (.rules[0].requiredWorkflows // [] | length)>0 then .rules[0].requiredWorkflows[0].requiredWorkflow[0].repositoryId=933213756 else . end),
        providerConfigRef:{kind:"ProviderConfig",name:"default"}};
     . as $render | type=="array" and
     ([.[] | select(.kind=="OrganizationRuleset") |

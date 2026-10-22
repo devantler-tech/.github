@@ -42,13 +42,13 @@ verb — e.g. `require-pull-request.yaml`). Repo-scoped rulesets live next door 
 | `require-signed-commits.yaml` | **Require signed commits** (existing, retired) | Observe + Update — retain the disabled record; never create or delete |
 | `require-workflows-go.yaml` | **Require workflows to pass before merging for Go** (existing, adopted) | Observe + Update — preserve the complete observed policy and require the maintained Go workflow; never create or delete |
 | 3 `require-workflows-*.yaml` imports | **DependencyReview**, **EnableAutoMerge** and **ScanGitHubActions** | Observe + Update — preserve the observed policy and maintained source; never create or delete |
-| `require-workflows-dotnet.yaml` | language-selected **.NET** (retired) | Observe + Update — disabled with empty rules after a complete effective-policy census found no consumers; retain identity and selectors, never create or delete |
+| `require-workflows-dotnet.yaml` | language-selected **.NET** (retired) | Observe + Update — disabled with one inert rule (no required workflow; the provider requires a rules block) after a complete effective-policy census found no consumers; retain identity and selectors, never create or delete |
 | `protect-release-tags.yaml` | **Protect release tags** (net-new) | Managed (Create) — block tag delete + force-move + require `v<semver>` |
 | `require-world-at-ruin-trusted-regressions.yaml` | **Require workflow - World at Ruin trusted regressions** (net-new) | Managed (Create) — target only World at Ruin and require the canonical catalogue's trusted regression workflow |
 | `require-monorepo-ci-aggregate-contract.yaml` | **Require workflow - Monorepo CI aggregate contract** (net-new) | Managed (Create) — target only monorepo and require the aggregate-execution control from its reviewed `main` |
 | `require-dotgithub-deploy-guards.yaml` | **Require workflow - .github deploy guards** (net-new) | Managed (Create) — target only this repository and run the `deploy/` release-contract and deletion validators from its reviewed `main` |
 | `require-go-template-validation.yaml` | **Require workflow - Go template validation** (retired) | Managed (Create) — disabled after native repository validation proof; retain identity, selectors and non-deleting lifecycle |
-| `require-dotnet-template-tests.yaml` | **Require workflow - .NET template tests** (retired) | Managed (Create) — disabled with empty rules after native repository validation proof; retain identity, selectors and non-deleting lifecycle |
+| `require-dotnet-template-tests.yaml` | **Require workflow - .NET template tests** (retired) | Managed (Create) — disabled with one inert rule (no required workflow; the provider requires a rules block) after native repository validation proof; retain identity, selectors and non-deleting lifecycle |
 | `require-metadata-code-scanning-results.yaml` | **Require code scanning results - Metadata** (net-new) | Managed (Create) — centrally require CodeQL with both finding thresholds at all on `.github` and `monorepo`; no bypass actors |
 | (in `../repository-rulesets/`) `require-merge-queue-on-platform.yaml` | `platform` "Require merge queue" | Observe + Update (managed import, full ruleset backfilled) |
 
@@ -95,7 +95,7 @@ for `ubuntu-latest`, `windows-latest` and `macos-latest`. Both remain active,
 default-branch-only, without bypasses and bound to GitHub Actions integration `15368`.
 The disabled organization resources retain their managed identities, complete selectors
 and non-deleting lifecycle. The Go source remains genuinely shared. Both former .NET
-policies now declare empty rules, removing obsolete workflow associations before wrapper
+policies now declare one inert rule each, removing obsolete workflow associations before wrapper
 retirement. The language-selected policy has no consumer in a complete fresh effective-policy
 census, and the template's replacement remains independently required. Native readback must
 confirm both empty, disabled policies before source removal; this follow-through is tracked

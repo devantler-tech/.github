@@ -1,6 +1,7 @@
 # Retired after a complete effective-policy census found no consumers (#703).
 # Retain the managed identity, selectors, bypasses and non-deleting lifecycle;
-# empty rules must no longer reference the obsolete workflow source.
+# its one inert rule (every flag false, no required workflow) must no longer
+# reference the obsolete workflow source; the provider requires a rules block.
 apiVersion: enterprise.github.m.upbound.io/v1alpha1
 kind: OrganizationRuleset
 metadata:
@@ -28,7 +29,13 @@ spec:
                 source: system
     enforcement: disabled
     name: Require workflows to pass before merging for .NET
-    rules: []
+    rules:
+      - creation: false
+        deletion: false
+        nonFastForward: false
+        requiredLinearHistory: false
+        requiredSignatures: false
+        update: false
     target: branch
   providerConfigRef:
     kind: ProviderConfig
