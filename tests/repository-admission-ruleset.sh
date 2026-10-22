@@ -4,6 +4,7 @@ set -euo pipefail
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
+# Report the violated policy boundary and stop before accepting a partial check.
 fail() { printf 'repository admission policy: %s\n' "$*" >&2; exit 1; }
 # Validate the complete rendered provider payload, including product-scoped
 # result bindings. A same-named rule on another repository cannot stand in.
