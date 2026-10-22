@@ -40,8 +40,9 @@ stays read-only. It refuses to publish unless that credential can push, two comp
 inventories agree, no draft names the tag (or no tag), and a second admission matches the first. It
 then sends exactly one create-release request: the existing tag, the honest recovery receipt, no
 generated notes or assets, and `make_latest` as the JSON string `"false"`. Afterwards it reads back
-the release, the tag, the source, the inventory and the latest release independently. A matching
-publication is a no-op that claims nothing it did not check. It never retries a write. A server
+the release (every requested field), the tag, the source, the inventory and the latest release
+independently, and its result reports only what it observed. A matching publication is a no-op
+that claims nothing it did not check. It never retries a write. A server
 error, a lost connection or a failed readback is reported as an unknown outcome, naming any release
 it created, and a later run reconciles it through fresh reads.
 

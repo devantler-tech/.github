@@ -103,10 +103,10 @@ func (g *github) get(r *http.Request) (int, string) {
 		return 404, `{"message":"Not Found"}`
 	case repo + "/releases":
 		page, _ := strconv.Atoi(r.URL.Query().Get("page"))
-		if r.URL.Query().Get("per_page") != "100" || page < 1 {
+		if r.URL.Query().Get("per_page") != strconv.Itoa(pageSize) || page < 1 {
 			return 500, `{"message":"unreviewed page request"}`
 		}
-		start, end := (page-1)*100, page*100
+		start, end := (page-1)*pageSize, page*pageSize
 		if start > len(g.releases) {
 			start = len(g.releases)
 		}
@@ -214,6 +214,9 @@ func TestPublishesOnceAndReadsBack(t *testing.T) {
 	if g.latest != 9 {
 		t.Fatal("latest release moved")
 	}
+	if result["release_record"] != "matches-request" || result["latest_release_before"] != "9" || result["latest_release_after"] != "9" {
+		t.Fatalf("result does not report what verification observed: %v", result)
+	}
 }
 
 // The receipt names the original run, tag, source and producer, and says notes were not rebuilt.
@@ -242,7 +245,7 @@ func TestMatchingPublicationIsNoOp(t *testing.T) {
 		if g.counts["GET "+repo+"/releases"] != 0 {
 			t.Fatal("no-op still took a writer inventory")
 		}
-		if result["latest_release"] != "not-inspected" || result["release_notes"] != "not-inspected" {
+		if result["latest_release_before"] != "not-inspected" || result["release_record"] != "not-inspected" {
 			t.Fatalf("no-op claimed facts it never checked: %v", result)
 		}
 	})
@@ -265,7 +268,7 @@ func TestMatchingPublicationIsNoOp(t *testing.T) {
 // Every refusal before the write sends zero publication requests.
 func TestRefusalsBeforeWriteSendNothing(t *testing.T) {
 	fullPage := func(g *github, pages int) {
-		for i := 0; i < pages*100; i++ {
+		for i := 0; i < pages*pageSize; i++ {
 			g.releases = append(g.releases, release(1000+i, fmt.Sprintf("v0.0.%d", i)))
 		}
 	}
@@ -554,8 +557,12 @@ func TestFirstStableReleaseMayBecomeLatest(t *testing.T) {
 		_, _ = io.WriteString(w, encode(created))
 		return true
 	}
-	if result, err := g.exercise(t); err != nil || result["result"] != "published" {
+	result, err := g.exercise(t)
+	if err != nil || result["result"] != "published" {
 		t.Fatalf("first stable release refused: %v %v", result, err)
+	}
+	if result["latest_release_before"] != "" || result["latest_release_after"] != "18" {
+		t.Fatalf("result hid that the release became latest: %v", result)
 	}
 }
 
@@ -569,5 +576,62 @@ func TestMalformedLatestReadbackFails(t *testing.T) {
 	}
 	if _, err := g.exercise(t); err == nil || !strings.Contains(err.Error(), "latest release is not a published stable release") {
 		t.Fatalf("malformed latest readback accepted: %v", err)
+	}
+}
+
+// The readback compares every requested field, so a renamed release is not a success.
+func TestReadbackComparesEveryRequestedField(t *testing.T) {
+	for _, field := range []string{"name", "body", "tag_name", "prerelease"} {
+		t.Run(field, func(t *testing.T) {
+			g := newGitHub()
+			g.edit = func(r *http.Request, _ int, _ *int, body *string) {
+				if r.URL.Path == repo+"/releases/tags/v1.222.1" && len(g.posts) == 1 {
+					var value map[string]any
+					_ = json.Unmarshal([]byte(*body), &value)
+					switch field {
+					case "prerelease":
+						value[field] = true
+					default:
+						value[field] = "changed"
+					}
+					*body = encode(value)
+				}
+			}
+			if _, err := g.exercise(t); err == nil || !strings.Contains(err.Error(), "readback does not match") {
+				t.Fatalf("readback accepted a changed %s: %v", field, err)
+			}
+		})
+	}
+}
+
+type failingWriter struct{}
+
+func (failingWriter) Write([]byte) (int, error) { return 0, fmt.Errorf("closed pipe") }
+
+// A result that cannot be written after a verified publication still names the release.
+func TestUnwritableResultNamesThePublishedRelease(t *testing.T) {
+	g := newGitHub()
+	server := g.serve(t)
+	defer server.Close()
+	err := run(args(), token, failingWriter{}, newPublisher(server.Client(), server.URL))
+	if err == nil || !strings.Contains(err.Error(), "release 18 was published and verified") || !strings.Contains(err.Error(), "do not publish it again") {
+		t.Fatalf("unwritable result hid the publication: %v", err)
+	}
+	if len(g.posts) != 1 {
+		t.Fatalf("expected exactly one publication request, got %d", len(g.posts))
+	}
+}
+
+// Listed releases carry their full notes; large generated notes must not overflow a page.
+func TestLargeReleaseNotesFitTheInventoryPages(t *testing.T) {
+	g := newGitHub()
+	notes := strings.Repeat("generated release notes ", 1500) // about 35 KiB per release
+	for i := 0; i < 3*pageSize; i++ {
+		entry := release(2000+i, fmt.Sprintf("v0.9.%d", i))
+		entry["body"] = notes
+		g.releases = append(g.releases, entry)
+	}
+	if result, err := g.exercise(t); err != nil || result["result"] != "published" {
+		t.Fatalf("large release notes blocked recovery: %v %v", result, err)
 	}
 }

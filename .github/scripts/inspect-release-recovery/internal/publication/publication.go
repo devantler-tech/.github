@@ -26,8 +26,10 @@ const apiURL = "https://api.github.com"
 
 // maxPages bounds the release inventory. Long-lived repositories here already exceed a
 // thousand releases; a repository beyond this bound is refused rather than read partially.
-const maxPages = 50
-const pageSize = 100
+// Pages stay small because each listed release carries its full notes, and every response
+// is capped at one mebibyte.
+const maxPages = 200
+const pageSize = 25
 
 // unknownOutcome is how every failure that may follow an accepted write ends.
 const unknownOutcome = "do not publish by hand or retry; run recovery again to reconcile"
@@ -162,12 +164,30 @@ func (p *publisher) stableInventory(ctx context.Context, a *inspection.Admission
 	return first, nil
 }
 
+// requested is the release this run asks GitHub to publish. The create response and the
+// readback are compared against every one of these fields, so none can drift unnoticed.
+func requested(a *inspection.Admission) map[string]any {
+	return map[string]any{"tag_name": a.Tag, "name": a.Tag, "body": Receipt(a), "draft": false, "prerelease": false}
+}
+
+// matches reports whether a release carries every requested field exactly.
+func matches(release map[string]any, want map[string]any) bool {
+	for key, value := range want {
+		if !reflect.DeepEqual(release[key], value) {
+			return false
+		}
+	}
+	return release != nil
+}
+
 // create sends the single create-release request. It is never retried.
 func (p *publisher) create(ctx context.Context, a *inspection.Admission, token string) (string, error) {
-	payload, err := json.Marshal(map[string]any{"tag_name": a.Tag, "target_commitish": a.SourceSHA, "name": a.Tag,
-		"body": Receipt(a), "draft": false, "prerelease": false, "generate_release_notes": false,
-		// The endpoint's make_latest is a string enum; anything else defaults to "true".
-		"make_latest": "false"})
+	fields := requested(a)
+	fields["target_commitish"] = a.SourceSHA
+	fields["generate_release_notes"] = false
+	// The endpoint's make_latest is a string enum; anything else defaults to "true".
+	fields["make_latest"] = "false"
+	payload, err := json.Marshal(fields)
 	if err != nil {
 		return "", errors.New("could not encode the publication request")
 	}
@@ -196,67 +216,77 @@ func (p *publisher) create(ctx context.Context, a *inspection.Admission, token s
 	}
 	release := object(value)
 	id, ok := inspection.PositiveID(release["id"])
-	if !ok || release["tag_name"] != a.Tag || release["draft"] != false || release["prerelease"] != false {
+	if !ok || !matches(release, requested(a)) {
 		return "", errors.New("publication response does not describe the requested release; " + unknownOutcome)
 	}
 	return id, nil
 }
 
+// observation is what verification read back after the write. Every reported fact comes from it.
+type observation struct {
+	LatestBefore, LatestAfter string
+}
+
 // verify re-reads the release, the admitted identity, the inventory and the latest anchor.
-func (p *publisher) verify(ctx context.Context, args []string, a *inspection.Admission, token, id string, before inventory) error {
+func (p *publisher) verify(ctx context.Context, args []string, a *inspection.Admission, token, id string, before inventory) (observation, error) {
+	seen := observation{LatestBefore: before.Latest}
 	value, present, err := p.reader.Get(ctx, "/repos/"+a.Repository+"/releases/tags/"+a.Tag, token, true)
 	if err != nil {
-		return fmt.Errorf("publication readback: %w", err)
+		return seen, fmt.Errorf("publication readback: %w", err)
 	}
 	release := object(value)
 	readID, _ := inspection.PositiveID(release["id"])
 	commitish := text(release["target_commitish"])
-	if !present || readID != id || release["tag_name"] != a.Tag || release["draft"] != false ||
-		release["prerelease"] != false || release["body"] != Receipt(a) ||
-		commitish != a.SourceSHA && commitish != a.DefaultBranch {
-		return errors.New("publication readback does not match the requested release")
+	if !present || readID != id || !matches(release, requested(a)) || commitish != a.SourceSHA && commitish != a.DefaultBranch {
+		return seen, errors.New("publication readback does not match the requested release")
 	}
 	after, err := p.reader.Admit(ctx, args, token)
 	if err != nil {
-		return fmt.Errorf("post-publication admission: %w", err)
+		return seen, fmt.Errorf("post-publication admission: %w", err)
 	}
 	if !a.SameIdentity(after) || !after.Published {
-		return errors.New("post-publication observation does not match the admitted tag and source")
+		return seen, errors.New("post-publication observation does not match the admitted tag and source")
 	}
 	// The release list must now hold exactly this release for the tag, and no new draft.
 	now, err := p.list(ctx, a, token)
 	if err != nil {
-		return fmt.Errorf("post-publication inventory: %w", err)
+		return seen, fmt.Errorf("post-publication inventory: %w", err)
 	}
 	records := 0
 	for _, record := range now.Releases {
 		if record.Tag == a.Tag {
 			records++
 			if record.ID != id {
-				return errors.New("another release record for this tag appeared during publication")
+				return seen, errors.New("another release record for this tag appeared during publication")
 			}
 		}
 	}
 	if records != 1 {
-		return errors.New("post-publication inventory does not hold exactly the published release")
+		return seen, errors.New("post-publication inventory does not hold exactly the published release")
 	}
+	seen.LatestAfter = now.Latest
 	// make_latest "false" keeps an existing latest release in place. With no earlier stable
 	// release there is nothing to preserve, and GitHub may report the new one as latest.
 	if now.Latest != before.Latest && (before.Latest != "" || now.Latest != id) {
-		return errors.New("the latest release changed during publication")
+		return seen, errors.New("the latest release changed during publication")
 	}
-	return nil
+	return seen, nil
 }
 
-func report(out io.Writer, a *inspection.Admission, result, id string, posts int) error {
-	notes, latest := "not-inspected", "not-inspected"
-	if result == "published" {
-		// verify checked both for the release this run created.
-		notes, latest = "not-reconstructed", "preserved"
-	}
-	raw, err := json.Marshal(map[string]any{"result": result, "repository": a.Repository, "tag": a.Tag,
+// report prints the result. A no-op inspected only that a matching release exists, so it
+// claims nothing else; a publication reports what verification observed.
+func report(out io.Writer, a *inspection.Admission, id string, seen *observation) error {
+	fields := map[string]any{"result": "already-published", "repository": a.Repository, "tag": a.Tag,
 		"source_sha": a.SourceSHA, "run_id": a.RunID, "run_attempt": a.RunAttempt, "producer_ref": a.ProducerRef,
-		"release_id": id, "publication_requests": posts, "release_notes": notes, "latest_release": latest})
+		"release_id": "", "publication_requests": 0, "release_record": "not-inspected",
+		"latest_release_before": "not-inspected", "latest_release_after": "not-inspected"}
+	if seen != nil {
+		// The verified record carries the receipt body; no notes were generated or reconstructed.
+		fields["result"], fields["release_id"], fields["publication_requests"] = "published", id, 1
+		fields["release_record"] = "matches-request"
+		fields["latest_release_before"], fields["latest_release_after"] = seen.LatestBefore, seen.LatestAfter
+	}
+	raw, err := json.Marshal(fields)
 	if err != nil {
 		return errors.New("could not encode the result")
 	}
@@ -273,7 +303,7 @@ func run(args []string, token string, out io.Writer, p *publisher) error {
 		return err
 	}
 	if admission.Published {
-		return report(out, admission, "already-published", "", 0)
+		return report(out, admission, "", nil)
 	}
 	if err := p.capability(ctx, admission, token); err != nil {
 		return err
@@ -290,7 +320,7 @@ func run(args []string, token string, out io.Writer, p *publisher) error {
 		return errors.New("re-admission observed a different tag, source or configuration")
 	}
 	if again.Published {
-		return report(out, again, "already-published", "", 0)
+		return report(out, again, "", nil)
 	}
 	id, err := p.create(ctx, again, token)
 	if err != nil {
@@ -299,10 +329,14 @@ func run(args []string, token string, out io.Writer, p *publisher) error {
 	// Verification gets its own deadline so a slow admission cannot starve the readback.
 	verifyCtx, cancelVerify := context.WithTimeout(context.Background(), 150*time.Second)
 	defer cancelVerify()
-	if err := p.verify(verifyCtx, args, again, token, id, before); err != nil {
+	seen, err := p.verify(verifyCtx, args, again, token, id, before)
+	if err != nil {
 		return fmt.Errorf("release %s was created but its verification failed: %v; %s", id, err, unknownOutcome)
 	}
-	return report(out, again, "published", id, 1)
+	if err := report(out, again, id, &seen); err != nil {
+		return fmt.Errorf("release %s was published and verified, but the result could not be written: %v; do not publish it again", id, err)
+	}
+	return nil
 }
 
 // Run publishes against the fixed production API with the supplied writer credential.
