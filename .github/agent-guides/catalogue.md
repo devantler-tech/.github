@@ -34,6 +34,18 @@ executes real HTTP controls and the immutable-source and read-only credential bo
 inside `test-create-release-config` in required CI. Never treat its diagnosis as completed recovery
 or write authorization; #587 owns publication, legacy compatibility and protected consumer proof.
 
+The same Go module holds a separate `cmd/publish-release-recovery` command. No workflow calls it
+yet. It re-runs the inspector's admission with its writer credential, so the inspection command
+stays read-only. It refuses to publish unless that credential can push, two complete release
+inventories agree, no draft names the tag (or no tag), and a second admission matches the first. It
+then sends exactly one create-release request: the existing tag, the honest recovery receipt, no
+generated notes or assets, and `make_latest` as the JSON string `"false"`. Afterwards it reads back
+the release (every requested field), the tag, the source, the inventory and the latest release
+independently, and its result reports only what it observed. A matching publication is a no-op
+that claims nothing it did not check. It never retries a write. A server
+error, a lost connection or a failed readback is reported as an unknown outcome, naming any release
+it created, and a later run reconciles it through fresh reads.
+
 The credential-free release fixture also exercises stranded stable tags with absent or matching
 default-channel notes, for both lightweight and annotated tags. It verifies no release at the tagged
 commit, the next patch after a subsequent fix, and unchanged consumer files and local/remote refs.
