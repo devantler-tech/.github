@@ -65,7 +65,7 @@ go -C "$root/.github/scripts/ci-selection" test -race -count=3 ./...
 go -C "$root/.github/scripts/ci-selection" vet ./...
 # Remove every .NET owner from both production inputs. This must fail before
 # selection, even though the remaining inventory still matches the workflow.
-dotnet_owners='["test-run-dotnet-tests-gate-lockstep","test-run-dotnet-tests-mtp","test-run-dotnet-tests-workflow","test-run-dotnet-tests-workflow-authenticated"]'
+dotnet_owners='["test-run-dotnet-tests-gate-lockstep","test-run-dotnet-tests-mtp","test-run-dotnet-tests","test-run-dotnet-tests-authenticated"]'
 jq --argjson owners "$dotnet_owners" 'del(.jobs[$owners[]])' "$work/workflow.json" > "$work/ownerless-workflow.json"
 jq --argjson owners "$dotnet_owners" 'del(.jobs[$owners[]], .preserved[$owners[]])' "$root/.github/scripts/ci-selection/inventory.json" > "$work/ownerless-inventory.json"
 if EVENT_NAME=push RUN_CATALOGUE=true CATALOGUE_SCOPE=true GITHUB_OUTPUT="$work/ownerless-output" \
@@ -73,13 +73,13 @@ if EVENT_NAME=push RUN_CATALOGUE=true CATALOGUE_SCOPE=true GITHUB_OUTPUT="$work/
   echo 'FAIL: production entrypoint accepted removal of every required .NET owner' >&2
   exit 1
 fi
-grep -q 'incomplete or unbound .NET workflow owner' "$work/ownerless.log"
+grep -q 'incomplete or unbound .NET action owner' "$work/ownerless.log"
 [[ ! -e "$work/ownerless-output" ]]
 touch "$work/output"
 EVENT_NAME=push RUN_CATALOGUE=true CATALOGUE_SCOPE=true GITHUB_OUTPUT="$work/output" \
   go -C "$root/.github/scripts/ci-selection" run . "$root" "$root/.github/scripts/ci-selection/inventory.json" "$work/workflow.json"
 selected="$(sed -n 's/^selected=//p' "$work/output")"
-[[ "$(jq 'length' <<< "$selected")" == 80 ]]
+[[ "$(jq 'length' <<< "$selected")" == 79 ]]
 jq -e 'index("test-validate-go-postgresql-fixture") != null' <<<"$selected" >/dev/null
 jq -e 'index("test-go-cache-native-observer") != null' <<<"$selected" >/dev/null
 # Hosted CI reports these callers as skipped because their callee jobs are
@@ -137,25 +137,25 @@ jq -e --slurpfile inventory "$root/.github/scripts/ci-selection/inventory.json" 
 # dependencies include two native callers and two inline controls; the authenticated
 # caller retains independent admission and is not promised as a mandatory execution.
 dotnet="$work/dotnet"
-mkdir -p "$dotnet/.github/workflows"
+mkdir -p "$dotnet/actions/run-dotnet-tests"
 git init -q "$dotnet"
 git -C "$dotnet" config user.name 'CI fixture'
 git -C "$dotnet" config user.email 'fixture@example.invalid'
 git -C "$dotnet" config commit.gpgsign false
-printf 'base\n' > "$dotnet/.github/workflows/run-dotnet-tests.yaml"
-git -C "$dotnet" add -- .github/workflows/run-dotnet-tests.yaml
+printf 'base\n' > "$dotnet/actions/run-dotnet-tests/action.yaml"
+git -C "$dotnet" add -- actions/run-dotnet-tests/action.yaml
 git -C "$dotnet" commit -qm 'test: dotnet baseline'
 base="$(git -C "$dotnet" rev-parse HEAD)"
-printf 'changed\n' > "$dotnet/.github/workflows/run-dotnet-tests.yaml"
-git -C "$dotnet" add -- .github/workflows/run-dotnet-tests.yaml
+printf 'changed\n' > "$dotnet/actions/run-dotnet-tests/action.yaml"
+git -C "$dotnet" add -- actions/run-dotnet-tests/action.yaml
 git -C "$dotnet" commit -qm 'test: dotnet change'
 head="$(git -C "$dotnet" rev-parse HEAD)"
 : > "$work/output"
 EVENT_NAME=pull_request RUN_CATALOGUE=true CATALOGUE_SCOPE=true BASE_SHA="$base" HEAD_SHA="$head" GITHUB_OUTPUT="$work/output" \
   go -C "$root/.github/scripts/ci-selection" run . "$dotnet" "$root/.github/scripts/ci-selection/inventory.json" "$work/workflow.json"
 selected="$(sed -n 's/^selected=//p' "$work/output")"
-jq -e '. == ["test-run-dotnet-tests-gate-lockstep","test-run-dotnet-tests-mtp","test-run-dotnet-tests-workflow"]' <<< "$selected" >/dev/null
-needs="$(jq -cn --argjson selected "$selected" 'reduce $selected[] as $id ({"test-run-dotnet-tests-workflow-authenticated":{result:"skipped"},"test-enable-auto-merge-queue":{result:"skipped"}}; .[$id] = {result:"success"})')"
+jq -e --slurpfile inventory "$root/.github/scripts/ci-selection/inventory.json" '. == ([$inventory[0].jobs | to_entries[] | select(any(.value[]; . == "actions/run-dotnet-tests/")) | .key | select($inventory[0].preserved[.] == null)] | sort)' <<< "$selected" >/dev/null
+needs="$(jq -cn --argjson selected "$selected" 'reduce $selected[] as $id ({"test-run-dotnet-tests-authenticated":{result:"skipped"},"test-enable-auto-merge-queue":{result:"skipped"}}; .[$id] = {result:"success"})')"
 JOB_RESULTS='success skipped' CATALOGUE_REQUIRED=true SELECTOR_RESULT=success SELECTED_JOBS="$selected" NEEDS_JSON="$needs" run_reducer
 for caller in $(jq -r '.[]' <<< "$selected"); do
   for outcome in skipped failure; do
@@ -166,7 +166,7 @@ for caller in $(jq -r '.[]' <<< "$selected"); do
     fi
   done
 done
-bad_needs="$(jq '."test-run-dotnet-tests-workflow-authenticated".result="failure"' <<< "$needs")"
+bad_needs="$(jq '."test-run-dotnet-tests-authenticated".result="failure"' <<< "$needs")"
 if JOB_RESULTS='success failure' CATALOGUE_REQUIRED=true SELECTOR_RESULT=success SELECTED_JOBS="$selected" NEEDS_JSON="$bad_needs" run_reducer >/dev/null 2>&1; then
   echo 'FAIL: independently admitted authenticated caller failure was concealed' >&2
   exit 1

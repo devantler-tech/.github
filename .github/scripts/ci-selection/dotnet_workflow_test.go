@@ -9,9 +9,9 @@ import (
 	"testing"
 )
 
-const dotnetSubject = ".github/workflows/run-dotnet-tests.yaml"
+const dotnetSubject = "actions/run-dotnet-tests/action.yaml"
 
-var dotnetSubjects = []string{"test-run-dotnet-tests-gate-lockstep", "test-run-dotnet-tests-mtp", "test-run-dotnet-tests-workflow", "test-run-dotnet-tests-workflow-authenticated"}
+var dotnetSubjects = []string{"test-run-dotnet-tests", "test-run-dotnet-tests-authenticated", "test-run-dotnet-tests-gate-lockstep", "test-run-dotnet-tests-mtp"}
 
 func dotnetSelectionFixture(t *testing.T) (inventory, workflow) {
 	t.Helper()
@@ -22,12 +22,9 @@ func dotnetSelectionFixture(t *testing.T) (inventory, workflow) {
 	}
 	i.Preserved = map[string]job{}
 	for _, id := range dotnetSubjects {
-		i.Jobs[id] = []string{dotnetSubject}
+		i.Jobs[id] = []string{"actions/run-dotnet-tests/"}
 		j := job{If: selectionGuard(id), Needs: []any{"select-ci-tests"}}
-		if id == "test-run-dotnet-tests-workflow" || id == "test-run-dotnet-tests-workflow-authenticated" {
-			j.Uses = "./" + dotnetSubject
-		}
-		if id == "test-run-dotnet-tests-workflow-authenticated" {
+		if id == "test-run-dotnet-tests-authenticated" {
 			j.If = "${{ trusted_same_repository_pull_request }}"
 			j.Needs = nil
 			i.Preserved[id] = job{If: j.If}
@@ -79,19 +76,19 @@ func TestDotnetWorkflowOwnershipCannotOmitOrInventDependencies(t *testing.T) {
 			case "unrelated owner":
 				i.Jobs["test-one"] = append(i.Jobs["test-one"], dotnetSubject)
 			case "duplicate owner":
-				i.Jobs[dotnetSubjects[0]] = append(i.Jobs[dotnetSubjects[0]], dotnetSubject)
+				i.Jobs[dotnetSubjects[0]] = append(i.Jobs[dotnetSubjects[0]], "actions/run-dotnet-tests/")
 			case "changed caller":
-				j := w.Jobs["test-run-dotnet-tests-workflow"]
+				j := w.Jobs["test-run-dotnet-tests"]
 				j.Uses = "./.github/workflows/other.yaml"
-				w.Jobs["test-run-dotnet-tests-workflow"] = j
+				w.Jobs["test-run-dotnet-tests"] = j
 			case "unowned caller":
 				j := w.Jobs["test-one"]
 				j.Uses = "./" + dotnetSubject
 				w.Jobs["test-one"] = j
 			case "changed authenticated admission":
-				j := w.Jobs["test-run-dotnet-tests-workflow-authenticated"]
+				j := w.Jobs["test-run-dotnet-tests-authenticated"]
 				j.If = "${{ true }}"
-				w.Jobs["test-run-dotnet-tests-workflow-authenticated"] = j
+				w.Jobs["test-run-dotnet-tests-authenticated"] = j
 			}
 			if _, err := validateInventory(i, w); err == nil {
 				t.Fatalf("accepted %s", kind)
@@ -107,7 +104,7 @@ func TestDotnetWorkflowUnknownAndSharedPathsKeepFullSelection(t *testing.T) {
 		all = append(all, id)
 	}
 	sort.Strings(all)
-	for _, paths := range [][]string{{dotnetSubject + ".bak"}, {dotnetSubject + "/extra"}, {dotnetSubject, ".github/workflows/ci.yaml"}, {dotnetSubject, ".github/scripts/helper.sh"}} {
+	for _, paths := range [][]string{{"actions/run-dotnet-tests-extra/action.yaml"}, {".github/workflows/unknown.yaml"}, {dotnetSubject, ".github/workflows/ci.yaml"}, {dotnetSubject, ".github/scripts/helper.sh"}} {
 		if got := selectJobs(i, "pull_request", paths); !reflect.DeepEqual(got, all) {
 			t.Fatalf("incomplete fallback for %v: %v", paths, got)
 		}
@@ -151,7 +148,7 @@ func TestDotnetWorkflowGitStatusRetainsFullFallback(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			git("add", "--", ".github/workflows")
+			git("add", "--", "actions/run-dotnet-tests")
 			git("commit", "-qm", "workflow change")
 			paths, err := changedPaths(dir, base, git("rev-parse", "HEAD"))
 			if err != nil {
@@ -202,7 +199,7 @@ if [[ "$1" == diff && "$2" == --raw ]]; then
     "$CI_REAL_GIT" "$@"
     exit 17
   fi
-  printf ':100644 100644 aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb M\0.github/workflows/run-dotnet-tests.yaml'
+  printf ':100644 100644 aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb M\0actions/run-dotnet-tests/action.yaml'
   exit 0
 fi
 exec "$CI_REAL_GIT" "$@"

@@ -18,20 +18,20 @@ import (
 
 const scheduling = "github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ')"
 
-const dotnetWorkflow = ".github/workflows/run-dotnet-tests.yaml"
+const dotnetAction = "actions/run-dotnet-tests/action.yaml"
 const goCacheObserver = "test-go-cache-native-observer"
 const goCacheFixture = "test-validate-go-postgresql-fixture"
 
 var ordinarySelectiveFiles = map[string]bool{
-	dotnetWorkflow: true,
+	dotnetAction: true,
 }
 
 // These include inline hosted and credential controls, not just reusable callers.
 var dotnetOwners = map[string]bool{
-	"test-run-dotnet-tests-gate-lockstep":          false,
-	"test-run-dotnet-tests-mtp":                    false,
-	"test-run-dotnet-tests-workflow":               true,
-	"test-run-dotnet-tests-workflow-authenticated": true,
+	"test-run-dotnet-tests-gate-lockstep": false,
+	"test-run-dotnet-tests-mtp":           false,
+	"test-run-dotnet-tests":               false,
+	"test-run-dotnet-tests-authenticated": false,
 }
 
 type inventory struct {
@@ -82,8 +82,7 @@ func validateInventory(i inventory, w workflow) ([]string, error) {
 		}
 		seen[id] = true
 		for _, p := range paths {
-			if !regexp.MustCompile(`^actions/[a-z0-9-]+/$`).MatchString(p) &&
-				(p != dotnetWorkflow || !hasDotnetOwner(id)) {
+			if !regexp.MustCompile(`^actions/[a-z0-9-]+/$`).MatchString(p) {
 				return nil, fmt.Errorf("invalid selective owner %q", p)
 			}
 		}
@@ -151,14 +150,9 @@ func validateGoCacheOwners(i inventory, w workflow) error {
 	return nil
 }
 
-func hasDotnetOwner(id string) bool {
-	_, ok := dotnetOwners[id]
-	return ok
-}
-
 func validateDotnetOwners(i inventory, w workflow) error {
 	for id, j := range w.Jobs {
-		if j.Uses == "./"+dotnetWorkflow && !dotnetOwners[id] {
+		if j.Uses == "./"+dotnetAction && !dotnetOwners[id] {
 			return fmt.Errorf("unreviewed .NET workflow caller %s", id)
 		}
 	}
@@ -166,12 +160,12 @@ func validateDotnetOwners(i inventory, w workflow) error {
 		j, ok := w.Jobs[id]
 		count := 0
 		for _, p := range i.Jobs[id] {
-			if p == dotnetWorkflow {
+			if p == "actions/run-dotnet-tests/" {
 				count++
 			}
 		}
-		if !ok || count != 1 || caller && j.Uses != "./"+dotnetWorkflow || !caller && j.Uses != "" {
-			return fmt.Errorf("incomplete or unbound .NET workflow owner %s", id)
+		if !ok || count != 1 || caller && j.Uses != "./"+dotnetAction || !caller && j.Uses != "" {
+			return fmt.Errorf("incomplete or unbound .NET action owner %s", id)
 		}
 	}
 	return nil

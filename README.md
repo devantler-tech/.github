@@ -115,7 +115,6 @@ single-product pipeline.
 | [Lint](.github/workflows/lint.yaml) | Run MegaLinter with isolated signed-fix handling |
 | [Publish app](.github/workflows/publish-app.yaml) | Build, sign and publish an application image |
 | [Publish manifests](.github/workflows/publish-manifests.yaml) | Build, sign and publish a manifest bundle |
-| [Run .NET tests](.github/workflows/run-dotnet-tests.yaml) | Compatibility wrapper while the template completes native enforcement |
 | [Scan TODO comments](.github/workflows/scan-for-todo-comments.yaml) | Turn actionable TODOs into tracked work |
 | [Scan workflow vulnerabilities](.github/workflows/scan-for-workflow-vulnerabilities.yaml) | Analyze workflow security; also an organization PR gate |
 | [Template sync](.github/workflows/template-sync.yaml) | Open updates from an upstream template |
@@ -713,43 +712,6 @@ jobs:
 | `recovery-workflow-sha` | Input (string) | empty | No | Original publisher's full commit SHA in this catalogue repository; required for recovery |
 
 Explicit recovery runs on the original semantic-version tag and source revision. Enable `enable-signed-recovery`, `enable-signed-promotion` and `enable-caller-pin`, and supply the original digest, run ID, attempt and publisher SHA. The workflow verifies the original signature identity and signed repository, source, version and run claims before reading the registry. A matching version succeeds without writing; only an authenticated, unambiguous missing version is restored from that digest. Contradictory versions and failed or partial reads stop recovery. Recovery never rebuilds or re-signs an artifact and always preserves `latest`, including for stable versions and prereleases. Original publishers from another repository identity are not accepted; that consumer migration remains in #242. The shared publisher queue serializes cooperating callers within a repository. Registry V2 has no compare-and-set operation, so readback detects a conflicting external writer but cannot prevent its race.
-
-</details>
-
-### 🧪 Run .NET Tests
-
-<details>
-<summary>Purpose, interface and usage</summary>
-
-[.github/workflows/run-dotnet-tests.yaml](.github/workflows/run-dotnet-tests.yaml) is a workflow used to test .NET solutions or projects across multiple operating systems. On authenticated runs, coverage is merged into a single Cobertura report and uploaded to **GitHub Code Quality** (native PR coverage).
-
-#### Usage
-
-```yaml
-jobs:
-  dotnet-test:
-    uses: devantler-tech/.github/.github/workflows/run-dotnet-tests.yaml@<full-commit-sha> # vX.Y.Z
-    permissions:
-      contents: read
-      packages: read
-      code-quality: write # required for GitHub Code Quality coverage upload
-```
-
-> **Note:** The calling workflow must grant `code-quality: write` (otherwise the run fails at startup). Coverage requires the repo's **Code Quality** to be enabled (_Settings → Code quality_) and is skipped on credential-free pull-request runs.
-
-#### Secrets and Inputs
-
-| Key                        | Type            | Default | Required | Description                                                                 |
-|----------------------------|-----------------|---------|----------|-----------------------------------------------------------------------------|
-| `enable-github-packages`   | Input (boolean) | `false` | No       | Use `GITHUB_TOKEN` for private packages and Code Quality on trusted same-repository non-bot pull-request code |
-| `working-directory`        | Input (string)  | `""`    | No       | Directory containing the .NET solution or project                           |
-
-Pull-request runs are credential-free by default. A trusted same-repository human-authored
-pull request that needs private GitHub Packages can set `enable-github-packages: true`.
-The workflow ignores that input for fork and bot pull requests, so their code cannot opt
-itself back into the token-bearing path. Merge-group and direct non-pull-request runs
-authenticate with the automatic `GITHUB_TOKEN` when the calling job grants `packages: read`.
-The same explicit token boundary keeps the Code Quality uploader out of credential-free runs.
 
 </details>
 

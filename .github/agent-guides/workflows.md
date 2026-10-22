@@ -10,7 +10,7 @@ Choose the ownership boundary before adding a workflow. Organization-required wo
 PR-only, cross-product concerns such as scanning and linting. A reusable workflow needs more
 than one real job-level consumer; fixture-only calls do not establish that need. A single-product
 pipeline or reusable-workflow callsite belongs in its consuming repository, using local actions
-for manageable step groups. Retired Pages, policy-sync and run-cleanup exports must not be
+for manageable step groups. Retired Pages, policy-sync, .NET-test and run-cleanup exports must not be
 restored without a new ownership decision; immutable historical releases remain available.
 
 1. **Use the `workflow_call` trigger** — this is what makes them reusable.
@@ -190,21 +190,15 @@ gated test jobs. Recognized action-owned paths narrow that set, including review
 transitive caller and inline-lockstep ownership. The cleanup workflow and its
 generated read-only projection have exact file ownership bound to all three native
 callers; their admission stays intact, and affected callers must succeed in the
-required reducer. Ordinary regular-file modifications to `run-dotnet-tests.yaml`
-select its normal native caller, hosted helper-checkout proof and credential
-lockstep control. All four reviewed dependencies must retain exact ownership,
-including the separately admitted authenticated caller; an unreviewed caller or
-missing owner fails validation. Additions, deletions, type changes and unclassified
-rename destinations keep full coverage. The authenticated caller's original
-event/author admission remains outside mandatory execution selection.
+required reducer. Ordinary regular-file modifications to the shared .NET action retain its native callers and credential controls. The authenticated caller keeps its independently admitted same-repository maintainer event boundary. The retired .NET workflow has no selective owner; restoring or changing a workflow keeps full coverage.
 Shared helpers, other workflows, tests,
 fixtures, root configuration and unknown paths retain full coverage; missing Git
 evidence fails the selector. Classification runs from the immutable trusted base
 before candidate checkout and selection on the same read-only runner; there is
 no separate prerequisite runner assignment. A successful trusted-base scope decision
-for a deployment-only PR omits only the 48 explicitly inventoried smoke jobs; the
+for a deployment-only PR omits only the 47 explicitly inventoried smoke jobs; the
 separate event-gated dependency-review smoke retains its scope condition. The other
-31 selectable jobs and all independent shared guards remain available. Missing or
+32 selectable jobs and all independent shared guards remain available. Missing or
 malformed scope output fails selection; unproven classification keeps full coverage.
 Renames retain both old and new owners. Main keeps full
 coverage, and existing merge-group/release exclusions, credential-specific and

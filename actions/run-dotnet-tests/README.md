@@ -45,28 +45,24 @@ GitHub Packages. Authentication is scoped to that restore step, so subsequent te
 cannot read the credential from their process environment or the user NuGet configuration.
 Credential-free runs also skip the token-bearing GitHub Code Quality upload.
 
-## Reusable workflow
+## Multi-platform caller
 
-The reusable workflow checks out only this action in its helper directory. Catalogue test
-projects and sample coverage reports are excluded, so testing from the consumer repository's
-root detects coverage support and merges reports from the consumer's own files.
-
-The reusable workflow is credential-free on pull requests by default. Trusted same-repository
-human-authored pull requests that need private GitHub Packages can opt in explicitly:
+Each product owns its test workflow and branch requirements. Use the action from a matrix job:
 
 ```yaml
 jobs:
   test:
-    uses: devantler-tech/.github/.github/workflows/run-dotnet-tests.yaml@<full-commit-sha> # vX.Y.Z
-    with:
-      enable-github-packages: true
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
     permissions:
       contents: read
-      packages: read
-      code-quality: write
+    steps:
+      - uses: actions/checkout@<full-commit-sha>
+        with:
+          persist-credentials: false
+      - uses: devantler-tech/.github/actions/run-dotnet-tests@<full-commit-sha> # vX.Y.Z
 ```
 
-The workflow honors `enable-github-packages` only when the pull request head is in the
-same repository and the pull request author is not a bot. Fork and bot pull requests remain
-credential-free even if they set the input. Merge-group and direct non-pull-request runs
-retain authenticated restore and Code Quality upload without the opt-in.
+The example omits credentials. A product that needs authenticated restore or coverage upload must define its own trusted event and author boundary, grant the required permissions, and pass the token explicitly. The former reusable workflow remains available only at historical immutable releases.

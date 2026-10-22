@@ -203,7 +203,7 @@ git -C "${current}" remote add origin "${current}"
 [[ "$(cat "${output}")" == catalogue=false ]] || fail 'real workflow did not recognize deployment-only changes'
 
 # Compose real Git classification, the production selector and the actual
-# required reducer. A false scope omits 48 gated smoke jobs plus the separately
+# required reducer. A false scope omits 47 gated smoke jobs plus the separately
 # event-gated dependency-review smoke, not the other 32 selectable jobs. Only
 # the retired policy-sync and three cleanup fixtures leave the previous floor.
 yq -o=json . "${ci}" >"${fixture}/workflow.json"
@@ -232,8 +232,8 @@ expected_selected='[
   "test-lint-workflow",
   "test-lint-workflow-manual-fixes",
   "test-release-please-semantics",
+  "test-run-dotnet-tests",
   "test-run-dotnet-tests-mtp",
-  "test-run-dotnet-tests-workflow",
   "test-setup-ksail-cli",
   "test-suite-default-branch-coverage",
   "test-suite-default-branch-coverage-blocks",
@@ -252,7 +252,7 @@ jq -en --argjson actual "$selected" --argjson expected "$expected_selected" '$ac
 jq -e 'index("test-validate-go-postgresql-fixture") != null' <<<"${selected}" >/dev/null || fail 'native PostgreSQL caller left the independent coverage floor'
 jq -e 'index("test-go-cache-native-observer") != null' <<<"${selected}" >/dev/null || fail 'native Go cache observer left the independent coverage floor'
 jq -en --argjson selected "${selected}" --slurpfile inventory "${repo_root}/.github/scripts/ci-selection/inventory.json" '
-  ($inventory[0].catalogue_optional | length == 48) and
+  ($inventory[0].catalogue_optional | length == 47) and
   all($selected[]; . as $id | ($inventory[0].catalogue_optional | index($id)) == null) and
   ($selected | index("test-approve-pr-credential-boundary") != null) and
   ($selected | index("test-validate-go-project-apply-signed-fixes") != null)

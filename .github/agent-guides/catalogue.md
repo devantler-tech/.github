@@ -26,6 +26,8 @@ with a `workflow_call` trigger.
 
 ### Layout
 
+The unconsumed .NET workflow export is retired after native template enforcement and observed policy retirement (#703). Products call the shared `actions/run-dotnet-tests` action from their own matrix; historical immutable releases remain available.
+
 The default-off `inspect-release-recovery.yaml` diagnoses only public GitHub release evidence;
 it cannot publish or repair channel notes. Its Go inspector lives in
 `.github/scripts/inspect-release-recovery/`. Run

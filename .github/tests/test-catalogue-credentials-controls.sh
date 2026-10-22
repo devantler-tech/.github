@@ -57,7 +57,7 @@ restored skills writer	.github/workflows/update-agent-skills.yaml	del(.jobs["upd
 removed skipped dependency	.github/workflows/update-agent-skills.yaml	del(.jobs["open-skill-pull-requests"].needs)	1	write authority
 always restores skipped writer	.github/workflows/update-agent-skills.yaml	.jobs["open-skill-pull-requests"].if="${{ always() }}"	1	write authority
 restored auto merge	.github/workflows/enable-auto-merge.yaml	.jobs["disarm-untrusted-update"].if="${{ always() }}"	1	write authority
-restored test package writer	.github/workflows/run-dotnet-tests.yaml	.jobs.test.permissions.packages="write"	1	write authority
+restored test package writer	.github/workflows/ci.yaml	.jobs["test-run-dotnet-tests-mtp"].permissions.packages="write"	1	write authority
 restored application writer	.github/workflows/publish-app.yaml	del(.jobs.publish.if)	1	write authority
 restored manifest writer	.github/workflows/publish-manifests.yaml	del(.jobs["publish-manifests"].if)	1	write authority
 unknown condition on new writer	.github/workflows/ci.yaml	.jobs.new={"if":"${{ vars.MAYBE }}",permissions:{issues:"write"},steps:[{run:"echo fixture"}]}	1	write authority
