@@ -154,7 +154,8 @@ case "$*" in
   'api repos/devantler-tech/.github/actions/runs/23/attempts/2') cat "$OBSERVER_FIXTURE/run.json" ;;
   'api --paginate --slurp repos/devantler-tech/.github/actions/runs/23/attempts/2/jobs?per_page=50')
     [[ "${FAIL_JOB_READ:-false}" != true ]] || exit 1
-    cat "$OBSERVER_FIXTURE/jobs.json" ;;
+    reads="$(grep -c "/jobs?per_page=50\$" "$OBSERVER_FIXTURE/calls")"
+    if (( reads <= ${LAG_READS:-0} )); then cat "$OBSERVER_FIXTURE/${LAG_JOBS:-lagging-jobs.json}"; else cat "$OBSERVER_FIXTURE/jobs.json"; fi ;;
   'api repos/devantler-tech/.github/actions/jobs/'*'/logs')
     [[ "${MODERN_CLI:-false}" != true ]] || exit 1
     id="${*: -1}"; id="${id%/logs}"; id="${id##*/}"
@@ -172,6 +173,15 @@ case "$*" in
 esac
 SH
 chmod +x "$scratch/bin/gh"
+cat >"$scratch/bin/sleep" <<'SH'
+#!/usr/bin/env bash
+printf 'sleep %s\n' "$*" >>"$OBSERVER_FIXTURE/calls"
+SH
+chmod +x "$scratch/bin/sleep"
+# A finished fixture job the jobs API still reports as running (#655).
+jq '.[1].jobs[3].status = "in_progress" | .[1].jobs[3].conclusion = null' "$scratch/jobs.json" >"$scratch/lagging-jobs.json"
+jq '.[1].jobs[3].status = "completed" | .[1].jobs[3].conclusion = "failure"' "$scratch/jobs.json" >"$scratch/failed-jobs.json"
+jq '.[1].jobs[3].status = "in_progress" | .[1].jobs[3].conclusion = null | .[1].jobs[2].head_sha = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"' "$scratch/jobs.json" >"$scratch/lagging-stale-jobs.json"
 export OBSERVER_FIXTURE="$scratch" GITHUB_REPOSITORY=devantler-tech/.github
 export GITHUB_RUN_ID=23 GITHUB_RUN_ATTEMPT=2 EXPECTED_HEAD="$head" MODULE_CACHE_KEY="$key"
 export GITHUB_EVENT_NAME=push GITHUB_REF=refs/heads/main
@@ -186,4 +196,20 @@ if PATH="$scratch/bin:$PATH" FAIL_CACHE_READ=true bash "$helper" observe >"$scra
 [[ ! -s "$scratch/out" ]] || fail 'failed archive read published success'
 if PATH="$scratch/bin:$PATH" GITHUB_REPOSITORY=other/fixture bash "$helper" observe >"$scratch/out" 2>"$scratch/error"; then fail 'collector admitted another repository'; fi
 if PATH="$scratch/bin:$PATH" GITHUB_RUN_ATTEMPT=1 bash "$helper" observe >"$scratch/out" 2>"$scratch/error"; then fail 'collector admitted another attempt'; fi
-printf 'PASS: native cache observer accepts PR, main save and main reuse; rejects incomplete and unsafe evidence\n'
+# A lagging fixture status is re-read a bounded number of times (#655).
+count_calls() { grep -c "$1" "$scratch/calls" || true; }
+: >"$scratch/calls"
+PATH="$scratch/bin:$PATH" LAG_READS=2 bash "$helper" observe >"$scratch/out" 2>"$scratch/error" || fail "collector rejected a status lag that cleared: $(cat "$scratch/error")"
+grep -q 'PASS: native Go cache policy' "$scratch/out" || fail 'cleared status lag did not publish a verdict'
+[[ "$(count_calls '/jobs?per_page=50$')" == 3 && "$(count_calls '^sleep 15$')" == 2 ]] || fail 'cleared status lag was not re-read exactly until final'
+: >"$scratch/calls"
+if PATH="$scratch/bin:$PATH" LAG_READS=99 bash "$helper" observe >"$scratch/out" 2>"$scratch/error"; then fail 'a status lag that never cleared passed'; fi
+[[ ! -s "$scratch/out" ]] || fail 'persistent status lag published success'
+[[ "$(count_calls '/jobs?per_page=50$')" == 6 && "$(count_calls '^sleep ')" == 5 ]] || fail 'persistent status lag was not bounded to six reads'
+grep -q '"fixture_not_completed":1' "$scratch/error" || fail 'persistent status lag lacks its diagnostic'
+for evidence in failed-jobs.json lagging-stale-jobs.json; do
+  : >"$scratch/calls"
+  if PATH="$scratch/bin:$PATH" LAG_READS=99 LAG_JOBS="$evidence" bash "$helper" observe >"$scratch/out" 2>"$scratch/error"; then fail "re-read admitted $evidence"; fi
+  [[ "$(count_calls '/jobs?per_page=50$')" == 1 && "$(count_calls '^sleep ')" == 0 ]] || fail "$evidence was re-read instead of rejected at once"
+done
+printf 'PASS: native cache observer accepts PR, main save and main reuse; re-reads only a bounded status lag; rejects incomplete and unsafe evidence\n'
