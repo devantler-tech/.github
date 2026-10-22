@@ -1,0 +1,63 @@
+name: Deploy admission
+description: Apply reviewed release and deletion validators to candidate manifests and PR metadata as data.
+author: devantler-tech
+inputs:
+  candidate-sha:
+    description: Immutable candidate integration commit supplied by GitHub.
+    required: true
+runs:
+  using: composite
+  steps:
+    - name: Require complete pull-request metadata
+      shell: bash
+      env:
+        EVENT_NAME: ${{ github.event_name }}
+        CANDIDATE_SHA: ${{ inputs.candidate-sha }}
+        BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        COMMIT_COUNT: ${{ github.event.pull_request.commits }}
+      run: |
+        set -euo pipefail
+        [[ "$EVENT_NAME" == pull_request && "$CANDIDATE_SHA" =~ ^[0-9a-f]{40}$ &&
+          "$BASE_SHA" =~ ^[0-9a-f]{40}$ && "$HEAD_SHA" =~ ^[0-9a-f]{40}$ &&
+          "$COMMIT_COUNT" =~ ^[1-9][0-9]*$ ]] || {
+          echo '::error::Deploy admission requires complete pull-request metadata' >&2
+          exit 2
+        }
+    - name: Read immutable history and deploy files without a candidate checkout
+      id: data
+      shell: bash
+      env:
+        TRUSTED_ROOT: ${{ github.action_path }}/../../..
+        BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        CANDIDATE_SHA: ${{ inputs.candidate-sha }}
+      run: bash "$TRUSTED_ROOT/.github/scripts/prepare-deploy-admission-data.sh"
+    - name: 🚦 Validate release contract
+      shell: bash
+      env:
+        TRUSTED_ROOT: ${{ github.action_path }}/../../..
+        BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        PR_TITLE: ${{ github.event.pull_request.title }}
+        COMMIT_COUNT: ${{ github.event.pull_request.commits }}
+        ADMISSION_HISTORY: ${{ steps.data.outputs.history }}
+      run: |
+        first_subject="$(git --git-dir="$ADMISSION_HISTORY" log --format=%s "$BASE_SHA..$HEAD_SHA" | tail -1)"
+        git --git-dir="$ADMISSION_HISTORY" diff --name-only -z "$BASE_SHA...$HEAD_SHA" |
+          bash "$TRUSTED_ROOT/scripts/validate-release-contract.sh" "$PR_TITLE" "$COMMIT_COUNT" "$first_subject"
+    - name: 🗑️ Validate deploy/ deletions are acknowledged
+      shell: bash
+      env:
+        TRUSTED_ROOT: ${{ github.action_path }}/../../..
+        PR_BODY: ${{ github.event.pull_request.body }}
+        BASE_DEPLOY: ${{ steps.data.outputs.base-deploy }}
+        CANDIDATE_DEPLOY: ${{ steps.data.outputs.candidate-deploy }}
+      run: |
+        kubectl kustomize "$BASE_DEPLOY" > "$RUNNER_TEMP/base-render.yaml" ||
+          { echo 'deploy-deletions: UNKNOWN — base manifests do not render' >&2; exit 2; }
+        kubectl kustomize "$CANDIDATE_DEPLOY" > "$RUNNER_TEMP/head-render.yaml" ||
+          { echo 'deploy-deletions: UNKNOWN — candidate manifests do not render' >&2; exit 2; }
+        printf '%s' "$PR_BODY" > "$RUNNER_TEMP/pr-body.txt"
+        bash "$TRUSTED_ROOT/scripts/validate-deploy-deletions.sh" \
+          "$RUNNER_TEMP/base-render.yaml" "$RUNNER_TEMP/head-render.yaml" "$RUNNER_TEMP/pr-body.txt"

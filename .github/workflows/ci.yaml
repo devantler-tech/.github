@@ -6194,6 +6194,12 @@ jobs:
       - name: 🧪 Test trusted deploy/ guards ruleset
         run: bash tests/deploy-guards-ruleset.sh
 
+      - name: 🧪 Test shared read-only admission plumbing
+        run: bash .github/tests/test-repository-admission.sh
+
+      - name: Test bare-object deploy admission data
+        run: bash .github/tests/test-prepare-deploy-admission-data.sh
+
       - name: 🧪 Test pull request metadata event routing
         run: bash .github/tests/test-ci-metadata-events.sh
 
