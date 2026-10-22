@@ -45,9 +45,9 @@ verb — e.g. `require-pull-request.yaml`). Repo-scoped rulesets live next door 
 | `require-workflows-dotnet.yaml` | language-selected **.NET** (retired) | Observe + Update — disabled with one inert rule (no required workflow; the provider requires a rules block) after a complete effective-policy census found no consumers; retain identity and selectors, never create or delete |
 | `protect-release-tags.yaml` | **Protect release tags** (net-new) | Managed (Create) — block tag delete + force-move + require `v<semver>` |
 | `require-world-at-ruin-trusted-regressions.yaml` | **Require workflow - World at Ruin trusted regressions** (net-new) | Managed (Create) — target only World at Ruin and require the canonical catalogue's trusted regression workflow |
-| `require-monorepo-ci-aggregate-contract.yaml` | **Require workflow - Monorepo CI aggregate contract** (net-new) | Managed (Create) — target only monorepo and require the aggregate-execution control from its reviewed `main` |
-| `require-repository-pr-admission.yaml` | **Require workflow - Repository PR admission** | Managed (Create) — target monorepo and this catalogue; trusted shared source runs each product-owned base-revision action while the old independent gates remain active |
-| `require-dotgithub-deploy-guards.yaml` | **Require workflow - .github deploy guards** (net-new) | Managed (Create) — target only this repository and run the `deploy/` release-contract and deletion validators from its reviewed `main` |
+| `require-monorepo-ci-aggregate-contract.yaml` | **Require workflow - Monorepo CI aggregate contract** (retired) | Managed, non-deleting — disabled with one inert rule and no workflow association after native shared-admission proof |
+| `require-repository-pr-admission.yaml` | **Require workflow - Repository PR admission** | Managed (Create) — target monorepo and this catalogue; trusted shared source runs each product-owned base-revision action, with a repository-bound executed result required for each |
+| `require-dotgithub-deploy-guards.yaml` | **Require workflow - .github deploy guards** (retired) | Managed, non-deleting — disabled with one inert rule and no workflow association after native shared-admission proof |
 | `require-go-template-validation.yaml` | **Require workflow - Go template validation** (retired) | Managed (Create) — disabled after native repository validation proof; retain identity, selectors and non-deleting lifecycle |
 | `require-dotnet-template-tests.yaml` | **Require workflow - .NET template tests** (retired) | Managed (Create) — disabled with one inert rule (no required workflow; the provider requires a rules block) after native repository validation proof; retain identity, selectors and non-deleting lifecycle |
 | `require-metadata-code-scanning-results.yaml` | **Require code scanning results - Metadata** (net-new) | Managed (Create) — centrally require CodeQL with both finding thresholds at all on `.github` and `monorepo`; no bypass actors |
@@ -107,10 +107,13 @@ in [#703](https://github.com/devantler-tech/.github/issues/703).
 The shared runner serves monorepo and this configuration catalogue. Each repository also requires
 `Run reviewed product admission` from GitHub Actions. The source-only `Admission not selected`
 result does not satisfy that requirement. Product validators and budgets come from their immutable
-reviewed bases, never from candidate actions. Both old independent gates remain active.
+reviewed bases, never from candidate actions. Both former singleton organization associations
+are disabled inert records, without workflow associations or deletion authority. Their identity
+and narrow target selectors remain declared; the common workflow and both repository result
+bindings stay active without bypasses.
 
 Read back released native enforcement before exercising a product's real positive and tampering
-controls. Those controls must pass for that product before its old source is retired. Per-product
+controls. Those controls must pass for that product before its old association is retired. Per-product
 acceptance and source cutovers are tracked in [#693](https://github.com/devantler-tech/.github/issues/693).
 If a reviewed source blocks its own repair, use the maintainer-owned recovery procedure in
 [Maintenance](../../AGENTS.md#maintenance), never candidate code or an automatic protection bypass.

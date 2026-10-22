@@ -2,10 +2,9 @@
 
 set -euo pipefail
 
-# Pins the trusted enforcement of the deploy/ guards (#183): an organization
-# ruleset requires .github/workflows/deploy-guards.yaml from this repository's
-# reviewed main, and that workflow runs the validators from the ruleset-selected
-# source revision, never from the candidate checkout it judges.
+# Keep the retired singleton association inert while preserving the product-owned
+# validator's trust, identity and failure controls. Shared admission and its
+# executed result binding are pinned by repository-admission-ruleset.sh.
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 workflow="${DEPLOY_GUARDS_WORKFLOW:-${repo_root}/.github/workflows/deploy-guards.yaml}"
@@ -42,21 +41,17 @@ assert_json() {
   [[ "${actual}" == "${expected}" ]] || fail "${label}: expected '${expected}', got '${actual}'"
 }
 
-# 933213756 is devantler-tech/.github: the rule targets only this repository
-# and takes its workflow from this repository's reviewed main.
+# 933213756 is devantler-tech/.github: preserve the retired record's exact scope.
 assert_value "ruleset name" "Require workflow - .github deploy guards" '.spec.forProvider.name'
 assert_value "ruleset target" "branch" '.spec.forProvider.target'
-assert_value "ruleset enforcement" "active" '.spec.forProvider.enforcement'
+assert_value "ruleset enforcement" "disabled" '.spec.forProvider.enforcement'
 assert_json "management policy" '["Observe","Create","Update","LateInitialize"]' '.spec.managementPolicies'
 assert_json "target repository" '[933213756]' '.spec.forProvider.conditions[0].repositoryId'
 assert_json "target branch" '["~DEFAULT_BRANCH"]' '.spec.forProvider.conditions[0].refName[0].include'
 assert_json "target exclusions" '[]' '.spec.forProvider.conditions[0].refName[0].exclude'
 assert_value "bypass actor count" "0" '(.spec.forProvider.bypassActors // []) | length'
 assert_value "rule count" "1" '.spec.forProvider.rules | length'
-assert_value "required workflow count" "1" '.spec.forProvider.rules[0].requiredWorkflows[0].requiredWorkflow | length'
-assert_value "source repository" "933213756" '.spec.forProvider.rules[0].requiredWorkflows[0].requiredWorkflow[0].repositoryId'
-assert_value "source path" ".github/workflows/deploy-guards.yaml" '.spec.forProvider.rules[0].requiredWorkflows[0].requiredWorkflow[0].path'
-assert_value "source ref" "refs/heads/main" '.spec.forProvider.rules[0].requiredWorkflows[0].requiredWorkflow[0].ref'
+assert_json "inert retired rule" '[{"creation":false,"deletion":false,"nonFastForward":false,"requiredLinearHistory":false,"requiredSignatures":false,"update":false}]' '.spec.forProvider.rules'
 
 [[ -f "${workflow}" ]] || fail "required workflow ${workflow#"${repo_root}"/} does not exist"
 [[ -f "$action" ]] || fail 'repository-owned admission action is missing'
