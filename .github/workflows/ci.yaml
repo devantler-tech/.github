@@ -3099,10 +3099,6 @@ jobs:
           fi
           echo "Credential-free tests cannot reach the token-bearing coverage upload ✅"
 
-      - name: 🔒 Assert native fixture OS, credential and source-state boundaries
-        shell: bash
-        run: bash .github/tests/test-dotnet-native-fixtures.sh
-
   # run-dotnet-tests INLINES upload-coverage's single pinned step (a composite action
   # cannot `uses:` its own repo at the same commit), so nothing structural ties the two
   # definitions together. This guard treats actions/upload-coverage/action.yaml as the source of
@@ -3397,6 +3393,10 @@ jobs:
       - name: 🧪 Check deployment scope and full catalogue fallback
         shell: bash
         run: bash .github/tests/test-ci-catalogue-scope.sh
+
+      - name: 🔒 Assert native fixture OS, credential and source-state boundaries
+        shell: bash
+        run: bash .github/tests/test-dotnet-native-fixtures.sh
 
       - name: Set up the declared validator Go toolchain
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
