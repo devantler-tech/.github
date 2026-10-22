@@ -120,9 +120,10 @@ committed as `fix:` (or `feat:`), not `ci:`/`refactor:`.
 These workflows do not declare `workflow_call`. Required CI checks this inventory against their actual triggers.
 
 `repository-pr-admission.yaml` shares only trusted-source resolution and a read-only runner.
-Enrollment covers monorepo and this configuration repository, with both old independent gates
-still active. Require per-product native positive and tampering-refusal controls before retiring
-its old gate (#693). A broken reviewed source uses the maintainer-owned recovery procedure in
+Enrollment covers monorepo and this configuration repository. Their product-owned validators and
+repository-bound executed results replace the disabled singleton organization associations after
+native positive and tampering-refusal controls (#693). New enrollments require the same live proof
+before retiring their old gate. A broken reviewed source uses the maintainer-owned recovery procedure in
 [Maintenance](../../AGENTS.md#maintenance), never a candidate-controlled fallback or an automatic protection bypass.
 Each enrolled product owns `.github/actions/pr-admission/action.yaml`, with the fixed
 `candidate-sha` interface, and a closed `.github/pr-admission.json` containing version `1`

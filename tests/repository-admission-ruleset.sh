@@ -36,7 +36,8 @@ check_render() {
     unique_repository_policy("monorepo-require-reviewed-admission";"monorepo") as $repo |
     unique_repository_policy("dotgithub-require-reviewed-admission";".github") as $dotgithub |
     unique_policy("OrganizationRuleset";"require-monorepo-ci-aggregate-contract";"Require workflow - Monorepo CI aggregate contract") as $old |
-    ($org|length)==1 and ($repo|length)==1 and ($dotgithub|length)==1 and ($old|length)==1 and
+    unique_policy("OrganizationRuleset";"require-dotgithub-deploy-guards";"Require workflow - .github deploy guards") as $oldGithub |
+    ($org|length)==1 and ($repo|length)==1 and ($dotgithub|length)==1 and ($old|length)==1 and ($oldGithub|length)==1 and
     $org[0].apiVersion=="enterprise.github.m.upbound.io/v1alpha1" and
     $org[0].spec=={
       managementPolicies:managed,
@@ -56,14 +57,17 @@ check_render() {
     $old[0].spec=={
       managementPolicies:managed,
       forProvider:{
-        name:"Require workflow - Monorepo CI aggregate contract",target:"branch",enforcement:"active",
+        name:"Require workflow - Monorepo CI aggregate contract",target:"branch",enforcement:"disabled",
         conditions:[{refName:[{include:["~DEFAULT_BRANCH"],exclude:[]}],repositoryId:[786274843]}],
-        rules:[{requiredWorkflows:[{requiredWorkflow:[{
-          repositoryId:786274843,path:".github/workflows/ci-aggregate-contract.yaml",ref:"refs/heads/main"
-        }]}]}]
+        rules:[{creation:false,deletion:false,nonFastForward:false,requiredLinearHistory:false,requiredSignatures:false,update:false}]
       },
       providerConfigRef:provider
-    } and all(($org+$repo+$dotgithub+$old)[]; .metadata.namespace==null and
+    } and
+    $oldGithub[0].apiVersion=="enterprise.github.m.upbound.io/v1alpha1" and
+    $oldGithub[0].spec==($old[0].spec |
+      .forProvider.name="Require workflow - .github deploy guards" |
+      .forProvider.conditions[0].repositoryId=[933213756]) and
+    all(($org+$repo+$dotgithub+$old+$oldGithub)[]; .metadata.namespace==null and
       .metadata.annotations["crossplane.io/external-name"]==null)
   ' "$1" >/dev/null
 }
@@ -78,11 +82,11 @@ yq -o=json -I=0 "." "$work/render.yaml" | jq -s "." > "$work/render.json"
 check_render "$work/render.json" || fail 'product enrollment, producer binding or original trusted gate changed'
 check_ci "$root/.github/workflows/ci.yaml" || fail 'required policy test is absent or skippable'
 count=0
-for name in require-repository-pr-admission monorepo-require-reviewed-admission dotgithub-require-reviewed-admission require-monorepo-ci-aggregate-contract; do
+for name in require-repository-pr-admission monorepo-require-reviewed-admission dotgithub-require-reviewed-admission require-monorepo-ci-aggregate-contract require-dotgithub-deploy-guards; do
   for mutation in \
     '.spec.managementPolicies += ["Delete"]' \
     '.spec.managementPolicies = ["Observe"]' \
-    '.spec.forProvider.enforcement="disabled"' \
+    '.spec.forProvider.enforcement=(if .spec.forProvider.enforcement=="active" then "disabled" else "active" end)' \
     '.spec.forProvider.target="tag"' \
     '.spec.forProvider.bypassActors=[{"actorType":"OrganizationAdmin","bypassMode":"always"}]' \
     '.spec.forProvider.conditions[0].refName[0].include=["~ALL"]' \
@@ -98,6 +102,17 @@ for name in require-repository-pr-admission monorepo-require-reviewed-admission 
   jq --arg name "$name" 'map(select(.metadata.name!=$name))' "$work/render.json" > "$work/broken.json"
   if check_render "$work/broken.json"; then fail "accepted missing $name"; fi
   count=$((count+1))
+done
+# Retired records must neither regain a source association nor lose the inert
+# provider-required rule, even while their enforcement remains disabled.
+for name in require-monorepo-ci-aggregate-contract require-dotgithub-deploy-guards; do
+  for mutation in \
+    '.spec.forProvider.rules=[]' \
+    '.spec.forProvider.rules[0].requiredWorkflows=[{requiredWorkflow:[{repositoryId:933213756,path:".github/workflows/deploy-guards.yaml",ref:"refs/heads/main"}]}]'; do
+    jq --arg name "$name" "map(if .metadata.name==\$name then ($mutation) else . end)" "$work/render.json" > "$work/broken.json"
+    if check_render "$work/broken.json"; then fail "accepted restored association or invalid provider record on $name"; fi
+    count=$((count+1))
+  done
 done
 for mutation in \
   '.spec.forProvider.conditions[0].repositoryId += [933213756]' \

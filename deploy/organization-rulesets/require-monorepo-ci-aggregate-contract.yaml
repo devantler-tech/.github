@@ -1,7 +1,7 @@
-# Require the aggregate's execution independently of the aggregate itself.
-# The source is the monorepo's reviewed main branch; a candidate cannot disable
-# this workflow and the aggregate in the same pull request. Source deployment
-# must precede creation of this rule. No bypass or Delete policy is declared.
+# Retain the retired singleton identity without a workflow association.
+# Shared reviewed admission plus the repository-bound executed result now
+# enforce the product-owned aggregate validator; native positive/refusal proof
+# precedes this retirement. The provider requires one rule, so keep it inert.
 apiVersion: enterprise.github.m.upbound.io/v1alpha1
 kind: OrganizationRuleset
 metadata:
@@ -15,18 +15,19 @@ spec:
   forProvider:
     name: Require workflow - Monorepo CI aggregate contract
     target: branch
-    enforcement: active
+    enforcement: disabled
     conditions:
       - refName:
           - include: ["~DEFAULT_BRANCH"]
             exclude: []
         repositoryId: [786274843]
     rules:
-      - requiredWorkflows:
-          - requiredWorkflow:
-              - repositoryId: 786274843
-                path: .github/workflows/ci-aggregate-contract.yaml
-                ref: refs/heads/main
+      - creation: false
+        deletion: false
+        nonFastForward: false
+        requiredLinearHistory: false
+        requiredSignatures: false
+        update: false
   providerConfigRef:
     kind: ProviderConfig
     name: default

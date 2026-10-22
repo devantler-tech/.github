@@ -177,19 +177,20 @@ failure prints it); merge groups skip those event-specific checks. The deletion 
 `deploy/` at the base, so a pull request whose base `main` does not build fails there with kubectl's
 exit status.
 
-Both validators also run in `.github/workflows/deploy-guards.yaml`, which the
-`require-dotgithub-deploy-guards` organization ruleset requires from reviewed `main`. That copy
-checks the validators out at `github.workflow_sha` and reads the pull request only as data, so
-editing `ci.yaml`, the workflow, or a validator in a pull request does not change the check that
-judges it; such edits take effect only after they merge. Keep `tests/deploy-guards-ruleset.sh`
-passing when either file changes. Because the repairing pull request cannot edit that check, a
-`main` whose `deploy/` no longer renders needs an organization owner to set the ruleset's
-enforcement to `evaluate` while the `github-config` reconciliation is suspended, then restore both.
+Both validators are owned by `.github/actions/pr-admission`. The shared required
+`repository-pr-admission.yaml` runner executes that implementation from the pull request's immutable
+reviewed base and treats candidate manifests, history and metadata only as data. Editing candidate
+CI or validators cannot replace it. Keep `tests/deploy-guards-ruleset.sh` and
+`tests/repository-admission-ruleset.sh` passing after changing this boundary. The former singleton
+organization associations are disabled, inert, non-deleting records after native positive and
+tampering proof; the repository-local `deploy-guards.yaml` wrapper remains independently tested.
 
-Shared admission for this catalogue and monorepo also requires a repository-bound executed result;
-the ordinary source-only skipped result cannot satisfy it. Maintainer-led recovery must account for
-both the organization workflow and repository result bindings, not just one workflow rule. Agents
-never automate that emergency route or fall back to a candidate-controlled validator.
+Shared admission for this catalogue and monorepo requires both organization workflow injection
+and a repository-bound executed result; the ordinary source-only skipped result cannot satisfy it.
+A broken reviewed source can block its own repair. Only a maintainer may coordinate a temporary
+recovery with reconciliation and restore all affected bindings afterward. That procedure must
+account for both active bindings, not the retired singleton rule. Agents never automate an
+emergency bypass or fall back to a candidate-controlled validator.
 
 Organization-required workflows ignore pull request title/body edits even when their trigger lists
 `edited`. `pr-metadata-guards.yaml` provides manually dispatched read-only feedback from reviewed main.
