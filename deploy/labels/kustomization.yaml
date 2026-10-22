@@ -37,7 +37,6 @@ resources:
   - go-template.yaml
   - dotnet-template.yaml
   - homebrew-tap.yaml
-  - actions.yaml
   - cloudflare.yaml
   - khoist.yaml
   - business-site.yaml

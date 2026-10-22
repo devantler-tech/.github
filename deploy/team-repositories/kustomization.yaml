@@ -7,7 +7,6 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
   # Observe-adopted (access already existed).
-  - grant-maintainers-on-actions.yaml
   - grant-maintainers-on-dotnet-template.yaml
   - grant-maintainers-on-go-template.yaml
   - grant-maintainers-on-ksail.yaml
@@ -33,7 +32,6 @@ resources:
   - grant-maintainers-on-client-orders.yaml
   # Active Admins policy (one admin grant per active repository).
   - grant-admins-on-dot-github.yaml
-  - grant-admins-on-actions.yaml
   - grant-admins-on-agent-plugins.yaml
   - grant-admins-on-agent-skills.yaml
   - grant-admins-on-ascoachingogvaner.yaml

@@ -53,9 +53,6 @@ dimensions=(
 # silence a fresh failure without a tracked reason. The guard fails on a stale
 # exemption, so this list cannot rot.
 exemptions=(
-  # actions stays outside Repository management until verified full deletion
-  # (#240); its other managed dimensions remain during consumer migration.
-  "repositories/actions"
   # fleet-gitops is private; the Maintainers team deliberately stays off it
   # (maintainer decision on #115, 2026-09-25).
   "team-maintainers/fleet-gitops"
@@ -150,25 +147,8 @@ if [[ "$missing_count" -gt 0 ]]; then
   exit 1
 fi
 
-# Release Please identifies a merged release PR through these lifecycle labels.
-# IssueLabels is authoritative, so omitting either marker makes the reconciler
-# delete it before merge and causes Release Please to rescan historical commits.
-if ! actions_labels_raw="$(
-  yq -N '
-    select(.kind == "IssueLabels" and .spec.forProvider.repository == "actions")
-    | .spec.forProvider.label[].name
-  ' "$render"
-)"; then
-  fail "actions: failed to read rendered issue labels"
-fi
-actions_labels="$(
-  printf '%s\n' "$actions_labels_raw" | grep -vE '^$|^null$|^---$' || true
-)"
-[[ -n "$actions_labels" ]] || fail "actions: no rendered issue labels"
-for required_label in "autorelease: pending" "autorelease: tagged"; do
-  printf '%s\n' "$actions_labels" | grep -Fxq "$required_label" ||
-    fail "actions: required Release Please label '$required_label' is undeclared"
-done
+# Actions' Release Please labels left the managed model with the retired repository.
+# The separate retirement guard rejects restoring any of its managed dimensions (#240).
 
 echo "declarative-coverage: OK — $expected_count repositories across ${#labels[@]} rendered" \
   "dimensions ($exempt_count declared exemption(s))"
