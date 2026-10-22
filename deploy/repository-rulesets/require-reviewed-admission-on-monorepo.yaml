@@ -1,0 +1,30 @@
+# Require the executed product result, not the runner's ordinary source-only skip.
+# GitHub Actions producer binding complements, never replaces, trusted injection.
+apiVersion: repo.github.m.upbound.io/v1alpha1
+kind: RepositoryRuleset
+metadata:
+  name: monorepo-require-reviewed-admission
+spec:
+  managementPolicies:
+    - Observe
+    - Create
+    - Update
+    - LateInitialize
+  forProvider:
+    repository: monorepo
+    name: Require reviewed repository admission
+    target: branch
+    enforcement: active
+    conditions:
+      - refName:
+          - include: ["~DEFAULT_BRANCH"]
+            exclude: []
+    rules:
+      - requiredStatusChecks:
+          - requiredCheck:
+              - context: Run reviewed product admission
+                integrationId: 15368
+            strictRequiredStatusChecksPolicy: false
+  providerConfigRef:
+    kind: ProviderConfig
+    name: default

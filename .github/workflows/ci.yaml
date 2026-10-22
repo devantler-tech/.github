@@ -6197,6 +6197,9 @@ jobs:
       - name: 🧪 Test shared read-only admission plumbing
         run: bash .github/tests/test-repository-admission.sh
 
+      - name: Test additive repository admission canary enforcement
+        run: bash tests/repository-admission-ruleset.sh
+
       - name: Test bare-object deploy admission data
         run: bash .github/tests/test-prepare-deploy-admission-data.sh
 

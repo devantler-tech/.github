@@ -4,7 +4,8 @@ set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 render="$(mktemp)"
-trap 'rm -f "${render}"' EXIT
+inventory_work="$(mktemp -d)"
+trap 'rm -f "${render}"; rm -rf "${inventory_work}"' EXIT
 
 fail() {
   echo "world-at-ruin-regression-ruleset test: $*" >&2
@@ -60,14 +61,37 @@ assert_value "source ref" "refs/heads/main" '.spec.forProvider.rules[0].required
 inventory="${repo_root}/deploy/organization-rulesets/README.md"
 grep -Fq 'The 15 imported org rulesets' "${inventory}" ||
   fail "organization ruleset inventory must account for 15 imported rulesets"
-# The backticks are literal Markdown table cell delimiters, not command substitution.
-# shellcheck disable=SC2016
-managed_rows="$(grep -c '^| `[a-z-]*\.yaml` | .*(net-new) | Managed (Create)' "${inventory}" || true)"
-[[ "${managed_rows}" == "7" ]] ||
-  fail "organization ruleset inventory must list 7 managed rulesets, got ${managed_rows}"
-managed_rendered="$(yq -N 'select(.kind == "OrganizationRuleset" and (.spec.managementPolicies | contains(["Create"]))) | .metadata.name' "${render}" | grep -c . || true)"
-[[ "${managed_rendered}" == "7" ]] ||
-  fail "expected 7 rendered managed (Create) organization rulesets, got ${managed_rendered}"
+# Lifecycle authority, not an active/retired display label, determines ownership.
+# Compare the exact roster so equal counts cannot hide a missing or replaced row.
+managed_inventory_valid() {
+  # shellcheck disable=SC2016
+  awk -F'|' '$2 ~ /^ `[a-z-]+\.yaml` $/ && $4 ~ /^ Managed \(Create\)/ {
+    gsub(/[ `]/, "", $2); sub(/\.yaml$/, "", $2); print $2
+  }' "$1" | sort >"$inventory_work/documented" || return 1
+  yq -N 'select(.kind == "OrganizationRuleset" and (.spec.managementPolicies | contains(["Create"]))) | .metadata.name' "$render" |
+    sort >"$inventory_work/rendered" || return 1
+  [[ -s "$inventory_work/documented" && -s "$inventory_work/rendered" ]] || return 1
+  cmp -s "$inventory_work/documented" "$inventory_work/rendered"
+}
+managed_inventory_valid "$inventory" || fail 'documented managed roster differs from the complete render'
+for control in missing replaced duplicate extra; do
+  case "$control" in
+    missing)
+      awk 'index($0, "`require-world-at-ruin-trusted-regressions.yaml`")==0' "$inventory" >"$inventory_work/broken.md"
+      ;;
+    replaced)
+      sed 's/require-world-at-ruin-trusted-regressions.yaml/unknown-managed-policy.yaml/' "$inventory" >"$inventory_work/broken.md"
+      ;;
+    duplicate)
+      awk '{print; if(index($0, "`require-world-at-ruin-trusted-regressions.yaml`")) print}' "$inventory" >"$inventory_work/broken.md"
+      ;;
+    extra)
+      cp "$inventory" "$inventory_work/broken.md"
+      printf "| \`unknown-managed-policy.yaml\` | Extra | Managed (Create) |\n" >>"$inventory_work/broken.md"
+      ;;
+  esac
+  if managed_inventory_valid "$inventory_work/broken.md"; then fail "accepted $control managed inventory"; fi
+done
 # Schema inspection is not a live census. Keep rendered ownership checks above,
 # and require the capability inventory to preserve that evidence boundary.
 if ! grep -Fq 'Schema support determines what can be declared; it does not prove adoption,' "${inventory}" ||
