@@ -55,9 +55,10 @@ func newGitHub() *github {
 	return &github{releases: []map[string]any{release(9, "v1.222.0")}, latest: 9, counts: map[string]int{}}
 }
 
+// find mirrors GET /releases/tags/{tag}, which returns only a published release.
 func (g *github) find(tag string) map[string]any {
 	for _, r := range g.releases {
-		if r["tag_name"] == tag {
+		if r["tag_name"] == tag && r["draft"] != true {
 			return r
 		}
 	}
@@ -241,6 +242,9 @@ func TestMatchingPublicationIsNoOp(t *testing.T) {
 		if g.counts["GET "+repo+"/releases"] != 0 {
 			t.Fatal("no-op still took a writer inventory")
 		}
+		if result["latest_release"] != "not-inspected" || result["release_notes"] != "not-inspected" {
+			t.Fatalf("no-op claimed facts it never checked: %v", result)
+		}
 	})
 	t.Run("at-re-admission", func(t *testing.T) {
 		g := newGitHub()
@@ -289,7 +293,7 @@ func TestRefusalsBeforeWriteSendNothing(t *testing.T) {
 		},
 		"draft-on-later-page": func(g *github) {
 			fullPage(g, 1)
-			draft := release(5000, "v9.9.9")
+			draft := release(5000, "v1.222.1")
 			draft["draft"] = true
 			g.releases = append(g.releases, draft)
 		},
@@ -341,7 +345,7 @@ func TestRefusalsBeforeWriteSendNothing(t *testing.T) {
 		"wrong-identity":                 "tag does not resolve directly to the captured source",
 		"missing-push-metadata":          "no proven push access",
 		"push-false":                     "no proven push access",
-		"draft-on-later-page":            "a draft release exists",
+		"draft-on-later-page":            "a draft release for this tag",
 		"conflicting-record":             "a release record for this tag exists",
 		"inventory-beyond-bound":         "exceeds the supported bound",
 		"inventory-changed":              "changed between independent reads",
@@ -416,7 +420,7 @@ func TestWriteOutcomesAreNeverRetried(t *testing.T) {
 	}
 	reasons := map[string]string{
 		"refused-write":         "refused with status 422",
-		"malformed-success":     "does not describe the requested release",
+		"malformed-success":     "publication response is unreadable",
 		"readback-body-differs": "readback does not match",
 		"latest-moved":          "latest release changed",
 		"failed-readback":       "publication readback: API read",
@@ -449,7 +453,7 @@ func TestConnectionLossThenRerunReconciles(t *testing.T) {
 		}
 		return true
 	}
-	if result, err := g.exercise(t); err == nil || !strings.Contains(err.Error(), "do not retry") {
+	if result, err := g.exercise(t); err == nil || !strings.Contains(err.Error(), "run recovery again to reconcile") {
 		t.Fatalf("expected an unknown-outcome failure, got %v %v", result, err)
 	}
 	g.onPost = nil
@@ -476,5 +480,94 @@ func TestInvalidInputSendsNoRequest(t *testing.T) {
 	}
 	if len(g.requests) != 0 || out.Len() != 0 {
 		t.Fatalf("refused input still sent %d requests", len(g.requests))
+	}
+}
+
+// A server error can follow an accepted write, so it is reported as an unknown outcome.
+func TestServerErrorAfterWriteIsUnknownOutcome(t *testing.T) {
+	g := newGitHub()
+	g.onPost = func(w http.ResponseWriter, created map[string]any) bool {
+		g.releases = append([]map[string]any{created}, g.releases...)
+		w.WriteHeader(http.StatusBadGateway)
+		_, _ = io.WriteString(w, `{"message":"Bad Gateway"}`)
+		return true
+	}
+	if result, err := g.exercise(t); err == nil || !strings.Contains(err.Error(), "outcome is unknown after status 502") ||
+		strings.Contains(err.Error(), "refused") {
+		t.Fatalf("server error was not an unknown outcome: %v %v", result, err)
+	}
+	if len(g.posts) != 1 {
+		t.Fatalf("expected exactly one publication request, got %d", len(g.posts))
+	}
+}
+
+// A failure after the write names the release it created, so nobody publishes it again.
+func TestVerificationFailureNamesTheCreatedRelease(t *testing.T) {
+	g := newGitHub()
+	g.edit = func(r *http.Request, _ int, status *int, _ *string) {
+		if r.URL.Path == repo+"/releases/tags/v1.222.1" && len(g.posts) == 1 {
+			*status = 503
+		}
+	}
+	_, err := g.exercise(t)
+	if err == nil || !strings.Contains(err.Error(), "release 18 was created") || !strings.Contains(err.Error(), "do not publish by hand") {
+		t.Fatalf("verification failure hid the created release: %v", err)
+	}
+}
+
+// A draft for another tag is not this incident and does not block recovery.
+func TestUnrelatedDraftDoesNotBlock(t *testing.T) {
+	g := newGitHub()
+	draft := release(30, "v2.0.0")
+	draft["draft"] = true
+	g.releases = append(g.releases, draft)
+	if result, err := g.exercise(t); err != nil || result["result"] != "published" {
+		t.Fatalf("unrelated draft blocked recovery: %v %v", result, err)
+	}
+}
+
+// A draft for the tag that appears around the write is caught by the post-write inventory.
+func TestDraftAppearingDuringWriteFailsVerification(t *testing.T) {
+	g := newGitHub()
+	g.onPost = func(w http.ResponseWriter, created map[string]any) bool {
+		draft := release(19, "v1.222.1")
+		draft["draft"] = true
+		g.releases = append([]map[string]any{created, draft}, g.releases...)
+		w.WriteHeader(http.StatusCreated)
+		_, _ = io.WriteString(w, encode(created))
+		return true
+	}
+	if _, err := g.exercise(t); err == nil || !strings.Contains(err.Error(), "post-publication inventory") {
+		t.Fatalf("a draft created during the write went unnoticed: %v", err)
+	}
+}
+
+// With no earlier stable release there is no latest to preserve; GitHub may pick the new one.
+func TestFirstStableReleaseMayBecomeLatest(t *testing.T) {
+	g := newGitHub()
+	g.releases[0]["prerelease"] = true
+	g.latest = 0
+	g.onPost = func(w http.ResponseWriter, created map[string]any) bool {
+		g.releases = append([]map[string]any{created}, g.releases...)
+		g.latest = 18
+		w.WriteHeader(http.StatusCreated)
+		_, _ = io.WriteString(w, encode(created))
+		return true
+	}
+	if result, err := g.exercise(t); err != nil || result["result"] != "published" {
+		t.Fatalf("first stable release refused: %v %v", result, err)
+	}
+}
+
+// A malformed latest-release readback is never read as "unchanged".
+func TestMalformedLatestReadbackFails(t *testing.T) {
+	g := newGitHub()
+	g.edit = func(r *http.Request, _ int, _ *int, body *string) {
+		if r.URL.Path == repo+"/releases/latest" && len(g.posts) == 1 {
+			*body = `{"id":"18","tag_name":"v1.222.0","draft":false,"prerelease":false}`
+		}
+	}
+	if _, err := g.exercise(t); err == nil || !strings.Contains(err.Error(), "latest release is not a published stable release") {
+		t.Fatalf("malformed latest readback accepted: %v", err)
 	}
 }

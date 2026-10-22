@@ -37,11 +37,13 @@ or write authorization; #587 owns publication, legacy compatibility and protecte
 The same Go module holds a separate `cmd/publish-release-recovery` command. No workflow calls it
 yet. It re-runs the inspector's admission with its writer credential, so the inspection command
 stays read-only. It refuses to publish unless that credential can push, two complete release
-inventories agree with no draft, and a second admission matches the first. It then sends exactly one
-create-release request: the existing tag, the honest recovery receipt, no generated notes or
-assets, and `make_latest` as the JSON string `"false"`. It reads the release, the tag, the source
-and the latest release back independently. A matching publication is a no-op. It never retries a
-write, and a later run reconciles an unknown outcome through fresh reads.
+inventories agree, no draft names the tag (or no tag), and a second admission matches the first. It
+then sends exactly one create-release request: the existing tag, the honest recovery receipt, no
+generated notes or assets, and `make_latest` as the JSON string `"false"`. Afterwards it reads back
+the release, the tag, the source, the inventory and the latest release independently. A matching
+publication is a no-op that claims nothing it did not check. It never retries a write. A server
+error, a lost connection or a failed readback is reported as an unknown outcome, naming any release
+it created, and a later run reconciles it through fresh reads.
 
 The credential-free release fixture also exercises stranded stable tags with absent or matching
 default-channel notes, for both lightweight and annotated tags. It verifies no release at the tagged

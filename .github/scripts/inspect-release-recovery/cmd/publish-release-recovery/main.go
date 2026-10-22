@@ -12,7 +12,7 @@ import (
 // main requires an explicit writer credential and reports refusals without exposing response bodies.
 func main() {
 	if err := publication.Run(os.Args[1:], os.Getenv("GH_TOKEN"), os.Stdout); err != nil {
-		fmt.Fprintln(os.Stderr, "release publication refused:", err)
+		fmt.Fprintln(os.Stderr, "release publication stopped:", err)
 		os.Exit(1)
 	}
 }

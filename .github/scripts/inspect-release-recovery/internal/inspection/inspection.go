@@ -231,17 +231,9 @@ func (i *inspector) get(ctx context.Context, path, token string, missing bool) (
 		return nil, false, errors.New("API request failed")
 	}
 	defer response.Body.Close()
-	raw, err := io.ReadAll(io.LimitReader(response.Body, maxResponse+1))
-	if err != nil || len(raw) > maxResponse {
-		return nil, false, errors.New("incomplete or oversized API response")
-	}
-	mediaType, _, err := mime.ParseMediaType(response.Header.Get("Content-Type"))
-	if err != nil || mediaType != "application/json" && mediaType != "application/vnd.github+json" {
-		return nil, false, errors.New("API response is not JSON")
-	}
-	value, err := strictJSON(raw)
+	value, err := ReadJSONBody(response)
 	if err != nil {
-		return nil, false, errors.New("malformed or ambiguous API JSON")
+		return nil, false, err
 	}
 	if missing && response.StatusCode == http.StatusNotFound && object(value)["message"] == "Not Found" {
 		return value, false, nil
@@ -567,8 +559,29 @@ func (r *Reader) Get(ctx context.Context, path, token string, missing bool) (any
 	return r.inspector.get(ctx, path, token, missing)
 }
 
-// StrictJSON decodes exactly one bounded JSON document and rejects duplicate keys.
-func StrictJSON(raw []byte) (any, error) { return strictJSON(raw) }
+// ReadJSONBody reads one bounded JSON response body and rejects non-JSON media types,
+// oversized bodies and ambiguous JSON. It does not judge the status code.
+func ReadJSONBody(response *http.Response) (any, error) {
+	raw, err := io.ReadAll(io.LimitReader(response.Body, maxResponse+1))
+	if err != nil || len(raw) > maxResponse {
+		return nil, errors.New("incomplete or oversized API response")
+	}
+	mediaType, _, err := mime.ParseMediaType(response.Header.Get("Content-Type"))
+	if err != nil || mediaType != "application/json" && mediaType != "application/vnd.github+json" {
+		return nil, errors.New("API response is not JSON")
+	}
+	value, err := strictJSON(raw)
+	if err != nil {
+		return nil, errors.New("malformed or ambiguous API JSON")
+	}
+	return value, nil
+}
+
+// PositiveID returns a JSON number's canonical decimal form when it is a positive identifier.
+func PositiveID(value any) (string, bool) {
+	number, ok := value.(json.Number)
+	return string(number), ok && positive(string(number))
+}
 
 // run emits a diagnosis only after two complete observations agree; it never authorizes writes.
 func run(args []string, token string, out io.Writer, service *inspector) error {

@@ -15,21 +15,22 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"mime"
 	"net/http"
 	"reflect"
-	"strconv"
 	"time"
 
 	"github.com/devantler-tech/dotgithub/inspect-release-recovery/internal/inspection"
 )
 
 const apiURL = "https://api.github.com"
-const maxResponse = 1 << 20
 
-// maxPages bounds the release inventory; a repository with more releases is refused.
-const maxPages = 10
+// maxPages bounds the release inventory. Long-lived repositories here already exceed a
+// thousand releases; a repository beyond this bound is refused rather than read partially.
+const maxPages = 50
 const pageSize = 100
+
+// unknownOutcome is how every failure that may follow an accepted write ends.
+const unknownOutcome = "do not publish by hand or retry; run recovery again to reconcile"
 
 type publisher struct {
 	reader *inspection.Reader
@@ -45,15 +46,6 @@ func object(value any) map[string]any { result, _ := value.(map[string]any); ret
 
 func text(value any) string { result, _ := value.(string); return result }
 
-func positiveID(value any) (string, bool) {
-	number, ok := value.(json.Number)
-	if !ok {
-		return "", false
-	}
-	n, err := strconv.ParseUint(string(number), 10, 64)
-	return string(number), err == nil && n > 0 && strconv.FormatUint(n, 10) == string(number)
-}
-
 // Receipt is the deterministic release body. It states what the recovery did and did not do.
 func Receipt(a *inspection.Admission) string {
 	return "Recovered GitHub release for the existing tag " + a.Tag + " at " + a.SourceSHA + ".\n\n" +
@@ -68,7 +60,6 @@ func Receipt(a *inspection.Admission) string {
 type releaseRecord struct {
 	ID         string
 	Tag        string
-	Draft      bool
 	Prerelease bool
 }
 
@@ -79,6 +70,7 @@ type inventory struct {
 
 // capability proves, with the writer credential, that it can push to the exact repository.
 // Draft releases are visible only with push access, so the inventory depends on this proof.
+// Missing permission metadata fails closed.
 func (p *publisher) capability(ctx context.Context, a *inspection.Admission, token string) error {
 	value, _, err := p.reader.Get(ctx, "/repos/"+a.Repository, token, false)
 	if err != nil {
@@ -91,8 +83,26 @@ func (p *publisher) capability(ctx context.Context, a *inspection.Admission, tok
 	return nil
 }
 
-// list reads every release page and the latest anchor. Any draft is refused: a draft could be
-// an interrupted publication of this tag, and it is visible only because push access was proven.
+// latest reads the latest-release anchor; a repository may have none.
+func (p *publisher) latest(ctx context.Context, a *inspection.Admission, token string) (string, error) {
+	value, present, err := p.reader.Get(ctx, "/repos/"+a.Repository+"/releases/latest", token, true)
+	if err != nil {
+		return "", fmt.Errorf("latest release: %w", err)
+	}
+	if !present {
+		return "", nil
+	}
+	release := object(value)
+	id, ok := inspection.PositiveID(release["id"])
+	if !ok || release["draft"] != false || release["prerelease"] != false || text(release["tag_name"]) == "" {
+		return "", errors.New("latest release is not a published stable release")
+	}
+	return id, nil
+}
+
+// list reads every release page and the latest anchor. A draft that names this tag, or no
+// tag at all, is refused: it may be an interrupted publication of this release, and it is
+// visible only because push access was proven. Drafts for other tags are not this incident.
 func (p *publisher) list(ctx context.Context, a *inspection.Admission, token string) (inventory, error) {
 	var result inventory
 	complete := false
@@ -107,35 +117,28 @@ func (p *publisher) list(ctx context.Context, a *inspection.Admission, token str
 		}
 		for _, entry := range entries {
 			release := object(entry)
-			id, idOK := positiveID(release["id"])
+			id, idOK := inspection.PositiveID(release["id"])
 			draft, draftOK := release["draft"].(bool)
 			prerelease, prereleaseOK := release["prerelease"].(bool)
-			if !idOK || !draftOK || !prereleaseOK || text(release["tag_name"]) == "" && !draft {
+			tag, tagOK := release["tag_name"].(string)
+			if !idOK || !draftOK || !prereleaseOK || !tagOK {
 				return result, errors.New("release inventory has a malformed record")
 			}
-			if draft {
-				return result, errors.New("a draft release exists; resolve it before recovery")
+			if draft && (tag == a.Tag || tag == "") {
+				return result, errors.New("a draft release for this tag, or with no tag, exists; resolve it before recovery")
 			}
-			result.Releases = append(result.Releases, releaseRecord{ID: id, Tag: text(release["tag_name"]), Draft: draft, Prerelease: prerelease})
+			if !draft {
+				result.Releases = append(result.Releases, releaseRecord{ID: id, Tag: tag, Prerelease: prerelease})
+			}
 		}
 		complete = len(entries) < pageSize
 	}
 	if !complete {
 		return result, errors.New("release inventory exceeds the supported bound")
 	}
-	value, present, err := p.reader.Get(ctx, "/repos/"+a.Repository+"/releases/latest", token, true)
-	if err != nil {
-		return result, fmt.Errorf("latest release: %w", err)
-	}
-	if present {
-		latest := object(value)
-		id, ok := positiveID(latest["id"])
-		if !ok || latest["draft"] != false || latest["prerelease"] != false || text(latest["tag_name"]) == "" {
-			return result, errors.New("latest release is not a published stable release")
-		}
-		result.Latest = id
-	}
-	return result, nil
+	latest, err := p.latest(ctx, a, token)
+	result.Latest = latest
+	return result, err
 }
 
 // stableInventory requires two complete inventories to agree before anything is written.
@@ -178,37 +181,35 @@ func (p *publisher) create(ctx context.Context, a *inspection.Admission, token s
 	request.Header.Set("Content-Type", "application/json")
 	response, err := p.client.Do(request)
 	if err != nil {
-		return "", errors.New("publication request outcome is unknown; do not retry, run recovery again to reconcile")
+		return "", errors.New("publication outcome is unknown after a failed request; " + unknownOutcome)
 	}
 	defer response.Body.Close()
-	raw, err := io.ReadAll(io.LimitReader(response.Body, maxResponse+1))
-	if err != nil || len(raw) > maxResponse {
-		return "", errors.New("publication response is incomplete; run recovery again to reconcile")
-	}
-	if response.StatusCode != http.StatusCreated {
+	value, readErr := inspection.ReadJSONBody(response)
+	switch {
+	case response.StatusCode >= 500:
+		// A gateway or server error can follow a release GitHub already created.
+		return "", fmt.Errorf("publication outcome is unknown after status %d; %s", response.StatusCode, unknownOutcome)
+	case response.StatusCode != http.StatusCreated:
 		return "", fmt.Errorf("publication was refused with status %d", response.StatusCode)
+	case readErr != nil:
+		return "", fmt.Errorf("publication response is unreadable: %v; %s", readErr, unknownOutcome)
 	}
-	mediaType, _, err := mime.ParseMediaType(response.Header.Get("Content-Type"))
-	if err != nil || mediaType != "application/json" && mediaType != "application/vnd.github+json" {
-		return "", errors.New("publication response is not JSON; run recovery again to reconcile")
-	}
-	value, err := inspection.StrictJSON(raw)
 	release := object(value)
-	id, ok := positiveID(release["id"])
-	if err != nil || !ok || release["tag_name"] != a.Tag || release["draft"] != false || release["prerelease"] != false {
-		return "", errors.New("publication response does not describe the requested release; run recovery again to reconcile")
+	id, ok := inspection.PositiveID(release["id"])
+	if !ok || release["tag_name"] != a.Tag || release["draft"] != false || release["prerelease"] != false {
+		return "", errors.New("publication response does not describe the requested release; " + unknownOutcome)
 	}
 	return id, nil
 }
 
-// verify re-reads the release, the admitted identity and the latest anchor independently.
+// verify re-reads the release, the admitted identity, the inventory and the latest anchor.
 func (p *publisher) verify(ctx context.Context, args []string, a *inspection.Admission, token, id string, before inventory) error {
 	value, present, err := p.reader.Get(ctx, "/repos/"+a.Repository+"/releases/tags/"+a.Tag, token, true)
 	if err != nil {
 		return fmt.Errorf("publication readback: %w", err)
 	}
 	release := object(value)
-	readID, _ := positiveID(release["id"])
+	readID, _ := inspection.PositiveID(release["id"])
 	commitish := text(release["target_commitish"])
 	if !present || readID != id || release["tag_name"] != a.Tag || release["draft"] != false ||
 		release["prerelease"] != false || release["body"] != Receipt(a) ||
@@ -222,24 +223,40 @@ func (p *publisher) verify(ctx context.Context, args []string, a *inspection.Adm
 	if !a.SameIdentity(after) || !after.Published {
 		return errors.New("post-publication observation does not match the admitted tag and source")
 	}
-	value, present, err = p.reader.Get(ctx, "/repos/"+a.Repository+"/releases/latest", token, true)
+	// The release list must now hold exactly this release for the tag, and no new draft.
+	now, err := p.list(ctx, a, token)
 	if err != nil {
-		return fmt.Errorf("latest release readback: %w", err)
+		return fmt.Errorf("post-publication inventory: %w", err)
 	}
-	latest := ""
-	if present {
-		latest, _ = positiveID(object(value)["id"])
+	records := 0
+	for _, record := range now.Releases {
+		if record.Tag == a.Tag {
+			records++
+			if record.ID != id {
+				return errors.New("another release record for this tag appeared during publication")
+			}
+		}
 	}
-	if latest != before.Latest {
+	if records != 1 {
+		return errors.New("post-publication inventory does not hold exactly the published release")
+	}
+	// make_latest "false" keeps an existing latest release in place. With no earlier stable
+	// release there is nothing to preserve, and GitHub may report the new one as latest.
+	if now.Latest != before.Latest && (before.Latest != "" || now.Latest != id) {
 		return errors.New("the latest release changed during publication")
 	}
 	return nil
 }
 
 func report(out io.Writer, a *inspection.Admission, result, id string, posts int) error {
+	notes, latest := "not-inspected", "not-inspected"
+	if result == "published" {
+		// verify checked both for the release this run created.
+		notes, latest = "not-reconstructed", "preserved"
+	}
 	raw, err := json.Marshal(map[string]any{"result": result, "repository": a.Repository, "tag": a.Tag,
 		"source_sha": a.SourceSHA, "run_id": a.RunID, "run_attempt": a.RunAttempt, "producer_ref": a.ProducerRef,
-		"release_id": id, "publication_requests": posts, "release_notes": "not-reconstructed", "latest_release": "unchanged"})
+		"release_id": id, "publication_requests": posts, "release_notes": notes, "latest_release": latest})
 	if err != nil {
 		return errors.New("could not encode the result")
 	}
@@ -279,8 +296,11 @@ func run(args []string, token string, out io.Writer, p *publisher) error {
 	if err != nil {
 		return err
 	}
-	if err := p.verify(ctx, args, again, token, id, before); err != nil {
-		return err
+	// Verification gets its own deadline so a slow admission cannot starve the readback.
+	verifyCtx, cancelVerify := context.WithTimeout(context.Background(), 150*time.Second)
+	defer cancelVerify()
+	if err := p.verify(verifyCtx, args, again, token, id, before); err != nil {
+		return fmt.Errorf("release %s was created but its verification failed: %v; %s", id, err, unknownOutcome)
 	}
 	return report(out, again, "published", id, 1)
 }
