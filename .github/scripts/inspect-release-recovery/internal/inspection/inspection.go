@@ -42,6 +42,12 @@ type inspector struct {
 
 // newInspector bounds requests and prevents redirects, ambient proxies and credential forwarding.
 func newInspector(client *http.Client, base string) *inspector {
+	return &inspector{client: HardenedClient(client), base: base}
+}
+
+// HardenedClient copies a client with a bounded timeout, no redirects and, by default,
+// a proxy-free transport, so a credential is only ever sent to the fixed origin.
+func HardenedClient(client *http.Client) *http.Client {
 	copyClient := http.Client{Timeout: 15 * time.Second}
 	if client != nil {
 		copyClient = *client
@@ -54,7 +60,7 @@ func newInspector(client *http.Client, base string) *inspector {
 		copyClient.Transport = &http.Transport{DisableKeepAlives: true, TLSHandshakeTimeout: 10 * time.Second,
 			TLSClientConfig: &tls.Config{MinVersion: tls.VersionTLS12}}
 	}
-	return &inspector{client: &copyClient, base: base}
+	return &copyClient
 }
 
 // positive accepts canonical positive identifiers without overflow or alternate encodings.
@@ -498,27 +504,82 @@ func (i *inspector) snapshot(ctx context.Context, in input, token string) (map[s
 	return result, nil
 }
 
-// run emits a diagnosis only after two complete observations agree; it never authorizes writes.
-func run(args []string, token string, out io.Writer, service *inspector) error {
+// Admission is one incident identity that two complete, agreeing observations confirmed.
+// It carries no credential and grants no authority; a writer must still prove its own.
+type Admission struct {
+	Repository, Tag, SourceSHA, RunID, RunAttempt, ProducerRef, DefaultBranch string
+	// Published reports a matching published stable release for the tag.
+	Published bool
+	identity  map[string]any
+}
+
+// SameIdentity reports whether two admissions observed the same repository, run, tag,
+// source and configuration. Publication state is deliberately excluded.
+func (a *Admission) SameIdentity(other *Admission) bool {
+	return a != nil && other != nil && a.identity != nil && reflect.DeepEqual(a.identity, other.identity)
+}
+
+// admit validates the incident flags, then requires two complete observations to agree.
+func (i *inspector) admit(ctx context.Context, args []string, token string) (*Admission, error) {
 	in, err := parse(args, token)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
-	defer cancel()
-	first, err := service.snapshot(ctx, in, token)
+	first, err := i.snapshot(ctx, in, token)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	second, err := service.snapshot(ctx, in, token)
+	second, err := i.snapshot(ctx, in, token)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if !reflect.DeepEqual(first, second) {
-		return errors.New("relevant observations changed between independent reads")
+		return nil, errors.New("relevant observations changed between independent reads")
+	}
+	identity := map[string]any{}
+	for key, value := range first {
+		if key != "publication" {
+			identity[key] = value
+		}
+	}
+	return &Admission{Repository: in.Repository, Tag: in.Tag, SourceSHA: in.SourceSHA, RunID: in.RunID,
+		RunAttempt: in.RunAttempt, ProducerRef: in.ProducerRef,
+		DefaultBranch: text(object(first["repository"])["default_branch"]),
+		Published:     first["publication"] != "missing", identity: identity}, nil
+}
+
+// Reader gives a separate publisher the inspector's GET-only admission and bounded reads.
+// It has no write operation.
+type Reader struct{ inspector *inspector }
+
+// NewReader returns a GET-only reader bound to one fixed API origin.
+func NewReader(client *http.Client, base string) *Reader {
+	return &Reader{inspector: newInspector(client, base)}
+}
+
+// Admit runs the inspector's full admission with the supplied credential.
+func (r *Reader) Admit(ctx context.Context, args []string, token string) (*Admission, error) {
+	return r.inspector.admit(ctx, args, token)
+}
+
+// Get performs one bounded GET. When missing is true, a documented 404 is reported as absent.
+func (r *Reader) Get(ctx context.Context, path, token string, missing bool) (any, bool, error) {
+	return r.inspector.get(ctx, path, token, missing)
+}
+
+// StrictJSON decodes exactly one bounded JSON document and rejects duplicate keys.
+func StrictJSON(raw []byte) (any, error) { return strictJSON(raw) }
+
+// run emits a diagnosis only after two complete observations agree; it never authorizes writes.
+func run(args []string, token string, out io.Writer, service *inspector) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+	defer cancel()
+	in, err := service.admit(ctx, args, token)
+	if err != nil {
+		return err
 	}
 	diagnosis := "github-release-present"
-	if first["publication"] == "missing" {
+	if !in.Published {
 		diagnosis = "missing-github-release"
 	}
 	raw, err := json.Marshal(map[string]any{"diagnosis": diagnosis, "repository": in.Repository, "tag": in.Tag,
