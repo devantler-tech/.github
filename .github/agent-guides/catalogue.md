@@ -34,8 +34,10 @@ executes real HTTP controls and the immutable-source and read-only credential bo
 inside `test-create-release-config` in required CI. Never treat its diagnosis as completed recovery
 or write authorization; #587 owns publication, legacy compatibility and protected consumer proof.
 
-The same Go module holds a separate `cmd/publish-release-recovery` command. No workflow calls it
-yet. It re-runs the inspector's admission with its writer credential, so the inspection command
+The same Go module holds a separate `cmd/publish-release-recovery` command. Only the default-off
+reusable `publish-release-recovery.yaml` calls it, after a confirmed manual dispatch, a read-only
+admission and only then a writer token; run `bash .github/tests/test-publish-release-recovery.sh`
+after changing it. It re-runs the inspector's admission with its writer credential, so the inspection command
 stays read-only. It refuses to publish unless that credential can push, two complete release
 inventories agree, no draft names the tag (or no tag), and a second admission matches the first. It
 then sends exactly one create-release request: the existing tag, the honest recovery receipt, no
