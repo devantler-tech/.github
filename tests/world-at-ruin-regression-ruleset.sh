@@ -63,6 +63,8 @@ grep -Fq 'The 15 imported org rulesets' "${inventory}" ||
   fail "organization ruleset inventory must account for 15 imported rulesets"
 # Lifecycle authority, not an active/retired display label, determines ownership.
 # Compare the exact roster so equal counts cannot hide a missing or replaced row.
+# Compare the documented managed-policy roster in $1 with every Create-managed
+# policy in the complete render. Empty, duplicate or mismatched rosters fail.
 managed_inventory_valid() {
   # shellcheck disable=SC2016
   awk -F'|' '$2 ~ /^ `[a-z-]+\.yaml` $/ && $4 ~ /^ Managed \(Create\)/ {

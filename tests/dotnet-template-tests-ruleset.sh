@@ -8,6 +8,8 @@ kubectl kustomize "$root/deploy" >"$render"
 selector='select(.kind == "OrganizationRuleset" and .metadata.name == "require-dotnet-template-tests")'
 count="$(yq -N "$selector | .metadata.name" "$render" | grep -c . || true)"
 [[ "$count" == 1 ]] || fail "expected one .NET template tests ruleset"
+# Compare the selected rendered policy expression ($2) with exact JSON ($1),
+# stopping this test with the expression and observed value on a mismatch.
 assert_json() {
   local expected="$1" expression="$2" actual
   actual="$(yq -o=json -I=0 "$selector | $expression" "$render")"
@@ -20,5 +22,5 @@ assert_json '[825979604]' '.spec.forProvider.conditions[0].repositoryId'
 assert_json '["~DEFAULT_BRANCH"]' '.spec.forProvider.conditions[0].refName[0].include'
 assert_json '[]' '.spec.forProvider.conditions[0].refName[0].exclude'
 assert_json '[]' '(.spec.forProvider.bypassActors // [])'
-assert_json '[{"creation":false,"deletion":false,"nonFastForward":false,"requiredLinearHistory":false,"requiredSignatures":false,"requiredWorkflows":[{"doNotEnforceOnCreate":false,"requiredWorkflow":[{"path":".github/workflows/run-dotnet-tests.yaml","ref":"refs/heads/main","repositoryId":933213756}]}],"update":false}]' '.spec.forProvider.rules'
+assert_json '[{"creation":false,"deletion":false,"nonFastForward":false,"requiredLinearHistory":false,"requiredSignatures":false,"update":false}]' '.spec.forProvider.rules'
 echo "dotnet-template-tests-ruleset: OK"

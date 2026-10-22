@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Preserve complete observed policies plus the proven two-template cutover (#237).
+# Preserve complete observed policies plus the proven validation retirements.
 set -euo pipefail
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 work="$(mktemp -d)"
@@ -11,6 +11,8 @@ fixture="$root/tests/fixtures/legacy-workflow-rulesets-observed.jsonl"
 jq -se 'length==6 and ([.[].rulesetId]|unique|length)==6 and
   all(.[]; .forProvider.rules[0].requiredWorkflows[0].requiredWorkflow[0].repositoryId==948529001)' "$fixture" >/dev/null ||
   fail 'incomplete native policy inventory'
+# Compare the complete rendered JSON array in $1 with the captured policies,
+# allowing only the explicitly reviewed source, encoding and retirement changes.
 check_rules() {
   jq -e --slurpfile baseline "$fixture" '
     def expected:
@@ -18,10 +20,12 @@ check_rules() {
        forProvider:(.forProvider
          | if .name=="Require workflow - Go template validation" or .name=="Require workflow - .NET template tests"
            then .enforcement="disabled" else . end
+         | if .name=="Require workflow - .NET template tests" or .name=="Require workflows to pass before merging for .NET"
+           then .enforcement="disabled" | .rules |= map(del(.requiredWorkflows)) else . end
          | if has("bypassActors") then .bypassActors |= map(
              if .actorType=="OrganizationAdmin" and .actorId==0 then del(.actorId) else . end) else . end
          | .conditions[0].refName[0].exclude=[]
-         | .rules[0].requiredWorkflows[0].requiredWorkflow[0].repositoryId=933213756),
+         | if (.rules[0].requiredWorkflows // [] | length)>0 then .rules[0].requiredWorkflows[0].requiredWorkflow[0].repositoryId=933213756 else . end),
        providerConfigRef:{kind:"ProviderConfig",name:"default"}};
     . as $render | type=="array" and
     ([.[] | select(.kind=="OrganizationRuleset") |
@@ -39,6 +43,8 @@ check_rules() {
         .spec==$expected))
   ' "$1" >/dev/null 2>&1
 }
+# Require the workflow at $1 to invoke the observation test unconditionally in
+# the required manifest job. Return failure for missing or bypassable coverage.
 check_ci() {
   local steps
   steps="$(yq -o=json -I=0 '.jobs["validate-manifests"].steps' "$1")" || return 1

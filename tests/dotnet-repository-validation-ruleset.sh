@@ -29,7 +29,20 @@ jq -e '
   .providerConfigRef == {"kind":"ProviderConfig","name":"default"}
 ' <<<"$policy" >/dev/null || fail 'provider payload loses a platform, producer binding or branch protection'
 
-# Positive and intentional-failure controls proved every native platform binding.
-legacy="$(yq -r 'select(.kind == "OrganizationRuleset" and .metadata.name == "require-dotnet-template-tests") | .spec.forProvider.enforcement' "$render")"
-[[ "$legacy" == disabled ]] || fail 'duplicate organization gate must remain retired after native proof'
-echo 'dotnet repository validation: all native legs required; duplicate organization gate retired'
+# No dormant policy may retain a source association after its wrapper is removed.
+# The complete observation test separately pins selectors, bypasses and lifecycle.
+# Read one rendered provider payload from stdin. Return success only for the
+# disabled, provider-compatible inert rule; missing or duplicate payloads fail.
+retired_policy_valid() {
+  jq -se 'length == 1 and (.[0] | .enforcement == "disabled" and .rules == [{"creation":false,"deletion":false,"nonFastForward":false,"requiredLinearHistory":false,"requiredSignatures":false,"update":false}])' >/dev/null
+}
+for name in require-dotnet-template-tests require-workflows-dotnet; do
+  legacy="$(NAME="$name" yq -o=json -I=0 'select(.kind == "OrganizationRuleset" and .metadata.name == strenv(NAME)) | .spec.forProvider' "$render")"
+  retired_policy_valid <<<"$legacy" || fail "$name must be disabled without an obsolete source association"
+  for mutation in '.enforcement="active"' '.rules=[{"requiredWorkflows":[{"requiredWorkflow":[{"path":".github/workflows/run-dotnet-tests.yaml"}]}]}]'; do
+    if jq "$mutation" <<<"$legacy" | retired_policy_valid; then
+      fail "$name accepted reactivation or a restored source association"
+    fi
+  done
+done
+echo 'dotnet repository validation: all native legs required; both old policies inert and disabled'
