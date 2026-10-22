@@ -38,9 +38,15 @@ diagnose_jobs() {
   ' "$jobs" 2>/dev/null)" || summary='{"state":"unreadable"}'
   printf 'native-go-cache: job-evidence-summary=%s\n' "$summary" >&2
 }
-validate_jobs() {
-  jq -e --argjson run "$run" --argjson attempt "$attempt" --arg head "$head" --arg prefix "$prefix" --argjson names "$fixture_names" '
+# The jobs API can keep reporting a finished fixture job as queued or running
+# after Actions has already released this dependent job (#655). With lag set,
+# such a job (no conclusion yet) passes the predicate; every other
+# invariant stays exact.
+jobs_predicate() {
+  jq -e --argjson lag "$1" --argjson run "$run" --argjson attempt "$attempt" --arg head "$head" --arg prefix "$prefix" --argjson names "$fixture_names" '
     def positive: type == "number" and . > 0 and floor == .;
+    def final: .status == "completed" and .conclusion == "success";
+    def lagging: (.status | IN("queued", "in_progress")) and .conclusion == null;
     type == "array" and length > 0 and
     all(.[]; (.total_count | positive) and (.jobs | type == "array")) and
     ([.[].total_count] | unique | length == 1) and
@@ -51,9 +57,12 @@ validate_jobs() {
       ($fixture | map(.name | ltrimstr($prefix)) | sort) ==
         ($names | sort) and
       all($fixture[]; (.id | positive) and .run_id == $run and .run_attempt == $attempt and .head_sha == $head and
-        .status == "completed" and .conclusion == "success" and (.steps | type == "array") and
+        (final or ($lag and lagging)) and (.steps | type == "array") and
         ([.steps[].name] | length == (unique | length))))
-  ' "$jobs" >/dev/null 2>&1 || {
+  ' "$jobs" >/dev/null 2>&1
+}
+validate_jobs() {
+  jobs_predicate false || {
     diagnose_jobs
     fail 'incomplete, stale or unsuccessful current-attempt jobs'
   }
@@ -182,8 +191,16 @@ observe() {
   trap 'rm -rf "$scratch"' EXIT
   mkdir "$scratch/logs"
   gh api "repos/devantler-tech/.github/actions/runs/$run/attempts/$attempt" >"$scratch/run.json" || fail 'run metadata read failed'
-  gh api --paginate --slurp "repos/devantler-tech/.github/actions/runs/$run/attempts/$attempt/jobs?per_page=50" >"$scratch/jobs.json" || fail 'complete current-attempt job read failed'
   jobs="$scratch/jobs.json"
+  # Re-read only a lagging fixture status, a bounded number of times: the
+  # step timeout still bounds the job, and every other rejection fails at once.
+  job_reads=6; job_read_interval=15
+  for ((read_number = 1; ; read_number++)); do
+    gh api --paginate --slurp "repos/devantler-tech/.github/actions/runs/$run/attempts/$attempt/jobs?per_page=50" >"$jobs" || fail 'complete current-attempt job read failed'
+    if jobs_predicate false || (( read_number >= job_reads )) || ! jobs_predicate true; then break; fi
+    printf 'native-go-cache: fixture job status not final yet (read %d of %d); re-reading\n' "$read_number" "$job_reads" >&2
+    sleep "$job_read_interval"
+  done
   validate_jobs
   # Older gh versions print log bytes directly and do not accept this option.
   # Newer versions refuse escape-bearing action logs without the explicit flag.
