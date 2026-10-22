@@ -3932,7 +3932,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Test credential-free pull-request fixture
-        uses: ./.github/actions/test-dotnet-fixture
+        uses: $/.github/actions/test-dotnet-fixture
         with:
           working-directory: .github/fixtures/run-dotnet-tests
           github-token: ${{ github.event_name != 'pull_request' && secrets.GITHUB_TOKEN || '' }}
@@ -3965,7 +3965,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Test explicitly trusted authenticated fixture
-        uses: ./.github/actions/test-dotnet-fixture
+        uses: $/.github/actions/test-dotnet-fixture
         with:
           working-directory: .github/fixtures/run-dotnet-tests
           github-token: >-

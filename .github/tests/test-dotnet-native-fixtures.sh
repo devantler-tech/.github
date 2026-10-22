@@ -21,7 +21,7 @@ check_ci() {
       .strategy.matrix.os == ["ubuntu-latest","windows-latest","macos-latest"] and
       .permissions == {contents:"read",packages:"read","code-quality":"write"} and
       ([.steps[] | select((.uses // "") | startswith("actions/checkout@"))] | length==1 and all(.with["persist-credentials"]==false)) and
-      ([.steps[] | select(.uses=="./.github/actions/test-dotnet-fixture")] | length==1 and all(.if==null and .["continue-on-error"]==null and .with["working-directory"]==".github/fixtures/run-dotnet-tests" and
+      ([.steps[] | select(.uses=="$/.github/actions/test-dotnet-fixture")] | length==1 and all(.if==null and .["continue-on-error"]==null and .with["working-directory"]==".github/fixtures/run-dotnet-tests" and
         (.with["github-token"] | compact) == (if $id=="test-run-dotnet-tests-workflow" then
           "${{ github.event_name != '\''pull_request'\'' && secrets.GITHUB_TOKEN || '\'''\'' }}"
         else
@@ -35,15 +35,12 @@ check_action() {
   jq -e '
     .runs.using=="composite" and
     (.runs.steps|length)==4 and
-    .runs.steps[0].with.repository=="${{ job.workflow_repository }}" and
-    .runs.steps[0].with.ref=="${{ job.workflow_sha }}" and
-    .runs.steps[0].with.path==".devantler-tech-actions" and
-    .runs.steps[0].with["sparse-checkout"]=="/actions/run-dotnet-tests/" and
-    .runs.steps[0].with["sparse-checkout-cone-mode"]==false and
-    .runs.steps[0].with["persist-credentials"]==false and
+    .runs.steps[0].uses==null and .runs.steps[0].if==null and
+    .runs.steps[0].env=={FIXTURE_ACTION_SOURCE:"${{ github.action_path }}",FIXTURE_WORKSPACE:"${{ github.workspace }}"} and
+    (.runs.steps[0].run|contains("fixture_source_dir")) and
     .runs.steps[1].id=="github-source-before" and
     .runs.steps[1].if=="${{ inputs.github-token != '\'''\'' }}" and
-    .runs.steps[2].uses=="./.devantler-tech-actions/actions/run-dotnet-tests" and
+    .runs.steps[2].uses=="$/actions/run-dotnet-tests" and
     .runs.steps[2].if==null and .runs.steps[2].with["github-token"]=="${{ inputs.github-token }}" and
     .runs.steps[3].if=="${{ inputs.github-token != '\'''\'' }}" and
     .runs.steps[3].env.BEFORE_STATE=="${{ steps.github-source-before.outputs.state }}" and
@@ -72,9 +69,9 @@ for id in test-run-dotnet-tests-workflow test-run-dotnet-tests-workflow-authenti
   done
 done
 for mutation in \
-  '.runs.steps[0].with.ref="main"' \
-  'del(.runs.steps[0].with["sparse-checkout"])' \
-  '.runs.steps[0].with["persist-credentials"]=true' \
+  '.runs.steps[0].run="echo skipped"' \
+  '.runs.steps[0].if="false"' \
+  '.runs.steps[0].env.FIXTURE_ACTION_SOURCE="candidate"' \
   '.runs.steps[1].if="false"' \
   '.runs.steps[2].if="false"' \
   '.runs.steps[2].uses="./another-action"' \
@@ -86,4 +83,15 @@ for mutation in \
   if check_action "$work/broken.json"; then echo 'FAIL: accepted source-state or token regression' >&2; exit 1; fi
   controls=$((controls+1))
 done
+# Execute the actual isolation guard with a separate native action cache and
+# reject the former workspace-relative source placement, not just its spelling.
+mkdir -p "$work/action-cache" "$work/consumer/actions/inside"
+yq -r '.runs.steps[0].run' "$action" > "$work/isolation.sh"
+FIXTURE_ACTION_SOURCE="$work/action-cache" FIXTURE_WORKSPACE="$work/consumer" \
+  bash "$work/isolation.sh"
+if FIXTURE_ACTION_SOURCE="$work/consumer/actions/inside" FIXTURE_WORKSPACE="$work/consumer" \
+  bash "$work/isolation.sh" > "$work/isolation-failure" 2>&1; then
+  echo 'FAIL: native action source may pollute the consumer workspace' >&2; exit 1;
+fi
+grep -q 'Native action source entered the consumer workspace' "$work/isolation-failure"
 echo "PASS: both native .NET fixture jobs and $controls refusal controls"

@@ -402,8 +402,16 @@ func (a *auditor) immutableEntry(path, revision string) (sourceEntry, error) {
 	return entry, nil
 }
 
-// reference binds first-party sources to local same-commit bytes or an exact owned SHA.
+// reference binds sources to the defining file's commit or an exact owned SHA.
 func reference(ref string, revision string, action bool) (string, string, bool, error) {
+	if strings.HasPrefix(ref, "$/") {
+		// Native self references are independent of workspace checkout state.
+		// GitHub forbids an explicit ref suffix; never treat it as an opaque action.
+		if strings.Contains(ref, "@") {
+			return "", "", false, fmt.Errorf("UNKNOWN self reference with an explicit ref")
+		}
+		ref = "./" + strings.TrimPrefix(ref, "$/")
+	}
 	if strings.HasPrefix(ref, "./") {
 		p, e := safePath(ref)
 		if action {

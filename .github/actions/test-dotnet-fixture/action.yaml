@@ -11,16 +11,20 @@ inputs:
 runs:
   using: composite
   steps:
-    # Match an external consumer: helper projects and coverage must not pollute it.
-    - name: Checkout the tested action only
-      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      with:
-        repository: ${{ job.workflow_repository }}
-        ref: ${{ job.workflow_sha }}
-        path: .devantler-tech-actions
-        sparse-checkout: /actions/run-dotnet-tests/
-        sparse-checkout-cone-mode: false
-        persist-credentials: false
+    - name: Keep the native action source outside the consumer workspace
+      shell: bash
+      env:
+        FIXTURE_ACTION_SOURCE: ${{ github.action_path }}
+        FIXTURE_WORKSPACE: ${{ github.workspace }}
+      run: |
+        set -euo pipefail
+        fixture_source_dir="$(cd "$FIXTURE_ACTION_SOURCE" && pwd -P)"
+        fixture_workspace_dir="$(cd "$FIXTURE_WORKSPACE" && pwd -P)"
+        [[ "$fixture_source_dir" != "$fixture_workspace_dir" &&
+          "$fixture_source_dir" != "$fixture_workspace_dir/"* ]] || {
+          echo '::error::Native action source entered the consumer workspace'
+          exit 1
+        }
 
     - name: Snapshot authenticated GitHub Packages source
       id: github-source-before
@@ -44,7 +48,7 @@ runs:
         echo "state=$github_source_state" >>"$GITHUB_OUTPUT"
 
     - name: Test .NET solution or project
-      uses: ./.devantler-tech-actions/actions/run-dotnet-tests
+      uses: $/actions/run-dotnet-tests
       with:
         github-token: ${{ inputs.github-token }}
         working-directory: ${{ inputs.working-directory }}
