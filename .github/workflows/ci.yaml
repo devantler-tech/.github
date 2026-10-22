@@ -4136,28 +4136,17 @@ jobs:
   test-publish-release-recovery:
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
     name: "[Test] Publish Release Recovery - Offline"
-    uses: ./.github/workflows/publish-release-recovery.yaml
+    uses: ./.github/workflows/release-recovery-offline-fixture.yaml
     permissions: {}
     with:
       enable-recovery: true
       offline-test: true
-      tag: v1.2.3
-      source-sha: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
-      run-id: "1"
-      run-attempt: "1"
-      producer-ref: devantler-tech/.github/.github/workflows/create-release.yaml@bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
 
   test-publish-release-recovery-disabled:
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
     name: "[Test] Publish Release Recovery - Disabled"
-    uses: ./.github/workflows/publish-release-recovery.yaml
+    uses: ./.github/workflows/release-recovery-offline-fixture.yaml
     permissions: {}
-    with:
-      tag: v1.2.3
-      source-sha: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
-      run-id: "1"
-      run-attempt: "1"
-      producer-ref: devantler-tech/.github/.github/workflows/create-release.yaml@bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
 
   test-create-release-config:
     needs: [select-ci-tests]
