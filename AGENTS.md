@@ -186,6 +186,11 @@ passing when either file changes. Because the repairing pull request cannot edit
 `main` whose `deploy/` no longer renders needs an organization owner to set the ruleset's
 enforcement to `evaluate` while the `github-config` reconciliation is suspended, then restore both.
 
+Shared admission for this catalogue and monorepo also requires a repository-bound executed result;
+the ordinary source-only skipped result cannot satisfy it. Maintainer-led recovery must account for
+both the organization workflow and repository result bindings, not just one workflow rule. Agents
+never automate that emergency route or fall back to a candidate-controlled validator.
+
 Organization-required workflows ignore pull request title/body edits even when their trigger lists
 `edited`. `pr-metadata-guards.yaml` provides manually dispatched read-only feedback from reviewed main.
 It reads the current open catalogue PR through GitHub's API, binds validators to the workflow's
