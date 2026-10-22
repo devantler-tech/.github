@@ -1,6 +1,6 @@
-# Additive first-consumer rollout, not the final multi-product enrollment.
-# Keep .github unenrolled as the recovery/configuration path until real injected
-# positive and tampering controls pass on monorepo. The original gate stays active.
+# Shared admission for the monorepo and this catalogue; product decisions stay local.
+# Keep each independent old gate active until that product's native controls and
+# separately reviewed retirement are complete.
 apiVersion: enterprise.github.m.upbound.io/v1alpha1
 kind: OrganizationRuleset
 metadata:
@@ -19,7 +19,7 @@ spec:
       - refName:
           - include: ["~DEFAULT_BRANCH"]
             exclude: []
-        repositoryId: [786274843]
+        repositoryId: [786274843, 933213756]
     rules:
       - requiredWorkflows:
           - requiredWorkflow:

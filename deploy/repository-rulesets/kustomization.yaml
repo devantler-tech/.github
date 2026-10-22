@@ -1,6 +1,7 @@
 # `RepositoryRuleset` resources — one per file, named `<verb>-on-<repo>.yaml`, each a
-# repo-scoped rule adopted Observe-first (read-only). external-name = the bare numeric
-# ruleset id (a `<repo>:`-prefixed value fails the provider's ParseInt). See
+# repo-scoped rule. Existing rules adopt Observe-first (read-only), with external-name
+# set to the bare numeric ruleset id (a `<repo>:` prefix fails the provider's ParseInt).
+# New rules use an explicit non-deleting managed lifecycle. See
 # ../organization-rulesets/README.md for the shared adoption convention and the provider
 # importability matrix. Included by ../kustomization.yaml.
 apiVersion: kustomize.config.k8s.io/v1beta1
@@ -11,3 +12,4 @@ resources:
   - require-validation-on-dotnet-template.yaml
   - require-validation-on-go-template.yaml
   - require-reviewed-admission-on-monorepo.yaml
+  - require-reviewed-admission-on-dotgithub.yaml
