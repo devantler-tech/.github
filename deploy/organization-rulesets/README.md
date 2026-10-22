@@ -46,7 +46,7 @@ verb — e.g. `require-pull-request.yaml`). Repo-scoped rulesets live next door 
 | `protect-release-tags.yaml` | **Protect release tags** (net-new) | Managed (Create) — block tag delete + force-move + require `v<semver>` |
 | `require-world-at-ruin-trusted-regressions.yaml` | **Require workflow - World at Ruin trusted regressions** (net-new) | Managed (Create) — target only World at Ruin and require the canonical catalogue's trusted regression workflow |
 | `require-monorepo-ci-aggregate-contract.yaml` | **Require workflow - Monorepo CI aggregate contract** (net-new) | Managed (Create) — target only monorepo and require the aggregate-execution control from its reviewed `main` |
-| `require-repository-pr-admission.yaml` | **Require workflow - Repository PR admission** (canary) | Managed (Create) — initially monorepo only; trusted shared source runs the product-owned base-revision action while the old independent gate remains active |
+| `require-repository-pr-admission.yaml` | **Require workflow - Repository PR admission** | Managed (Create) — target monorepo and this catalogue; trusted shared source runs each product-owned base-revision action while the old independent gates remain active |
 | `require-dotgithub-deploy-guards.yaml` | **Require workflow - .github deploy guards** (net-new) | Managed (Create) — target only this repository and run the `deploy/` release-contract and deletion validators from its reviewed `main` |
 | `require-go-template-validation.yaml` | **Require workflow - Go template validation** (retired) | Managed (Create) — disabled after native repository validation proof; retain identity, selectors and non-deleting lifecycle |
 | `require-dotnet-template-tests.yaml` | **Require workflow - .NET template tests** (retired) | Managed (Create) — disabled with one inert rule (no required workflow; the provider requires a rules block) after native repository validation proof; retain identity, selectors and non-deleting lifecycle |
@@ -99,19 +99,21 @@ and non-deleting lifecycle. The Go source remains genuinely shared. Both former 
 policies now declare one inert rule each, removing obsolete workflow associations before wrapper
 retirement. The language-selected policy has no consumer in a complete fresh effective-policy
 census, and the template's replacement remains independently required. Native readback must
-confirm both empty, disabled policies before source removal; this follow-through is tracked
+confirm both inert, disabled policies before source removal; this follow-through is tracked
 in [#703](https://github.com/devantler-tech/.github/issues/703).
 
 ### Shared admission rollout
 
-The shared runner is prepared in [#694](https://github.com/devantler-tech/.github/pull/694).
-Its first enrollment is monorepo only, paired with a repository-owned requirement for
+The shared runner serves monorepo and this configuration catalogue. Each repository also requires
 `Run reviewed product admission` from GitHub Actions. The source-only `Admission not selected`
-result does not satisfy that requirement. The existing monorepo trusted gate remains active.
-This configuration repository remains unenrolled until the real injected runner passes both
-positive and candidate-tampering controls, preserving an independent recovery path.
-Read back the released native policies before opening those controls. Broader enrollment and
-old-gate retirement are separate deliveries under [#693](https://github.com/devantler-tech/.github/issues/693).
+result does not satisfy that requirement. Product validators and budgets come from their immutable
+reviewed bases, never from candidate actions. Both old independent gates remain active.
+
+Read back released native enforcement before exercising a product's real positive and tampering
+controls. Those controls must pass for that product before its old source is retired. Per-product
+acceptance and source cutovers are tracked in [#693](https://github.com/devantler-tech/.github/issues/693).
+If a reviewed source blocks its own repair, use the maintainer-owned recovery procedure in
+[Maintenance](../../AGENTS.md#maintenance), never candidate code or an automatic protection bypass.
 
 ### Organization Go workflow policy
 

@@ -120,13 +120,14 @@ committed as `fix:` (or `feat:`), not `ci:`/`refactor:`.
 These workflows do not declare `workflow_call`. Required CI checks this inventory against their actual triggers.
 
 `repository-pr-admission.yaml` shares only trusted-source resolution and a read-only runner.
-Enrollment starts with monorepo as a canary, keeping its old independent gate active and
-this configuration repository unenrolled as a recovery path. Require native positive and
-tampering-refusal controls before extending enrollment or retiring an old gate (#693).
+Enrollment covers monorepo and this configuration repository, with both old independent gates
+still active. Require per-product native positive and tampering-refusal controls before retiring
+its old gate (#693). A broken reviewed source uses the maintainer-owned recovery procedure in
+[Maintenance](../../AGENTS.md#maintenance), never a candidate-controlled fallback or an automatic protection bypass.
 Each enrolled product owns `.github/actions/pr-admission/action.yaml`, with the fixed
 `candidate-sha` interface, and a closed `.github/pr-admission.json` containing version `1`
 and its preserved `timeout-minutes` budget. Both are loaded from GitHub's immutable product
-base, never the candidate. The shared runner is not enrolled by this source preparation.
+base, never the candidate.
 The resolver admits only the product's actual default branch, and the checkout binds directly
 to GitHub's immutable base SHA. Source-only skipped checks have a different name from product
 admission. The catalogue's product action reads full Git history in a bare object store and
