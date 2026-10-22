@@ -1,6 +1,6 @@
 # `OrganizationRuleset` resources — one per file, named after the rule (an active verb).
 # Nine imported org rulesets remain Observe-only. The retained signing rule and
-# five adopted workflow rules have only Observe/Update. Seven net-new rulesets are managed (Create).
+# five adopted workflow rules have only Observe/Update. Eight net-new rulesets are managed (Create).
 # Rulesets the provider cannot express remain UI-managed —
 # see ./README.md for the importability matrix and the push/tag/Actions-policy analysis.
 # Repo-scoped rulesets live in ../repository-rulesets/. Included by ../kustomization.yaml.
@@ -31,3 +31,4 @@ resources:
   - require-go-template-validation.yaml
   - require-dotnet-template-tests.yaml
   - require-metadata-code-scanning-results.yaml
+  - require-repository-pr-admission.yaml

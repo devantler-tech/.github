@@ -25,6 +25,11 @@ jobs:
     permissions:
       contents: read
     steps:
+      - name: 🛡️ Harden runner
+        uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
+        with:
+          egress-policy: audit
+
       - name: 📥 Check out the reviewed validators
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -33,39 +38,8 @@ jobs:
           path: trusted
           persist-credentials: false
 
-      - name: 📥 Check out the candidate as data
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Apply the reviewed repository-owned admission action
+        # actionlint 1.7.12 does not parse $/; this checkout is bound to workflow_sha.
+        uses: ./trusted/.github/actions/pr-admission # zizmor: ignore[self-repository]
         with:
-          path: candidate
-          fetch-depth: 0
-          persist-credentials: false
-
-      - name: 🚦 Validate release contract
-        if: github.event_name == 'pull_request'
-        shell: bash
-        env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-          PR_TITLE: ${{ github.event.pull_request.title }}
-          COMMIT_COUNT: ${{ github.event.pull_request.commits }}
-        run: |
-          first_subject="$(git -C candidate log --format=%s "$BASE_SHA..$HEAD_SHA" | tail -1)"
-          git -C candidate diff --name-only -z "$BASE_SHA...$HEAD_SHA" |
-            bash trusted/scripts/validate-release-contract.sh "$PR_TITLE" "$COMMIT_COUNT" "$first_subject"
-
-      - name: 🗑️ Validate deploy/ deletions are acknowledged
-        if: github.event_name == 'pull_request'
-        env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          PR_BODY: ${{ github.event.pull_request.body }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-        run: |
-          MERGE_BASE="$(git -C candidate merge-base "$BASE_SHA" "$HEAD_SHA")"
-          git -C candidate worktree add --detach "$RUNNER_TEMP/base" "$MERGE_BASE"
-          kubectl kustomize "$RUNNER_TEMP/base/deploy" > "$RUNNER_TEMP/base-render.yaml" ||
-            { echo "deploy-deletions: UNKNOWN — the base deploy/ tree does not render; repair main first" >&2; exit 2; }
-          kubectl kustomize candidate/deploy > "$RUNNER_TEMP/head-render.yaml" ||
-            { echo "deploy-deletions: UNKNOWN — this pull request's deploy/ tree does not render" >&2; exit 2; }
-          printf '%s' "$PR_BODY" > "$RUNNER_TEMP/pr-body.txt"
-          bash trusted/scripts/validate-deploy-deletions.sh \
-            "$RUNNER_TEMP/base-render.yaml" "$RUNNER_TEMP/head-render.yaml" "$RUNNER_TEMP/pr-body.txt"
+          candidate-sha: ${{ github.sha }}

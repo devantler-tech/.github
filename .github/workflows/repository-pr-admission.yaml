@@ -1,0 +1,79 @@
+name: Repository PR admission
+
+# Shared plumbing only. Each product owns its action and execution budget at
+# GitHub's reviewed base. Existing gates remain until native enrollment proof.
+# Ruleset injection ignores activity filters and uses GitHub's default types.
+# In particular, edited is not an independent required-workflow metadata gate.
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  merge_group:
+
+permissions: {}
+
+jobs:
+  resolve:
+    name: Resolve reviewed admission source
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      run: ${{ steps.resolve.outputs.run }}
+      trusted-sha: ${{ steps.resolve.outputs.trusted-sha }}
+      timeout-minutes: ${{ steps.resolve.outputs.timeout-minutes }}
+    steps:
+      - name: Harden runner
+        uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
+        with:
+          egress-policy: audit
+      - name: Check out the exact shared workflow source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: devantler-tech/.github
+          ref: ${{ github.workflow_sha }}
+          path: .admission-runner
+          persist-credentials: false
+      - name: Resolve GitHub identities and the reviewed product budget
+        id: resolve
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TARGET_REPOSITORY: ${{ github.repository }}
+          EVENT_NAME: ${{ github.event_name }}
+          WORKFLOW_REF: ${{ github.workflow_ref }}
+          WORKFLOW_SHA: ${{ github.workflow_sha }}
+          CANDIDATE_SHA: ${{ github.sha }}
+          PULL_REQUEST_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          MERGE_GROUP_BASE_SHA: ${{ github.event.merge_group.base_sha }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          PULL_REQUEST_BASE_REF: ${{ github.event.pull_request.base.ref }}
+          MERGE_GROUP_BASE_REF: ${{ github.event.merge_group.base_ref }}
+        run: bash .admission-runner/.github/scripts/resolve-repository-admission.sh
+
+  admission:
+    name: "${{ needs.resolve.outputs.run == 'true' && 'Run reviewed product admission' || 'Admission not selected' }}"
+    needs: resolve
+    if: needs.resolve.outputs.run == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: ${{ fromJSON(needs.resolve.outputs.timeout-minutes) }}
+    permissions:
+      contents: read
+    steps:
+      - name: Harden runner
+        uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
+        with:
+          egress-policy: audit
+      - name: Check out only the reviewed product implementation
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ${{ github.repository }}
+          # Direct GitHub base identity makes provenance explicit to security
+          # analysis too; the resolver has admitted this exact default-branch base.
+          ref: ${{ github.event_name == 'merge_group' && github.event.merge_group.base_sha || github.event.pull_request.base.sha }}
+          path: .repository-admission
+          persist-credentials: false
+      - name: Execute the product-owned admission action
+        # actionlint 1.7.12 cannot parse $/; the checkout is the verified base.
+        uses: ./.repository-admission/.github/actions/pr-admission # zizmor: ignore[self-repository]
+        with:
+          candidate-sha: ${{ github.sha }}

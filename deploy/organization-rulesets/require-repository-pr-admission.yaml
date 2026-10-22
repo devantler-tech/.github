@@ -1,0 +1,31 @@
+# Additive first-consumer rollout, not the final multi-product enrollment.
+# Keep .github unenrolled as the recovery/configuration path until real injected
+# positive and tampering controls pass on monorepo. The original gate stays active.
+apiVersion: enterprise.github.m.upbound.io/v1alpha1
+kind: OrganizationRuleset
+metadata:
+  name: require-repository-pr-admission
+spec:
+  managementPolicies:
+    - Observe
+    - Create
+    - Update
+    - LateInitialize
+  forProvider:
+    name: Require workflow - Repository PR admission
+    target: branch
+    enforcement: active
+    conditions:
+      - refName:
+          - include: ["~DEFAULT_BRANCH"]
+            exclude: []
+        repositoryId: [786274843]
+    rules:
+      - requiredWorkflows:
+          - requiredWorkflow:
+              - repositoryId: 933213756
+                path: .github/workflows/repository-pr-admission.yaml
+                ref: refs/heads/main
+  providerConfigRef:
+    kind: ProviderConfig
+    name: default
