@@ -160,6 +160,10 @@ yq -o=json -I=0 '.jobs."test-validate-retired-repo-links".needs' "${ci}" |
 jq -e '.catalogue_optional | index("test-validate-retired-repo-links") != null' "${repo_root}/.github/scripts/ci-selection/inventory.json" >/dev/null || fail 'deployment-only selection retains unrelated smoke job'
 [[ "$(yq -r '.jobs."validate-manifests".needs' "${ci}")" == null ]] || fail 'manifest checks became conditional on scope'
 [[ "$(yq -r '.jobs."lint-ci-coverage-parity".needs' "${ci}")" == null ]] || fail 'security contract checks became conditional on scope'
+yq -o=json '.jobs."lint-ci-coverage-parity".steps' "${ci}" |
+  jq -e '[.[] | select(.run=="bash .github/tests/test-dotnet-native-fixtures.sh")] |
+    length==1 and all(.if==null and .["continue-on-error"]==null)' >/dev/null ||
+  fail 'native .NET fixture boundaries must run outside optional smoke selection'
 [[ "$(yq -r '.jobs."test-dependency-review-comments".needs' "${ci}")" == null ]] || fail 'credential-boundary replay became conditional on scope'
 [[ "$(yq -r '.jobs."test-dependency-review-comments".if' "${ci}")" != *'outputs.catalogue'* ]] || fail 'credential-boundary replay ignores its unconditional contract'
 yq -o=json -I=0 '.jobs' "${ci}" | jq -e --slurpfile inventory "${repo_root}/.github/scripts/ci-selection/inventory.json" '

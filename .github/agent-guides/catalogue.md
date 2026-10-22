@@ -87,7 +87,17 @@ read-only projection. Preserve every declared input/secret table and the fail-cl
 
 One component may reference another **in this repository**. GitHub resolves these differently — follow the matching rule:
 
-- **CI job → local action** (e.g. a `test-<action>` job): `uses: ./actions/<action>` after `actions/checkout`. Works (the repository is checked out).
+- **Native same-repository references:** `uses: $/actions/<action>` (or
+  `$/.github/workflows/<workflow>.yaml`) binds to the repository and commit of the
+  **file containing that reference**, independently of the consumer's workspace.
+  A nested composite therefore keeps its own pinned source, not the caller workflow's
+  potentially newer revision. No `@ref` suffix or source checkout is needed. GitHub.com
+  runners must be at least 2.336.0; see the [GitHub announcement](https://github.blog/changelog/2026-07-30-reference-same-repository-actions-with-self-repository-syntax/).
+  The private .NET fixture helper uses this form in native CI and nested composition.
+  Preserve the credential graph's defining-file revision and refusal controls.
+- **CI job → workspace action:** existing `uses: ./actions/<action>` references require
+  `actions/checkout`. They resolve from workspace bytes, not the defining file; the
+  broader native-reference migration and its cross-repository proof are tracked in #271.
 - **Reusable workflow → co-located reusable workflow:** normally
   `uses: ./.github/workflows/<x>.yaml` (same repository, same commit). An organization-required
   workflow is injected into a consumer repository, where that path resolves against the consumer
@@ -102,8 +112,26 @@ One component may reference another **in this repository**. GitHub resolves thes
   is recorded in the test. `test-required-workflow-no-local-calls-blocks.sh` proves each unsafe
   reference is rejected (#484).
 - **Composite action → shared script:** invoke via `${{ github.action_path }}/../../.scripts/…` (resolves at the calling ref, no pin). See `setup-agent-skills` / `update-agent-skills`.
-- **Reusable workflow → a sibling action:** a bare `./actions/<action>` does **NOT** work (a reusable workflow resolves `./` against the *caller's* checkout). Use the **same-commit self-checkout pattern**: a step checks out `${{ job.workflow_repository }}` at `${{ job.workflow_sha }}` (the reusable workflow file's own repository + exact commit) into `path: .devantler-tech-actions`, and the next step calls `uses: ./.devantler-tech-actions/actions/<action>`. This is **zero-lag by construction** (the action always runs from the same commit as the workflow calling it) and satisfies consumer `sha_pinning_required` policies (they see only the pinned `actions/checkout` plus a local `./` path). Place the self-checkout immediately before the step that needs it, and remove it (`rm -rf .devantler-tech-actions`) before any later step that commits or scans the whole workspace (see `update-agent-skills.yaml`). **Never** use a remote self-reference — a tag pin is rejected by consumer `sha_pinning_required` policies (proven live 2026-07-03: platform's `Update Agent Skills`/`TODOs` scheduled runs failed on `devantler-tech/actions/<x>@v8.0.0`; org direction is SHA-pinning everywhere, #67), and a SHA self-pin can only ever name a *prior* release (a commit cannot embed its own SHA — an unacceptable one-release lag).
-- **Composite action → a sibling composite action:** no zero-lag self-reference exists (`uses:` takes no expressions; `github.action_*` is unreliable when the action is invoked via a local path). **Inline the underlying pinned step(s)** instead of referencing the sibling wrapper — see `actions/run-dotnet-tests/action.yaml`, which inlines `upload-coverage`'s single `actions/upload-code-coverage` step — and keep the inlined inputs in sync with the wrapper.
+- **Reusable workflow → a sibling action:** native `$/actions/<action>` uses the workflow's
+  own source. Existing same-commit self-checkouts bind `${{ job.workflow_repository }}`
+  and `${{ job.workflow_sha }}` into `.devantler-tech-actions` before a workspace-relative
+  call. Keep their exact identity and cleanup until their #271 migration is proven.
+  A tag self-reference is not SHA-pinned; a remote SHA self-pin necessarily names an
+  earlier commit, so neither substitutes for exact same-commit composition.
+- **Composite action → a sibling composite action:** native `$/actions/<action>` keeps
+  the defining composite's repository and exact commit, without workspace lookup.
+  Existing intentionally inlined external steps retain their reviewed inputs.
+- **Actions from another reviewed source:** `./` is still needed when the job deliberately
+  checks out a *different* product's immutable reviewed base (for example product admission).
+  Do not replace those paths with `$/`: that would select the runner workflow's own
+  repository instead of the product validator. Check the source identity, not just spelling.
+
+The catalogue's private `.github/actions/test-dotnet-fixture` helper is only called by this
+repository's native CI jobs, not exported as a consumer interface. Its known catalogue workflow
+identity supplies native same-commit actions outside the consumer workspace. Its
+isolation test deliberately places complete catalogue source, including unrelated projects
+and coverage, in a separate action cache and proves an in-workspace copy still fails.
+Keep the credential, source-state, three-OS and selector refusal controls when changing it.
 
 Everything is SHA-pinned by convention and gated by `zizmor` (`unpinned-uses` policy `"*": hash-pin` — no by-owner allowances) and CodeQL's `actions/unpinned-tag`.
 

@@ -9,7 +9,7 @@ import (
 	"testing"
 )
 
-const dotnetSubject = ".github/workflows/run-dotnet-tests.yaml"
+const dotnetSubject = ".github/actions/test-dotnet-fixture/action.yaml"
 
 var dotnetSubjects = []string{"test-run-dotnet-tests-gate-lockstep", "test-run-dotnet-tests-mtp", "test-run-dotnet-tests-workflow", "test-run-dotnet-tests-workflow-authenticated"}
 
@@ -24,9 +24,6 @@ func dotnetSelectionFixture(t *testing.T) (inventory, workflow) {
 	for _, id := range dotnetSubjects {
 		i.Jobs[id] = []string{dotnetSubject}
 		j := job{If: selectionGuard(id), Needs: []any{"select-ci-tests"}}
-		if id == "test-run-dotnet-tests-workflow" || id == "test-run-dotnet-tests-workflow-authenticated" {
-			j.Uses = "./" + dotnetSubject
-		}
 		if id == "test-run-dotnet-tests-workflow-authenticated" {
 			j.If = "${{ trusted_same_repository_pull_request }}"
 			j.Needs = nil
@@ -151,7 +148,7 @@ func TestDotnetWorkflowGitStatusRetainsFullFallback(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			git("add", "--", ".github/workflows")
+			git("add", "--", ".github/actions/test-dotnet-fixture")
 			git("commit", "-qm", "workflow change")
 			paths, err := changedPaths(dir, base, git("rev-parse", "HEAD"))
 			if err != nil {
@@ -202,7 +199,7 @@ if [[ "$1" == diff && "$2" == --raw ]]; then
     "$CI_REAL_GIT" "$@"
     exit 17
   fi
-  printf ':100644 100644 aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb M\0.github/workflows/run-dotnet-tests.yaml'
+  printf ':100644 100644 aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb M\0.github/actions/test-dotnet-fixture/action.yaml'
   exit 0
 fi
 exec "$CI_REAL_GIT" "$@"
