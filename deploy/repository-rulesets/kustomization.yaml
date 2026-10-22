@@ -13,3 +13,5 @@ resources:
   - require-validation-on-go-template.yaml
   - require-reviewed-admission-on-monorepo.yaml
   - require-reviewed-admission-on-dotgithub.yaml
+  # Deliberately missing: native admission must reject this unmerged control.
+  - native-admission-intentional-missing.yaml
