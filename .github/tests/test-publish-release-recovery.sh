@@ -61,9 +61,9 @@ cat > "$work/guard.jq" <<'JQ'
   .f == {name:"Internal release-recovery offline fixture",permissions:{},
     on:{workflow_call:{inputs:($w.on.workflow_dispatch.inputs|with_entries(select(.key=="enable-recovery" or .key=="offline-test")))}},
     jobs:{"offline-test":$o}} and
-  ($c.jobs["test-publish-release-recovery"] | .uses == "./.github/workflows/release-recovery-offline-fixture.yaml" and .permissions == {} and .secrets == null and
+  ($c.jobs["test-publish-release-recovery"] | .uses == "$/.github/workflows/release-recovery-offline-fixture.yaml" and .permissions == {} and .secrets == null and
     .with["enable-recovery"] == true and .with["offline-test"] == true and .with["confirm-publication"] == null) and
-  ($c.jobs["test-publish-release-recovery-disabled"] | .uses == "./.github/workflows/release-recovery-offline-fixture.yaml" and .permissions == {} and .secrets == null and
+  ($c.jobs["test-publish-release-recovery-disabled"] | .uses == "$/.github/workflows/release-recovery-offline-fixture.yaml" and .permissions == {} and .secrets == null and
     .with["enable-recovery"] == null and .with["offline-test"] == null) and
   (["test-publish-release-recovery","test-publish-release-recovery-disabled"] | all(. as $job |
     ($c.jobs["ci-required-checks"].needs | index($job) != null) and

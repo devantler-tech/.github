@@ -105,8 +105,10 @@ One component may reference another **in this repository**. GitHub resolves thes
 - **CI job → workspace action:** existing `uses: ./actions/<action>` references require
   `actions/checkout`. They resolve from workspace bytes, not the defining file; the
   broader native-reference migration and its cross-repository proof are tracked in #271.
-- **Reusable workflow → co-located reusable workflow:** normally
-  `uses: ./.github/workflows/<x>.yaml` (same repository, same commit). An organization-required
+- **Reusable workflow → co-located reusable workflow:** new calls use native
+  `uses: $/.github/workflows/<x>.yaml` (the defining file's repository and commit).
+  Existing classic `./.github/workflows/` calls retain their source-boundary controls during #271.
+  An organization-required
   workflow is injected into a consumer repository, where that path resolves against the consumer
   instead; it must call a sibling workflow through a full remote reference pinned to an immutable
   commit whose workflow content has been reviewed, and every caller job is covered by a regression

@@ -39,6 +39,35 @@ blocked() {
 }
 
 run_guard || fail 'empty test directory should be accepted'
+# Coverage must recognize real job-level calls in both same-repository forms,
+# without treating a comment, step call or similarly named workflow as execution.
+printf 'on:\n  workflow_call: {}\njobs: {}\n' >"$work/repo/.github/workflows/native-fixture.yaml"
+for reference in './.github/workflows/native-fixture.yaml' '$/.github/workflows/native-fixture.yaml'; do
+  # shellcheck disable=SC2016 # Preserve the required-result expression as fixture data.
+  REFERENCE="$reference" yq '.jobs.workflow-test = {"uses": strenv(REFERENCE)} |
+    .jobs.ci-required-checks.needs += ["workflow-test"] |
+    .jobs.ci-required-checks.steps[0].env.JOB_RESULTS += " ${{ needs.workflow-test.result }}"' \
+    "$work/base.yaml" >"$ci"
+  run_guard || fail "same-repository workflow call was not covered: $reference"
+done
+for mutation in \
+  '.jobs.workflow-test.uses += ".extra"' \
+  '.jobs.workflow-test.name = .jobs.workflow-test.uses | del(.jobs.workflow-test.uses)' \
+  '.jobs.workflow-test.steps = [{"uses": .jobs.workflow-test.uses}] | del(.jobs.workflow-test.uses)'; do
+  yq "$mutation" "$ci" >"$work/bad-call.yaml"
+  cp "$work/bad-call.yaml" "$ci"
+  printf '# uses: ./.github/workflows/native-fixture.yaml\n' >>"$ci"
+  if run_guard; then fail 'non-job or inexact workflow reference counted as coverage'; fi
+  grep -Fq 'native-fixture.yaml' "$work/result" || fail 'missing reusable-workflow diagnostic'
+  # shellcheck disable=SC2016 # The GitHub required-result expression stays literal fixture data.
+  REFERENCE='$/.github/workflows/native-fixture.yaml' yq '.jobs.workflow-test = {"uses": strenv(REFERENCE)} |
+    .jobs.ci-required-checks.needs += ["workflow-test"] |
+    .jobs.ci-required-checks.steps[0].env.JOB_RESULTS += " ${{ needs.workflow-test.result }}"' \
+    "$work/base.yaml" >"$ci"
+done
+rm "$work/repo/.github/workflows/native-fixture.yaml"
+cp "$work/base.yaml" "$ci"
+echo 'PASS: exact job-level classic/native workflow calls and three non-call controls'
 touch "$work/repo/.github/tests/test-sentinel.sh"
 blocked 'new test without a CI step'
 

@@ -53,6 +53,11 @@ Actions and reusable workflows are exercised as jobs inside [`ci.yaml`](../../.g
 
 `ci-required-checks` is the sole exception to the harden-runner-first rule: adding any action would weaken its workspace-independent trust boundary. Every other step-bearing job must start with SHA-pinned `step-security/harden-runner` in audit mode, and `lint-ci-coverage-parity` enforces both sides of that contract.
 
+Reusable-workflow coverage reads parsed job-level `uses` values and requires an exact classic
+`./.github/workflows/` or native `$/.github/workflows/` match. New same-repository calls use native
+syntax. A comment, step-level reference, display name or filename prefix is not job execution.
+The real inline guard's behavioral controls cover both forms and those non-call refusals.
+
 **TODO coverage:** both TODO smoke callers use the complete generated
 `scan-for-todo-comments-readonly.yaml` projection with contents-read permissions and no
 App secret. Regenerate with `bash .github/scripts/generate-todo-readonly.sh`; never edit

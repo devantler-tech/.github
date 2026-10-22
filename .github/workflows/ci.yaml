@@ -3609,7 +3609,7 @@ jobs:
           #   (1)  every composite action (actions/*/action.yaml) is exercised by a job
           #        that does `uses: ./<action>`;
           #   (1b) every reusable workflow (workflow_call) is exercised by a job
-          #        that does `uses: ./.github/workflows/<x>.yaml`; and
+          #        with an exact classic or native same-repository call; and
           #   (2)  ci-required-checks.needs and its trusted inline JOB_RESULTS
           #        environment value name the SAME set of jobs — a job in
           #        `needs:` but missing from `JOB_RESULTS` has its failure
@@ -3634,7 +3634,8 @@ jobs:
             [[ "$wf" == "$ci" ]] && continue
             grep -qE "^[[:space:]]+workflow_call:" "$wf" || continue
             wname="$(basename "$wf")"
-            if ! grep -qE "uses:[[:space:]]*\./\.github/workflows/$wname([[:space:]]|\$)" "$ci"; then
+            if ! WORKFLOW_LOCAL="./.github/workflows/$wname" WORKFLOW_NATIVE="\$/.github/workflows/$wname" \
+              yq -e '.jobs | to_entries | any_c(.value.uses == strenv(WORKFLOW_LOCAL) or .value.uses == strenv(WORKFLOW_NATIVE))' "$ci" >/dev/null; then
               # TODO smoke calls use the complete read-only projection. Accept
               # production coverage only after permission, execution and parity
               # checks pass; a copied or truncated workflow is insufficient.
@@ -4136,7 +4137,7 @@ jobs:
   test-publish-release-recovery:
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
     name: "[Test] Publish Release Recovery - Offline"
-    uses: ./.github/workflows/release-recovery-offline-fixture.yaml
+    uses: $/.github/workflows/release-recovery-offline-fixture.yaml
     permissions: {}
     with:
       enable-recovery: true
@@ -4145,7 +4146,7 @@ jobs:
   test-publish-release-recovery-disabled:
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
     name: "[Test] Publish Release Recovery - Disabled"
-    uses: ./.github/workflows/release-recovery-offline-fixture.yaml
+    uses: $/.github/workflows/release-recovery-offline-fixture.yaml
     permissions: {}
 
   test-create-release-config:
