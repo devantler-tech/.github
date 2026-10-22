@@ -5,7 +5,9 @@ root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 validator="$root/scripts/validate-actions-retirement.sh"
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
+# Fail at the first incorrect observation rather than accepting a partial inventory.
 fail() { printf 'actions-retirement test: %s\n' "$*" >&2; exit 1; }
+# Keep withdrawn, still-managed and unreadable outcomes distinct for every control.
 check() {
   local expected="$1" input="$2" rc=0
   bash "$validator" "$input" >"$work/out" 2>"$work/err" || rc=$?
@@ -40,6 +42,18 @@ YAML
   grep -Fq 'retired catalogue is still managed' "$work/err" ||
     fail "$kind was refused for the wrong reason"
 done
+# GitHub repository identifiers are case-insensitive in both provider phases.
+for field in forProvider.name initProvider.name forProvider.repository initProvider.repository; do
+  FIELD="$field" yq '.kind = "Repository" | .spec |= setpath(strenv(FIELD) | split("."); "AcTiOnS")' \
+    "$work/clean.yaml" >"$work/mixed.yaml"
+  check 1 "$work/mixed.yaml"
+done
+# An adopted resource can target Actions through external identity even when its
+# desired name differs; Observe-only management must still prevent retirement.
+yq '.kind = "Repository" | .metadata.annotations."crossplane.io/external-name" = "AcTiOnS" |
+  .spec.forProvider.name = "different-desired-name" | .spec.managementPolicies = ["Observe"]' \
+  "$work/clean.yaml" >"$work/adopted.yaml"
+check 1 "$work/adopted.yaml"
 printf 'not: [valid\n' >"$work/invalid.yaml"
 check 2 "$work/invalid.yaml"
 : >"$work/empty.yaml"
@@ -59,4 +73,4 @@ PATH="$work/bin:$PATH" check 2 "$work/clean.yaml"
 # The actual rendered desired state, not filenames alone, must establish withdrawal.
 kubectl kustomize "$root/deploy" >"$work/actual.yaml"
 check 0 "$work/actual.yaml"
-printf 'actions-retirement: OK — rendered withdrawal, four re-add controls and failed reads\n'
+printf 'actions-retirement: OK — rendered withdrawal, case/adopted identities and failed reads\n'
