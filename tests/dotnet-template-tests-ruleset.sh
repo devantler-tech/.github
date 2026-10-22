@@ -20,5 +20,5 @@ assert_json '[825979604]' '.spec.forProvider.conditions[0].repositoryId'
 assert_json '["~DEFAULT_BRANCH"]' '.spec.forProvider.conditions[0].refName[0].include'
 assert_json '[]' '.spec.forProvider.conditions[0].refName[0].exclude'
 assert_json '[]' '(.spec.forProvider.bypassActors // [])'
-assert_json '[{"creation":false,"deletion":false,"nonFastForward":false,"requiredLinearHistory":false,"requiredSignatures":false,"requiredWorkflows":[{"doNotEnforceOnCreate":false,"requiredWorkflow":[{"path":".github/workflows/run-dotnet-tests.yaml","ref":"refs/heads/main","repositoryId":933213756}]}],"update":false}]' '.spec.forProvider.rules'
+assert_json '[]' '.spec.forProvider.rules'
 echo "dotnet-template-tests-ruleset: OK"

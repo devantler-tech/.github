@@ -41,13 +41,14 @@ verb — e.g. `require-pull-request.yaml`). Repo-scoped rulesets live next door 
 | 9 `OrganizationRuleset` files | the imported org rulesets below except the six managed imports in this table | Observe (read-only import) |
 | `require-signed-commits.yaml` | **Require signed commits** (existing, retired) | Observe + Update — retain the disabled record; never create or delete |
 | `require-workflows-go.yaml` | **Require workflows to pass before merging for Go** (existing, adopted) | Observe + Update — preserve the complete observed policy and require the maintained Go workflow; never create or delete |
-| 4 `require-workflows-*.yaml` imports | **DependencyReview**, **EnableAutoMerge**, **ScanGitHubActions** and language-selected **.NET** | Observe + Update — fully backfill the observed policy before switching only its required source; never create or delete |
+| 3 `require-workflows-*.yaml` imports | **DependencyReview**, **EnableAutoMerge** and **ScanGitHubActions** | Observe + Update — preserve the observed policy and maintained source; never create or delete |
+| `require-workflows-dotnet.yaml` | language-selected **.NET** (retired) | Observe + Update — disabled with empty rules after a complete effective-policy census found no consumers; retain identity and selectors, never create or delete |
 | `protect-release-tags.yaml` | **Protect release tags** (net-new) | Managed (Create) — block tag delete + force-move + require `v<semver>` |
 | `require-world-at-ruin-trusted-regressions.yaml` | **Require workflow - World at Ruin trusted regressions** (net-new) | Managed (Create) — target only World at Ruin and require the canonical catalogue's trusted regression workflow |
 | `require-monorepo-ci-aggregate-contract.yaml` | **Require workflow - Monorepo CI aggregate contract** (net-new) | Managed (Create) — target only monorepo and require the aggregate-execution control from its reviewed `main` |
 | `require-dotgithub-deploy-guards.yaml` | **Require workflow - .github deploy guards** (net-new) | Managed (Create) — target only this repository and run the `deploy/` release-contract and deletion validators from its reviewed `main` |
-| `require-go-template-validation.yaml` | **Require workflow - Go template validation** (net-new) | Managed (Create) — target only go-template and require the canonical Go validation workflow from this repository's reviewed `main`, restoring the gate the property-conditioned UI ruleset stopped applying there |
-| `require-dotnet-template-tests.yaml` | **Require workflow - .NET template tests** (net-new) | Managed (Create) — target only dotnet-template and require the canonical .NET tests workflow from this repository's reviewed `main`, supplying the build and test gate the UI ruleset does not apply there |
+| `require-go-template-validation.yaml` | **Require workflow - Go template validation** (retired) | Disabled after native repository validation proof; retain identity, selectors and non-deleting lifecycle |
+| `require-dotnet-template-tests.yaml` | **Require workflow - .NET template tests** (retired) | Disabled with empty rules after native repository validation proof; retain identity, selectors and non-deleting lifecycle |
 | `require-metadata-code-scanning-results.yaml` | **Require code scanning results - Metadata** (net-new) | Managed (Create) — centrally require CodeQL with both finding thresholds at all on `.github` and `monorepo`; no bypass actors |
 | (in `../repository-rulesets/`) `require-merge-queue-on-platform.yaml` | `platform` "Require merge queue" | Observe + Update (managed import, full ruleset backfilled) |
 
@@ -72,8 +73,8 @@ evidence, not repository-inherited API projections, which omit organization sele
 
 Run `bash tests/legacy-workflow-observation.sh` from the repository root. It renders
 the real configuration, compares every policy field with those observations and
-allows the reviewed source switch, provider-required encodings and the two proven
-template cutovers below. Its 113
+allows the reviewed source switch, provider-required encodings, the proven
+template cutovers and the narrowly scoped .NET retirement below. Its 113
 rejection controls cover policy drift, excess authority, duplicate adoption,
 incomplete input, additional legacy sources and weakened required CI invocation. Native readback and actual
 ordinary consumer executions remain separate delivery gates under #237.
@@ -92,10 +93,13 @@ Neither control was merged.
 `dotnet-template-require-validation` separately requires `.NET template tests`
 for `ubuntu-latest`, `windows-latest` and `macos-latest`. Both remain active,
 default-branch-only, without bypasses and bound to GitHub Actions integration `15368`.
-The disabled organization resources retain their complete selectors, source identity
-and non-deleting lifecycle. The workflow source stays until disabled live enforcement
-is confirmed; source removal is a separate step. Publication and native readback for
-this cutover are tracked in [#698](https://github.com/devantler-tech/.github/issues/698).
+The disabled organization resources retain their managed identities, complete selectors
+and non-deleting lifecycle. The Go source remains genuinely shared. Both former .NET
+policies now declare empty rules, removing obsolete workflow associations before wrapper
+retirement. The language-selected policy has no consumer in a complete fresh effective-policy
+census, and the template's replacement remains independently required. Native readback must
+confirm both empty, disabled policies before source removal; this follow-through is tracked
+in [#703](https://github.com/devantler-tech/.github/issues/703).
 
 ### Organization Go workflow policy
 

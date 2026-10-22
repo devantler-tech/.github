@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Preserve complete observed policies plus the proven two-template cutover (#237).
+# Preserve complete observed policies plus the proven validation retirements.
 set -euo pipefail
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 work="$(mktemp -d)"
@@ -18,10 +18,12 @@ check_rules() {
        forProvider:(.forProvider
          | if .name=="Require workflow - Go template validation" or .name=="Require workflow - .NET template tests"
            then .enforcement="disabled" else . end
+         | if .name=="Require workflow - .NET template tests" or .name=="Require workflows to pass before merging for .NET"
+           then .enforcement="disabled" | .rules=[] else . end
          | if has("bypassActors") then .bypassActors |= map(
              if .actorType=="OrganizationAdmin" and .actorId==0 then del(.actorId) else . end) else . end
          | .conditions[0].refName[0].exclude=[]
-         | .rules[0].requiredWorkflows[0].requiredWorkflow[0].repositoryId=933213756),
+         | if (.rules | length)>0 then .rules[0].requiredWorkflows[0].requiredWorkflow[0].repositoryId=933213756 else . end),
        providerConfigRef:{kind:"ProviderConfig",name:"default"}};
     . as $render | type=="array" and
     ([.[] | select(.kind=="OrganizationRuleset") |

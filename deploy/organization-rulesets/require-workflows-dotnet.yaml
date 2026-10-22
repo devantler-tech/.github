@@ -1,5 +1,6 @@
-# Complete native policy observed before migration (#237 / #674).
-# Preserve selectors, bypasses and lifecycle; change only the required source.
+# Retired after a complete effective-policy census found no consumers (#703).
+# Retain the managed identity, selectors, bypasses and non-deleting lifecycle;
+# empty rules must no longer reference the obsolete workflow source.
 apiVersion: enterprise.github.m.upbound.io/v1alpha1
 kind: OrganizationRuleset
 metadata:
@@ -25,21 +26,9 @@ spec:
                 propertyValues:
                   - C#
                 source: system
-    enforcement: active
+    enforcement: disabled
     name: Require workflows to pass before merging for .NET
-    rules:
-      - creation: false
-        deletion: false
-        nonFastForward: false
-        requiredLinearHistory: false
-        requiredSignatures: false
-        requiredWorkflows:
-          - doNotEnforceOnCreate: true
-            requiredWorkflow:
-              - path: .github/workflows/run-dotnet-tests.yaml
-                ref: refs/heads/main
-                repositoryId: 933213756
-        update: false
+    rules: []
     target: branch
   providerConfigRef:
     kind: ProviderConfig
