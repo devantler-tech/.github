@@ -115,6 +115,7 @@ single-product pipeline.
 | [Lint](.github/workflows/lint.yaml) | Run MegaLinter with isolated signed-fix handling |
 | [Publish app](.github/workflows/publish-app.yaml) | Build, sign and publish an application image |
 | [Publish manifests](.github/workflows/publish-manifests.yaml) | Build, sign and publish a manifest bundle |
+| [Publish release recovery](.github/workflows/publish-release-recovery.yaml) | Publish a missing GitHub release for an existing stable tag; default-off, manual only |
 | [Scan TODO comments](.github/workflows/scan-for-todo-comments.yaml) | Turn actionable TODOs into tracked work |
 | [Scan workflow vulnerabilities](.github/workflows/scan-for-workflow-vulnerabilities.yaml) | Analyze workflow security; also an organization PR gate |
 | [Template sync](.github/workflows/template-sync.yaml) | Open updates from an upstream template |
@@ -1227,6 +1228,79 @@ the independently checked tag remains authoritative for the source in both cases
 
 The manual job prints the JSON diagnosis. Failed or ambiguous reads fail the job and produce
 no successful diagnosis. No tags, release records, channel notes or aliases are written.
+
+</details>
+
+### Publish a stranded GitHub release
+
+<details>
+<summary>Purpose, interface and usage</summary>
+
+[.github/workflows/publish-release-recovery.yaml](.github/workflows/publish-release-recovery.yaml)
+publishes the missing GitHub release for one stable tag whose original release run pushed the tag
+but failed before publishing. It is disabled by default. The affected public repository calls it
+from its own manually dispatched workflow on its default branch; it shares that repository's
+normal release queue, so it never overlaps a release.
+
+`enable-recovery` is a temporary rollout flag. `confirm-publication` is the operator's explicit
+consent, and it stays when the flag is retired. Both must be true, and the caller's event must be
+`workflow_dispatch`. Production publication is never automatic.
+
+The job builds the inspector and publisher from this catalogue's immutable source before any
+credential exists. It then admits the incident with a read-only token for that one repository. If a
+matching release is already published, it stops there as a verified no-op and never requests a
+writer token. Only for a missing release does it request a token with Contents write and Actions
+read for that one repository, and run the publisher once. The publisher proves push access, takes
+two complete release inventories, re-admits the incident and sends at most one create-release
+request with `make_latest` set to `"false"`; it never retries a write. Its JSON result is printed.
+An unknown outcome fails; dispatch again to reconcile through fresh reads.
+
+```yaml
+on:
+  workflow_dispatch:
+    inputs:
+      confirm-publication: { type: boolean, default: false }
+      tag: { type: string, required: true }
+      source-sha: { type: string, required: true }
+      run-id: { type: string, required: true }
+      run-attempt: { type: string, required: true }
+      producer-ref: { type: string, required: true }
+permissions: {}
+jobs:
+  recover:
+    uses: devantler-tech/.github/.github/workflows/publish-release-recovery.yaml@<sha> # <version>
+    permissions: {}
+    with:
+      enable-recovery: true
+      confirm-publication: ${{ inputs.confirm-publication }}
+      tag: ${{ inputs.tag }}
+      source-sha: ${{ inputs.source-sha }}
+      run-id: ${{ inputs.run-id }}
+      run-attempt: ${{ inputs.run-attempt }}
+      producer-ref: ${{ inputs.producer-ref }}
+    secrets:
+      APP_PRIVATE_KEY: ${{ secrets.APP_PRIVATE_KEY }}
+```
+
+#### Secrets and Inputs
+
+| Key | Type | Default | Required | Description |
+| --- | --- | --- | --- | --- |
+| `enable-recovery` | Input (boolean) | `false` | No | Temporary rollout flag; recovery is skipped unless true |
+| `confirm-publication` | Input (boolean) | `false` | No | Explicit operator consent; required on every run |
+| `offline-test` | Input (boolean) | `false` | No | Build the publisher and check its credential refusal without credentials |
+| `tag` | Input (string) | — | Yes | Existing stable tag, such as `v1.2.3` |
+| `source-sha` | Input (string) | — | Yes | Original full source commit SHA |
+| `run-id` | Input (string) | — | Yes | Original failed release run ID |
+| `run-attempt` | Input (string) | — | Yes | Original failed run attempt |
+| `producer-ref` | Input (string) | — | Yes | Original catalogue workflow path at its full commit SHA |
+| `APP_PRIVATE_KEY` | Secret | — | When enabled | App key for the two repository-scoped tokens |
+
+Run `bash .github/tests/test-publish-release-recovery.sh` after changing the workflow. It checks the
+consent, scope, immutable-source and read-before-write boundaries with negative controls, and runs
+the shipped steps without credentials. It does not prove a real publication: protected consumer
+rollout, the App's observed push permission and the flag decision remain tracked in
+[#603](https://github.com/devantler-tech/.github/issues/603).
 
 </details>
 
