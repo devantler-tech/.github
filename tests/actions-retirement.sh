@@ -54,6 +54,33 @@ yq '.kind = "Repository" | .metadata.annotations."crossplane.io/external-name" =
   .spec.forProvider.name = "different-desired-name" | .spec.managementPolicies = ["Observe"]' \
   "$work/clean.yaml" >"$work/adopted.yaml"
 check 1 "$work/adopted.yaml"
+# Import identities remain authoritative even when Observe-only resources omit
+# both desired-state provider blocks. Each retired resource kind needs coverage.
+for kind in Repository IssueLabels RepositoryPermissions; do
+  KIND="$kind" yq '.kind = strenv(KIND) | .spec.forProvider = {} |
+    .spec.managementPolicies = ["Observe"] |
+    .metadata.annotations."crossplane.io/external-name" = "AcTiOnS"' \
+    "$work/clean.yaml" >"$work/imported.yaml"
+  check 1 "$work/imported.yaml"
+  grep -Fq 'retired catalogue is still managed' "$work/err" ||
+    fail "$kind external identity was refused for the wrong reason"
+  yq '.metadata.annotations."crossplane.io/external-name" = ".github"' \
+    "$work/imported.yaml" >"$work/other-import.yaml"
+  check 0 "$work/other-import.yaml"
+done
+# TeamRepository's provider identity is team ID/slug followed by the repository.
+for identity in 12345:AcTiOnS maintainers:AcTiOnS; do
+  IDENTITY="$identity" yq '.kind = "TeamRepository" | .spec.forProvider = {} |
+    .spec.managementPolicies = ["Observe"] |
+    .metadata.annotations."crossplane.io/external-name" = strenv(IDENTITY)' \
+    "$work/clean.yaml" >"$work/imported-team.yaml"
+  check 1 "$work/imported-team.yaml"
+done
+for identity in 12345:.github actions:.github; do
+  IDENTITY="$identity" yq '.metadata.annotations."crossplane.io/external-name" = strenv(IDENTITY)' \
+    "$work/imported-team.yaml" >"$work/other-team.yaml"
+  check 0 "$work/other-team.yaml"
+done
 printf 'not: [valid\n' >"$work/invalid.yaml"
 check 2 "$work/invalid.yaml"
 : >"$work/empty.yaml"

@@ -19,13 +19,22 @@ if ! jq -se '
   ' "$work/documents.json" >/dev/null; then
   abort 'rendered resource inventory is empty or malformed'
 fi
+# The pinned provider imports repository-owned resources by repository name and
+# team grants by team ID/slug:repository; Observe-only imports may omit spec IDs.
 if ! jq -s '
     def retired: if type == "string" then ascii_downcase == "actions" else false end;
+    def retired_team_repository:
+      if type == "string" then split(":") as $identity |
+        ($identity | length == 2) and ($identity[1] | retired)
+      else false end;
     [ .[] | select(
         ((.kind == "Repository") and
-          ([.spec.forProvider.name, .spec.initProvider.name,
-            .metadata.annotations["crossplane.io/external-name"]] | any(retired))) or
-        ([.spec.forProvider.repository, .spec.initProvider.repository] | any(retired))
+          ([.spec.forProvider.name, .spec.initProvider.name] | any(retired))) or
+        ([.spec.forProvider.repository, .spec.initProvider.repository] | any(retired)) or
+        ((.kind == "Repository" or .kind == "IssueLabels" or .kind == "RepositoryPermissions") and
+          (.metadata.annotations["crossplane.io/external-name"] | retired)) or
+        ((.kind == "TeamRepository") and
+          (.metadata.annotations["crossplane.io/external-name"] | retired_team_repository))
       ) ] | length
   ' "$work/documents.json" >"$work/count"; then
   abort 'retirement selector failed'
