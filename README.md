@@ -134,16 +134,26 @@ These operate this catalogue itself; they are not reusable consumer interfaces.
 
 These are selected by declarative rulesets, not installed by copying a reusable-workflow example.
 Dependency review, auto-merge policy, workflow scanning and Go validation serve multiple products.
-The two product-specific sources below remain compatibility gates during the ownership cutover;
-their presence is not an exception to the intended shared-only organization policy.
+Reviewed repository admission also serves multiple products while each product owns its validator.
+The World at Ruin source remains a compatibility gate pending its separate performance and
+native-enforcement migration; it is not a reusable consumer interface.
 
 | Workflow | Current responsibility |
 |---|---|
-| [Deploy guards](.github/workflows/deploy-guards.yaml) | Trusted validation of this repository's release and deletion declarations |
+| [Repository PR admission](.github/workflows/repository-pr-admission.yaml) | Shared read-only runner for each enrolled product's reviewed-base validation |
 | [World at Ruin regressions](.github/workflows/world-at-ruin-required-regressions.yaml) | Trusted World at Ruin candidate validation from its reviewed base |
 
 Do not remove or disable a compatibility gate merely because a local caller is green. The owning
 migration must prove the replacement's live enforcement first.
+
+## Repository-owned PR checks
+
+These workflows belong only to this repository and are not reusable exports or organization-wide
+required workflow associations. Protected reviewed-base validation is enforced by shared admission.
+
+| Workflow | Current responsibility |
+|---|---|
+| [Deploy guards](.github/workflows/deploy-guards.yaml) | Repository-local feedback for release and deletion declarations |
 
 ## Internal job components and fixtures
 
@@ -161,21 +171,37 @@ do not establish a product need for a shared workflow.
 Every peer entry has one independently collapsible reference. Internal components and compatibility
 sources retain their interfaces here so the same input/secret parity check covers them.
 
-### Organization-required: Deploy guards
+### Organization-required: Repository PR admission
 
 <details>
 <summary>Purpose, interface and usage</summary>
 
-[`deploy-guards.yaml`](.github/workflows/deploy-guards.yaml) is selected by an organization
-ruleset from this repository's reviewed `main`. It validates the pull request's release contract
-and requires explicit acknowledgement of removed `deploy/` resources. The candidate supplies
-only manifests, history and PR metadata; the validator implementation comes from
-`github.workflow_sha`.
+[`repository-pr-admission.yaml`](.github/workflows/repository-pr-admission.yaml) is selected by
+declarative organization rules for monorepo and this catalogue. Its shared resolver and read-only
+runner execute each product's own admission action from the immutable reviewed base, never the
+candidate implementation. Each repository separately requires the executed result from GitHub
+Actions; the source-only skipped job cannot satisfy that binding.
+
+This is not a `workflow_call` export and has no caller inputs or secrets. Product-specific rules
+and time budgets stay in the owning repository. New enrollments require actual positive and
+tampering-refusal proof before any older protection is retired.
+
+</details>
+
+### Repository-owned: Deploy guards
+
+<details>
+<summary>Purpose, interface and usage</summary>
+
+[`deploy-guards.yaml`](.github/workflows/deploy-guards.yaml) is this repository's ordinary PR
+wrapper around its product-owned release and deletion validators. It supplies local feedback,
+but does not establish independent trust by itself: protected enforcement comes from the shared
+admission runner executing the reviewed-base implementation against candidate data. Its former
+singleton organization association is disabled without a workflow reference.
 
 This is not a reusable export and has no `workflow_call` inputs or secrets. There is no
 `merge_group` entrypoint: that event lacks the PR title, commits and body needed by the guards,
-so a future merge queue cannot bypass them through an empty validation. Retain the rule until
-its replacement has native positive and refusal evidence.
+so unsupported merge-group metadata cannot become an empty successful validation.
 
 </details>
 
