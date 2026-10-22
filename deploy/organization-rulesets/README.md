@@ -45,6 +45,7 @@ verb — e.g. `require-pull-request.yaml`). Repo-scoped rulesets live next door 
 | `protect-release-tags.yaml` | **Protect release tags** (net-new) | Managed (Create) — block tag delete + force-move + require `v<semver>` |
 | `require-world-at-ruin-trusted-regressions.yaml` | **Require workflow - World at Ruin trusted regressions** (net-new) | Managed (Create) — target only World at Ruin and require the canonical catalogue's trusted regression workflow |
 | `require-monorepo-ci-aggregate-contract.yaml` | **Require workflow - Monorepo CI aggregate contract** (net-new) | Managed (Create) — target only monorepo and require the aggregate-execution control from its reviewed `main` |
+| `require-repository-pr-admission.yaml` | **Require workflow - Repository PR admission** (canary) | Managed (Create) — initially monorepo only; trusted shared source runs the product-owned base-revision action while the old independent gate remains active |
 | `require-dotgithub-deploy-guards.yaml` | **Require workflow - .github deploy guards** (net-new) | Managed (Create) — target only this repository and run the `deploy/` release-contract and deletion validators from its reviewed `main` |
 | `require-go-template-validation.yaml` | **Require workflow - Go template validation** (net-new) | Managed (Create) — target only go-template and require the canonical Go validation workflow from this repository's reviewed `main`, restoring the gate the property-conditioned UI ruleset stopped applying there |
 | `require-dotnet-template-tests.yaml` | **Require workflow - .NET template tests** (net-new) | Managed (Create) — target only dotnet-template and require the canonical .NET tests workflow from this repository's reviewed `main`, supplying the build and test gate the UI ruleset does not apply there |
@@ -96,6 +97,17 @@ The disabled organization resources retain their complete selectors, source iden
 and non-deleting lifecycle. The workflow source stays until disabled live enforcement
 is confirmed; source removal is a separate step. Publication and native readback for
 this cutover are tracked in [#698](https://github.com/devantler-tech/.github/issues/698).
+
+### Shared admission rollout
+
+The shared runner is prepared in [#694](https://github.com/devantler-tech/.github/pull/694).
+Its first enrollment is monorepo only, paired with a repository-owned requirement for
+`Run reviewed product admission` from GitHub Actions. The source-only `Admission not selected`
+result does not satisfy that requirement. The existing monorepo trusted gate remains active.
+This configuration repository remains unenrolled until the real injected runner passes both
+positive and candidate-tampering controls, preserving an independent recovery path.
+Read back the released native policies before opening those controls. Broader enrollment and
+old-gate retirement are separate deliveries under [#693](https://github.com/devantler-tech/.github/issues/693).
 
 ### Organization Go workflow policy
 

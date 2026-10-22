@@ -120,6 +120,9 @@ committed as `fix:` (or `feat:`), not `ci:`/`refactor:`.
 These workflows do not declare `workflow_call`. Required CI checks this inventory against their actual triggers.
 
 `repository-pr-admission.yaml` shares only trusted-source resolution and a read-only runner.
+Enrollment starts with monorepo as a canary, keeping its old independent gate active and
+this configuration repository unenrolled as a recovery path. Require native positive and
+tampering-refusal controls before extending enrollment or retiring an old gate (#693).
 Each enrolled product owns `.github/actions/pr-admission/action.yaml`, with the fixed
 `candidate-sha` interface, and a closed `.github/pr-admission.json` containing version `1`
 and its preserved `timeout-minutes` budget. Both are loaded from GitHub's immutable product
