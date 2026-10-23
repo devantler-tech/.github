@@ -83,7 +83,10 @@ repository's own `validate-manifests` job, all behind the single `CI - Required 
 catalogue's documentation is the root [README](../../README.md); each
 action also has its own README.
 
-Keep the Actions and Reusable workflows indexes parallel: a component reference and its purpose.
+Keep the Actions and Reusable workflows indexes parallel: reference, purpose and executable source,
+each inside one `Browse available interfaces` collapsible. Action references own their per-action
+READMEs; workflow references have stable explicit anchors in the root README. Do not copy their
+interface tables into the indexes.
 List organization-required compatibility sources and internal projections/fixtures separately;
 neither is an invitation to add a new consumer. Each workflow's existing level-three reference
 owns one `Purpose, interface and usage` collapsible, closed before the next peer heading. Keep

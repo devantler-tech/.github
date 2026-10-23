@@ -50,7 +50,7 @@ same job, so run the action in its own job, or set up your own Go version again
 after it. Linux and macOS runners are supported.
 
 Consumer adoption and removal of the temporary `enabled` flag are tracked in
-[devantler-tech/actions#1350](https://github.com/devantler-tech/actions/issues/1350).
+[#269](https://github.com/devantler-tech/.github/issues/269).
 
 ## Configuration
 

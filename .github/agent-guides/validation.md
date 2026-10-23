@@ -70,5 +70,6 @@ outputs. Keep the native usable-source assertions and
 `.github/tests/test-retired-repo-links-source.sh` passing when changing this boundary.
 Configuration belongs to each consumer; never hard-code retired portfolio names
 or blanket historical exemptions in the action. Exceptions require an exact
-file, repository and reason. Consumer adoption and flag retirement are in devantler-tech/actions#1350.
+file, repository and reason. Consumer adoption and flag retirement are in
+[#269](https://github.com/devantler-tech/.github/issues/269).
 
