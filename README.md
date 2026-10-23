@@ -22,9 +22,9 @@ but new callers should own their publication job.
 ## Shared automation catalogue
 
 The shared CI/CD building blocks used across devantler-tech projects — both **composite actions** and
-**reusable `workflow_call` workflows** — in one repository. This is the maintained catalogue;
-`devantler-tech/reusable-workflows` is archived and `devantler-tech/actions` is frozen for remaining
-legacy consumers.
+**reusable `workflow_call` workflows** — in one maintained catalogue. Use this repository for new
+consumers and changes. Retired repositories are not supported adoption targets; the remaining
+Actions retirement safeguards are tracked in [#240](https://github.com/devantler-tech/.github/issues/240).
 
 ## Using them
 
@@ -69,29 +69,37 @@ flowchart TD
 
 ## Actions
 
-| Action | Description |
-|--------|-------------|
-| [aggregate-job-checks](actions/aggregate-job-checks/README.md) | Aggregate multiple job results into a single required check |
-| [approve-pr](actions/approve-pr/README.md) | Approve a PR using a GitHub App identity |
-| [check-ci-run-budget](actions/check-ci-run-budget/README.md) | Opt-in, metadata-only 15-minute budget check for one exact completed workflow run |
-| [cleanup-ghcr-packages](actions/cleanup-ghcr-packages/README.md) | Clean up old GHCR packages |
-| [create-issues-from-todos](actions/create-issues-from-todos/README.md) | Create GitHub issues from TODO comments, with optional project integration |
-| [dependency-review](actions/dependency-review/README.md) | Scan a PR's dependency changes for vulnerabilities and disallowed licenses |
-| [diagnose-flux](actions/diagnose-flux/README.md) | Dump Flux reconcile state, controller logs, and failing pod logs on a stuck deploy |
-| [enable-auto-merge-on-pr](actions/enable-auto-merge-on-pr/README.md) | Enable auto-merge on a pull request |
-| [free-disk-space](actions/free-disk-space/README.md) | Reclaim runner disk by removing large preinstalled toolchains |
-| [guard-installed-skill-edits](actions/guard-installed-skill-edits/README.md) | Refuse a hand-edit to a synced installed-skill tree, naming its upstream |
-| [login-to-ghcr](actions/login-to-ghcr/README.md) | Login to GitHub Container Registry |
-| [run-dotnet-tests](actions/run-dotnet-tests/README.md) | Test .NET solution or project with coverage |
-| [setup-agent-skills](actions/setup-agent-skills/README.md) | Install agent skills via `gh skill` from a newline list of `<owner/repo> <skill>[@pin]` entries, for one or more agents (e.g. Copilot, Claude Code) |
-| [setup-go-toolchain](actions/setup-go-toolchain/README.md) | Setup Go with private module discovery |
-| [setup-ksail-cli](actions/setup-ksail-cli/README.md) | Install KSail CLI via Homebrew |
-| [update-agent-skills](actions/update-agent-skills/README.md) | Run `gh skill update --all` against installed skills and report changes |
-| [upload-coverage](actions/upload-coverage/README.md) | Upload a Cobertura coverage report to GitHub Code Quality |
-| [upsert-issue](actions/upsert-issue/README.md) | Create, update, reopen, or close a GitHub issue by title |
-| [validate-naming](actions/validate-naming/README.md) | Configurable Kubernetes manifest and machine patch naming validation |
-| [validate-retired-repo-links](actions/validate-retired-repo-links/README.md) | Catch links to retired GitHub repositories with documented historical exceptions |
-| [validate-shell-pipelines](actions/validate-shell-pipelines/README.md) | Detect early-exit grep assertions that can invert results under pipefail |
+Each action reference documents its inputs, outputs and usage. The source link opens its executable
+declaration. These are steps inside a caller-owned job, not required workflows.
+
+<details>
+<summary>Browse available interfaces</summary>
+
+| Reference | Purpose | Source |
+|-----------|---------|--------|
+| [aggregate-job-checks](actions/aggregate-job-checks/README.md) | Aggregate multiple job results into a single required check | [action.yaml](actions/aggregate-job-checks/action.yaml) |
+| [approve-pr](actions/approve-pr/README.md) | Approve a PR using a GitHub App identity | [action.yaml](actions/approve-pr/action.yaml) |
+| [check-ci-run-budget](actions/check-ci-run-budget/README.md) | Opt-in, metadata-only 15-minute budget check for one exact completed workflow run | [action.yaml](actions/check-ci-run-budget/action.yaml) |
+| [cleanup-ghcr-packages](actions/cleanup-ghcr-packages/README.md) | Clean up old GHCR packages | [action.yaml](actions/cleanup-ghcr-packages/action.yaml) |
+| [create-issues-from-todos](actions/create-issues-from-todos/README.md) | Create GitHub issues from TODO comments, with optional project integration | [action.yaml](actions/create-issues-from-todos/action.yaml) |
+| [dependency-review](actions/dependency-review/README.md) | Scan a PR's dependency changes for vulnerabilities and disallowed licenses | [action.yaml](actions/dependency-review/action.yaml) |
+| [diagnose-flux](actions/diagnose-flux/README.md) | Dump Flux reconcile state, controller logs, and failing pod logs on a stuck deploy | [action.yaml](actions/diagnose-flux/action.yaml) |
+| [enable-auto-merge-on-pr](actions/enable-auto-merge-on-pr/README.md) | Enable auto-merge on a pull request | [action.yaml](actions/enable-auto-merge-on-pr/action.yaml) |
+| [free-disk-space](actions/free-disk-space/README.md) | Reclaim runner disk by removing large preinstalled toolchains | [action.yaml](actions/free-disk-space/action.yaml) |
+| [guard-installed-skill-edits](actions/guard-installed-skill-edits/README.md) | Refuse a hand-edit to a synced installed-skill tree, naming its upstream | [action.yaml](actions/guard-installed-skill-edits/action.yaml) |
+| [login-to-ghcr](actions/login-to-ghcr/README.md) | Login to GitHub Container Registry | [action.yaml](actions/login-to-ghcr/action.yaml) |
+| [run-dotnet-tests](actions/run-dotnet-tests/README.md) | Test .NET solution or project with coverage | [action.yaml](actions/run-dotnet-tests/action.yaml) |
+| [setup-agent-skills](actions/setup-agent-skills/README.md) | Install agent skills for one or more coding agents, with optional version pins | [action.yaml](actions/setup-agent-skills/action.yaml) |
+| [setup-go-toolchain](actions/setup-go-toolchain/README.md) | Setup Go with private module discovery | [action.yaml](actions/setup-go-toolchain/action.yaml) |
+| [setup-ksail-cli](actions/setup-ksail-cli/README.md) | Install KSail CLI via Homebrew | [action.yaml](actions/setup-ksail-cli/action.yaml) |
+| [update-agent-skills](actions/update-agent-skills/README.md) | Update installed skills and report changes | [action.yaml](actions/update-agent-skills/action.yaml) |
+| [upload-coverage](actions/upload-coverage/README.md) | Upload a Cobertura coverage report to GitHub Code Quality | [action.yaml](actions/upload-coverage/action.yaml) |
+| [upsert-issue](actions/upsert-issue/README.md) | Create, update, reopen, or close a GitHub issue by title | [action.yaml](actions/upsert-issue/action.yaml) |
+| [validate-naming](actions/validate-naming/README.md) | Validate Kubernetes manifest and machine patch names | [action.yaml](actions/validate-naming/action.yaml) |
+| [validate-retired-repo-links](actions/validate-retired-repo-links/README.md) | Catch links to retired repositories with documented historical exceptions | [action.yaml](actions/validate-retired-repo-links/action.yaml) |
+| [validate-shell-pipelines](actions/validate-shell-pipelines/README.md) | Detect early-exit assertions that can invert results under pipefail | [action.yaml](actions/validate-shell-pipelines/action.yaml) |
+
+</details>
 
 ### Distribution
 
@@ -102,34 +110,33 @@ them by path as shown above. The reasoning, and when it would be worth revisitin
 
 ## Reusable workflows
 
-Use these only for repeated job-level behavior. Like the Actions index above, each row names a
-purpose and links to its reference; the full workflow interfaces are in the collapsible
-[workflow reference](#workflow-reference). A listed interface is not a reason to centralize a
-single-product pipeline.
+Use these only for repeated job-level behavior. As in the Actions index, the reference documents
+the interface and usage, while the source link opens the executable declaration. A listed
+interface is not a reason to centralize a single-product pipeline.
 
-| Workflow | Description |
-|---|---|
-| [Create release](.github/workflows/create-release.yaml) | Calculate a version and publish a GitHub release |
-| [Dependency review](.github/workflows/dependency-review.yaml) | Review changed dependencies; also an organization PR gate |
-| [Enable auto-merge](.github/workflows/enable-auto-merge.yaml) | Apply the shared trusted-author merge policy; also an organization PR gate |
-| [Lint](.github/workflows/lint.yaml) | Run MegaLinter with isolated signed-fix handling |
-| [Publish app](.github/workflows/publish-app.yaml) | Build, sign and publish an application image |
-| [Publish manifests](.github/workflows/publish-manifests.yaml) | Build, sign and publish a manifest bundle |
-| [Scan TODO comments](.github/workflows/scan-for-todo-comments.yaml) | Turn actionable TODOs into tracked work |
-| [Scan workflow vulnerabilities](.github/workflows/scan-for-workflow-vulnerabilities.yaml) | Analyze workflow security; also an organization PR gate |
-| [Template sync](.github/workflows/template-sync.yaml) | Open updates from an upstream template |
-| [Update agent skills](.github/workflows/update-agent-skills.yaml) | Open reviewed updates to installed skills |
-| [Validate Go project](.github/workflows/validate-go-project.yaml) | Validate Go modules; also an organization PR gate |
-| [Validate Go project, read-only](.github/workflows/validate-go-project-readonly.yaml) | Run Go validation without repository-mutation credentials |
+<details>
+<summary>Browse available interfaces</summary>
+
+| Reference | Purpose | Source |
+|-----------|---------|--------|
+| [Create release](#workflow-create-release) | Calculate a version and publish a GitHub release | [create-release.yaml](.github/workflows/create-release.yaml) |
+| [Publish app](#workflow-publish-app) | Build, sign and publish an application image | [publish-app.yaml](.github/workflows/publish-app.yaml) |
+| [Publish manifests](#workflow-publish-manifests) | Build, sign and publish a manifest bundle | [publish-manifests.yaml](.github/workflows/publish-manifests.yaml) |
+| [Scan TODO comments](#workflow-scan-todos) | Turn actionable TODOs into tracked work | [scan-for-todo-comments.yaml](.github/workflows/scan-for-todo-comments.yaml) |
+| [Template sync](#workflow-template-sync) | Open updates from an upstream template | [template-sync.yaml](.github/workflows/template-sync.yaml) |
+| [Update agent skills](#workflow-update-agent-skills) | Open reviewed updates to installed skills | [update-agent-skills.yaml](.github/workflows/update-agent-skills.yaml) |
+| [Validate Go project](#workflow-validate-go) | Validate Go modules; also an organization PR gate | [validate-go-project.yaml](.github/workflows/validate-go-project.yaml) |
+
+</details>
 
 ## Repository-owned manual workflows
 
 These operate this catalogue itself; they are not reusable consumer interfaces.
 
-| Workflow | Description |
-|---|---|
-| [Inspect release recovery](.github/workflows/inspect-release-recovery.yaml) | Diagnose a stranded stable release without publication authority |
-| [Publish release recovery](.github/workflows/publish-release-recovery.yaml) | Recover this catalogue's stranded stable release; default-off and confirmation-gated |
+| Reference | Description | Source |
+|---|---|---|
+| [Inspect release recovery](#workflow-inspect-recovery) | Diagnose a stranded stable release without publication authority | [inspect-release-recovery.yaml](.github/workflows/inspect-release-recovery.yaml) |
+| [Publish release recovery](#workflow-publish-recovery) | Recover this catalogue's stranded stable release; default-off and confirmation-gated | [publish-release-recovery.yaml](.github/workflows/publish-release-recovery.yaml) |
 
 ## Organization-required workflow sources
 
@@ -139,39 +146,55 @@ Reviewed repository admission also serves multiple products while each product o
 The World at Ruin source remains a compatibility gate pending its separate performance and
 native-enforcement migration; it is not a reusable consumer interface.
 
-| Workflow | Current responsibility |
-|---|---|
-| [Repository PR admission](.github/workflows/repository-pr-admission.yaml) | Shared read-only runner for each enrolled product's reviewed-base validation |
-| [World at Ruin regressions](.github/workflows/world-at-ruin-required-regressions.yaml) | Trusted World at Ruin candidate validation from its reviewed base |
+| Reference | Current responsibility | Source |
+|---|---|---|
+| [Dependency review](#workflow-dependency-review) | Shared dependency-security PR gate | [dependency-review.yaml](.github/workflows/dependency-review.yaml) |
+| [Enable auto-merge](#workflow-enable-auto-merge) | Shared trusted-author PR merge policy | [enable-auto-merge.yaml](.github/workflows/enable-auto-merge.yaml) |
+| [Scan workflow vulnerabilities](#workflow-scan-workflows) | Shared workflow-security PR gate | [scan-for-workflow-vulnerabilities.yaml](.github/workflows/scan-for-workflow-vulnerabilities.yaml) |
+| [Validate Go project](#workflow-validate-go) | Shared Go validation, also reused by repository-owned jobs | [validate-go-project.yaml](.github/workflows/validate-go-project.yaml) |
+| [Repository PR admission](#workflow-repository-admission) | Shared read-only runner for each enrolled product's reviewed-base validation | [repository-pr-admission.yaml](.github/workflows/repository-pr-admission.yaml) |
+| [World at Ruin regressions](#workflow-world-regressions) | Trusted World at Ruin candidate validation from its reviewed base | [world-at-ruin-required-regressions.yaml](.github/workflows/world-at-ruin-required-regressions.yaml) |
 
 Do not remove or disable a compatibility gate merely because a local caller is green. The owning
 migration must prove the replacement's live enforcement first.
+
+The lint export has one remaining production consumer, World at Ruin. It is a compatibility
+interface pending that product's measured CI and ownership migration, not an interface for new
+callers. Its [reference](#workflow-lint) and [source](.github/workflows/lint.yaml) remain available
+while that gate is open.
 
 ## Repository-owned PR checks
 
 These workflows belong only to this repository and are not reusable exports or organization-wide
 required workflow associations. Protected reviewed-base validation is enforced by shared admission.
 
-| Workflow | Current responsibility |
-|---|---|
-| [Deploy guards](.github/workflows/deploy-guards.yaml) | Repository-local feedback for release and deletion declarations |
+| Reference | Current responsibility | Source |
+|---|---|---|
+| [Deploy guards](#workflow-deploy-guards) | Repository-local feedback for release and deletion declarations | [deploy-guards.yaml](.github/workflows/deploy-guards.yaml) |
 
 ## Internal job components and fixtures
 
 These support the catalogue itself. They are not new consumer entrypoints; repeated fixture calls
 do not establish a product need for a shared workflow.
 
-| Workflow | Description |
-|---|---|
-| [Applied-fix signing](.github/workflows/apply-signed-fixes.yaml) | Isolated, shared signer for eligible fixer artifacts |
-| [TODO read-only smoke](.github/workflows/scan-for-todo-comments-readonly.yaml) | Generated projection for credential-free scanner tests |
-| [TODO default fixture](.github/workflows/scan-for-todo-comments-default-fixture.yaml) | Offline dependencies for testing the production defaults |
-| [Release-recovery offline fixture](.github/workflows/release-recovery-offline-fixture.yaml) | Generated complete offline build/refusal job, with no publisher or secret interface |
+| Reference | Description | Source |
+|---|---|---|
+| [Applied-fix signing](#workflow-applied-fixes) | Isolated, shared signer for eligible fixer artifacts | [apply-signed-fixes.yaml](.github/workflows/apply-signed-fixes.yaml) |
+| [TODO read-only smoke](#workflow-todos-readonly) | Generated projection for credential-free scanner tests | [scan-for-todo-comments-readonly.yaml](.github/workflows/scan-for-todo-comments-readonly.yaml) |
+| [TODO default fixture](#workflow-todos-fixture) | Offline dependencies for testing the production defaults | [scan-for-todo-comments-default-fixture.yaml](.github/workflows/scan-for-todo-comments-default-fixture.yaml) |
+| [Release-recovery offline fixture](#workflow-recovery-fixture) | Generated complete offline build/refusal job, with no publisher or secret interface | [release-recovery-offline-fixture.yaml](.github/workflows/release-recovery-offline-fixture.yaml) |
+| [Go read-only projection](#workflow-go-readonly) | Generated Go validation with Code Quality uploads but no repository-mutation credentials; not a consumer interface | [validate-go-project-readonly.yaml](.github/workflows/validate-go-project-readonly.yaml) |
+
+Some required sources also expose `workflow_call` for their native regression fixtures. Those
+fixture calls do not make them public reusable products. Every declared input and secret remains
+documented in the reference below, including internal interfaces.
 
 ## Workflow reference
 
 Every peer entry has one independently collapsible reference. Internal components and compatibility
 sources retain their interfaces here so the same input/secret parity check covers them.
+
+<a name="workflow-repository-admission"></a>
 
 ### Organization-required: Repository PR admission
 
@@ -190,6 +213,8 @@ tampering-refusal proof before any older protection is retired.
 
 </details>
 
+<a name="workflow-deploy-guards"></a>
+
 ### Repository-owned: Deploy guards
 
 <details>
@@ -206,6 +231,8 @@ This is not a reusable export and has no `workflow_call` inputs or secrets. Ther
 so unsupported merge-group metadata cannot become an empty successful validation.
 
 </details>
+
+<a name="workflow-world-regressions"></a>
 
 ### Ruleset workflow source: World at Ruin trusted regressions
 
@@ -236,6 +263,8 @@ World at Ruin tests or its controller need no source-workflow change because eac
 bytes from the GitHub-supplied trusted base.
 
 </details>
+
+<a name="workflow-applied-fixes"></a>
 
 ### Internal: applied-fix signing
 
@@ -278,7 +307,7 @@ Download and extract the artifact from the run, then apply its `.patch` file fro
 with `git apply <file>.patch`, review, and push. Successful lint runs still check the branch-tip
 signature. Actual lint errors still fail the job and prevent signer writes;
 `validate-go-project`'s read-only mode still fails on uncommitted fixes.
-Consumer rollout and flag removal are tracked in [devantler-tech/actions#1186](https://github.com/devantler-tech/actions/issues/1186).
+Consumer rollout and flag removal are tracked in [#275](https://github.com/devantler-tech/.github/issues/275).
 
 #### Secrets and Inputs
 
@@ -291,6 +320,8 @@ Consumer rollout and flag removal are tracked in [devantler-tech/actions#1186](h
 | `APP_PRIVATE_KEY` | Secret | - | For signing | GitHub App private key; paired with the `APP_CLIENT_ID` variable. No unsigned fallback |
 
 </details>
+
+<a name="workflow-create-release"></a>
 
 ### 🎉 Create Release
 
@@ -311,7 +342,7 @@ Consumers that maintain explicit `type!:` breaking-change handling can set `warn
 
 This is a narrow configuration check, not proof that a commit will produce a major release. Default plugins, shared configurations, custom parser configs, presets (including `conventionalcommits`, which may provide their own handling), non-JSON files, and multiple competing config files are left to semantic-release. The guard does not execute configuration or infer which file wins. When restoring a lost parser setting, also verify that the consumer's release rules select a major version for breaking changes.
 
-Consumer rollout and the decision on removing this temporary flag are tracked in [devantler-tech/actions#1347](https://github.com/devantler-tech/actions/issues/1347).
+Consumer rollout and the decision on removing this temporary flag are tracked in [#270](https://github.com/devantler-tech/.github/issues/270).
 
 For catalogue self-tests, set `offline-test: true` together with `dry-run: true` and omit the App secret. This independent job requests no repository permissions and retrieves its immutable public catalogue source anonymously. It evaluates the pinned release command and catalogue configuration against disposable local repositories, verifying patch, minor, major, and no-release decisions without changing files or refs. It also honors `warn-missing-breaking-bang`: a missing-pattern fixture emits exactly one warning when enabled, while intact, disabled, unsupported-config and tool-error cases continue without warning or release blockage. Both issue-hook settings are exercised; this does not test live notification delivery. Normal releases and consumer dry-run previews continue to use the consumer's own configuration and App credentials, including callers that declare `permissions: {}`.
 
@@ -345,6 +376,8 @@ jobs:
 | `offline-test`               | Input (boolean) | `false` | No       | Run secret-free catalogue release-decision fixtures; requires dry-run     |
 
 </details>
+
+<a name="workflow-dependency-review"></a>
 
 ### 🛡️ Dependency Review
 
@@ -413,6 +446,8 @@ caller contexts where the independent credential is available.
 
 </details>
 
+<a name="workflow-enable-auto-merge"></a>
+
 ### 🔀 Enable Auto-Merge
 
 <details>
@@ -475,7 +510,7 @@ Direct and organization-required runs take no inputs, so they opt in with the
 `QUEUE_PENDING_EVALUATIONS` repository or organization variable set to `true`. Without it they keep
 the single queue. The variable applies only to those runs: a `workflow_call` invocation always follows
 its own input, so an explicit `false` stays honoured. Rollout and flag removal are tracked in
-[devantler-tech/actions#1155](https://github.com/devantler-tech/actions/issues/1155).
+[#277](https://github.com/devantler-tech/.github/issues/277).
 
 When opted in, GitHub processes queued evaluations in the order they begin waiting, which can
 differ from event delivery order; evaluations still read current PR state. Actor-enforced lifecycle
@@ -569,6 +604,8 @@ jobs:
 
 </details>
 
+<a name="workflow-lint"></a>
+
 ### 🧹 Lint
 
 <details>
@@ -624,6 +661,8 @@ patch-application job can access it.
 | `pr-owner`          | Input           | `""`    | No       | Pull request author login. Auto-fix commits are suppressed for dependency-bot pull requests                           |
 
 </details>
+
+<a name="workflow-publish-app"></a>
 
 ### 📦 Publish App
 
@@ -691,6 +730,8 @@ For an interrupted version publication, run explicit recovery on the original se
 
 </details>
 
+<a name="workflow-publish-manifests"></a>
+
 ### 📦 Publish Manifests
 
 <details>
@@ -742,6 +783,8 @@ jobs:
 Explicit recovery runs on the original semantic-version tag and source revision. Enable `enable-signed-recovery`, `enable-signed-promotion` and `enable-caller-pin`, and supply the original digest, run ID, attempt and publisher SHA. The workflow verifies the original signature identity and signed repository, source, version and run claims before reading the registry. A matching version succeeds without writing; only an authenticated, unambiguous missing version is restored from that digest. Contradictory versions and failed or partial reads stop recovery. Recovery never rebuilds or re-signs an artifact and always preserves `latest`, including for stable versions and prereleases. Original publishers from another repository identity are not accepted; that consumer migration remains in #242. The shared publisher queue serializes cooperating callers within a repository. Registry V2 has no compare-and-set operation, so readback detects a conflicting external writer but cannot prevent its race.
 
 </details>
+
+<a name="workflow-scan-todos"></a>
 
 ### 📝 Scan for TODO Comments
 
@@ -800,6 +843,8 @@ compatibility default stays off until consumer rollout and retirement in #394.
 
 </details>
 
+<a name="workflow-todos-readonly"></a>
+
 ### 📝 Scan for TODO Comments (Read-Only)
 
 <details>
@@ -832,6 +877,8 @@ and optional project-authentication rollout remain tracked separately in #340.
 
 </details>
 
+<a name="workflow-todos-fixture"></a>
+
 ### 📝 Scan for TODO Comments (Default Fixture)
 
 <details>
@@ -859,6 +906,8 @@ This is wrapper coverage, not live token generation or project-adoption proof.
 
 </details>
 
+<a name="workflow-scan-workflows"></a>
+
 ### 🔍 Scan for Workflow Vulnerabilities
 
 <details>
@@ -879,6 +928,8 @@ jobs:
 ```
 
 </details>
+
+<a name="workflow-template-sync"></a>
 
 ### 🔄 Template Sync
 
@@ -969,6 +1020,8 @@ list. With `use-app-token: true`, the merge and the sync are signed as one commi
 
 </details>
 
+<a name="workflow-update-agent-skills"></a>
+
 ### 🔄 Update Agent Skills
 
 <details>
@@ -1026,6 +1079,8 @@ The workflow assumes skills were previously installed with [`devantler-tech/.git
 
 </details>
 
+<a name="workflow-validate-go"></a>
+
 ### ✅ Validate Go Project
 
 <details>
@@ -1036,20 +1091,24 @@ The workflow assumes skills were previously installed with [`devantler-tech/.git
 #### Features
 
 - **Automated Linting**: Runs `golangci-lint` and `mega-linter` to ensure code quality
-- **Auto-fix**: Runs fixers in every validation and, when explicitly enabled, commits their fixes through the signed-commit workflow. Read-only runs fail with the remaining diff instead of discarding it
-- **Copilot Integration**: When linting fails, automatically prompts Copilot on the PR to fix the remaining issues
+- **Auto-fix**: Runs fixers in every validation and, when enabled, commits their fixes through the signed-commit workflow. Runs with signed commits disabled fail with the remaining diff instead of discarding it
 - **Supply-chain Scanning**: Runs [`govulncheck`](https://go.dev/blog/govulncheck) using a reviewed scanner version and an allowlist evaluator shipped with the workflow to fail the PR on known vulnerabilities your code actually calls (call-graph reachability, so imported-but-unreachable advisories don't block). A consumer can risk-accept a reachable advisory that has no upstream fix (`Fixed in: N/A`) by committing an optional `.govulncheck-allow.txt` in the selected Go module directory (one `GO-YYYY-NNNN  # justification` per line; `#` comments and blank lines ignored); the gate stays strict for everything else. Without an allowlist file the scan is strict. The scanner uses the Go version from the selected module’s `go.mod`; Go 1.25, 1.26, and 1.27 are covered by the compatibility fixtures. Scanner failures and invalid output always fail the check. A scan attempt that runs out of time is retried once, so a slow runner cannot leave an unattended dependency pull request stuck on a cancelled check; a finding or any other failure fails the check immediately and is never retried.
 - **Code Coverage**: Generates a Cobertura report and uploads it to **GitHub Code Quality** (native PR coverage).
 
 #### Usage
 
+This example disables fixer commits and needs no App secret. The public workflow still declares
+the linter's issue/PR feedback permissions and the coverage uploader's Code Quality permission;
+disabling fixer commits does not make the whole workflow credential-free.
+
 ```yaml
 jobs:
   go-test:
-    uses: devantler-tech/.github/.github/workflows/validate-go-project-readonly.yaml@<full-commit-sha> # vX.Y.Z
+    uses: devantler-tech/.github/.github/workflows/validate-go-project.yaml@<full-commit-sha> # vX.Y.Z
     permissions:
       contents: read
-      pull-requests: read
+      issues: write # required by the public workflow's linter job
+      pull-requests: write # required by the public workflow's linter job
       code-quality: write # required for GitHub Code Quality coverage upload
     with:
       pr-owner: ${{ github.event.pull_request.user.login }} # optional
@@ -1132,9 +1191,11 @@ the entire measurement `unknown` and leaves its capacity fields null. Command
 failures still fail validation. Measurement does not change the selected cleanup policy;
 these observations alone never authorize skipping it. Measurement rollout and
 retirement, representative-consumer evidence and cleanup policy remain in [#527](https://github.com/devantler-tech/.github/issues/527).
-Rollout and flag retirement are tracked in [devantler-tech/actions#1170](https://github.com/devantler-tech/actions/issues/1170).
+Rollout and flag retirement are tracked in [#276](https://github.com/devantler-tech/.github/issues/276).
 
 </details>
+
+<a name="workflow-go-readonly"></a>
 
 ### ✅ Validate Go Project (Read-Only)
 
@@ -1171,6 +1232,8 @@ generator and regenerate it; CI checks the complete projection and credential bo
 | `maintenance-default-branch` | Input (boolean) | `true` | No | Run tidy and dead-code analysis for Go changes on the default branch; pass false to opt out during rollout |
 
 </details>
+
+<a name="workflow-inspect-recovery"></a>
 
 ### Inspect a stranded GitHub release
 
@@ -1232,6 +1295,8 @@ no successful diagnosis. No tags, release records, channel notes or aliases are 
 
 </details>
 
+<a name="workflow-publish-recovery"></a>
+
 ### Publish a stranded GitHub release
 
 <details>
@@ -1290,6 +1355,8 @@ rollout, the App's observed push permission and the flag decision remain tracked
 [#603](https://github.com/devantler-tech/.github/issues/603).
 
 </details>
+
+<a name="workflow-recovery-fixture"></a>
 
 ### Internal release-recovery validation
 
