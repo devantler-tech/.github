@@ -27,13 +27,14 @@ required; this fixture never proves live token generation or project association
 
 **Explicit manifests recovery:** Default-off `enable-signed-recovery` requests only the original version alias, with signed promotion and caller pinning required before any legacy write. Verify the original catalogue identity and all original source/version/run claims, restore only authenticated missing versions, treat matching versions as no-ops, refuse contradictory or ambiguous reads, and always preserve `latest`. Keep recovery boundary, interruption/readback controls and native Flux/registry/cryptographic tests in required CI. The native key fixture proves signed claims and registry bytes, not production OIDC. Cross-repository publisher identity migration remains #242; complete recovery rollout remains #425.
 
-The configuration caller guard approves the publisher workflow and both copied helpers by Git
-blob and regular-file mode, while retaining the exact workflow identity, full commit reference,
-publication opt-ins and artifact target. Releases with unchanged approved contents need no test-pin
-edit; changed contents require review before updating the recorded blobs. Missing commits are read
-through a disposable object store. The promotion suite exercises unchanged and changed releases,
-helper changes, modes and input refusals. This source check does not replace the deployed verifier's
-separate approved-revision gate.
+The configuration caller guard separately requires the exact consumer-approved signing revision
+and the publisher workflow/helper Git blobs and regular-file modes. Even an unrelated release with
+unchanged publisher contents changes its certificate identity. Deploy and independently read back
+consumer approval before changing the guard's recorded revision and the caller; never treat content
+equivalence as that approval. Changed contents also require review before updating the recorded
+blobs. Missing commits are read through a disposable object store. The promotion suite rejects an
+unapproved byte-identical release and exercises an explicitly approved release, changed helpers,
+modes and unsafe inputs. CI's record does not replace the deployed verifier's exact-revision gate.
 
 **Explicit application recovery:** The same default-off mode verifies both original signatures with all nine paired publication claims before reading both version aliases. Any conflict or unknown read prevents all writes; only missing aliases are restored, with digest readback and matching retries producing no writes. Keep `.github/tests/test-app-recovery.sh` and the native single-platform Buildx/Flux proof required. Never rebuild, re-sign or move `latest` during recovery. Registry writes have no compare-and-set or cross-repository transaction; the shared queue and final readback cannot fence unrelated writers.
 

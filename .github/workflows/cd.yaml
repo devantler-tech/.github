@@ -36,17 +36,14 @@ jobs:
     # the SHA must be reachable from a tag, or zizmor flags it as an impostor).
     # Dependabot manages this pin (.github/dependabot.yml, github-actions
     # ecosystem, no cooldown for devantler-tech/*).
-    # Keep the ref a 40-hex commit: it is part of the cosign subject the platform
-    # verifies, so its shape is load-bearing here.
-    uses: devantler-tech/.github/.github/workflows/publish-manifests.yaml@6f1dee9557a939cc24ca2c562ea775d05e01564d # v12.0.1
+    # Keep the exact consumer-approved revision, not merely a 40-hex shape or
+    # byte-identical publisher. CI requires separate signer and content approval;
+    # deploy and read back consumer approval BEFORE changing this identity.
+    uses: devantler-tech/.github/.github/workflows/publish-manifests.yaml@0f390329b590404c02565b27a263ee841fa02bce # v10.0.3
     with:
       oci-name: devantler-tech/github-config
-      # Without this, a ref the platform verifier does not accept fails nothing
-      # here: the artifact still publishes, signed under an identity the
-      # platform rejects, and the `github-config` tenant silently stops
-      # reconciling until the ref is put back. Enabling the guard turns that
-      # into a loud pre-signing failure in this workflow instead — the publish
-      # refuses before the artifact exists, and the error names the fix.
+      # The publisher refuses mutable signing refs. Consumer approval of the exact
+      # immutable identity is a separate CI guard, not inferred from this input.
       enable-caller-pin: true
       # Promote only after the staged digest has been signed and verified.
       enable-signed-promotion: true
