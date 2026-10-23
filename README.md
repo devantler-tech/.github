@@ -133,10 +133,10 @@ interface is not a reason to centralize a single-product pipeline.
 
 These operate this catalogue itself; they are not reusable consumer interfaces.
 
-| Workflow | Description |
-|---|---|
-| [Inspect release recovery](.github/workflows/inspect-release-recovery.yaml) | Diagnose a stranded stable release without publication authority |
-| [Publish release recovery](.github/workflows/publish-release-recovery.yaml) | Recover this catalogue's stranded stable release; default-off and confirmation-gated |
+| Reference | Description | Source |
+|---|---|---|
+| [Inspect release recovery](#workflow-inspect-recovery) | Diagnose a stranded stable release without publication authority | [inspect-release-recovery.yaml](.github/workflows/inspect-release-recovery.yaml) |
+| [Publish release recovery](#workflow-publish-recovery) | Recover this catalogue's stranded stable release; default-off and confirmation-gated | [publish-release-recovery.yaml](.github/workflows/publish-release-recovery.yaml) |
 
 ## Organization-required workflow sources
 
@@ -152,8 +152,8 @@ native-enforcement migration; it is not a reusable consumer interface.
 | [Enable auto-merge](#workflow-enable-auto-merge) | Shared trusted-author PR merge policy | [enable-auto-merge.yaml](.github/workflows/enable-auto-merge.yaml) |
 | [Scan workflow vulnerabilities](#workflow-scan-workflows) | Shared workflow-security PR gate | [scan-for-workflow-vulnerabilities.yaml](.github/workflows/scan-for-workflow-vulnerabilities.yaml) |
 | [Validate Go project](#workflow-validate-go) | Shared Go validation, also reused by repository-owned jobs | [validate-go-project.yaml](.github/workflows/validate-go-project.yaml) |
-| [Repository PR admission](.github/workflows/repository-pr-admission.yaml) | Shared read-only runner for each enrolled product's reviewed-base validation | [repository-pr-admission.yaml](.github/workflows/repository-pr-admission.yaml) |
-| [World at Ruin regressions](.github/workflows/world-at-ruin-required-regressions.yaml) | Trusted World at Ruin candidate validation from its reviewed base | [world-at-ruin-required-regressions.yaml](.github/workflows/world-at-ruin-required-regressions.yaml) |
+| [Repository PR admission](#workflow-repository-admission) | Shared read-only runner for each enrolled product's reviewed-base validation | [repository-pr-admission.yaml](.github/workflows/repository-pr-admission.yaml) |
+| [World at Ruin regressions](#workflow-world-regressions) | Trusted World at Ruin candidate validation from its reviewed base | [world-at-ruin-required-regressions.yaml](.github/workflows/world-at-ruin-required-regressions.yaml) |
 
 Do not remove or disable a compatibility gate merely because a local caller is green. The owning
 migration must prove the replacement's live enforcement first.
@@ -168,22 +168,22 @@ while that gate is open.
 These workflows belong only to this repository and are not reusable exports or organization-wide
 required workflow associations. Protected reviewed-base validation is enforced by shared admission.
 
-| Workflow | Current responsibility |
-|---|---|
-| [Deploy guards](.github/workflows/deploy-guards.yaml) | Repository-local feedback for release and deletion declarations |
+| Reference | Current responsibility | Source |
+|---|---|---|
+| [Deploy guards](#workflow-deploy-guards) | Repository-local feedback for release and deletion declarations | [deploy-guards.yaml](.github/workflows/deploy-guards.yaml) |
 
 ## Internal job components and fixtures
 
 These support the catalogue itself. They are not new consumer entrypoints; repeated fixture calls
 do not establish a product need for a shared workflow.
 
-| Workflow | Description |
-|---|---|
-| [Applied-fix signing](.github/workflows/apply-signed-fixes.yaml) | Isolated, shared signer for eligible fixer artifacts |
-| [TODO read-only smoke](.github/workflows/scan-for-todo-comments-readonly.yaml) | Generated projection for credential-free scanner tests |
-| [TODO default fixture](.github/workflows/scan-for-todo-comments-default-fixture.yaml) | Offline dependencies for testing the production defaults |
-| [Release-recovery offline fixture](.github/workflows/release-recovery-offline-fixture.yaml) | Generated complete offline build/refusal job, with no publisher or secret interface |
-| [Go read-only projection](.github/workflows/validate-go-project-readonly.yaml) | Generated Go validation with Code Quality uploads but no repository-mutation credentials; not a consumer interface |
+| Reference | Description | Source |
+|---|---|---|
+| [Applied-fix signing](#workflow-applied-fixes) | Isolated, shared signer for eligible fixer artifacts | [apply-signed-fixes.yaml](.github/workflows/apply-signed-fixes.yaml) |
+| [TODO read-only smoke](#workflow-todos-readonly) | Generated projection for credential-free scanner tests | [scan-for-todo-comments-readonly.yaml](.github/workflows/scan-for-todo-comments-readonly.yaml) |
+| [TODO default fixture](#workflow-todos-fixture) | Offline dependencies for testing the production defaults | [scan-for-todo-comments-default-fixture.yaml](.github/workflows/scan-for-todo-comments-default-fixture.yaml) |
+| [Release-recovery offline fixture](#workflow-recovery-fixture) | Generated complete offline build/refusal job, with no publisher or secret interface | [release-recovery-offline-fixture.yaml](.github/workflows/release-recovery-offline-fixture.yaml) |
+| [Go read-only projection](#workflow-go-readonly) | Generated Go validation with Code Quality uploads but no repository-mutation credentials; not a consumer interface | [validate-go-project-readonly.yaml](.github/workflows/validate-go-project-readonly.yaml) |
 
 Some required sources also expose `workflow_call` for their native regression fixtures. Those
 fixture calls do not make them public reusable products. Every declared input and secret remains
@@ -193,6 +193,8 @@ documented in the reference below, including internal interfaces.
 
 Every peer entry has one independently collapsible reference. Internal components and compatibility
 sources retain their interfaces here so the same input/secret parity check covers them.
+
+<a name="workflow-repository-admission"></a>
 
 ### Organization-required: Repository PR admission
 
@@ -211,6 +213,8 @@ tampering-refusal proof before any older protection is retired.
 
 </details>
 
+<a name="workflow-deploy-guards"></a>
+
 ### Repository-owned: Deploy guards
 
 <details>
@@ -227,6 +231,8 @@ This is not a reusable export and has no `workflow_call` inputs or secrets. Ther
 so unsupported merge-group metadata cannot become an empty successful validation.
 
 </details>
+
+<a name="workflow-world-regressions"></a>
 
 ### Ruleset workflow source: World at Ruin trusted regressions
 
@@ -257,6 +263,8 @@ World at Ruin tests or its controller need no source-workflow change because eac
 bytes from the GitHub-supplied trusted base.
 
 </details>
+
+<a name="workflow-applied-fixes"></a>
 
 ### Internal: applied-fix signing
 
@@ -835,6 +843,8 @@ compatibility default stays off until consumer rollout and retirement in #394.
 
 </details>
 
+<a name="workflow-todos-readonly"></a>
+
 ### 📝 Scan for TODO Comments (Read-Only)
 
 <details>
@@ -866,6 +876,8 @@ using `scan-for-todo-comments.yaml` with their existing authorization. Live proj
 and optional project-authentication rollout remain tracked separately in #340.
 
 </details>
+
+<a name="workflow-todos-fixture"></a>
 
 ### 📝 Scan for TODO Comments (Default Fixture)
 
@@ -1183,6 +1195,8 @@ Rollout and flag retirement are tracked in [#276](https://github.com/devantler-t
 
 </details>
 
+<a name="workflow-go-readonly"></a>
+
 ### ✅ Validate Go Project (Read-Only)
 
 <details>
@@ -1218,6 +1232,8 @@ generator and regenerate it; CI checks the complete projection and credential bo
 | `maintenance-default-branch` | Input (boolean) | `true` | No | Run tidy and dead-code analysis for Go changes on the default branch; pass false to opt out during rollout |
 
 </details>
+
+<a name="workflow-inspect-recovery"></a>
 
 ### Inspect a stranded GitHub release
 
@@ -1279,6 +1295,8 @@ no successful diagnosis. No tags, release records, channel notes or aliases are 
 
 </details>
 
+<a name="workflow-publish-recovery"></a>
+
 ### Publish a stranded GitHub release
 
 <details>
@@ -1337,6 +1355,8 @@ rollout, the App's observed push permission and the flag decision remain tracked
 [#603](https://github.com/devantler-tech/.github/issues/603).
 
 </details>
+
+<a name="workflow-recovery-fixture"></a>
 
 ### Internal release-recovery validation
 

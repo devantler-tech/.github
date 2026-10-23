@@ -233,7 +233,9 @@ expect 'repository missing-row ablation' 1 "validate-go-project.yaml: input 'tes
 navigation() {
   local document=$1 anchor count
   for anchor in create-release dependency-review enable-auto-merge lint publish-app \
-    publish-manifests scan-todos scan-workflows template-sync update-agent-skills validate-go; do
+    publish-manifests scan-todos scan-workflows template-sync update-agent-skills validate-go \
+    repository-admission deploy-guards world-regressions applied-fixes todos-readonly \
+    todos-fixture go-readonly inspect-recovery publish-recovery recovery-fixture; do
     count=$(grep -Fc "<a name=\"workflow-$anchor\"></a>" "$document" || true)
     [[ $count == 1 ]] || return 1
     grep -Fq "(#workflow-$anchor)" "$document" || return 1
