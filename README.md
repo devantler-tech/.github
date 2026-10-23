@@ -1073,20 +1073,24 @@ The workflow assumes skills were previously installed with [`devantler-tech/.git
 #### Features
 
 - **Automated Linting**: Runs `golangci-lint` and `mega-linter` to ensure code quality
-- **Auto-fix**: Runs fixers in every validation and, when explicitly enabled, commits their fixes through the signed-commit workflow. Read-only runs fail with the remaining diff instead of discarding it
-- **Copilot Integration**: When linting fails, automatically prompts Copilot on the PR to fix the remaining issues
+- **Auto-fix**: Runs fixers in every validation and, when enabled, commits their fixes through the signed-commit workflow. Runs with signed commits disabled fail with the remaining diff instead of discarding it
 - **Supply-chain Scanning**: Runs [`govulncheck`](https://go.dev/blog/govulncheck) using a reviewed scanner version and an allowlist evaluator shipped with the workflow to fail the PR on known vulnerabilities your code actually calls (call-graph reachability, so imported-but-unreachable advisories don't block). A consumer can risk-accept a reachable advisory that has no upstream fix (`Fixed in: N/A`) by committing an optional `.govulncheck-allow.txt` in the selected Go module directory (one `GO-YYYY-NNNN  # justification` per line; `#` comments and blank lines ignored); the gate stays strict for everything else. Without an allowlist file the scan is strict. The scanner uses the Go version from the selected module’s `go.mod`; Go 1.25, 1.26, and 1.27 are covered by the compatibility fixtures. Scanner failures and invalid output always fail the check. A scan attempt that runs out of time is retried once, so a slow runner cannot leave an unattended dependency pull request stuck on a cancelled check; a finding or any other failure fails the check immediately and is never retried.
 - **Code Coverage**: Generates a Cobertura report and uploads it to **GitHub Code Quality** (native PR coverage).
 
 #### Usage
 
+This example disables fixer commits and needs no App secret. The public workflow still declares
+the linter's issue/PR feedback permissions and the coverage uploader's Code Quality permission;
+disabling fixer commits does not make the whole workflow credential-free.
+
 ```yaml
 jobs:
   go-test:
-    uses: devantler-tech/.github/.github/workflows/validate-go-project-readonly.yaml@<full-commit-sha> # vX.Y.Z
+    uses: devantler-tech/.github/.github/workflows/validate-go-project.yaml@<full-commit-sha> # vX.Y.Z
     permissions:
       contents: read
-      pull-requests: read
+      issues: write # required by the public workflow's linter job
+      pull-requests: write # required by the public workflow's linter job
       code-quality: write # required for GitHub Code Quality coverage upload
     with:
       pr-owner: ${{ github.event.pull_request.user.login }} # optional
