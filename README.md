@@ -89,7 +89,7 @@ declaration. These are steps inside a caller-owned job, not required workflows.
 | [guard-installed-skill-edits](actions/guard-installed-skill-edits/README.md) | Refuse a hand-edit to a synced installed-skill tree, naming its upstream | [action.yaml](actions/guard-installed-skill-edits/action.yaml) |
 | [login-to-ghcr](actions/login-to-ghcr/README.md) | Login to GitHub Container Registry | [action.yaml](actions/login-to-ghcr/action.yaml) |
 | [run-dotnet-tests](actions/run-dotnet-tests/README.md) | Test .NET solution or project with coverage | [action.yaml](actions/run-dotnet-tests/action.yaml) |
-| [setup-agent-skills](actions/setup-agent-skills/README.md) | Install pinned agent skills for one or more coding agents | [action.yaml](actions/setup-agent-skills/action.yaml) |
+| [setup-agent-skills](actions/setup-agent-skills/README.md) | Install agent skills for one or more coding agents, with optional version pins | [action.yaml](actions/setup-agent-skills/action.yaml) |
 | [setup-go-toolchain](actions/setup-go-toolchain/README.md) | Setup Go with private module discovery | [action.yaml](actions/setup-go-toolchain/action.yaml) |
 | [setup-ksail-cli](actions/setup-ksail-cli/README.md) | Install KSail CLI via Homebrew | [action.yaml](actions/setup-ksail-cli/action.yaml) |
 | [update-agent-skills](actions/update-agent-skills/README.md) | Update installed skills and report changes | [action.yaml](actions/update-agent-skills/action.yaml) |
@@ -146,14 +146,14 @@ Reviewed repository admission also serves multiple products while each product o
 The World at Ruin source remains a compatibility gate pending its separate performance and
 native-enforcement migration; it is not a reusable consumer interface.
 
-| Workflow | Current responsibility |
-|---|---|
-| [Dependency review](.github/workflows/dependency-review.yaml) | Shared dependency-security PR gate |
-| [Enable auto-merge](.github/workflows/enable-auto-merge.yaml) | Shared trusted-author PR merge policy |
-| [Scan workflow vulnerabilities](.github/workflows/scan-for-workflow-vulnerabilities.yaml) | Shared workflow-security PR gate |
-| [Validate Go project](.github/workflows/validate-go-project.yaml) | Shared Go validation, also reused by repository-owned jobs |
-| [Repository PR admission](.github/workflows/repository-pr-admission.yaml) | Shared read-only runner for each enrolled product's reviewed-base validation |
-| [World at Ruin regressions](.github/workflows/world-at-ruin-required-regressions.yaml) | Trusted World at Ruin candidate validation from its reviewed base |
+| Reference | Current responsibility | Source |
+|---|---|---|
+| [Dependency review](#workflow-dependency-review) | Shared dependency-security PR gate | [dependency-review.yaml](.github/workflows/dependency-review.yaml) |
+| [Enable auto-merge](#workflow-enable-auto-merge) | Shared trusted-author PR merge policy | [enable-auto-merge.yaml](.github/workflows/enable-auto-merge.yaml) |
+| [Scan workflow vulnerabilities](#workflow-scan-workflows) | Shared workflow-security PR gate | [scan-for-workflow-vulnerabilities.yaml](.github/workflows/scan-for-workflow-vulnerabilities.yaml) |
+| [Validate Go project](#workflow-validate-go) | Shared Go validation, also reused by repository-owned jobs | [validate-go-project.yaml](.github/workflows/validate-go-project.yaml) |
+| [Repository PR admission](.github/workflows/repository-pr-admission.yaml) | Shared read-only runner for each enrolled product's reviewed-base validation | [repository-pr-admission.yaml](.github/workflows/repository-pr-admission.yaml) |
+| [World at Ruin regressions](.github/workflows/world-at-ruin-required-regressions.yaml) | Trusted World at Ruin candidate validation from its reviewed base | [world-at-ruin-required-regressions.yaml](.github/workflows/world-at-ruin-required-regressions.yaml) |
 
 Do not remove or disable a compatibility gate merely because a local caller is green. The owning
 migration must prove the replacement's live enforcement first.
@@ -183,7 +183,7 @@ do not establish a product need for a shared workflow.
 | [TODO read-only smoke](.github/workflows/scan-for-todo-comments-readonly.yaml) | Generated projection for credential-free scanner tests |
 | [TODO default fixture](.github/workflows/scan-for-todo-comments-default-fixture.yaml) | Offline dependencies for testing the production defaults |
 | [Release-recovery offline fixture](.github/workflows/release-recovery-offline-fixture.yaml) | Generated complete offline build/refusal job, with no publisher or secret interface |
-| [Go read-only projection](.github/workflows/validate-go-project-readonly.yaml) | Generated credential-free Go validation for native tests; not a consumer interface |
+| [Go read-only projection](.github/workflows/validate-go-project-readonly.yaml) | Generated Go validation with Code Quality uploads but no repository-mutation credentials; not a consumer interface |
 
 Some required sources also expose `workflow_call` for their native regression fixtures. Those
 fixture calls do not make them public reusable products. Every declared input and secret remains
@@ -313,7 +313,7 @@ Consumer rollout and flag removal are tracked in [#275](https://github.com/devan
 
 </details>
 
-<a id="workflow-create-release"></a>
+<a name="workflow-create-release"></a>
 
 ### 🎉 Create Release
 
@@ -368,6 +368,8 @@ jobs:
 | `offline-test`               | Input (boolean) | `false` | No       | Run secret-free catalogue release-decision fixtures; requires dry-run     |
 
 </details>
+
+<a name="workflow-dependency-review"></a>
 
 ### 🛡️ Dependency Review
 
@@ -435,6 +437,8 @@ to fork pull requests, so use the default there and enable comments only in trus
 caller contexts where the independent credential is available.
 
 </details>
+
+<a name="workflow-enable-auto-merge"></a>
 
 ### 🔀 Enable Auto-Merge
 
@@ -592,7 +596,7 @@ jobs:
 
 </details>
 
-<a id="workflow-lint"></a>
+<a name="workflow-lint"></a>
 
 ### 🧹 Lint
 
@@ -650,7 +654,7 @@ patch-application job can access it.
 
 </details>
 
-<a id="workflow-publish-app"></a>
+<a name="workflow-publish-app"></a>
 
 ### 📦 Publish App
 
@@ -718,7 +722,7 @@ For an interrupted version publication, run explicit recovery on the original se
 
 </details>
 
-<a id="workflow-publish-manifests"></a>
+<a name="workflow-publish-manifests"></a>
 
 ### 📦 Publish Manifests
 
@@ -772,7 +776,7 @@ Explicit recovery runs on the original semantic-version tag and source revision.
 
 </details>
 
-<a id="workflow-scan-todos"></a>
+<a name="workflow-scan-todos"></a>
 
 ### 📝 Scan for TODO Comments
 
@@ -890,6 +894,8 @@ This is wrapper coverage, not live token generation or project-adoption proof.
 
 </details>
 
+<a name="workflow-scan-workflows"></a>
+
 ### 🔍 Scan for Workflow Vulnerabilities
 
 <details>
@@ -911,7 +917,7 @@ jobs:
 
 </details>
 
-<a id="workflow-template-sync"></a>
+<a name="workflow-template-sync"></a>
 
 ### 🔄 Template Sync
 
@@ -1002,7 +1008,7 @@ list. With `use-app-token: true`, the merge and the sync are signed as one commi
 
 </details>
 
-<a id="workflow-update-agent-skills"></a>
+<a name="workflow-update-agent-skills"></a>
 
 ### 🔄 Update Agent Skills
 
@@ -1061,7 +1067,7 @@ The workflow assumes skills were previously installed with [`devantler-tech/.git
 
 </details>
 
-<a id="workflow-validate-go"></a>
+<a name="workflow-validate-go"></a>
 
 ### ✅ Validate Go Project
 

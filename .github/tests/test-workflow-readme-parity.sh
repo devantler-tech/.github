@@ -228,4 +228,32 @@ expect 'repository missing-row ablation' 1 "validate-go-project.yaml: input 'tes
   exit 1
 }
 
+# GitHub preserves name-based custom anchors, not author-supplied id attributes.
+# Exercise the actual catalogue navigation independently of input-table parity.
+navigation() {
+  local document=$1 anchor count
+  for anchor in create-release dependency-review enable-auto-merge lint publish-app \
+    publish-manifests scan-todos scan-workflows template-sync update-agent-skills validate-go; do
+    count=$(grep -Fc "<a name=\"workflow-$anchor\"></a>" "$document" || true)
+    [[ $count == 1 ]] || return 1
+    grep -Fq "(#workflow-$anchor)" "$document" || return 1
+  done
+  ! grep -Eq '<a id="workflow-' "$document"
+}
+cp "$source_root/README.md" "$tmp/navigation.md"
+navigation "$tmp/navigation.md" || { echo 'FAIL: catalogue reference navigation'; exit 1; }
+cases=$((cases + 1))
+sed 's/<a name="workflow-/<a id="workflow-/' "$tmp/navigation.md" > "$tmp/id-anchors.md"
+if navigation "$tmp/id-anchors.md"; then
+  echo 'FAIL: unsupported custom-anchor attributes accepted'
+  exit 1
+fi
+cases=$((cases + 1))
+sed '/^<a name="workflow-dependency-review"><\/a>$/d' "$tmp/navigation.md" > "$tmp/missing-anchor.md"
+if navigation "$tmp/missing-anchor.md"; then
+  echo 'FAIL: missing required-workflow reference anchor accepted'
+  exit 1
+fi
+cases=$((cases + 1))
+
 echo "Workflow README parity: $cases behavioral cases passed."
