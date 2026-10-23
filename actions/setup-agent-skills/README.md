@@ -28,7 +28,7 @@ expose the response headers needed to distinguish rate-limit classes reliably.
 This option does not guarantee recovery from a primary hourly quota or honor a
 server-provided reset deadline that the CLI does not expose. Keep it disabled
 until real burst recovery is evaluated for the consumer, as tracked in
-[devantler-tech/actions#514](https://github.com/devantler-tech/actions/issues/514).
+[#288](https://github.com/devantler-tech/.github/issues/288).
 
 ## Outputs
 
