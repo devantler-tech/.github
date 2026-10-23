@@ -23,7 +23,7 @@ fail() {
 readonly FIXTURE_REPOS=10
 
 # Writes a render declaring fixture-repo-1..10 (fixture-repo-10 archived) and a
-# live listing that matches it, plus the exempt `actions` repository.
+# live listing that matches it. Retired repositories have no exemption.
 build_fixture() {
   local dir="$1" i archived
   mkdir -p "$dir"
@@ -56,7 +56,6 @@ spec:
   forProvider:
     repository: labels-only
 EOF
-  echo "actions false" >>"$dir/live.txt"
 }
 
 # Runs the check on a fixture; sets $out and $rc.
@@ -73,7 +72,7 @@ run_check() {
 build_fixture "$work/clean"
 run_check "$work/clean"
 [[ "$rc" -eq 0 ]] || fail "clean fixture should pass, got rc=$rc: $out"
-[[ "$out" == *"all 10 live repositories are declared"* ]] ||
+[[ "$out" == *"all 9 live repositories are declared"* ]] ||
   fail "clean fixture should report the live count, got: $out"
 
 # 2. A live repository deploy/ does not declare: finding.
@@ -106,13 +105,23 @@ run_check "$work/unseen"
 [[ "$rc" -eq 2 ]] || fail "a listing that misses a declared repository should fail closed with 2, got rc=$rc: $out"
 [[ "$out" == *"UNSEEN fixture-repo-3"* ]] || fail "the unseen repository should be named, got: $out"
 
-# 6. An exemption that no longer applies: finding.
+# 6. Recreating the retired repository must be reported, not silently exempted.
+build_fixture "$work/recreated-retirement"
+echo "actions false" >>"$work/recreated-retirement/live.txt"
+run_check "$work/recreated-retirement"
+[[ "$rc" -eq 1 && "$out" == *"UNDECLARED actions"* ]] ||
+  fail "the retired repository must have no permanent exemption, got rc=$rc: $out"
+
+# Keep stale-exemption detection covered without putting a production exception
+# back. A test-only copy has one deliberately synthetic exception.
 build_fixture "$work/stale"
-grep -v '^actions ' "$work/stale/live.txt" >"$work/stale/live.tmp"
-mv "$work/stale/live.tmp" "$work/stale/live.txt"
+sed 's/^exemptions=(/exemptions=( "fixture-exemption"/' "$check" >"$work/stale-check.sh"
+saved_check="$check"
+check="$work/stale-check.sh"
 run_check "$work/stale"
-[[ "$rc" -eq 1 && "$out" == *"STALE-EXEMPTION actions"* ]] ||
-  fail "an exemption for a repository that is gone should be reported stale, got rc=$rc: $out"
+check="$saved_check"
+[[ "$rc" -eq 1 && "$out" == *"STALE-EXEMPTION fixture-exemption"* ]] ||
+  fail "a stale synthetic exemption should still fail, got rc=$rc: $out"
 
 # 7. An empty listing: fail closed.
 build_fixture "$work/empty"

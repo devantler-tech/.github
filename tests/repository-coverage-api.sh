@@ -72,7 +72,7 @@ reset_case() {
   : >"$work/requests"
   jq -n '[range(1;11)|{id:.,name:("fixture-repo-"+tostring),full_name:("devantler-tech/fixture-repo-"+tostring),
     owner:{id:99,login:"devantler-tech"},private:(. % 2 == 0),archived:(. == 10)}] +
-    [{id:11,name:"actions",full_name:"devantler-tech/actions",owner:{id:99,login:"devantler-tech"},private:false,archived:false}] |
+    [{id:11,name:"retired-fixture",full_name:"devantler-tech/retired-fixture",owner:{id:99,login:"devantler-tech"},private:false,archived:true}] |
     [{total_count:11,repositories:.[0:6]},{total_count:11,repositories:.[6:]}]' >"$work/fixtures/repositories.json"
   printf '%s\n' '{"id":77,"app_id":88,"target_id":99,"target_type":"Organization","account":{"id":99,"login":"devantler-tech","type":"Organization"},"repository_selection":"all","suspended_at":null,"suspended_by":null}' >"$work/fixtures/installation.json"
 }

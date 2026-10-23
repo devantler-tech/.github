@@ -122,8 +122,9 @@ Routine repository/admin-team monitoring is described in
 [`.github/governance-audits.md`](.github/governance-audits.md). Its daily schedule is enabled;
 manual execution is input-free and requires reviewed main. Keep admission, private-diagnostic suppression,
 complete-outcome reporting and source/credential mutations in required CI. Routine admission has no experimental switches. Natural scheduled observation and
-main dispatch prove both full checks and the reporter. Legacy maintenance retirement
-remains a separate gate (#84).
+main dispatch prove both full checks and the reporter. Legacy maintenance retirement is complete
+(#84). Actions has also been deleted (#240); its temporary coverage exemption is removed, so
+an undeclared recreation must fail the coverage audit. Historical signer identities remain data.
 
 The existing organization CodeQL finding rule is imported Observe-only. Run
 `bash tests/code-scanning-ruleset.sh` after changing its identity, read-only
