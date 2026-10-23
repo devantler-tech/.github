@@ -4,18 +4,13 @@
 set -euo pipefail
 # The live configuration caller must opt in only through a SHA-pinned publisher.
 validate_caller() {
-  yq -e '
-  (.jobs["publish-manifests"].uses ==
-    "devantler-tech/.github/.github/workflows/publish-manifests.yaml@0f390329b590404c02565b27a263ee841fa02bce") and
-  (.jobs["publish-manifests"].with["enable-caller-pin"] == true) and
-  (.jobs["publish-manifests"].with["enable-signed-promotion"] == true) and
-  (.jobs["publish-manifests"].with["oci-name"] == "devantler-tech/github-config")
-  ' "$1" >/dev/null
+  bash .github/scripts/check-manifests-caller.sh "$1"
 }
 validate_caller .github/workflows/cd.yaml || {
   echo 'FAIL: configuration publication requires a SHA-pinned, verified-promotion caller' >&2
   exit 1
 }
+bash .github/tests/fixtures/manifests-caller-contract.sh
 scratch="$(mktemp -d)"
 trap 'rm -rf "$scratch"' EXIT
 mkdir -p "$scratch/bin"
