@@ -5,7 +5,10 @@ root="$(cd "$(dirname "$0")/../../.." && pwd)"
 guard="$root/.github/scripts/check-manifests-caller.sh"
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
-fail() { echo "FAIL: manifests caller fixture: $*" >&2; exit 1; }
+fail() {
+  echo "FAIL: manifests caller fixture: $*" >&2
+  exit 1
+}
 fixture_git() {
   git -C "$work/source" -c user.name=fixture -c user.email=fixture@example.invalid \
     -c commit.gpgsign=false -c gc.auto=0 -c maintenance.auto=false "$@"
@@ -47,6 +50,7 @@ fixture_git config uploadpack.allowFilter true
 fixture_git config uploadpack.allowAnySHA1InWant true
 make_guard() {
   sed -e "s|^reviewed_workflow_blob='.*'$|reviewed_workflow_blob='$workflow_blob'|" \
+    -e "s|^approved_publisher_revision='.*'$|approved_publisher_revision='$reviewed'|" \
     -e "s|^reviewed_absence_blob='.*'$|reviewed_absence_blob='$absence_blob'|" \
     -e "s|^reviewed_recovery_blob='.*'$|reviewed_recovery_blob='$recovery_blob'|" \
     -e "s|^source_remote='.*'$|source_remote='$1'|" "$guard" >"$2"
@@ -62,23 +66,38 @@ mutate() {
     '.jobs["publish-manifests"].uses = ($prefix + "@" + $reviewed) | '"$1" \
     "$work/baseline.json" >"$work/caller.json"
 }
-run_guard() { (cd "$2"; bash "$1" "$work/caller.json"); }
-for revision in reviewed release; do
-  mutate ".jobs[\"publish-manifests\"].uses = (\$prefix + \"@\" + \$$revision)"
-  run_guard "$work/offline.sh" "$work/source" >"$work/result" 2>&1 || {
-    cat "$work/result" >&2
-    fail "rejected $revision content"
-  }
-done
+run_guard() { (
+  cd "$2"
+  bash "$1" "$work/caller.json"
+); }
+mutate '.'
+run_guard "$work/offline.sh" "$work/source" >"$work/result" 2>&1 || {
+  cat "$work/result" >&2
+  fail 'rejected approved publisher'
+}
+# The two commits carry byte-identical publishers but different signer identities.
+# An unrelated release must not become an approved signer implicitly.
+# shellcheck disable=SC2016 # jq variables, not shell expansion.
+mutate '.jobs["publish-manifests"].uses = ($prefix + "@" + $release)'
+if run_guard "$work/offline.sh" "$work/source" >"$work/result" 2>&1; then
+  fail 'accepted unapproved signer with unchanged publisher contents'
+fi
+grep -qF 'signer revision is not approved by consumers' "$work/result" || {
+  cat "$work/result" >&2
+  fail 'unchanged unapproved signer failed for the wrong reason'
+}
+# A separately reviewed consumer-first approval admits the exact new identity.
+sed "s|^approved_publisher_revision='.*'$|approved_publisher_revision='$release'|" \
+  "$work/fetching.sh" >"$work/approved-release.sh"
 git init --quiet "$work/consumer"
 # shellcheck disable=SC2016 # jq variables, not shell expansion.
 mutate '.jobs["publish-manifests"].uses = ($prefix + "@" + $release)'
-run_guard "$work/fetching.sh" "$work/consumer" >"$work/result" 2>&1 || {
+run_guard "$work/approved-release.sh" "$work/consumer" >"$work/result" 2>&1 || {
   cat "$work/result" >&2
-  fail 'rejected fetched unchanged release'
+  fail 'rejected fetched explicitly approved release'
 }
 [[ ! -e "$work/consumer/.git/shallow" && ! -s "$work/consumer/.git/FETCH_HEAD" &&
-   -z "$(git -C "$work/consumer" remote)" ]] || fail 'fetch changed consumer Git state'
+  -z "$(git -C "$work/consumer" remote)" ]] || fail 'fetch changed consumer Git state'
 while IFS=$'\t' read -r label mutation diagnostic; do
   mutate "$mutation"
   if run_guard "$work/offline.sh" "$work/source" >"$work/result" 2>&1; then
@@ -110,4 +129,4 @@ if run_guard "$work/fetching.sh" "$work/consumer" >"$work/result" 2>&1; then
   fail 'accepted fetched changed helper'
 fi
 grep -qF 'unreviewed publisher content' "$work/result" || fail 'fetched content refusal had the wrong cause'
-echo 'ok caller accepts unchanged releases and refuses unreviewed workflow/helper bytes, modes and unsafe inputs'
+echo 'ok caller requires explicit signer approval and reviewed contents, modes and safe inputs'

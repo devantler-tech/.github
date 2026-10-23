@@ -1,7 +1,10 @@
 #!/usr/bin/env bash
-# Approve publisher contents, so an unrelated release does not require a pin edit here.
+# Require independently approved signer identity AND reviewed publisher contents.
 set -euo pipefail
-fail() { echo "FAIL: configuration caller: $*" >&2; exit 1; }
+fail() {
+  echo "FAIL: configuration caller: $*" >&2
+  exit 1
+}
 [[ "$#" == 1 ]] || fail 'expected one caller workflow'
 caller="$1"
 encoded_ref="$(yq -o=json -I=0 '.jobs["publish-manifests"].uses // ""' "$caller")" ||
@@ -18,9 +21,10 @@ yq -e '
   ' "$caller" >/dev/null || fail 'expected verified-promotion inputs'
 
 # The workflow pins every external action and copies exactly these two source helpers.
-# All three files are unchanged between the previously approved v10.0.3 and v12.0.1.
-# A new release carrying these contents passes; a workflow/helper change requires review
-# and an explicit blob update. File modes are part of the approval too.
+# Byte equivalence is not signer equivalence: the revision is part of the certificate
+# identity. Update this revision only AFTER consumer approval has been deployed and
+# read back. Content and file-mode review remain independently required.
+approved_publisher_revision='0f390329b590404c02565b27a263ee841fa02bce'
 reviewed_workflow_blob='ce9a9897b154486218478734a02c61e5ac3ea479'
 reviewed_absence_blob='3566e4067e953a1d9cb34e6a50a0f9b72a5d8bc8'
 reviewed_recovery_blob='48dc38f60ddebf90b0976758df9f1983bbb86bfd'
@@ -51,4 +55,6 @@ $reviewed_workflow_blob .github/workflows/publish-manifests.yaml
 $reviewed_absence_blob .github/scripts/require-unpublished-version.sh
 $reviewed_recovery_blob .github/scripts/recover-manifests-version.sh
 EOF
-echo 'ok configuration caller pins the reviewed publisher and helper contents with verified promotion'
+[[ "$revision" == "$approved_publisher_revision" ]] ||
+  fail 'signer revision is not approved by consumers; deploy and verify consumer approval before updating the recorded revision'
+echo 'ok configuration caller pins an approved signer with reviewed contents and verified promotion'
