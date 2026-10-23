@@ -59,11 +59,9 @@ abort() {
 # Live repositories deliberately left out of deploy/, as "<repo>". Each is
 # declared intent with a tracked reason; the check fails on a stale entry, so
 # this list cannot rot.
-exemptions=(
-  # actions stays outside Repository management until verified full deletion
-  # (#240). Remove this exemption immediately after deletion is verified.
-  "actions"
-)
+# Actions was deleted after verified migration and withdrawal (#240). An
+# accidentally recreated repository must now be reported like any other gap.
+exemptions=()
 
 command -v yq >/dev/null || abort "required tool 'yq' not found"
 

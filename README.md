@@ -23,8 +23,10 @@ but new callers should own their publication job.
 
 The shared CI/CD building blocks used across devantler-tech projects — both **composite actions** and
 **reusable `workflow_call` workflows** — in one maintained catalogue. Use this repository for new
-consumers and changes. Retired repositories are not supported adoption targets; the remaining
-Actions retirement safeguards are tracked in [#240](https://github.com/devantler-tech/.github/issues/240).
+consumers and changes. The former `maintenance` and `actions` repositories have been deleted after
+migration; do not copy references from older examples. Their recovery limits and verified retirement
+are recorded in [#84](https://github.com/devantler-tech/.github/issues/84) and
+[#240](https://github.com/devantler-tech/.github/issues/240).
 
 ## Using them
 
@@ -334,7 +336,7 @@ The release is published with a GitHub App token, so the caller must set the `AP
 
 Npm alignment runs unconditionally. Release runs read requirements from the consumer's `packageManager` field and npm entries under `devEngines.packageManager` after checkout. An exact stable `packageManager` version is installed exactly; integrity-suffixed descriptors fail explicitly because this workflow cannot verify their digest. Otherwise, blocking `devEngines` entries must describe complete npm majors (`11`, `11.x`, `^11.0.0`, or `>=11.0.0 <12.0.0`). Arrays are alternatives: versionless npm entries satisfy the contract, and when no entry matches the final alternative's `onFail` controls the result. Without an exact npm `packageManager` requirement, `warn` and `ignore` keep the current npm; `error` and `download` align to a supported complete-major alternative or fail. Compatible declarations resolve to the exact `packageManager` version, consumers with neither an exact npm `packageManager` requirement nor a blocking npm `devEngines` version keep the bundled npm, and explicit nulls, unknown properties, malformed, contradictory, prerelease, or otherwise unenforceable contracts fail explicitly.
 
-When adopting this breaking release, remove the retired `align-npm-with-consumer-contract` argument. Previously published canonical revisions and the frozen `devantler-tech/actions` catalogue retain their existing APIs and behavior. The frozen family's disposition remains tracked in [#392](https://github.com/devantler-tech/.github/issues/392); retiring this canonical input does not remove that legacy input.
+When adopting this breaking release, remove the retired `align-npm-with-consumer-contract` argument. Previously published revisions of this canonical catalogue retain their existing APIs and behavior. The former `devantler-tech/actions` catalogue has been deleted; its old APIs are not available adoption targets. Historical migration context remains in [#392](https://github.com/devantler-tech/.github/issues/392).
 
 Release runs for one repository and ref run one at a time, in the order they were queued, and waiting runs are kept (up to GitHub's limit of 100) rather than cancelled. Two merges that land close together therefore produce two sequential release runs instead of racing for the same version. Callers need no `concurrency` block of their own.
 
@@ -1267,7 +1269,8 @@ inspection; a skipped job is not an inspected release.
 
 This first version accepts only public active `devantler-tech` repositories, stable `vX.Y.Z` tags,
 failed push runs on the default branch and immutable original `create-release.yaml` producers from
-this catalogue or the frozen `devantler-tech/actions` catalogue. It reads configuration as data:
+this catalogue or historical `devantler-tech/actions` references. The latter repository has been
+deleted; recognizing its old identity does not make it executable. It reads configuration as data:
 only the supported JSON `.releaserc` with the default branch, commit analyzer, release-notes
 generator and GitHub publisher is accepted. Analyzer/notes options are limited to the observed
 breaking-header pattern and breaking/revert release rules; GitHub publisher options are unsupported.
@@ -1406,7 +1409,7 @@ provides this proof; its [repository-list response](https://docs.github.com/en/r
 provides the independent pagination totals. Installation mode requires this reviewed
 main workflow context and its unrestricted token mint.
 A skipped run is not evidence of compliance. The routine combined workflow also runs
-daily and reports only complete outcomes. Legacy maintenance retirement remains #84.
+daily and reports only complete outcomes. Legacy maintenance retirement is complete under #84.
 
 An operator with organization-admin visibility can evaluate the shared checker
 with `bash scripts/check-repository-admin-teams.sh --organization-admin`.

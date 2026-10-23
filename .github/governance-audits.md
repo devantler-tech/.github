@@ -16,7 +16,10 @@ audit. It closes that issue only after both complete audits succeed.
 Routine admission has no experimental switches. The natural daily run completed
 both full checks and the success reporter; its implementation and observation are
 tracked in [#395](https://github.com/devantler-tech/.github/issues/395).
-Legacy maintenance retirement remains [#84](https://github.com/devantler-tech/.github/issues/84).
+Legacy maintenance retirement is complete under [#84](https://github.com/devantler-tech/.github/issues/84).
+Actions retirement is recorded in [#240](https://github.com/devantler-tech/.github/issues/240);
+the deleted repository no longer has a coverage exemption. Recreating an undeclared repository
+must produce a coverage finding.
 
 Organization-settings adoption and observer scheduling remain separate in
 [#85](https://github.com/devantler-tech/.github/issues/85) and

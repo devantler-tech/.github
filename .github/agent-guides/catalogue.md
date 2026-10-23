@@ -9,8 +9,9 @@ This repository also hosts the suite's shared CI/CD building blocks: composite a
 [`.github/workflows/`](../../.github/workflows/). They were imported from `devantler-tech/actions` as one
 snapshot (#235). The one-time importer is retired and preserved in Git history; the current
 catalogue and its documentation are authored here, not generated from that historical source.
-That repository is frozen pending verified migration and retirement (#240). Consumers reference
-the catalogue here as:
+That repository was deleted after verified migration and retirement (#240); historical signer
+identities remain verification data, never executable dependencies. Consumers reference the
+maintained catalogue here as:
 
 ```yaml
 uses: devantler-tech/.github/actions/<action>@<full-commit-sha> # vX.Y.Z
