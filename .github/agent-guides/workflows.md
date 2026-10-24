@@ -153,6 +153,14 @@ save or an exact hit without another save. The observer and fixture are selected
 together and neither may become optional; keep their offline failure controls
 and required-result wiring intact. Organization-required consumer invocation
 and the whole-repository cache-budget outcome remain separate evidence on #565.
+Rejected module-restore metadata reports the validated job ID, its zero-based
+fixture index and bounded, allow-listed step states, including the scanner's
+restore-bearing composite steps. This preserves the rejected snapshot's diagnostic
+without accepting it or printing arbitrary API text (#735).
+Within the same six-read bound, a complete, correctly bound successful job
+inventory may be reread when required restore or save rows are absent. Present
+contradictory results are not retried. Exhaustion still reaches the unchanged
+strict policy check; job success alone never establishes restore evidence.
 
 **Go disk measurement:** `measure-disk-usage` defaults to false. Opted-in build,
 test and race coverage emit separate cleanup and Go-command receipts, including

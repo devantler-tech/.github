@@ -47,6 +47,41 @@ reject_jobs '.[1].jobs[0].head_sha = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"'
 reject_jobs '.[1].jobs[0].status = "in_progress"'
 reject_jobs '.[1].jobs[0].name += " unexpected"'
 reject_jobs '.[1].jobs[1].steps |= map(select(.name != "Save Go module cache"))'
+reject_restore_with_summary() {
+  reject_jobs "$1"
+  local summary
+  summary="$(sed -n 's/^native-go-cache: restore-evidence-summary=//p' "$scratch/error")"
+  [[ -n "$summary" ]] || fail 'rejected restore has no sanitized diagnostic'
+  jq -e --argjson id "${3:-101}" --argjson index "${4:-1}" '
+    keys == ["fixture_index", "job_id", "restore_steps", "states"] and
+    .job_id == $id and .fixture_index == $index and
+    (.restore_steps | type == "number" and . >= 0) and
+    (.states | length <= 8 and all(.[];
+      keys == ["conclusion", "status"] and
+      (.status | IN("queued", "in_progress", "completed", "unrecognized")) and
+      (.conclusion | IN(null, "success", "failure", "skipped", "cancelled", "timed_out", "action_required", "neutral", "stale", "startup_failure", "unrecognized"))))
+  ' <<<"$summary" >/dev/null || fail 'restore diagnostic exposed unapproved evidence'
+  jq -e "$2" <<<"$summary" >/dev/null || fail 'restore diagnostic lost the rejected state'
+  if grep -q 'private-response-sentinel' "$scratch/error"; then fail 'restore diagnostic disclosed raw evidence'; fi
+}
+reject_restore_with_summary '.[0].jobs[1].steps = []' \
+  '.restore_steps == 0 and .states == []'
+for conclusion in skipped failure cancelled; do
+  reject_restore_with_summary ".[0].jobs[1].steps[0].conclusion = \"$conclusion\"" \
+    ".restore_steps == 1 and .states == [{status:\"completed\",conclusion:\"$conclusion\"}]"
+done
+reject_restore_with_summary '.[0].jobs[1].steps[0] |= (.status="in_progress" | .conclusion=null)' \
+  '.states == [{status:"in_progress",conclusion:null}]'
+reject_restore_with_summary '.[0].jobs[1].steps[0] |= (.status="private-response-sentinel" | .conclusion={private:"private-response-sentinel"} | .output="private-response-sentinel")' \
+  '.states == [{status:"unrecognized",conclusion:"unrecognized"}]'
+# Native run 40115145442 returned successful fixture jobs with empty steps,
+# including the scanner whose composite owns its module restore.
+reject_restore_with_summary '.[1].jobs[4].steps = []' \
+  '.restore_steps == 0 and .states == []' 108 8
+reject_restore_with_summary '.[1].jobs[4].steps[0].conclusion = "failure"' \
+  '.restore_steps == 1 and .states == [{status:"completed",conclusion:"failure"}]' 108 8
+reject_restore_with_summary '.[1].jobs[4].steps[0] |= (.status="private-response-sentinel" | .conclusion="private-response-sentinel")' \
+  '.states == [{status:"unrecognized",conclusion:"unrecognized"}]' 108 8
 reject_jobs_with_summary() {
   reject_jobs "$1"
   local summary
@@ -212,4 +247,51 @@ for evidence in failed-jobs.json lagging-stale-jobs.json; do
   if PATH="$scratch/bin:$PATH" LAG_READS=99 LAG_JOBS="$evidence" bash "$helper" observe >"$scratch/out" 2>"$scratch/error"; then fail "re-read admitted $evidence"; fi
   [[ "$(count_calls '/jobs?per_page=50$')" == 1 && "$(count_calls '^sleep ')" == 0 ]] || fail "$evidence was re-read instead of rejected at once"
 done
-printf 'PASS: native cache observer accepts PR, main save and main reuse; re-reads only a bounded status lag; rejects incomplete and unsafe evidence\n'
+# A completed, successful job can arrive before its step rows (#735). The
+# collector must obtain complete step evidence before evaluating the unchanged
+# cache policy; a successful job alone never establishes a successful restore.
+jq 'map(.jobs |= map(.steps = []))' "$scratch/jobs.json" >"$scratch/empty-steps-jobs.json"
+jq '.[1].jobs[4].steps = []' "$scratch/jobs.json" >"$scratch/empty-scanner-jobs.json"
+jq '.[1].jobs[1].steps |= map(select(.name != "Save Go module cache"))' "$scratch/jobs.json" >"$scratch/missing-save-jobs.json"
+jq 'map(.jobs |= map(.steps = [{name:"Set up job",status:"completed",conclusion:"success"}]))' "$scratch/jobs.json" >"$scratch/partial-steps-jobs.json"
+cp "$scratch/run.json" "$scratch/collector-main-run.json"
+for collector_mode in main pr; do
+  if [[ "$collector_mode" == pr ]]; then
+    jq '.event = "pull_request"' "$scratch/collector-main-run.json" >"$scratch/run.json"
+    export GITHUB_EVENT_NAME=pull_request GITHUB_REF=refs/pull/37/merge
+  fi
+  for evidence in empty-steps-jobs.json empty-scanner-jobs.json missing-save-jobs.json partial-steps-jobs.json; do
+    : >"$scratch/calls"
+    PATH="$scratch/bin:$PATH" LAG_READS=2 LAG_JOBS="$evidence" bash "$helper" observe >"$scratch/out" 2>"$scratch/error" ||
+      fail "collector rejected completed jobs whose step metadata later arrived ($collector_mode, $evidence): $(cat "$scratch/error")"
+    grep -q 'PASS: native Go cache policy' "$scratch/out" || fail 'hydrated step evidence did not reach the real policy check'
+    [[ "$(count_calls '/jobs?per_page=50$')" == 3 && "$(count_calls '^sleep 15$')" == 2 ]] ||
+      fail 'step hydration did not stop as soon as complete evidence arrived'
+  done
+done
+cp "$scratch/collector-main-run.json" "$scratch/run.json"
+export GITHUB_EVENT_NAME=push GITHUB_REF=refs/heads/main
+for evidence in empty-steps-jobs.json empty-scanner-jobs.json missing-save-jobs.json; do
+  : >"$scratch/calls"
+  if PATH="$scratch/bin:$PATH" LAG_READS=99 LAG_JOBS="$evidence" bash "$helper" observe >"$scratch/out" 2>"$scratch/error"; then
+    fail "persistent missing step evidence passed ($evidence)"
+  fi
+  [[ ! -s "$scratch/out" ]] || fail 'incomplete step evidence published success'
+  [[ "$(count_calls '/jobs?per_page=50$')" == 6 && "$(count_calls '^sleep 15$')" == 5 ]] ||
+    fail 'step hydration was not bounded to the existing six reads'
+done
+# Missing rows never make a contradictory identity, unsuccessful job or known
+# failed restore eligible for another read that might hide the rejection.
+jq '.[0].jobs[1].head_sha = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"' "$scratch/empty-steps-jobs.json" >"$scratch/empty-stale-jobs.json"
+jq '.[0].jobs[1].conclusion = "failure"' "$scratch/empty-steps-jobs.json" >"$scratch/empty-failed-jobs.json"
+jq '.[0].jobs[1].steps = [{name:"Restore Go module cache",status:"completed",conclusion:"failure"}]' "$scratch/empty-steps-jobs.json" >"$scratch/empty-bad-restore-jobs.json"
+for evidence in empty-stale-jobs.json empty-failed-jobs.json empty-bad-restore-jobs.json; do
+  : >"$scratch/calls"
+  if PATH="$scratch/bin:$PATH" LAG_READS=99 LAG_JOBS="$evidence" bash "$helper" observe >"$scratch/out" 2>"$scratch/error"; then
+    fail "contradictory evidence passed during hydration ($evidence)"
+  fi
+  [[ ! -s "$scratch/out" ]] || fail 'contradictory evidence published success'
+  [[ "$(count_calls '/jobs?per_page=50$')" == 1 && "$(count_calls '^sleep ')" == 0 ]] ||
+    fail 'contradictory evidence was retried instead of rejected immediately'
+done
+printf 'PASS: native cache observer accepts PR, main save and main reuse; bounds job and step hydration; rejects incomplete and unsafe evidence\n'

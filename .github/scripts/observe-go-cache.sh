@@ -38,6 +38,26 @@ diagnose_jobs() {
   ' "$jobs" 2>/dev/null)" || summary='{"state":"unreadable"}'
   printf 'native-go-cache: job-evidence-summary=%s\n' "$summary" >&2
 }
+diagnose_restore() {
+  local summary
+  # Only the already-validated job identity, a fixed fixture ordinal and
+  # allow-listed step states leave the snapshot; never arbitrary API strings.
+  summary="$(jq -cse --argjson id "$1" --arg prefix "$prefix" --argjson names "$fixture_names" '
+    (if length == 1 then .[0] else error("expected one job inventory") end) |
+    [.[].jobs[] | select(.id == $id)] |
+    if length == 1 then .[0] else error("expected one fixture job") end |
+    .name as $name |
+    (if $name == ($prefix + "🛡️ Vulnerability Scan")
+     then ["🛡️ Scan for known vulnerabilities", "🛡️ Scan for known vulnerabilities (retry after timeout)"]
+     else ["Restore Go module cache"] end) as $watched |
+    [.steps[] | select(.name | IN($watched[]))] as $restore |
+    {job_id:$id, fixture_index:($names | index($name | ltrimstr($prefix))),
+     restore_steps:($restore | length), states:[$restore[0:8][] |
+       {status:(if (.status | IN("queued", "in_progress", "completed")) then .status else "unrecognized" end),
+        conclusion:(if (.conclusion | IN(null, "success", "failure", "skipped", "cancelled", "timed_out", "action_required", "neutral", "stale", "startup_failure")) then .conclusion else "unrecognized" end)}]}
+  ' "$jobs" 2>/dev/null)" || summary='{"state":"unreadable"}'
+  printf 'native-go-cache: restore-evidence-summary=%s\n' "$summary" >&2
+}
 # The jobs API can keep reporting a finished fixture job as queued or running
 # after Actions has already released this dependent job (#655). With lag set,
 # such a job (no conclusion yet) passes the predicate; every other
@@ -66,6 +86,40 @@ validate_jobs() {
     diagnose_jobs
     fail 'incomplete, stale or unsuccessful current-attempt jobs'
   }
+}
+# Eligibility for another read, never a cache verdict. Only absent required rows
+# may hydrate; a present contradictory result still reaches the strict checker
+# immediately. The caller has already bound the complete inventory and every job.
+restore_metadata_pending() {
+  jq -e --arg prefix "$prefix" --argjson names "$fixture_names" --arg mode "$mode" '
+    def scan: "🛡️ Scan for known vulnerabilities";
+    def retry: scan + " (retry after timeout)";
+    def required($name):
+      if $name == ($prefix + $names[0]) then []
+      elif $name == ($prefix + $names[8]) then [scan]
+      else ["Restore Go module cache"] +
+        (if $name == ($prefix + $names[5]) then ["Save Go module cache", "Save Go compilation cache"]
+         elif $name == ($prefix + $names[6]) then ["Save Go compilation cache"]
+         else [] end)
+      end;
+    [.[].jobs[] | select(.name | startswith($prefix)) |
+      . as $job | .steps as $steps | required(.name) as $required |
+      {missing:any($required[]; . as $wanted | all($steps[]; .name != $wanted)),
+       valid:(all($steps[]; type == "object" and (.name | type == "string")) and
+         all($steps[] | select((.name | IN($required[])) or
+           (.name == retry and $job.name == ($prefix + $names[8])) or
+           (.name | startswith("Save Go")));
+           .status == "completed" and
+           (if .name == scan and .conclusion == "failure" then
+              any($steps[]; .name == retry and .status == "completed" and .conclusion == "success")
+            elif .name == scan or .name == "Restore Go module cache" then .conclusion == "success"
+            elif .name == retry then (.conclusion | IN("success", "skipped"))
+            else (.name | IN($required[])) and
+              (if $mode == "pr" then .conclusion == "skipped"
+               else (.conclusion | IN("success", "skipped")) end)
+            end)))}] |
+    all(.[]; .valid) and any(.[]; .missing)
+  ' "$jobs" >/dev/null 2>&1
 }
 normalize_log() {
   sed -E 's/^[0-9]{4}-[0-9T:.+-]+Z //; s/^Cache saved with the key: /Cache saved with key: /' "$1"
@@ -123,10 +177,16 @@ check() {
         if ($first | length) == 1 and $first[0].conclusion == "success" and (($retry | length) == 0 or (($retry | length) == 1 and $retry[0].conclusion == "skipped")) then 1
         elif ($first | length) == 1 and ($first[0].conclusion == "failure" or $first[0].conclusion == "success") and ($retry | length) == 1 and $retry[0].conclusion == "success" then 2
         else error("incomplete scanner execution") end
-      ' "$jobs")" || fail 'scanner did not exercise its module restore'
+      ' "$jobs" 2>/dev/null)" || {
+        diagnose_restore "$id"
+        fail 'scanner did not exercise its module restore'
+      }
       [[ -z "$saved" ]] || fail 'scanner wrote a Go archive'
     else
-      jq -e --argjson id "$id" '[.[].jobs[] | select(.id == $id) | .steps[] | select(.name == "Restore Go module cache" and .status == "completed" and .conclusion == "success")] | length == 1' "$jobs" >/dev/null || fail 'Go job did not restore its module cache'
+      jq -e --argjson id "$id" '[.[].jobs[] | select(.id == $id) | .steps[] | select(.name == "Restore Go module cache" and .status == "completed" and .conclusion == "success")] | length == 1' "$jobs" >/dev/null || {
+        diagnose_restore "$id"
+        fail 'Go job did not restore its module cache'
+      }
     fi
     section="$(restore_section "$log" "$restores")" || fail 'missing or ambiguous exact module restore action'
     outcomes="$(grep -E '^Cache (restored from key:|not found for input keys:)' <<<"$section" || true)"
@@ -192,13 +252,20 @@ observe() {
   mkdir "$scratch/logs"
   gh api "repos/devantler-tech/.github/actions/runs/$run/attempts/$attempt" >"$scratch/run.json" || fail 'run metadata read failed'
   jobs="$scratch/jobs.json"
-  # Re-read only a lagging fixture status, a bounded number of times: the
-  # step timeout still bounds the job, and every other rejection fails at once.
+  # A successful terminal job can precede its step rows too (#735). Keep the
+  # existing read/deadline bounds and the final policy check unchanged.
   job_reads=6; job_read_interval=15
   for ((read_number = 1; ; read_number++)); do
     gh api --paginate --slurp "repos/devantler-tech/.github/actions/runs/$run/attempts/$attempt/jobs?per_page=50" >"$jobs" || fail 'complete current-attempt job read failed'
-    if jobs_predicate false || (( read_number >= job_reads )) || ! jobs_predicate true; then break; fi
-    printf 'native-go-cache: fixture job status not final yet (read %d of %d); re-reading\n' "$read_number" "$job_reads" >&2
+    if (( read_number >= job_reads )); then break; fi
+    lag_reason='fixture job status not final yet'
+    if jobs_predicate false; then
+      restore_metadata_pending || break
+      lag_reason='fixture restore metadata incomplete'
+    elif ! jobs_predicate true; then
+      break
+    fi
+    printf 'native-go-cache: %s (read %d of %d); re-reading\n' "$lag_reason" "$read_number" "$job_reads" >&2
     sleep "$job_read_interval"
   done
   validate_jobs
