@@ -13,3 +13,4 @@ resources:
   - require-validation-on-go-template.yaml
   - require-reviewed-admission-on-monorepo.yaml
   - require-reviewed-admission-on-dotgithub.yaml
+  - require-reviewed-admission-on-world-at-ruin.yaml

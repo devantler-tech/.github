@@ -1,0 +1,30 @@
+# Add the executed product result while the established singleton stays active.
+# Native positive and refusal controls precede any separate retirement.
+apiVersion: repo.github.m.upbound.io/v1alpha1
+kind: RepositoryRuleset
+metadata:
+  name: world-at-ruin-require-reviewed-admission
+spec:
+  managementPolicies:
+    - Observe
+    - Create
+    - Update
+    - LateInitialize
+  forProvider:
+    repository: world-at-ruin
+    name: Require reviewed repository admission
+    target: branch
+    enforcement: active
+    conditions:
+      - refName:
+          - include: ["~DEFAULT_BRANCH"]
+            exclude: []
+    rules:
+      - requiredStatusChecks:
+          - requiredCheck:
+              - context: Run reviewed product admission
+                integrationId: 15368
+            strictRequiredStatusChecksPolicy: false
+  providerConfigRef:
+    kind: ProviderConfig
+    name: default

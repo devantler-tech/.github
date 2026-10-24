@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Bind both product enrollments while their original trusted gates still run.
+# Bind every enrolled product; World's original trusted gate stays active for overlap proof.
 set -euo pipefail
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 work="$(mktemp -d)"
@@ -35,15 +35,16 @@ check_render() {
     unique_policy("OrganizationRuleset";"require-repository-pr-admission";"Require workflow - Repository PR admission") as $org |
     unique_repository_policy("monorepo-require-reviewed-admission";"monorepo") as $repo |
     unique_repository_policy("dotgithub-require-reviewed-admission";".github") as $dotgithub |
+    unique_repository_policy("world-at-ruin-require-reviewed-admission";"world-at-ruin") as $world |
     unique_policy("OrganizationRuleset";"require-monorepo-ci-aggregate-contract";"Require workflow - Monorepo CI aggregate contract") as $old |
     unique_policy("OrganizationRuleset";"require-dotgithub-deploy-guards";"Require workflow - .github deploy guards") as $oldGithub |
-    ($org|length)==1 and ($repo|length)==1 and ($dotgithub|length)==1 and ($old|length)==1 and ($oldGithub|length)==1 and
+    ($org|length)==1 and ($repo|length)==1 and ($dotgithub|length)==1 and ($world|length)==1 and ($old|length)==1 and ($oldGithub|length)==1 and
     $org[0].apiVersion=="enterprise.github.m.upbound.io/v1alpha1" and
     $org[0].spec=={
       managementPolicies:managed,
       forProvider:{
         name:"Require workflow - Repository PR admission",target:"branch",enforcement:"active",
-        conditions:[{refName:[{include:["~DEFAULT_BRANCH"],exclude:[]}],repositoryId:[786274843,933213756]}],
+        conditions:[{refName:[{include:["~DEFAULT_BRANCH"],exclude:[]}],repositoryId:[786274843,933213756,1303188705]}],
         rules:[{requiredWorkflows:[{requiredWorkflow:[{
           repositoryId:933213756,path:".github/workflows/repository-pr-admission.yaml",ref:"refs/heads/main"
         }]}]}]
@@ -54,6 +55,8 @@ check_render() {
     $repo[0].spec==repository_spec("monorepo") and
     $dotgithub[0].apiVersion=="repo.github.m.upbound.io/v1alpha1" and
     $dotgithub[0].spec==repository_spec(".github") and
+    $world[0].apiVersion=="repo.github.m.upbound.io/v1alpha1" and
+    $world[0].spec==repository_spec("world-at-ruin") and
     $old[0].spec=={
       managementPolicies:managed,
       forProvider:{
@@ -67,7 +70,7 @@ check_render() {
     $oldGithub[0].spec==($old[0].spec |
       .forProvider.name="Require workflow - .github deploy guards" |
       .forProvider.conditions[0].repositoryId=[933213756]) and
-    all(($org+$repo+$dotgithub+$old+$oldGithub)[]; .metadata.namespace==null and
+    all(($org+$repo+$dotgithub+$world+$old+$oldGithub)[]; .metadata.namespace==null and
       .metadata.annotations["crossplane.io/external-name"]==null)
   ' "$1" >/dev/null
 }
@@ -82,7 +85,7 @@ yq -o=json -I=0 "." "$work/render.yaml" | jq -s "." > "$work/render.json"
 check_render "$work/render.json" || fail 'product enrollment, producer binding or original trusted gate changed'
 check_ci "$root/.github/workflows/ci.yaml" || fail 'required policy test is absent or skippable'
 count=0
-for name in require-repository-pr-admission monorepo-require-reviewed-admission dotgithub-require-reviewed-admission require-monorepo-ci-aggregate-contract require-dotgithub-deploy-guards; do
+for name in require-repository-pr-admission monorepo-require-reviewed-admission dotgithub-require-reviewed-admission world-at-ruin-require-reviewed-admission require-monorepo-ci-aggregate-contract require-dotgithub-deploy-guards; do
   for mutation in \
     '.spec.managementPolicies += ["Delete"]' \
     '.spec.managementPolicies = ["Observe"]' \
@@ -117,7 +120,8 @@ done
 for mutation in \
   '.spec.forProvider.conditions[0].repositoryId += [933213756]' \
   '.spec.forProvider.conditions[0].repositoryId = [786274843]' \
-  '.spec.forProvider.conditions[0].repositoryId += [1303188705]' \
+  '.spec.forProvider.conditions[0].repositoryId = [786274843,933213756]' \
+  '.spec.forProvider.conditions[0].repositoryId += [123456789]' \
   '.spec.forProvider.rules[0].requiredWorkflows[0].requiredWorkflow[0].repositoryId=786274843' \
   '.spec.forProvider.rules[0].requiredWorkflows[0].requiredWorkflow[0].ref="refs/heads/feature"' \
   '.spec.forProvider.rules[0].requiredWorkflows[0].requiredWorkflow[0].path=".github/workflows/ci.yaml"'; do
@@ -125,7 +129,7 @@ for mutation in \
   if check_render "$work/broken.json"; then fail 'accepted widened canary or substituted source'; fi
   count=$((count+1))
 done
-for name in monorepo-require-reviewed-admission dotgithub-require-reviewed-admission; do
+for name in monorepo-require-reviewed-admission dotgithub-require-reviewed-admission world-at-ruin-require-reviewed-admission; do
   for mutation in \
     '.spec.forProvider.repository="another-product"' \
     '.spec.forProvider.rules[0].requiredStatusChecks[0].requiredCheck[0].context="Admission not selected"' \
@@ -143,4 +147,4 @@ for mutation in \
   if check_ci "$work/ci.yaml"; then fail 'accepted skipped or missing required CI invocation'; fi
   count=$((count+1))
 done
-printf 'repository admission policy: both product enrollments and %s refusal controls passed\n' "$count"
+printf 'repository admission policy: all three product enrollments and %s refusal controls passed\n' "$count"
