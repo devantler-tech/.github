@@ -158,11 +158,6 @@ native-enforcement migration; it is not a reusable consumer interface.
 Do not remove or disable a compatibility gate merely because a local caller is green. The owning
 migration must prove the replacement's live enforcement first.
 
-The lint export has one remaining production consumer, World at Ruin. It is a compatibility
-interface pending that product's measured CI and ownership migration, not an interface for new
-callers. Its [reference](#workflow-lint) and [source](.github/workflows/lint.yaml) remain available
-while that gate is open.
-
 ## Repository-owned PR checks
 
 These workflows belong only to this repository and are not reusable exports or organization-wide
@@ -601,64 +596,6 @@ jobs:
 | `queue-pending-evaluations` | Input | `false` | No | Temporary opt-in to retain pending evaluations during event bursts |
 | `QUEUE_PENDING_EVALUATIONS` | Variable | unset | No | The same temporary opt-in for direct and organization-required runs only |
 | `concurrency-key`      | Input  | `""`    | No       | Recommended with actor trust; omitted calls share a safe fallback lane    |
-
-</details>
-
-<a name="workflow-lint"></a>
-
-### 🧹 Lint
-
-<details>
-<summary>Purpose, interface and usage</summary>
-
-[.github/workflows/lint.yaml](.github/workflows/lint.yaml) lints a whole repository with [MegaLinter](https://megalinter.io) (Go flavor), auto-fixing what it can and committing the result back to the pull request.
-
-**Which one do I want?** If your repository *is* a Go module, use [✅ Validate Go Project](#-validate-go-project) — it already runs MegaLinter as one stage of a full Go pipeline. Reach for this workflow when Go is only part of a larger tree (a game client plus a Go server, for example): it lints everything and leaves the Go build and tests to your own job.
-
-The Go flavor covers Go, JSON, Markdown, YAML, shell, GitHub Actions, Dockerfile, Kubernetes, spelling, secrets and copy-paste. It has no GDScript, Python or Terraform linters — see [MegaLinter's flavor list](https://megalinter.io/latest/flavors/) if you need those.
-
-Configure the linters themselves in a `.mega-linter.yml` at your repository root, as usual.
-
-MegaLinter always runs read-only, without a GitHub token or persisted checkout credentials. When auto-fixing is enabled, the lint job exports a patch and a separate job on a fresh runner mints the write-scoped App token, applies that patch, and commits it. This isolation prevents pull-request-controlled MegaLinter configuration from accessing repository write credentials.
-
-**Fork pull requests lint read-only, automatically.** GitHub withholds secrets from forks, so fixes could never be committed back; auto-fixing there would only produce a failure an outside contributor cannot resolve. Real lint errors still fail on forks — only the auto-fix half is skipped.
-
-**Signed fixer branch policy:** retain the existing dependency-only exclusion.
-Both the event author and `pr-owner` are checked against `dependabot[bot]`,
-`dependabot`, `renovate[bot]`, `renovatebot` and `renovate`. Other same-repository
-automation, including release automation, `github-actions[bot]`, `ksail-bot`
-and `botantler-1[bot]`, remains eligible when fixes are enabled. This preserves
-existing consumers' behavior and keeps one policy across the signer and Go exporters.
-The signing API uses the expected head to reject a concurrent branch change.
-An automation's later refresh can still replace a fixer commit; that tradeoff is
-accepted, and the branch's automation remains responsible for its next update.
-
-#### Usage
-
-```yaml
-jobs:
-  lint:
-    uses: devantler-tech/.github/.github/workflows/lint.yaml@<full-commit-sha> # vX.Y.Z
-    permissions:
-      contents: read
-    with:
-      apply-fixes: false
-```
-
-To enable pull-request auto-fixes, set `apply-fixes: true` and pass
-`APP_PRIVATE_KEY`. MegaLinter still runs without that secret; only the separate
-patch-application job can access it.
-
-#### Secrets and Inputs
-
-| Key                 | Type            | Default | Required | Description                                                                                                          |
-|---------------------|-----------------|---------|----------|----------------------------------------------------------------------------------------------------------------------|
-| `APP_PRIVATE_KEY`   | Secret          | -       | No       | GitHub App private key. Needed only to commit auto-fixes; without it a fixable finding fails the build instead        |
-| `working-directory` | Input           | `""`    | No       | Directory to lint. Empty lints the whole repository                                                                   |
-| `go-version-file`   | Input           | `""`    | No       | Path to a `go.mod`. When set, the container selects the exact declared Go toolchain, downloading that fixed version if needed |
-| `apply-fixes`       | Input (boolean) | `true`  | No       | Auto-fix and commit back to the pull request. Set `false` for a read-only gate                                        |
-| `manual-workflow-fixes` | Input (boolean) | `false` | No | Opt in to complete workflow-file patches for manual application, including after lint errors; existing upload eligibility still applies |
-| `pr-owner`          | Input           | `""`    | No       | Pull request author login. Auto-fix commits are suppressed for dependency-bot pull requests                           |
 
 </details>
 

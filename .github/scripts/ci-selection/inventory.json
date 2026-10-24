@@ -160,8 +160,6 @@
     "test-validate-go-test-blocks": ["actions/upload-coverage/"],
     "test-validate-go-project-concurrency-key": ["actions/upload-coverage/"],
     "test-validate-go-gate-lockstep": ["actions/upload-coverage/", "actions/dependency-review/"],
-    "test-lint-workflow": [],
-    "test-lint-workflow-manual-fixes": [],
     "test-lint-blocks": [],
     "test-prepare-fixes": [],
     "test-lint-gate-lockstep": ["actions/upload-coverage/"],

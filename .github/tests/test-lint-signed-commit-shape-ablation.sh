@@ -42,8 +42,9 @@ fail() {
 sandbox_guard() {
   local fixture="$1" dir
   dir="$(mktemp -d "$work/sandbox.XXXXXX")"
-  mkdir -p "$dir/.github/workflows" "$dir/.github/tests"
-  cp .github/workflows/lint.yaml "$dir/.github/workflows/lint.yaml"
+  mkdir -p "$dir/.github/workflows" "$dir/.github/tests" "$dir/.github/actions/prepare-fixes"
+  cp .github/workflows/validate-go-project.yaml "$dir/.github/workflows/validate-go-project.yaml"
+  cp .github/actions/prepare-fixes/action.yaml "$dir/.github/actions/prepare-fixes/action.yaml"
   cp "$guard" "$dir/$guard"
   cp "$fixture" "$dir/$signer"
   (cd "$dir" && bash "$guard" 2>&1) || true

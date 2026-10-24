@@ -877,8 +877,8 @@ jobs:
           key: go-mod-v1-${{ runner.os }}-${{ runner.arch }}-${{ needs.changes.outputs.module-directory }}-${{ hashFiles(format('{0}/go.sum', needs.changes.outputs.module-directory)) }}
           restore-keys: ${{ github.ref != format('refs/heads/{0}', github.event.repository.default_branch) && format('go-mod-v1-{0}-{1}-{2}-', runner.os, runner.arch, needs.changes.outputs.module-directory) || '' }}
 
-      # Keep this `uses:` in lockstep with lint.yaml's MegaLinter step so both consumers run
-      # the same image and the failure-mode self-test always exercises the real gate.
+      # Keep this pin aligned with the generated read-only projection and all five
+      # native scanner cases (test-catalogue-tool-pin-parity.sh).
       - name: 🧹 Lint
         id: ml
         uses: oxsecurity/megalinter/flavors/go@9949bad031045f366be2467e00e8371a7328a2e2 # v10.1.0
@@ -897,7 +897,7 @@ jobs:
           # It also rejects the documented `concurrency.queue` key as "unexpected key", which would
           # fail every consumer that serializes runs with `queue: max`. That one message is ignored
           # by a space-free pattern (safe for MegaLinter's argument split); any other unexpected
-          # concurrency key is still reported. Keep in lockstep with lint.yaml
+          # concurrency key is still reported. Keep in lockstep with the read-only projection
           # (test-actionlint-arguments-lockstep.sh).
           ACTION_ACTIONLINT_ARGUMENTS: -ignore code-quality -ignore unexpected.key..queue..for..concurrency..section
 

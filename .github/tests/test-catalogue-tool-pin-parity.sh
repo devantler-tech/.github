@@ -4,7 +4,7 @@ set -euo pipefail
 scope="${1:-all}"
 ci="${2:-.github/workflows/ci.yaml}"
 go_gate="${3:-.github/workflows/validate-go-project.yaml}"
-lint_gate="${4:-.github/workflows/lint.yaml}"
+readonly_gate="${4:-.github/workflows/validate-go-project-readonly.yaml}"
 fail() {
   echo "::error::$*" >&2
   exit 1
@@ -55,10 +55,10 @@ if [[ "$scope" == all || "$scope" == megalinter ]]; then
     jq -ce '[.[] | .uses // "" | select(startswith("oxsecurity/megalinter/flavors/go@"))] |
       select(length == 5 and all(.[]; test("^oxsecurity/megalinter/flavors/go@[0-9a-f]{40}$")))')" ||
     fail 'CI must select five full-SHA MegaLinter invocations'
-  for gate in "$go_gate" "$lint_gate"; do
+  for gate in "$go_gate" "$readonly_gate"; do
     gate_pin="$(read_pin "$gate" lint ml oxsecurity/megalinter/flavors/go)"
     jq -e --arg pin "$gate_pin" 'all(.[]; . == $pin)' <<<"$fixture_pins" >/dev/null ||
       fail "$gate and test-lint-blocks use different MegaLinter pins"
   done
-  echo 'PASS: both production gates and the failure fixture use the same complete MegaLinter pin'
+  echo 'PASS: production Go, its read-only projection and the failure fixture use the same complete MegaLinter pin'
 fi

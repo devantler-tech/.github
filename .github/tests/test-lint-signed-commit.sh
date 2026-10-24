@@ -16,7 +16,7 @@
 
 set -euo pipefail
 
-caller_workflow="${1:-.github/workflows/lint.yaml}"
+caller_workflow="${1:-.github/workflows/validate-go-project.yaml}"
 signer_workflow="${2:-.github/workflows/apply-signed-fixes.yaml}"
 consumer_relative_signer="./${signer_workflow#./}"
 workflow_source_signer="\$/${signer_workflow#./}"
@@ -250,13 +250,13 @@ job_if="$(yq -r "${job}.if // \"\"" "$signer_workflow")"
 grep -qE "$bot_suppression" <<<"$job_if" ||
   fail "apply-fixes must itself suppress dependency-bot pull requests; their branches are owned by their automation"
 
-# 8. The pull-request event predicate moved here with the other gates, and lint.yaml no longer
-#    supplies it. Without this assertion a later edit could let a caller reach the signing job on a
+# 8. The signing workflow owns its pull-request event predicate; callers cannot be relied on
+#    to supply it. Without this assertion a later edit could let a caller reach the signing job on a
 #    non-pull_request event, where github.head_ref is empty -- so the checkout and expectedHeadOid
 #    would resolve against nothing, and the branch the commit targets would not be the one under
 #    review.
 grep -q "github.event_name == 'pull_request'" <<<"$job_if" ||
-  fail "apply-fixes must itself require a pull_request event; lint.yaml no longer supplies that gate"
+  fail "apply-fixes must itself require a pull_request event rather than relying on a caller"
 
 # 9. Fork pull requests never reach the commit. They get no secrets, so the App token cannot be
 #    minted; committing there could only fail, and the caller lints them read-only instead.
@@ -275,7 +275,6 @@ grep -q 'head.repo.fork' <<<"$job_if" ||
 conjuncts="$(grep -o '&&' <<<"$job_if" | wc -l | tr -d ' ')"
 [[ "$conjuncts" == "3" ]] ||
   fail "apply-fixes' if: must carry exactly the 4 audited conjuncts (pull_request, non-fork, non-bot author, non-bot pr-owner), found $((conjuncts + 1)); a predicate added here can suppress every eligible pull request while assertions 7-9 stay green"
-
 
 # Exact dependency aliases in BOTH contexts are the recorded policy (#278).
 IFS= read -r expected_policy <<'POLICY'
@@ -334,7 +333,6 @@ step_shape="$(
 )"
 [[ "$step_shape" == "uses,run,uses,uses,uses,run,run" ]] ||
   fail "apply-fixes' step inventory changed (found '${step_shape}', audited 'uses,run,uses,uses,uses,run,run'); a step added or retyped here can execute checked-out code, which is the premise CodeQL alert 312 was dismissed on -- re-audit the job and update this pin deliberately"
-
 
 # 13. The job is pinned by CONTENT, in two halves. Assertion 12 sees a step ADDED; it cannot see a
 #     change INSIDE an existing step, and the two steps that run after the checkout do so with the

@@ -67,7 +67,7 @@ for family in golangci megalinter version; do
     yq -i "(.jobs.test-validate-go-lint-blocks.steps[] | select(.id == \"lint\")).uses = \"golangci/golangci-lint-action@$sha\"" "$fixture/.github/workflows/ci.yaml"
     ;;
   megalinter)
-    for gate in validate-go-project lint; do
+    for gate in validate-go-project validate-go-project-readonly; do
       yq -i "(.jobs.lint.steps[] | select(.id == \"ml\")).uses = \"oxsecurity/megalinter/flavors/go@$sha\"" "$fixture/.github/workflows/$gate.yaml"
     done
     yq -i "(.jobs.test-lint-blocks.steps[] | select((.id // \"\") | test(\"^ml-\"))).uses = \"oxsecurity/megalinter/flavors/go@$sha\"" "$fixture/.github/workflows/ci.yaml"
@@ -103,7 +103,7 @@ for file in validate-go-project ci; do
   reject parity ".github/workflows/$file.yaml" "(.jobs.$job.steps[] | select(.id == \"$id\")).with.version = \"\"" 'versions differ or are missing'
   reject parity ".github/workflows/$file.yaml" ".jobs.$job.steps += [.jobs.$job.steps[] | select(.id == \"$id\")]" 'exactly one full-SHA'
 done
-for file in validate-go-project lint ci; do
+for file in validate-go-project validate-go-project-readonly ci; do
   job=lint ids=(ml) diagnostic='exactly one full-SHA'
   if [[ "$file" == ci ]]; then
     job=test-lint-blocks ids=(ml-root ml-nested ml-absent ml-malformed ml-finding)

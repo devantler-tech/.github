@@ -207,9 +207,8 @@ git -C "${current}" remote add origin "${current}"
 [[ "$(cat "${output}")" == catalogue=false ]] || fail 'real workflow did not recognize deployment-only changes'
 
 # Compose real Git classification, the production selector and the actual
-# required reducer. A false scope omits 48 gated smoke jobs plus the separately
-# event-gated dependency-review smoke, not the other 32 selectable jobs. Only
-# the retired policy-sync and three cleanup fixtures leave the previous floor.
+# required reducer. A false scope omits the inventoried smoke jobs plus the
+# separately event-gated dependency-review smoke, not the preserved jobs.
 yq -o=json . "${ci}" >"${fixture}/workflow.json"
 selection_output="${fixture}/selection-output"
 : >"${selection_output}"
@@ -233,8 +232,6 @@ expected_selected='[
   "test-govulncheck-main-coverage-blocks",
   "test-govulncheck-timeout",
   "test-lint-gate-lockstep",
-  "test-lint-workflow",
-  "test-lint-workflow-manual-fixes",
   "test-release-please-semantics",
   "test-run-dotnet-tests-mtp",
   "test-run-dotnet-tests-workflow",
