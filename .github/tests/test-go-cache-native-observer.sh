@@ -52,9 +52,9 @@ reject_restore_with_summary() {
   local summary
   summary="$(sed -n 's/^native-go-cache: restore-evidence-summary=//p' "$scratch/error")"
   [[ -n "$summary" ]] || fail 'rejected restore has no sanitized diagnostic'
-  jq -e '
+  jq -e --argjson id "${3:-101}" --argjson index "${4:-1}" '
     keys == ["fixture_index", "job_id", "restore_steps", "states"] and
-    .job_id == 101 and .fixture_index == 1 and
+    .job_id == $id and .fixture_index == $index and
     (.restore_steps | type == "number" and . >= 0) and
     (.states | length <= 8 and all(.[];
       keys == ["conclusion", "status"] and
@@ -74,6 +74,14 @@ reject_restore_with_summary '.[0].jobs[1].steps[0] |= (.status="in_progress" | .
   '.states == [{status:"in_progress",conclusion:null}]'
 reject_restore_with_summary '.[0].jobs[1].steps[0] |= (.status="private-response-sentinel" | .conclusion={private:"private-response-sentinel"} | .output="private-response-sentinel")' \
   '.states == [{status:"unrecognized",conclusion:"unrecognized"}]'
+# Native run 40115145442 returned successful fixture jobs with empty steps,
+# including the scanner whose composite owns its module restore.
+reject_restore_with_summary '.[1].jobs[4].steps = []' \
+  '.restore_steps == 0 and .states == []' 108 8
+reject_restore_with_summary '.[1].jobs[4].steps[0].conclusion = "failure"' \
+  '.restore_steps == 1 and .states == [{status:"completed",conclusion:"failure"}]' 108 8
+reject_restore_with_summary '.[1].jobs[4].steps[0] |= (.status="private-response-sentinel" | .conclusion="private-response-sentinel")' \
+  '.states == [{status:"unrecognized",conclusion:"unrecognized"}]' 108 8
 reject_jobs_with_summary() {
   reject_jobs "$1"
   local summary

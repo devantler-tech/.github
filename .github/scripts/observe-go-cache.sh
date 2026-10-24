@@ -47,7 +47,10 @@ diagnose_restore() {
     [.[].jobs[] | select(.id == $id)] |
     if length == 1 then .[0] else error("expected one fixture job") end |
     .name as $name |
-    [.steps[] | select(.name == "Restore Go module cache")] as $restore |
+    (if $name == ($prefix + "🛡️ Vulnerability Scan")
+     then ["🛡️ Scan for known vulnerabilities", "🛡️ Scan for known vulnerabilities (retry after timeout)"]
+     else ["Restore Go module cache"] end) as $watched |
+    [.steps[] | select(.name | IN($watched[]))] as $restore |
     {job_id:$id, fixture_index:($names | index($name | ltrimstr($prefix))),
      restore_steps:($restore | length), states:[$restore[0:8][] |
        {status:(if (.status | IN("queued", "in_progress", "completed")) then .status else "unrecognized" end),
@@ -140,7 +143,10 @@ check() {
         if ($first | length) == 1 and $first[0].conclusion == "success" and (($retry | length) == 0 or (($retry | length) == 1 and $retry[0].conclusion == "skipped")) then 1
         elif ($first | length) == 1 and ($first[0].conclusion == "failure" or $first[0].conclusion == "success") and ($retry | length) == 1 and $retry[0].conclusion == "success" then 2
         else error("incomplete scanner execution") end
-      ' "$jobs")" || fail 'scanner did not exercise its module restore'
+      ' "$jobs" 2>/dev/null)" || {
+        diagnose_restore "$id"
+        fail 'scanner did not exercise its module restore'
+      }
       [[ -z "$saved" ]] || fail 'scanner wrote a Go archive'
     else
       jq -e --argjson id "$id" '[.[].jobs[] | select(.id == $id) | .steps[] | select(.name == "Restore Go module cache" and .status == "completed" and .conclusion == "success")] | length == 1' "$jobs" >/dev/null || {
