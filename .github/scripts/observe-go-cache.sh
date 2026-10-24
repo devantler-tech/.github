@@ -38,6 +38,23 @@ diagnose_jobs() {
   ' "$jobs" 2>/dev/null)" || summary='{"state":"unreadable"}'
   printf 'native-go-cache: job-evidence-summary=%s\n' "$summary" >&2
 }
+diagnose_restore() {
+  local summary
+  # Only the already-validated job identity, a fixed fixture ordinal and
+  # allow-listed step states leave the snapshot; never arbitrary API strings.
+  summary="$(jq -cse --argjson id "$1" --arg prefix "$prefix" --argjson names "$fixture_names" '
+    (if length == 1 then .[0] else error("expected one job inventory") end) |
+    [.[].jobs[] | select(.id == $id)] |
+    if length == 1 then .[0] else error("expected one fixture job") end |
+    .name as $name |
+    [.steps[] | select(.name == "Restore Go module cache")] as $restore |
+    {job_id:$id, fixture_index:($names | index($name | ltrimstr($prefix))),
+     restore_steps:($restore | length), states:[$restore[0:8][] |
+       {status:(if (.status | IN("queued", "in_progress", "completed")) then .status else "unrecognized" end),
+        conclusion:(if (.conclusion | IN(null, "success", "failure", "skipped", "cancelled", "timed_out", "action_required", "neutral", "stale", "startup_failure")) then .conclusion else "unrecognized" end)}]}
+  ' "$jobs" 2>/dev/null)" || summary='{"state":"unreadable"}'
+  printf 'native-go-cache: restore-evidence-summary=%s\n' "$summary" >&2
+}
 # The jobs API can keep reporting a finished fixture job as queued or running
 # after Actions has already released this dependent job (#655). With lag set,
 # such a job (no conclusion yet) passes the predicate; every other
@@ -126,7 +143,10 @@ check() {
       ' "$jobs")" || fail 'scanner did not exercise its module restore'
       [[ -z "$saved" ]] || fail 'scanner wrote a Go archive'
     else
-      jq -e --argjson id "$id" '[.[].jobs[] | select(.id == $id) | .steps[] | select(.name == "Restore Go module cache" and .status == "completed" and .conclusion == "success")] | length == 1' "$jobs" >/dev/null || fail 'Go job did not restore its module cache'
+      jq -e --argjson id "$id" '[.[].jobs[] | select(.id == $id) | .steps[] | select(.name == "Restore Go module cache" and .status == "completed" and .conclusion == "success")] | length == 1' "$jobs" >/dev/null || {
+        diagnose_restore "$id"
+        fail 'Go job did not restore its module cache'
+      }
     fi
     section="$(restore_section "$log" "$restores")" || fail 'missing or ambiguous exact module restore action'
     outcomes="$(grep -E '^Cache (restored from key:|not found for input keys:)' <<<"$section" || true)"
