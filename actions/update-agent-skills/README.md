@@ -12,6 +12,7 @@ The `github-*` frontmatter that `gh skill install` injects into each `SKILL.md` 
 | `dry-run` | When `true`, pass `--dry-run` (report without modifying files) | ❌ | `false` |
 | `unpin` | When `true`, pass `--unpin` (clear pinned versions and include pinned skills) | ❌ | `false` |
 | `mark-internal` | When `true`, set `metadata.internal: true` on every `SKILL.md` under `dir` after updating. Tools that honour the flag, such as `npx skills`, then stop offering vendored development skills as if the repository published them. It runs on every update because an upstream change replaces the whole file, leaves already-marked files untouched, and is skipped with `dry-run`. Requires mikefarah `yq` v4 (preinstalled on GitHub-hosted runners). | ❌ | `false` |
+| `pins` | Skills to hold at a reviewed upstream commit, one per line as `<skill-dir> <40-character commit>`. See [Holding a skill at a commit](#holding-a-skill-at-a-commit). Cannot be combined with `unpin`. | ❌ | `""` |
 | `gh-version` | Minimum required `gh` version (must support `gh skill`) | ❌ | `2.90.0` |
 | `github-token` | GitHub token exposed to `gh` as `GH_TOKEN` | ❌ | `${{ github.token }}` |
 
@@ -85,6 +86,24 @@ For repositories that organise skills into subdirectories (e.g. a plugin marketp
   with:
     dir: plugins   # discovers plugins/go/skills, plugins/github/skills, … and updates each
 ```
+
+### Holding a skill at a commit
+
+When a new upstream version of one skill is unsafe for your repository, hold that skill at the commit you already reviewed and let every other skill keep updating:
+
+```yaml
+- id: update
+  uses: devantler-tech/.github/actions/update-agent-skills@<full-commit-sha> # vX.Y.Z
+  with:
+    dir: .agents/skills
+    pins: |
+      # Remove once owner/repo#123 is fixed upstream.
+      .agents/skills/git-commit 0123456789abcdef0123456789abcdef01234567
+```
+
+Each line names an installed skill directory under `dir` and a full 40-character upstream commit; blank lines and `#` comments are ignored. Before updating, the action reinstalls each listed skill from the repository and path in its own `github-*` metadata with `gh skill install --pin`, replacing the whole skill directory with the content of that commit and recording `metadata.github-pinned`. `gh skill update --all` then skips it, so the pin arrives in the normal update pull request. A run with the same pins changes nothing. A short or malformed commit, a directory that is not an installed skill, a skill outside `dir` or a repeated skill fails the run before any skill changes; it never falls back to an unpinned update. With `dry-run` the pins are validated and reported, not applied. `mark-internal` still applies to a pinned skill.
+
+A pin is a temporary hold, not a fork: name the issue that tracks its removal in a comment, and remove the line once the upstream problem is fixed. Removing the line does not release the skill by itself, because its `metadata.github-pinned` stays; reinstall the skill without `--pin`, or run once with `unpin: true`, which clears every pin under `dir`, to release it.
 
 ## Requirements
 

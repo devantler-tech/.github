@@ -2782,6 +2782,78 @@ jobs:
             exit 1
           fi
 
+      # Opt-in pins (#715): both flag states and every refusal against a stub CLI, then the real CLI.
+      - name: 📌 Test the pins contract
+        shell: bash
+        run: bash .github/tests/test-update-agent-skills-pins.sh
+
+      - name: 📦 Seed an unpinned agent-skill fixture with a file its commit does not have
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf .agents/skills/self-improvement
+          mkdir -p .agents/skills/self-improvement
+          cp -R .github/tests/agent-skills-fixtures/pinned-self-improvement/. \
+            .agents/skills/self-improvement/
+          sed -i.bak '/^    github-pinned: /d' .agents/skills/self-improvement/SKILL.md
+          rm .agents/skills/self-improvement/SKILL.md.bak
+          printf 'left behind by an older install\n' >.agents/skills/self-improvement/stale.md
+
+      - name: 📌 Run update-agent-skills with a pin
+        id: pin
+        uses: ./actions/update-agent-skills
+        with:
+          dir: .agents/skills
+          pins: |
+            # The reviewed commit the fixture records.
+            .agents/skills/self-improvement 7b9904e7a2739f2ecdea621c5bc548804bddb9c2
+
+      - name: ✅ Verify the skill is held at the pinned commit
+        shell: bash
+        env:
+          CHANGED: ${{ steps.pin.outputs.changed }}
+          UPDATED: ${{ steps.pin.outputs.updated-skills }}
+        run: |
+          set -euo pipefail
+          expected_ref="7b9904e7a2739f2ecdea621c5bc548804bddb9c2"
+          if [[ "$CHANGED" != "true" ]]; then
+            echo "::error::Expected changed=true when a pin replaced the skill, got: $CHANGED"
+            exit 1
+          fi
+          # The real CLI reinstalled exactly the reviewed fixture: same content, pin recorded.
+          if ! cmp .github/tests/agent-skills-fixtures/pinned-self-improvement/SKILL.md \
+            .agents/skills/self-improvement/SKILL.md; then
+            /usr/bin/diff .github/tests/agent-skills-fixtures/pinned-self-improvement/SKILL.md \
+              .agents/skills/self-improvement/SKILL.md || true
+            exit 1
+          fi
+          if [[ -e .agents/skills/self-improvement/stale.md ]]; then
+            echo "::error::The pinned skill kept a file its commit does not have"
+            exit 1
+          fi
+          if [[ "$UPDATED" != *"self-improvement is pinned to $expected_ref (skipped)"* ]]; then
+            echo "::error::Expected gh skill update to skip the newly pinned skill"
+            echo "updated-skills output: $UPDATED"
+            exit 1
+          fi
+
+      - name: 📌 Run update-agent-skills with the same pin again
+        id: pin-again
+        uses: ./actions/update-agent-skills
+        with:
+          dir: .agents/skills
+          pins: .agents/skills/self-improvement 7b9904e7a2739f2ecdea621c5bc548804bddb9c2
+
+      - name: ✅ Verify the repeated pin is a no-op
+        shell: bash
+        env:
+          CHANGED: ${{ steps.pin-again.outputs.changed }}
+        run: |
+          if [[ "$CHANGED" != "false" ]]; then
+            echo "::error::Expected changed=false for an unchanged pin, got: $CHANGED"
+            exit 1
+          fi
+
   # ── upload-coverage ─────────────────────────────────────────
   test-upload-coverage:
     needs: [select-ci-tests]
