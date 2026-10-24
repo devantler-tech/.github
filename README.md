@@ -14,10 +14,8 @@ Workflow ownership follows three rules:
 - A single-repository pipeline belongs in that repository, normally in its own CI/CD
   workflow, with local actions for smaller steps and repository rulesets for required checks.
 
-The .NET package publisher now belongs to [dotnet-template](https://github.com/devantler-tech/dotnet-template/blob/main/.github/workflows/publish.yaml).
-Its former shared export is retired; existing immutable release pins remain available,
-but new callers should own their publication job.
-
+The .NET package publisher is owned by [dotnet-template](https://github.com/devantler-tech/dotnet-template/blob/main/.github/workflows/publish.yaml),
+not this shared catalogue. Other single-product publication jobs belong in their consuming repositories.
 
 ## Shared automation catalogue
 

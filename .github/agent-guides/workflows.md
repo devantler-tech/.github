@@ -49,7 +49,7 @@ attempt. Invalid or incomplete evidence fails immediately; recovery requires a
 full CI rerun. The behavioral fixture and its mutation controls execute the actual
 inline observer from `ci.yaml` without network access.
 
-Actions and reusable workflows are exercised as jobs inside [`ci.yaml`](../../.github/workflows/ci.yaml): `test-<action>` jobs call the action via `uses: ./actions/<action>`; `[Test] <Workflow> - <Scenario>` jobs call the workflow via `uses: ./.github/workflows/<x>.yaml` with safe parameters (dry-run, fixtures from `.github/tests/` or `.github/fixtures/` — never destructive). Every new action/workflow gets a job, wired into the `ci-required-checks` job (display `CI - Required Checks`) in **two** places: the `needs:` list **and** `${{ needs.<job-id>.result }}` in the inline summary step's `JOB_RESULTS` value. `ci-required-checks` runs `if: ${{ always() }}`, holds `permissions: {}`, executes no checked-out action, and fails if any listed result is not `success` or `skipped`, so it is the single required status check — a job added to `needs:` but omitted from `JOB_RESULTS` would have its failure silently ignored. The `lint-ci-coverage-parity` job **guards this**: it fails the PR if any composite action lacks a `uses: ./actions/<action>` test job, if any reusable workflow (`workflow_call`) lacks a `uses: ./.github/workflows/<x>.yaml` test job, if `ci-required-checks.needs` and `JOB_RESULTS` name different sets of jobs, or if the gate regains a workspace-dependent step (so the silent-ignore and candidate-code footguns cannot recur). When a reusable-workflow test-job id would collide with an action's (`test-dependency-review`, `test-run-dotnet-tests`), the workflow job carries a `-workflow` suffix.
+Actions and reusable workflows are exercised as jobs inside [`ci.yaml`](../../.github/workflows/ci.yaml): `test-<action>` jobs call the action via `uses: ./actions/<action>`; `[Test] <Workflow> - <Scenario>` jobs call the workflow via `uses: ./.github/workflows/<x>.yaml` with safe parameters (dry-run, fixtures from `.github/tests/` or `.github/fixtures/` — never destructive). Every new action/workflow gets a job, wired into the `ci-required-checks` job (display `CI - Required Checks`) in **two** places: the `needs:` list **and** `${{ needs.<job-id>.result }}` in the inline summary step's `JOB_RESULTS` value. `ci-required-checks` runs `if: ${{ always() }}`, holds `permissions: {}`, executes no checked-out action, and fails if any listed result is not `success` or `skipped`, so it is the single required status check — a job added to `needs:` but omitted from `JOB_RESULTS` would have its failure silently ignored. The `lint-ci-coverage-parity` job **guards this**: it fails the PR if any composite action lacks a `uses: ./actions/<action>` test job, if any reusable workflow (`workflow_call`) lacks a `uses: ./.github/workflows/<x>.yaml` test job, if `ci-required-checks.needs` and `JOB_RESULTS` name different sets of jobs, or if the gate regains a workspace-dependent step (so the silent-ignore and candidate-code footguns cannot recur). When a reusable-workflow test-job id would collide with an action's (for example, `test-dependency-review`), the workflow job carries a `-workflow` suffix.
 
 `ci-required-checks` is the sole exception to the harden-runner-first rule: adding any action would weaken its workspace-independent trust boundary. Every other step-bearing job must start with SHA-pinned `step-security/harden-runner` in audit mode, and `lint-ci-coverage-parity` enforces both sides of that contract.
 
@@ -190,13 +190,15 @@ functions. Helper scripts use names without the
 `test-` prefix and are invoked by a tested entrypoint instead of needing an exemption list.
 
 **Affected catalogue selection:** The read-only `select-ci-tests` job checks the complete
-job inventory and immutable full-history Git diff before allocating 79 independently
-gated test jobs. Recognized action-owned paths narrow that set, including reviewed
+job inventory and immutable full-history Git diff before allocating independently
+gated test jobs. The [selection inventory](../scripts/ci-selection/inventory.json)
+defines the current job sets. Recognized action-owned paths narrow that set, including reviewed
 transitive caller and inline-lockstep ownership. The cleanup workflow and its
 generated read-only projection have exact file ownership bound to all three native
 callers; their admission stays intact, and affected callers must succeed in the
-required reducer. Ordinary regular-file modifications to `run-dotnet-tests.yaml`
-select its normal native caller, hosted helper-checkout proof and credential
+required reducer. Ordinary regular-file modifications to the internal
+`.github/actions/test-dotnet-fixture/action.yaml` select its normal native caller,
+Microsoft.Testing.Platform caller and credential
 lockstep control. All four reviewed dependencies must retain exact ownership,
 including the separately admitted authenticated caller; an unreviewed caller or
 missing owner fails validation. Additions, deletions, type changes and unclassified
@@ -207,9 +209,9 @@ fixtures, root configuration and unknown paths retain full coverage; missing Git
 evidence fails the selector. Classification runs from the immutable trusted base
 before candidate checkout and selection on the same read-only runner; there is
 no separate prerequisite runner assignment. A successful trusted-base scope decision
-for a deployment-only PR omits only the 48 explicitly inventoried smoke jobs; the
-separate event-gated dependency-review smoke retains its scope condition. The other
-31 selectable jobs and all independent shared guards remain available. Missing or
+for a deployment-only PR omits only the explicitly inventoried smoke jobs; the
+separate event-gated dependency-review smoke retains its scope condition. All other
+selectable jobs and independent shared guards remain available. Missing or
 malformed scope output fails selection; unproven classification keeps full coverage.
 Renames retain both old and new owners. Main keeps full
 coverage, and existing merge-group/release exclusions, credential-specific and
@@ -235,7 +237,7 @@ classification; default values, descriptions, outputs, and reverse parity remain
 
 #### Shipping a new capability behind an opt-in flag (feature-flag-first)
 
-**Release configuration warning:** `create-release.yaml` keeps `warn-missing-breaking-bang` off by default. Its inline reader inspects only unambiguous JSON without executing configuration or modifying files. `.github/tests/test-create-release-breaking-bang.sh` runs that exact reader against warning and silent fixtures and verifies the non-blocking opt-in boundary. Hosted dry-runs instantiate both flag states. Consumer rollout and flag retirement remain in devantler-tech/actions#1347; a present header pattern is not proof that release rules produce a major version.
+**Release configuration warning:** `create-release.yaml` keeps `warn-missing-breaking-bang` off by default. Its inline reader inspects only unambiguous JSON without executing configuration or modifying files. `.github/tests/test-create-release-breaking-bang.sh` runs that exact reader against warning and silent fixtures and verifies the non-blocking opt-in boundary. Hosted dry-runs instantiate both flag states. Consumer rollout and flag retirement remain in [#270](https://github.com/devantler-tech/.github/issues/270); a present header pattern is not proof that release rules produce a major version.
 
 A new job/step/behaviour must not go live for every consumer the moment it merges. Ship it as the CI analog of a release flag — an **opt-in input, default-off, backward-compatible** — so it can be validated on a few callers before broad rollout (the portfolio-wide **feature-flag-first delivery** contract in the monorepo `AGENTS.md`; [monorepo#2059](https://github.com/devantler-tech/monorepo/issues/2059)):
 
@@ -261,5 +263,5 @@ and ordinary paths. Eligible opted-in runs recover patches after lint errors wit
 failed job successful; cancelled runs do not force recovery. `test-lint-recovery-gates.sh` exercises
 the status and eligibility boundaries. Omitted/false inputs preserve prior routing. Both flag states
 must remain instantiated in CI, and the read-only failure and credential-boundary tests remain green.
-Consumer rollout and flag removal are tracked in devantler-tech/actions#1186.
+Consumer rollout and flag removal are tracked in [#275](https://github.com/devantler-tech/.github/issues/275).
 

@@ -54,8 +54,8 @@ advertised workflows, deploy manifests, contact the organization, or prove crede
 
 The catalogue was imported once; its documentation and components are authored here now.
 The obsolete, destructive importer has been removed; Git history retains that migration procedure
-and `actions/.imported-from` retains its provenance. The frozen `devantler-tech/actions` repository
-is not the source for new changes. The documentation check rejects restoring the old importer or
+and `actions/.imported-from` retains its provenance. The former `devantler-tech/actions` repository
+has been deleted and is not a source for new changes. The documentation check rejects restoring the old importer or
 its generated-block marker.
 
 The [CI workflow](.github/workflows/ci.yaml) runs broader catalogue, security, interface, credential
@@ -64,7 +64,7 @@ above is a documentation checkpoint, not a replacement for that matrix. Read the
 [repository contract](AGENTS.md) before changing behavior. Publishing, live audits and reconciling
 managed organization settings are separate maintainer operations, not onboarding steps.
 
-Before **every PR**, including a documentation-only PR, also run all fourteen commands in the
+Before **every PR**, including a documentation-only PR, also run every command in the
 [Maintenance baseline](AGENTS.md#maintenance). Install `kubectl` for its local Kustomize render
 and Perl for the repository-drift regression fixtures. The regression tests use offline fixtures,
 not your organization's live settings. Every command
