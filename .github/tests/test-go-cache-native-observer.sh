@@ -254,14 +254,23 @@ jq 'map(.jobs |= map(.steps = []))' "$scratch/jobs.json" >"$scratch/empty-steps-
 jq '.[1].jobs[4].steps = []' "$scratch/jobs.json" >"$scratch/empty-scanner-jobs.json"
 jq '.[1].jobs[1].steps |= map(select(.name != "Save Go module cache"))' "$scratch/jobs.json" >"$scratch/missing-save-jobs.json"
 jq 'map(.jobs |= map(.steps = [{name:"Set up job",status:"completed",conclusion:"success"}]))' "$scratch/jobs.json" >"$scratch/partial-steps-jobs.json"
-for evidence in empty-steps-jobs.json empty-scanner-jobs.json missing-save-jobs.json partial-steps-jobs.json; do
-  : >"$scratch/calls"
-  PATH="$scratch/bin:$PATH" LAG_READS=2 LAG_JOBS="$evidence" bash "$helper" observe >"$scratch/out" 2>"$scratch/error" ||
-    fail "collector rejected completed jobs whose step metadata later arrived ($evidence): $(cat "$scratch/error")"
-  grep -q 'PASS: native Go cache policy' "$scratch/out" || fail 'hydrated step evidence did not reach the real policy check'
-  [[ "$(count_calls '/jobs?per_page=50$')" == 3 && "$(count_calls '^sleep 15$')" == 2 ]] ||
-    fail 'step hydration did not stop as soon as complete evidence arrived'
+cp "$scratch/run.json" "$scratch/collector-main-run.json"
+for collector_mode in main pr; do
+  if [[ "$collector_mode" == pr ]]; then
+    jq '.event = "pull_request"' "$scratch/collector-main-run.json" >"$scratch/run.json"
+    export GITHUB_EVENT_NAME=pull_request GITHUB_REF=refs/pull/37/merge
+  fi
+  for evidence in empty-steps-jobs.json empty-scanner-jobs.json missing-save-jobs.json partial-steps-jobs.json; do
+    : >"$scratch/calls"
+    PATH="$scratch/bin:$PATH" LAG_READS=2 LAG_JOBS="$evidence" bash "$helper" observe >"$scratch/out" 2>"$scratch/error" ||
+      fail "collector rejected completed jobs whose step metadata later arrived ($collector_mode, $evidence): $(cat "$scratch/error")"
+    grep -q 'PASS: native Go cache policy' "$scratch/out" || fail 'hydrated step evidence did not reach the real policy check'
+    [[ "$(count_calls '/jobs?per_page=50$')" == 3 && "$(count_calls '^sleep 15$')" == 2 ]] ||
+      fail 'step hydration did not stop as soon as complete evidence arrived'
+  done
 done
+cp "$scratch/collector-main-run.json" "$scratch/run.json"
+export GITHUB_EVENT_NAME=push GITHUB_REF=refs/heads/main
 for evidence in empty-steps-jobs.json empty-scanner-jobs.json missing-save-jobs.json; do
   : >"$scratch/calls"
   if PATH="$scratch/bin:$PATH" LAG_READS=99 LAG_JOBS="$evidence" bash "$helper" observe >"$scratch/out" 2>"$scratch/error"; then
