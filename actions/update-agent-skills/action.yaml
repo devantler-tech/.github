@@ -14,6 +14,15 @@ inputs:
     description: When `true`, pass `--unpin` to `gh skill update` (clear pins and include pinned skills)
     required: false
     default: "false"
+  pins:
+    description: >-
+      Skills to hold at a reviewed upstream commit, one per line as `<skill-dir> <40-character commit>`.
+      Before updating, each listed skill is reinstalled from its own `github-*` source with
+      `gh skill install --pin`, so `gh skill update --all` then skips it. Blank lines and `#` comments
+      are ignored; name the issue that tracks removing the pin in a comment. Any invalid line fails the
+      run before a skill changes. Cannot be combined with `unpin`. Empty (the default) pins nothing.
+    required: false
+    default: ""
   mark-internal:
     description: >-
       When `true`, set `metadata.internal: true` on every SKILL.md under `dir` after updating, so
@@ -60,6 +69,7 @@ runs:
         INPUT_DRY_RUN: ${{ inputs.dry-run }}
         INPUT_UNPIN: ${{ inputs.unpin }}
         INPUT_MARK_INTERNAL: ${{ inputs.mark-internal }}
+        INPUT_PINS: ${{ inputs.pins }}
       run: |
         set -euo pipefail
 
@@ -118,6 +128,35 @@ runs:
         before=$(mktemp)
         printf '%s\n' "$skill_dirs" | snapshot "$before"
 
+        out=$(mktemp)
+        status=0
+
+        # Hold the listed skills at their reviewed commits before updating, so `gh skill update --all`
+        # skips them and the pin arrives in the same update pull request as every other change.
+        # Only lines that are not blank or comments count: a list of comments pins nothing.
+        if [ -n "$(printf '%s\n' "${INPUT_PINS:-}" | sed -e 's/^[[:space:]]*#.*$//' | tr -d '[:space:]')" ]; then
+          case "$INPUT_UNPIN" in
+            true|1|yes)
+              echo "::error::'pins' cannot be combined with 'unpin', which would clear the pins again."
+              exit 1
+              ;;
+          esac
+          pin_flags=()
+          case "$INPUT_DRY_RUN" in
+            true|1|yes) pin_flags+=(--dry-run) ;;
+          esac
+          echo "::group::Pinning skills in $INPUT_DIR"
+          if ! printf '%s\n' "$INPUT_PINS" \
+            | bash "${GITHUB_ACTION_PATH}/pin-skills.sh" "$INPUT_DIR" ${pin_flags[@]+"${pin_flags[@]}"} 2>&1 \
+            | tee -a "$out"; then
+            echo "::endgroup::"
+            echo "::error::Pinning skills under $INPUT_DIR failed; no skill was updated."
+            rm -f "$before" "$out"
+            exit 1
+          fi
+          echo "::endgroup::"
+        fi
+
         # Discover all parent directories of skill subdirectories under INPUT_DIR.
         # gh skill update --dir X discovers X/*/SKILL.md and writes back to X/<skill>/SKILL.md.
         # Passing the immediate parent of each skill dir (e.g. .agents/skills or plugins/<p>/skills)
@@ -141,12 +180,10 @@ runs:
             echo "No installed skills found."
             echo "EOF"
           } >> "$GITHUB_OUTPUT"
-          rm -f "$before"
+          rm -f "$before" "$out"
           exit 0
         fi
 
-        out=$(mktemp)
-        status=0
         for root in "${roots[@]}"; do
           root_flags=(--all --dir "$root")
           case "$INPUT_DRY_RUN" in

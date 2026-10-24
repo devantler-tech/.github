@@ -20,6 +20,15 @@ on:
         required: false
         type: boolean
         default: false
+      pins:
+        description: >-
+          Skills to hold at a reviewed upstream commit, one per line as `<skill-dir> <40-character
+          commit>`, so the update pull request carries the pin and every other skill keeps updating.
+          Blank lines and `#` comments are ignored. Cannot be combined with `unpin`. Empty (the default)
+          pins nothing.
+        required: false
+        type: string
+        default: ""
       gh-version:
         description: Minimum required `gh` version (must support `gh skill`)
         required: false
@@ -142,6 +151,7 @@ jobs:
           dir: ${{ inputs.dir }}
           unpin: ${{ inputs.unpin }}
           mark-internal: ${{ inputs.mark-internal }}
+          pins: ${{ inputs.pins }}
           gh-version: ${{ inputs.gh-version }}
 
       # The per-skill splitter stages everything under `dir`, which is the repository root by
