@@ -113,6 +113,10 @@ fi
 # leaves every skill as it was.
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
+# `gh skill install` records every install in $HOME/.agents/.skill-lock.json, even with --dir. Give each
+# staged install a throwaway HOME so a pin that is later abandoned leaves no record in the runner's
+# lockfile, and keep the CLI's own configuration so stored authentication still works.
+gh_config=${GH_CONFIG_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/gh}
 staged=() targets=() labels=()
 for i in "${!skills[@]}"; do
   skill=${skills[$i]} repo=${repos[$i]} path=${paths[$i]} commit=${commits[$i]}
@@ -126,12 +130,13 @@ for i in "${!skills[@]}"; do
     echo "Would pin: $label"
     continue
   fi
-  stage="$work/$i"
+  stage="$work/$i" home="$work/home-$i"
   # Each attempt starts from an empty directory, so a failed attempt leaves nothing for a retry to
   # trip over or merge with. Name the SKILL.md path so the CLI resolves this exact skill.
   # shellcheck disable=SC2016 # expanded by the inner shell
-  if ! retry bash -c 'rm -rf "$1" && mkdir -p "$1" && gh skill install "$2" "$3" --pin "$4" --dir "$1" </dev/null' \
-    _ "$stage" "$repo" "${path%/}/SKILL.md" "$commit"; then
+  if ! retry bash -c 'rm -rf "$1" "$5" && mkdir -p "$1" "$5" &&
+    HOME="$5" GH_CONFIG_DIR="$6" gh skill install "$2" "$3" --pin "$4" --dir "$1" </dev/null' \
+    _ "$stage" "$repo" "${path%/}/SKILL.md" "$commit" "$home" "$gh_config"; then
     echo "::error::Installing $repo $path at $commit failed; no skill was pinned."
     exit 1
   fi

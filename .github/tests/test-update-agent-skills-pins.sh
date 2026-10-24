@@ -73,6 +73,9 @@ $pinned_line
 # $name at $pin
 SKILL
 printf 'reference at %s\n' "$pin" >"$dest/$name/references/guide.md"
+# Like the real CLI, record the install in the home-backed lockfile, whatever --dir says.
+mkdir -p "$HOME/.agents" && printf '%s %s\n' "$name" "$pin" >>"$HOME/.agents/.skill-lock.json"
+printf 'home=%s config=%s\n' "$HOME" "${GH_CONFIG_DIR:-}" >>"$GH_LOG.env"
 echo "Installed $name from $repo@$pin"
 EOF
 chmod +x "$work/bin/gh"
@@ -107,9 +110,12 @@ tree_hash() { (cd "$work/repo" && find . -type f -print0 | sort -z | xargs -0 sh
 run() {
   : >"$work/github-output"
   : >"$GH_LOG"
+  : >"$GH_LOG.env"
+  rm -rf "${work:?}/home" && mkdir -p "$work/home"
   (
     cd "$work/repo"
-    PATH="$work/bin:$PATH" GITHUB_ACTION_PATH="$action_dir" GITHUB_OUTPUT="$work/github-output" \
+    HOME="$work/home" XDG_CONFIG_HOME="" GH_CONFIG_DIR="" \
+      PATH="$work/bin:$PATH" GITHUB_ACTION_PATH="$action_dir" GITHUB_OUTPUT="$work/github-output" \
       GH_TOKEN=stub-not-a-secret RETRY_MAX_ATTEMPTS="${RETRY_RUN_MAX:-1}" RETRY_BASE_DELAY=0 \
       INPUT_DIR=.agents/skills INPUT_PINS="$1" INPUT_UNPIN="${2:-false}" INPUT_DRY_RUN="${3:-false}" INPUT_MARK_INTERNAL="${4:-false}" \
       bash --noprofile --norc -eo pipefail "$script"
@@ -160,6 +166,16 @@ grep -qF "Pinned: .agents/skills/git-commit to example/skills@$commit" "$work/gi
 pinned_tree=$(tree_hash)
 echo "ok   on: skill replaced at the pinned commit, changed=true"
 
+# The CLI's home-backed lockfile is written only into a throwaway HOME that does not outlive the step,
+# while the caller's gh configuration stays reachable for stored authentication.
+[[ ! -e "$work/home/.agents" ]] || fail "a staged install wrote the caller's skill lockfile"
+install_home=$(sed -n 's/^home=\(.*\) config=.*/\1/p' "$GH_LOG.env")
+[[ -n "$install_home" && "$install_home" != "$work/home" ]] || fail "install ran with the caller's HOME: $(cat "$GH_LOG.env")"
+[[ ! -e "$install_home" ]] || fail "the install's throwaway HOME outlived the step"
+grep -qxF "home=$install_home config=$work/home/.config/gh" "$GH_LOG.env" ||
+  fail "install did not keep the caller's gh configuration: $(cat "$GH_LOG.env")"
+echo "ok   staged installs leave the caller's skill lockfile untouched"
+
 # Idempotent: the same pins again leave every file as it was.
 run "$pins" || fail "a repeated pin failed: $(cat "$work/step.log")"
 [[ "$(installs)" == 0 ]] || fail "a skill already pinned to the commit was reinstalled"
@@ -184,6 +200,7 @@ refuse() { # <label> <pins> <expected message> [unpin] [stub]
   fi
   grep -qF -- "$3" "$work/step.log" || fail "$1: expected '$3' in: $(cat "$work/step.log")"
   [[ "$(tree_hash)" == "$before" ]] || fail "$1: files changed"
+  [[ ! -e "$work/home/.agents" ]] || fail "$1: an abandoned pin was left in the caller's skill lockfile"
   echo "ok   refused: $1"
 }
 refuse "short commit" ".agents/skills/git-commit 0123456" "not a full 40-character lowercase commit SHA"
