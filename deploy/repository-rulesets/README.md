@@ -21,6 +21,7 @@ observes.
 | `require-merge-queue-on-platform.yaml` | `platform` | Require merge queue | Managed import (Observe + Update; full ruleset backfilled, no LateInitialize, no Delete) |
 | `require-validation-on-dotnet-template.yaml` | `dotnet-template` | Require local .NET template validation | Managed (net-new; Observe + Create + Update + LateInitialize) |
 | `require-validation-on-go-template.yaml` | `go-template` | Require local Go template validation | Managed (net-new; Observe + Create + Update + LateInitialize) |
+| `require-scaffold-validation-on-platform-tenant-template.yaml` | `platform-tenant-template` | Require scaffold validation | Managed (net-new; Observe + Create + Update + LateInitialize) |
 
 The .NET rule requires the three repository-owned `.NET template tests (<runner>)`
 matrix results from GitHub Actions. These names are intentionally distinct from
@@ -34,6 +35,12 @@ GitHub Actions. The native caller must be merged before the old organization-req
 validator is retired. Verify the repository rule natively and use an ordinary consumer PR
 plus refusal controls during that overlap; a rendered policy is not live enforcement proof.
 The producer binding does not authenticate the immutable workflow source.
+
+The platform tenant template rule requires the three jobs of its `🧱 Validate Scaffold` workflow:
+`Validate Scaffold`, `Platform Admissibility` and `Pod Security and tenant RBAC`. Every tenant
+starts from that repository's `main`, so a scaffold that fails validation, or a publisher the
+Platform has not approved, must not merge. The jobs run only in the template repository and skip
+themselves in tenants, so the rule belongs to that repository and not to tenant CI.
 
 Most files here are Observe-first imports of a ruleset created out of band, so they carry a
 numeric `crossplane.io/external-name`. A **net-new** ruleset is the exception: it has no
