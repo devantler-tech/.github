@@ -169,7 +169,7 @@ jobs:
   test-validate-retired-repo-links-disabled:
     needs: [select-ci-tests]
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-validate-retired-repo-links-disabled') }}"
-    name: "[Test] Retired Repository Links - Disabled"
+    name: "[Test] Retired Repository Links - Default and Disabled"
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -182,12 +182,19 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - name: Omitted opt-in skips a missing consumer
+      - name: Omitted input validates by default
         id: omitted
         # actionlint rejects $/ syntax (#1234); this tests the checked-out candidate.
         uses: ./actions/validate-retired-repo-links # zizmor: ignore[self-repository]
         with:
-          working-directory: missing-directory
+          working-directory: .github/fixtures/retired-repo-links
+      - name: Omitted input rejects the seeded violation
+        id: omitted_violation
+        continue-on-error: true
+        uses: ./actions/validate-retired-repo-links # zizmor: ignore[self-repository]
+        with:
+          working-directory: .github/fixtures/retired-repo-links
+          config-file: invalid.json
       - name: Explicit false skips the seeded violation
         id: disabled
         uses: ./actions/validate-retired-repo-links # zizmor: ignore[self-repository]
@@ -201,10 +208,12 @@ jobs:
         uses: ./actions/validate-retired-repo-links # zizmor: ignore[self-repository]
         with:
           enabled: "yes"
-      - name: Assert disabled and invalid calls do not validate
+      - name: Assert default calls validate and disabled or invalid calls do not
         shell: bash
         env:
           OMITTED: ${{ steps.omitted.outputs.validated }}
+          OMITTED_VIOLATION: ${{ steps.omitted_violation.outcome }}
+          OMITTED_VIOLATION_VALIDATED: ${{ steps.omitted_violation.outputs.validated }}
           DISABLED: ${{ steps.disabled.outputs.validated }}
           INVALID: ${{ steps.invalid.outcome }}
           OMITTED_SOURCE: ${{ steps.omitted.outputs.source-directory }}
@@ -212,10 +221,13 @@ jobs:
           INVALID_SOURCE: ${{ steps.invalid.outputs.source-directory }}
           INVALID_VALIDATED: ${{ steps.invalid.outputs.validated }}
         run: |
-          test -z "$OMITTED"
+          test "$OMITTED" = true
+          test -n "$OMITTED_SOURCE"
+          test "$(cd "$OMITTED_SOURCE" && pwd -P)" = "$(cd actions/validate-retired-repo-links && pwd -P)"
+          test "$OMITTED_VIOLATION" = failure
+          test -z "$OMITTED_VIOLATION_VALIDATED"
           test -z "$DISABLED"
           test "$INVALID" = failure
-          test -z "$OMITTED_SOURCE"
           test -z "$DISABLED_SOURCE"
           test -z "$INVALID_SOURCE"
           test -z "$INVALID_VALIDATED"

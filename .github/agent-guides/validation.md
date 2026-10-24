@@ -70,8 +70,9 @@ before searching captured output; do not blanket-exempt the repository's scripts
 Every shared-action call validates. Linux/macOS fixtures cover clean, unsafe and
 malformed scans. An invalid scope must fail without a `validated` output.
 
-**Retired repository links:** `validate-retired-repo-links` is a default-off,
-read-only Go validator with no module dependencies. Keep both flag states, real
+**Retired repository links:** `validate-retired-repo-links` is a default-on,
+read-only Go validator with no module dependencies; `enabled: "false"` switches it
+off without removing the step. Keep the default, both explicit states, real
 good/bad action fixtures on Linux/macOS, and the required-check wiring covered.
 Successful calls expose their exact action module directory for same-job consumer
 refusal controls; disabled and failed calls expose neither validation nor source
@@ -79,6 +80,6 @@ outputs. Keep the native usable-source assertions and
 `.github/tests/test-retired-repo-links-source.sh` passing when changing this boundary.
 Configuration belongs to each consumer; never hard-code retired portfolio names
 or blanket historical exemptions in the action. Exceptions require an exact
-file, repository and reason. Consumer adoption and flag retirement are in
-[#269](https://github.com/devantler-tech/.github/issues/269).
+file, repository and reason. The `enabled` input is a supported off switch, not a
+temporary rollout flag ([#269](https://github.com/devantler-tech/.github/issues/269)).
 

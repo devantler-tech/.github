@@ -3,9 +3,9 @@ description: Reject links to configured retired GitHub repositories with documen
 author: devantler-tech
 inputs:
   enabled:
-    description: Opt in to checking retired repository links.
+    description: Check retired repository links; set to false to switch the check off without removing the step.
     required: false
-    default: "false"
+    default: "true"
   config-file:
     description: JSON configuration path relative to working-directory.
     required: false
@@ -24,14 +24,14 @@ outputs:
 runs:
   using: composite
   steps:
-    - name: Check opt-in input
+    - name: Check enabled input
       shell: bash
       env:
         ENABLED: ${{ inputs.enabled }}
       run: |
         case "$ENABLED" in
           true) ;;
-          false) echo "Retired repository link validation is disabled; set enabled to true to opt in." ;;
+          false) echo "Retired repository link validation is switched off by enabled: false." ;;
           *) echo "::error::enabled must be exactly true or false"; exit 1 ;;
         esac
 

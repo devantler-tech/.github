@@ -9,7 +9,7 @@ does not call GitHub, follow links, or infer retirement from a repository name.
 
 | Name | Description | Required | Default |
 |------|-------------|----------|---------|
-| `enabled` | Opt in to validation; exactly `true` or `false`. | No | `false` |
+| `enabled` | Run validation; exactly `true` or `false`. Set `false` to switch the check off without removing the step. | No | `true` |
 | `config-file` | JSON configuration relative to `working-directory`. | No | `.github/retired-repo-links.json` |
 | `working-directory` | Consumer directory, relative to `GITHUB_WORKSPACE` or absolute. | No | `.` |
 
@@ -38,19 +38,16 @@ steps:
     with:
       persist-credentials: false
   - uses: devantler-tech/.github/actions/validate-retired-repo-links@<full-commit-sha> # vX.Y.Z
-    with:
-      enabled: "true"
 ```
 
-Omitted or false `enabled` inputs do not install Go, read configuration or scan
-files. Enabled runs install the Go version from this action's module and build a
-standard-library-only validator from the pinned action revision. The caller's Go
-module and workspace are not used. That Go stays on `PATH` for later steps in the
-same job, so run the action in its own job, or set up your own Go version again
-after it. Linux and macOS runners are supported.
-
-Consumer adoption and removal of the temporary `enabled` flag are tracked in
-[#269](https://github.com/devantler-tech/.github/issues/269).
+The check runs by default. An `enabled: "false"` input switches it off without
+removing the step: it then does not install Go, read configuration or scan files.
+Callers that already pass `enabled: "true"` keep working unchanged. Enabled runs
+install the Go version from this action's module and build a standard-library-only
+validator from the pinned action revision. The caller's Go module and workspace are
+not used. That Go stays on `PATH` for later steps in the same job, so run the action
+in its own job, or set up your own Go version again after it. Linux and macOS
+runners are supported.
 
 ## Configuration
 
@@ -110,7 +107,7 @@ GOWORK=off go -C /path/to/actions/validate-retired-repo-links run -mod=readonly 
   --root /path/to/consumer --config .github/retired-repo-links.json
 ```
 
-The CLI always validates; the opt-in belongs to the composite action. Exit codes
+The CLI always validates; the `enabled` switch belongs to the composite action. Exit codes
 are `0` for a complete clean scan, `1` for retired links, and `2` for configuration,
 argument or filesystem errors.
 
