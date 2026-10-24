@@ -46,7 +46,7 @@ verb — e.g. `require-pull-request.yaml`). Repo-scoped rulesets live next door 
 | `protect-release-tags.yaml` | **Protect release tags** (net-new) | Managed (Create) — block tag delete + force-move + require `v<semver>` |
 | `require-world-at-ruin-trusted-regressions.yaml` | **Require workflow - World at Ruin trusted regressions** (net-new) | Managed (Create) — target only World at Ruin and require the canonical catalogue's trusted regression workflow |
 | `require-monorepo-ci-aggregate-contract.yaml` | **Require workflow - Monorepo CI aggregate contract** (retired) | Managed (Create), non-deleting — disabled with one inert rule and no workflow association after native shared-admission proof |
-| `require-repository-pr-admission.yaml` | **Require workflow - Repository PR admission** | Managed (Create) — target monorepo and this catalogue; trusted shared source runs each product-owned base-revision action, with a repository-bound executed result required for each |
+| `require-repository-pr-admission.yaml` | **Require workflow - Repository PR admission** | Managed (Create) — target monorepo, this catalogue and World at Ruin; trusted shared source runs each product-owned base-revision action, with a repository-bound executed result required for each |
 | `require-dotgithub-deploy-guards.yaml` | **Require workflow - .github deploy guards** (retired) | Managed (Create), non-deleting — disabled with one inert rule and no workflow association after native shared-admission proof |
 | `require-go-template-validation.yaml` | **Require workflow - Go template validation** (retired) | Managed (Create) — disabled after native repository validation proof; retain identity, selectors and non-deleting lifecycle |
 | `require-dotnet-template-tests.yaml` | **Require workflow - .NET template tests** (retired) | Managed (Create) — disabled with one inert rule (no required workflow; the provider requires a rules block) after native repository validation proof; retain identity, selectors and non-deleting lifecycle |
@@ -104,13 +104,17 @@ in [#703](https://github.com/devantler-tech/.github/issues/703).
 
 ### Shared admission rollout
 
-The shared runner serves monorepo and this configuration catalogue. Each repository also requires
+The shared runner enrolls monorepo, this configuration catalogue and World at Ruin. Each repository also requires
 `Run reviewed product admission` from GitHub Actions. The source-only `Admission not selected`
 result does not satisfy that requirement. Product validators and budgets come from their immutable
-reviewed bases, never from candidate actions. Both former singleton organization associations
+reviewed bases, never from candidate actions. The monorepo and catalogue's former singleton organization associations
 are disabled inert records, without workflow associations or deletion authority. Their identity
-and narrow target selectors remain declared; the common workflow and both repository result
+and narrow target selectors remain declared; the common workflow and all three repository result
 bindings stay active without bypasses.
+
+World's established singleton remains active during this additive enrollment. Read back the signed
+configuration's effective workflow and repository binding before native overlap controls. Enrollment
+alone does not prove execution, protection against tampering or readiness to retire the old source.
 
 Read back released native enforcement before exercising a product's real positive and tampering
 controls. Those controls must pass for that product before its old association is retired. Per-product

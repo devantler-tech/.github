@@ -202,7 +202,7 @@ sources retain their interfaces here so the same input/secret parity check cover
 <summary>Purpose, interface and usage</summary>
 
 [`repository-pr-admission.yaml`](.github/workflows/repository-pr-admission.yaml) is selected by
-declarative organization rules for monorepo and this catalogue. Its shared resolver and read-only
+declarative organization rules for monorepo, this catalogue and World at Ruin. Its shared resolver and read-only
 runner execute each product's own admission action from the immutable reviewed base, never the
 candidate implementation. Each repository separately requires the executed result from GitHub
 Actions; the source-only skipped job cannot satisfy that binding.
