@@ -247,4 +247,42 @@ for evidence in failed-jobs.json lagging-stale-jobs.json; do
   if PATH="$scratch/bin:$PATH" LAG_READS=99 LAG_JOBS="$evidence" bash "$helper" observe >"$scratch/out" 2>"$scratch/error"; then fail "re-read admitted $evidence"; fi
   [[ "$(count_calls '/jobs?per_page=50$')" == 1 && "$(count_calls '^sleep ')" == 0 ]] || fail "$evidence was re-read instead of rejected at once"
 done
-printf 'PASS: native cache observer accepts PR, main save and main reuse; re-reads only a bounded status lag; rejects incomplete and unsafe evidence\n'
+# A completed, successful job can arrive before its step rows (#735). The
+# collector must obtain complete step evidence before evaluating the unchanged
+# cache policy; a successful job alone never establishes a successful restore.
+jq 'map(.jobs |= map(.steps = []))' "$scratch/jobs.json" >"$scratch/empty-steps-jobs.json"
+jq '.[1].jobs[4].steps = []' "$scratch/jobs.json" >"$scratch/empty-scanner-jobs.json"
+jq '.[1].jobs[1].steps |= map(select(.name != "Save Go module cache"))' "$scratch/jobs.json" >"$scratch/missing-save-jobs.json"
+jq 'map(.jobs |= map(.steps = [{name:"Set up job",status:"completed",conclusion:"success"}]))' "$scratch/jobs.json" >"$scratch/partial-steps-jobs.json"
+for evidence in empty-steps-jobs.json empty-scanner-jobs.json missing-save-jobs.json partial-steps-jobs.json; do
+  : >"$scratch/calls"
+  PATH="$scratch/bin:$PATH" LAG_READS=2 LAG_JOBS="$evidence" bash "$helper" observe >"$scratch/out" 2>"$scratch/error" ||
+    fail "collector rejected completed jobs whose step metadata later arrived ($evidence): $(cat "$scratch/error")"
+  grep -q 'PASS: native Go cache policy' "$scratch/out" || fail 'hydrated step evidence did not reach the real policy check'
+  [[ "$(count_calls '/jobs?per_page=50$')" == 3 && "$(count_calls '^sleep 15$')" == 2 ]] ||
+    fail 'step hydration did not stop as soon as complete evidence arrived'
+done
+for evidence in empty-steps-jobs.json empty-scanner-jobs.json missing-save-jobs.json; do
+  : >"$scratch/calls"
+  if PATH="$scratch/bin:$PATH" LAG_READS=99 LAG_JOBS="$evidence" bash "$helper" observe >"$scratch/out" 2>"$scratch/error"; then
+    fail "persistent missing step evidence passed ($evidence)"
+  fi
+  [[ ! -s "$scratch/out" ]] || fail 'incomplete step evidence published success'
+  [[ "$(count_calls '/jobs?per_page=50$')" == 6 && "$(count_calls '^sleep 15$')" == 5 ]] ||
+    fail 'step hydration was not bounded to the existing six reads'
+done
+# Missing rows never make a contradictory identity, unsuccessful job or known
+# failed restore eligible for another read that might hide the rejection.
+jq '.[0].jobs[1].head_sha = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"' "$scratch/empty-steps-jobs.json" >"$scratch/empty-stale-jobs.json"
+jq '.[0].jobs[1].conclusion = "failure"' "$scratch/empty-steps-jobs.json" >"$scratch/empty-failed-jobs.json"
+jq '.[0].jobs[1].steps = [{name:"Restore Go module cache",status:"completed",conclusion:"failure"}]' "$scratch/empty-steps-jobs.json" >"$scratch/empty-bad-restore-jobs.json"
+for evidence in empty-stale-jobs.json empty-failed-jobs.json empty-bad-restore-jobs.json; do
+  : >"$scratch/calls"
+  if PATH="$scratch/bin:$PATH" LAG_READS=99 LAG_JOBS="$evidence" bash "$helper" observe >"$scratch/out" 2>"$scratch/error"; then
+    fail "contradictory evidence passed during hydration ($evidence)"
+  fi
+  [[ ! -s "$scratch/out" ]] || fail 'contradictory evidence published success'
+  [[ "$(count_calls '/jobs?per_page=50$')" == 1 && "$(count_calls '^sleep ')" == 0 ]] ||
+    fail 'contradictory evidence was retried instead of rejected immediately'
+done
+printf 'PASS: native cache observer accepts PR, main save and main reuse; bounds job and step hydration; rejects incomplete and unsafe evidence\n'
