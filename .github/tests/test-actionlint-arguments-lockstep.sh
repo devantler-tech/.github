@@ -7,7 +7,7 @@
 # a pattern that also swallowed other unexpected concurrency keys would hide real typos.
 #
 # Asserted:
-#   1. lint.yaml and validate-go-project.yaml pass identical ACTION_ACTIONLINT_ARGUMENTS;
+#   1. production Go and its read-only projection pass identical ACTION_ACTIONLINT_ARGUMENTS;
 #   2. those arguments keep the code-quality ignore and carry the queue ignore;
 #   3. the queue pattern matches actionlint's real queue message and does NOT match the
 #      same message for any other key;
@@ -32,7 +32,7 @@ check() {
     return 1
   fi
   if [[ "$lint_args" != "$go_args" ]]; then
-    echo "lint.yaml and validate-go-project.yaml pass different actionlint arguments ('$lint_args' vs '$go_args')"
+    echo "production Go and its read-only projection pass different actionlint arguments ('$lint_args' vs '$go_args')"
     status=1
   fi
 
@@ -67,7 +67,7 @@ pattern_is_narrow() {
 }
 
 status=0
-lint_args="$(megalinter_args .github/workflows/lint.yaml)"
+lint_args="$(megalinter_args .github/workflows/validate-go-project-readonly.yaml)"
 go_args="$(megalinter_args .github/workflows/validate-go-project.yaml)"
 
 if ! out="$(check "$lint_args" "$go_args")"; then

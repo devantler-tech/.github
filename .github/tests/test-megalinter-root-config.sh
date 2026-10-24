@@ -5,12 +5,12 @@ set -euo pipefail
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 scratch="$(mktemp -d)"
 trap 'rm -rf "$scratch"' EXIT
-for role in lint validate-go-project validate-go-project-readonly; do
+for role in validate-go-project validate-go-project-readonly; do
   yq -o=json '.' "$root/.github/workflows/$role.yaml" >"$scratch/$role.json"
 done
-jq -s '.' "$scratch/lint.json" "$scratch/validate-go-project.json" "$scratch/validate-go-project-readonly.json" >"$scratch/actual.json"
+jq -s '.' "$scratch/validate-go-project.json" "$scratch/validate-go-project-readonly.json" >"$scratch/actual.json"
 admit() {
-  jq -e 'length == 3 and all(.[];
+  jq -e 'length == 2 and all(.[];
     [.jobs.lint.steps[] | select(.id == "ml")] as $steps |
     ($steps | length) == 1 and
     (["${{ github.workspace }}/.mega-linter.yml", "/github/workspace/.mega-linter.yml"] |
@@ -21,7 +21,7 @@ if ! admit "$scratch/actual.json"; then
   exit 1
 fi
 count=0
-for role in 0 1 2; do
+for role in 0 1; do
   for value in 'missing' 'host' 'relative' 'nested'; do
     jq --argjson role "$role" --arg value "$value" '
       (.[ $role ].jobs.lint.steps[] | select(.id == "ml") | .env.MEGALINTER_CONFIG) =

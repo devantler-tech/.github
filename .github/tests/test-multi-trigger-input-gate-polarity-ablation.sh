@@ -11,7 +11,7 @@ set -euo pipefail
 
 guard=".github/tests/test-multi-trigger-input-gate-polarity.sh"
 real=".github/workflows/validate-go-project.yaml"
-call_only=".github/workflows/lint.yaml"
+call_only=".github/workflows/validate-go-project-readonly.yaml"
 
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
@@ -76,15 +76,14 @@ YAML
 }
 
 # Controls: the real org-required workflow passes, and the guard still refuses to assert anything
-# about a workflow_call-only file (lint.yaml, where a bare read is correct because defaults apply).
+# about the actual workflow_call-only projection, where call defaults apply.
 expect_pass "control — the real ${real} passes" "$real"
 expect_refused "control — a workflow_call-only workflow is refused as vacuous" "$call_only" "is workflow_call-only"
 
-# The exact env shape lint.yaml uses, lifted from lint.yaml itself so the fixture cannot drift from
-# the pattern the guard exists to stop. Asserted non-empty, or every env arm below is a no-op.
-lint_shape="$(yq -r '[.jobs[].steps[]?.env.APPLY_FIXES | select(. != null)] | .[0] // ""' "$call_only")"
-[[ "$lint_shape" == *'inputs.apply-fixes &&'* ]] ||
-  fail "lint.yaml no longer carries the APPLY_FIXES bare-read shape (got '${lint_shape}'); re-derive this fixture"
+# Keep an independent literal of the historically unsafe bare-read shape. Its
+# coverage must not depend on retaining a retired production interface.
+# shellcheck disable=SC2016 # a literal Actions expression, never shell interpolation
+lint_shape='${{ inputs.apply-fixes && github.event_name == '"'"'pull_request'"'"' && github.event.pull_request.head.repo.fork != true && '"'"'all'"'"' || '"'"'none'"'"' }}'
 
 env_fixture="$(fixture env <<YAML
       - env:
@@ -92,7 +91,7 @@ env_fixture="$(fixture env <<YAML
         run: echo "\$APPLY_FIXES"
 YAML
 )"
-expect_flagged "env — lint.yaml's APPLY_FIXES shape in a multi-trigger workflow is flagged" "$env_fixture"
+expect_flagged "env — a bare APPLY_FIXES read in a multi-trigger workflow is flagged" "$env_fixture"
 
 expect_flagged "with — a bare read passed as an action input is flagged" "$(fixture with <<'YAML'
       - uses: ./some-action
