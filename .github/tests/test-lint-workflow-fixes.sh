@@ -12,7 +12,7 @@ trap 'rm -rf "$work"' EXIT
 
 fail() { echo "FAIL: $*" >&2; exit 1; }
 
-for workflow in lint:lint validate-go-project:tidy validate-go-project:golangci-lint validate-go-project:lint; do
+for workflow in validate-go-project:tidy validate-go-project:golangci-lint validate-go-project:lint; do
   job="${workflow#*:}"
   file="$root/.github/workflows/${workflow%:*}.yaml"
   prepare="$(JOB="$job" yq -o=json '.jobs[strenv(JOB)].steps[] | select(.id == "fixes")' "$file")"

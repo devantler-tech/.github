@@ -5,7 +5,7 @@ set -euo pipefail
 root="$(cd "$(dirname "$0")/../.." && pwd)"
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
-for workflow in lint validate-go-project validate-go-project-readonly apply-signed-fixes ci; do
+for workflow in validate-go-project validate-go-project-readonly apply-signed-fixes ci; do
   yq -o=json '.' "$root/.github/workflows/$workflow.yaml" >"$work/$workflow.json"
 done
 yq -o=json '.' "$root/.github/actions/prepare-fixes/action.yaml" >"$work/exporter.json"
@@ -143,11 +143,10 @@ function verify(name, prepareGate, uploadGate, composite) {
     const optedIn = input === true || String(input).toLowerCase() === 'true';
     const recoveryAllowed = status !== 'cancelled' && (status === 'success' || optedIn);
     const eligible = apply && event === 'pull_request' && !fork;
-    const expectedPrepare = recoveryAllowed && (name !== 'lint' || eligible);
-    const expectedUpload = recoveryAllowed && changed && (name === 'lint' || (eligible && !bots.includes(author) && !bots.includes(owner)));
+    const expectedPrepare = recoveryAllowed;
+    const expectedUpload = recoveryAllowed && changed && eligible && !bots.includes(author) && !bots.includes(owner);
     const values = {
       [`inputs.${flag}`]: input ?? '',
-      'inputs.apply-fixes': apply,
       'needs.changes.outputs.signed-fixes': String(apply),
       'github.event_name': event,
       'github.event.pull_request.head.repo.fork': fork,
@@ -292,7 +291,7 @@ for (const lane of ['tidy', 'golangci-lint', 'lint']) {
   }
   console.log(`PASS: ${lane}, exact-commit wiring and ${fixtures.length} eligibility/read-only cases`);
 }
-for (const name of ['lint', 'validate-go-project', 'validate-go-project-readonly']) {
+for (const name of ['validate-go-project', 'validate-go-project-readonly']) {
   const workflow = JSON.parse(fs.readFileSync(`${directory}/${name}.json`, 'utf8'));
   const job = workflow.jobs.lint;
   const prepare = job.steps.find(step => step.id === 'fixes');

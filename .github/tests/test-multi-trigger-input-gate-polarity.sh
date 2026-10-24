@@ -12,9 +12,9 @@
 #
 # That is not hypothetical -- it is the shape the signed-fixes migration was first written in
 # (devantler-tech/.github#142), where `inputs.apply-fixes` defaulting to true would have stopped
-# every consumer committing linter fixes while this repository's own CI passed. lint.yaml still
-# carries that shape verbatim in an `env:` value (APPLY_FIXES), correctly, because lint.yaml is
-# workflow_call-only; this guard exists to stop it being carried into a multi-trigger workflow.
+# every consumer committing linter fixes while this repository's own CI passed. Such a bare
+# read can be correct in a workflow_call-only interface; this guard exists to stop it being
+# carried into a multi-trigger workflow. Independent fixtures retain that historical shape.
 #
 # The repository's existing idiom for a multi-trigger input is an EXPLICIT comparison
 # (`inputs.x == true || inputs.x == 'true'`, see test-default-branch), which is null-safe because

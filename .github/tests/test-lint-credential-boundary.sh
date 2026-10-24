@@ -2,7 +2,7 @@
 
 set -euo pipefail
 
-lint_workflow="${1:-.github/workflows/lint.yaml}"
+lint_workflow="${1:-.github/workflows/validate-go-project-readonly.yaml}"
 ci_workflow="${2:-.github/workflows/ci.yaml}"
 
 fail() {
@@ -11,25 +11,29 @@ fail() {
 }
 
 caller_contents="$(
-  yq -r '.jobs.test-lint-workflow.permissions.contents // ""' "$ci_workflow"
+  yq -r '.jobs.test-validate-go-project.permissions.contents // ""' "$ci_workflow"
 )"
 [[ "$caller_contents" == "read" ]] ||
   fail "the clean-fixture caller must grant contents: read, found '${caller_contents:-unset}'"
 
 caller_write_scopes="$(
   yq -r \
-    '[.jobs.test-lint-workflow.permissions
+    '[.jobs.test-validate-go-project.permissions
       | to_entries[]
-      | select(.value == "write")] | length' \
+      | select(.value == "write" and .key != "code-quality")] | length' \
     "$ci_workflow"
 )"
 [[ "$caller_write_scopes" == "0" ]] ||
-  fail "the clean-fixture caller must not grant any write-scoped GITHUB_TOKEN permission"
+  fail "the clean-fixture caller may grant only coverage's code-quality write scope"
+
+[[ "$(yq -r '.jobs.test-validate-go-project.uses' "$ci_workflow")" == './.github/workflows/validate-go-project-readonly.yaml' ]] ||
+  fail 'the clean-fixture caller must exercise the actual read-only Go entrypoint'
 
 # The workflow-scoped half — contents: read, no App token, no App key, persist-credentials: false —
 # lives in test-fixer-credential-boundary.sh so the same assertions run against the org-required
-# Go pipeline's three fixer lanes. What follows is the STRICTER set that only lint.yaml meets:
-# no write scope of any kind and no GitHub token at all.
+# Go pipeline's three fixer lanes. The read-only projection's lint job meets a STRICTER
+# boundary: no write scope of any kind and no GitHub token at all. Its caller grants
+# code-quality write for separate coverage jobs; the lint job explicitly narrows it.
 bash "$(dirname "${BASH_SOURCE[0]}")/test-fixer-credential-boundary.sh" "$lint_workflow" lint >/dev/null
 
 lint_write_scopes="$(
@@ -51,7 +55,7 @@ lint_token_refs() { # <workflow>
     '[((.env // {}), .jobs.lint)
       | ..
       | select(tag == "!!str")
-      | select(test("(?i)secrets[[:space:]]*(\\.|\\[)|github[[:space:]]*(\\.token|\\[[[:space:]]*[\"'"'"']token[\"'"'"'][[:space:]]*\\])|toJSON[[:space:]]*\\([[:space:]]*(secrets|github)"))] | length' \
+      | select(test("(?i)\\bsecrets\\b|\\bgithub[[:space:]]*(\\.[[:space:]]*token|\\[)|tojson[[:space:]]*\\([[:space:]]*github\\b"))] | length' \
     "$1"
 }
 lint_tokens="$(lint_token_refs "$lint_workflow")"
@@ -64,7 +68,7 @@ lint_tokens="$(lint_token_refs "$lint_workflow")"
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
 # shellcheck disable=SC2016 # literal Actions expressions handed to yq
-for mutation in '.env.TOKEN = "${{ github.token }}"' '.jobs.lint.env.TOKEN = "${{ github.token }}"' '.jobs.lint.env.TOKEN = "${{ GITHUB.TOKEN }}"' '.jobs.lint.env.ALL = "${{ toJson(Secrets) }}"'; do
+for mutation in '.env.TOKEN = "${{ github.token }}"' '.jobs.lint.env.TOKEN = "${{ github.token }}"' '.jobs.lint.env.TOKEN = "${{ GITHUB.TOKEN }}"' '.jobs.lint.env.ALL = "${{ toJson(Secrets) }}"' '.jobs.lint.env.TOKEN = "${{ github[format('"'"'tok{0}'"'"', '"'"'en'"'"')] }}"'; do
   yq "$mutation" "$lint_workflow" >"$work/mutant.yaml"
   [[ "$(lint_token_refs "$work/mutant.yaml")" == "1" ]] ||
     fail "the lint token scan must count a github.token planted with: $mutation"
