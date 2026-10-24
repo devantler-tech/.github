@@ -19,6 +19,9 @@ observes.
 |---|---|---|---|
 | `require-cla-gate-on-world-at-ruin.yaml` | `world-at-ruin` | Require CLA gate | Managed (net-new; Observe + Create + Update + LateInitialize) |
 | `require-merge-queue-on-platform.yaml` | `platform` | Require merge queue | Managed import (Observe + Update; full ruleset backfilled, no LateInitialize, no Delete) |
+| `require-reviewed-admission-on-monorepo.yaml` | `monorepo` | Require reviewed repository admission | Managed, active; exact GitHub Actions executed result, default branch only, no bypass or Delete |
+| `require-reviewed-admission-on-dotgithub.yaml` | `.github` | Require reviewed repository admission | Managed, active; exact GitHub Actions executed result, default branch only, no bypass or Delete |
+| `require-reviewed-admission-on-world-at-ruin.yaml` | `world-at-ruin` | Require reviewed repository admission | Managed, retained disabled during maintainer-coordinated recovery; identity, selector and producer unchanged; established World workflow still required |
 | `require-validation-on-dotnet-template.yaml` | `dotnet-template` | Require local .NET template validation | Managed (net-new; Observe + Create + Update + LateInitialize) |
 | `require-validation-on-go-template.yaml` | `go-template` | Require local Go template validation | Managed (net-new; Observe + Create + Update + LateInitialize) |
 | `require-scaffold-validation-on-platform-tenant-template.yaml` | `platform-tenant-template` | Require scaffold validation | Managed (net-new; Observe + Create + Update + LateInitialize) |

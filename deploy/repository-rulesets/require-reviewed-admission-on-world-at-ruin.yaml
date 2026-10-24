@@ -1,5 +1,7 @@
-# Add the executed product result while the established singleton stays active.
-# Native positive and refusal controls precede any separate retirement.
+# Retain the executed-result record during maintainer-coordinated recovery.
+# The unproven shared enrollment rejected native events before running tests.
+# Keep its identity, selector, producer and non-deleting lifecycle for re-enrollment;
+# the established World-specific required workflow remains active throughout.
 apiVersion: repo.github.m.upbound.io/v1alpha1
 kind: RepositoryRuleset
 metadata:
@@ -14,7 +16,7 @@ spec:
     repository: world-at-ruin
     name: Require reviewed repository admission
     target: branch
-    enforcement: active
+    enforcement: disabled
     conditions:
       - refName:
           - include: ["~DEFAULT_BRANCH"]
