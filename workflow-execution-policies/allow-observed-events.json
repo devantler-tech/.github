@@ -17,6 +17,7 @@
       "parameters": {
         "allowed_events": [
           "issue_comment",
+          "issues",
           "merge_group",
           "pull_request",
           "pull_request_review",
