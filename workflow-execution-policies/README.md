@@ -43,7 +43,7 @@ login can be renamed and reused.
 
 | File | What it does |
 |---|---|
-| `allow-observed-events.json` | Every workflow in every repository may start only on the eight events our default-branch workflows use today. This blocks `pull_request_target`, `workflow_run` and `repository_dispatch`, none of which any workflow needs. |
+| `allow-observed-events.json` | Every workflow in every repository may start only on the nine events our default-branch workflows use, including `issues` for urgent maintainer asks. This blocks `pull_request_target`, `workflow_run` and `repository_dispatch`, none of which any workflow needs. The policy remains disabled until its separately approved trial. |
 | `restrict-deploy-starters-<repository>.json` | In each repository with manually startable deploy or publish workflows, only the portfolio's own identities may start those workflow files. One file per repository, because a file name like `ci.yaml` means a different workflow in each repository. |
 
 ## Deploy and publish starters
