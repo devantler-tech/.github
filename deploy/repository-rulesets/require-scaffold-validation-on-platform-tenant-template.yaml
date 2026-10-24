@@ -1,0 +1,39 @@
+# Require the starter's scaffold validation before anything merges to main.
+# Every tenant created from the template inherits main, so a scaffold that fails
+# validation, or a publisher the Platform has not approved, must not merge green.
+# These jobs run only in the template repository and skip themselves in tenants,
+# so the rule lives here, on this one repository, rather than in tenant CI.
+# These are observed job names, not the workflow title. Bind the producer to
+# GitHub Actions (15368), never to an arbitrary status context from another App.
+apiVersion: repo.github.m.upbound.io/v1alpha1
+kind: RepositoryRuleset
+metadata:
+  name: platform-tenant-template-require-scaffold-validation
+spec:
+  managementPolicies:
+    - Observe
+    - Create
+    - Update
+    - LateInitialize
+  forProvider:
+    repository: platform-tenant-template
+    name: Require scaffold validation
+    target: branch
+    enforcement: active
+    conditions:
+      - refName:
+          - include: ["~DEFAULT_BRANCH"]
+            exclude: []
+    rules:
+      - requiredStatusChecks:
+          - requiredCheck:
+              - context: Validate Scaffold
+                integrationId: 15368
+              - context: Platform Admissibility
+                integrationId: 15368
+              - context: Pod Security and tenant RBAC
+                integrationId: 15368
+            strictRequiredStatusChecksPolicy: false
+  providerConfigRef:
+    kind: ProviderConfig
+    name: default

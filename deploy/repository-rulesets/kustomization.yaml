@@ -11,5 +11,6 @@ resources:
   - require-merge-queue-on-platform.yaml
   - require-validation-on-dotnet-template.yaml
   - require-validation-on-go-template.yaml
+  - require-scaffold-validation-on-platform-tenant-template.yaml
   - require-reviewed-admission-on-monorepo.yaml
   - require-reviewed-admission-on-dotgithub.yaml
