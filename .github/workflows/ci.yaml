@@ -87,6 +87,7 @@ jobs:
           go -C .github/scripts/ci-selection run . "$GITHUB_WORKSPACE" "$GITHUB_WORKSPACE/.github/scripts/ci-selection/inventory.json" "$workflow_json"
 
   test-validate-retired-repo-links:
+    timeout-minutes: 5
     needs: [select-ci-tests]
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-validate-retired-repo-links') }}"
     name: "[Test] Retired Repository Links - Enabled (${{ matrix.os }})"
@@ -167,6 +168,7 @@ jobs:
           grep -F 'docs/history.md:3: link targets retired repository example/retired' "$RUNNER_TEMP/retired-links.log"
 
   test-validate-retired-repo-links-disabled:
+    timeout-minutes: 5
     needs: [select-ci-tests]
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-validate-retired-repo-links-disabled') }}"
     name: "[Test] Retired Repository Links - Default and Disabled"
@@ -233,6 +235,7 @@ jobs:
           test -z "$INVALID_VALIDATED"
 
   test-validate-shell-pipelines:
+    timeout-minutes: 5
     needs: [select-ci-tests]
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-validate-shell-pipelines') }}"
     name: "[Test] Validate Shell Pipelines (${{ matrix.os }})"
@@ -307,6 +310,7 @@ jobs:
           go -C actions/validate-shell-pipelines vet ./...
 
   test-validate-shell-pipelines-scope:
+    timeout-minutes: 5
     needs: [select-ci-tests]
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-validate-shell-pipelines-scope') }}"
     name: "[Test] Validate Shell Pipelines - Rejects Invalid Scope"
@@ -339,6 +343,7 @@ jobs:
           test "$INVALID" = failure
 
   test-validate-naming:
+    timeout-minutes: 5
     needs: [select-ci-tests]
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-validate-naming') }}"
     name: "[Test] Validate Naming (${{ matrix.os }})"
@@ -376,6 +381,7 @@ jobs:
           go -C actions/validate-naming vet ./...
 
   test-validate-naming-rejects:
+    timeout-minutes: 5
     needs: [select-ci-tests]
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-validate-naming-rejects') }}"
     name: "[Test] Validate Naming - Rejects Violations"
@@ -443,6 +449,7 @@ jobs:
   # name: a head branch is contributor-controlled, and the inline gate reads skipped as success.
   # ── approve-pr ──────────────────────────────────────────────
   test-approve-pr:
+    timeout-minutes: 5
     needs: [select-ci-tests]
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-approve-pr') }}"
     runs-on: ubuntu-latest
@@ -466,6 +473,7 @@ jobs:
           dry-run: "true"
 
   test-approve-pr-credential-boundary:
+    timeout-minutes: 5
     needs: [select-ci-tests]
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-approve-pr-credential-boundary') }}"
     name: "[Test] Approve PR - Credential-Free CI"
@@ -488,6 +496,7 @@ jobs:
 
   # ── cleanup-ghcr-packages ───────────────────────────────────
   test-cleanup-ghcr-packages:
+    timeout-minutes: 5
     needs: [select-ci-tests]
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-cleanup-ghcr-packages') }}"
     runs-on: ubuntu-latest
@@ -514,6 +523,7 @@ jobs:
 
   # ── create-issues-from-todos ────────────────────────────────
   test-todo-scanner:
+    timeout-minutes: 10
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
     name: "[Test] TODO Scanner - Isolated Image"
     runs-on: ubuntu-latest
@@ -565,6 +575,7 @@ jobs:
         run: bash .github/tests/test-todo-scanner-controls.sh
 
   test-create-issues-from-todos:
+    timeout-minutes: 5
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
     name: "[Test] Create Issues From TODOs - Offline Wrapper"
     runs-on: ubuntu-latest
@@ -654,6 +665,7 @@ jobs:
 
   # ── dependency-review ───────────────────────────────────────
   test-dependency-review:
+    timeout-minutes: 5
     runs-on: ubuntu-latest
     # The underlying action only produces a diff on pull_request events; on push /
     # merge_group there is no PR to review, so the test is PR-gated (skipped
@@ -767,6 +779,7 @@ jobs:
 
   # ── diagnose-flux ───────────────────────────────────────────
   test-diagnose-flux:
+    timeout-minutes: 5
     needs: [select-ci-tests]
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-diagnose-flux') }}"
     runs-on: ubuntu-latest
@@ -822,6 +835,7 @@ jobs:
         run: test "$ORIGINAL_OUTCOME" = failure
   # ── enable-auto-merge-on-pr ─────────────────────────────────
   test-enable-auto-merge-on-pr:
+    timeout-minutes: 5
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -853,6 +867,7 @@ jobs:
           dry-run: "true"
 
   test-enable-auto-merge-on-pr-credential-boundary:
+    timeout-minutes: 5
     needs: [select-ci-tests]
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-enable-auto-merge-on-pr-credential-boundary') }}"
     name: "[Test] Enable Auto-Merge on PR - Credential-Free CI"
@@ -875,6 +890,7 @@ jobs:
 
   # ── free-disk-space ─────────────────────────────────────────
   test-free-disk-space:
+    timeout-minutes: 10
     needs: [select-ci-tests]
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-free-disk-space') }}"
     runs-on: ubuntu-latest
@@ -916,6 +932,7 @@ jobs:
 
   # ── free-disk-space (all categories disabled → clean no-op) ──
   test-free-disk-space-keep:
+    timeout-minutes: 5
     needs: [select-ci-tests]
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-free-disk-space-keep') }}"
     runs-on: ubuntu-latest
@@ -968,6 +985,7 @@ jobs:
 
   # ── login-to-ghcr ──────────────────────────────────────────
   test-login-to-ghcr:
+    timeout-minutes: 5
     needs: [select-ci-tests]
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-login-to-ghcr') }}"
     runs-on: ubuntu-latest
@@ -1035,6 +1053,7 @@ jobs:
 
   # ── aggregate-job-checks ────────────────────────────────────
   test-aggregate-job-checks-empty:
+    timeout-minutes: 5
     needs: [select-ci-tests]
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-aggregate-job-checks-empty') }}"
     runs-on: ubuntu-latest
@@ -1057,6 +1076,7 @@ jobs:
           job-results: ""
 
   test-aggregate-job-checks-success:
+    timeout-minutes: 5
     needs: [select-ci-tests]
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-aggregate-job-checks-success') }}"
     runs-on: ubuntu-latest
@@ -1079,6 +1099,7 @@ jobs:
           job-results: "success skipped success"
 
   test-aggregate-job-checks-failure:
+    timeout-minutes: 5
     needs: [select-ci-tests]
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-aggregate-job-checks-failure') }}"
     runs-on: ubuntu-latest
@@ -1113,6 +1134,7 @@ jobs:
           fi
 
   test-aggregate-job-checks-unknown:
+    timeout-minutes: 5
     needs: [select-ci-tests]
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-aggregate-job-checks-unknown') }}"
     runs-on: ubuntu-latest
@@ -1174,6 +1196,7 @@ jobs:
 
   # ── run-dotnet-tests ────────────────────────────────────────
   test-run-dotnet-tests:
+    timeout-minutes: 5
     needs: [select-ci-tests]
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-run-dotnet-tests') }}"
     runs-on: ${{ matrix.os }}
@@ -1214,6 +1237,7 @@ jobs:
   # global.json opts in — and which rejects the VSTest flags the default path uses. Both
   # fixtures opt in; one references the code coverage extension and one does not.
   test-run-dotnet-tests-mtp:
+    timeout-minutes: 5
     needs: [select-ci-tests]
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-run-dotnet-tests-mtp') }}"
     name: "[Test] Run .NET Tests - Microsoft.Testing.Platform"
@@ -1271,6 +1295,7 @@ jobs:
         run: bash .github/tests/test-dotnet-helper-checkout.sh .github/actions/test-dotnet-fixture/action.yaml hosted
 
   test-run-dotnet-tests-preserves-source-mapping:
+    timeout-minutes: 5
     needs: [select-ci-tests]
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-run-dotnet-tests-preserves-source-mapping') }}"
     name: "[Test] Run .NET Tests - Preserve Source Mapping"
@@ -1418,6 +1443,7 @@ jobs:
 
   # ── setup-agent-skills ────────────────────────────────────
   test-setup-agent-skills-inline:
+    timeout-minutes: 5
     needs: [select-ci-tests]
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-setup-agent-skills-inline') }}"
     runs-on: ${{ matrix.os }}
@@ -1472,6 +1498,7 @@ jobs:
           done
 
   test-setup-agent-skills-pinned:
+    timeout-minutes: 5
     needs: [select-ci-tests]
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-setup-agent-skills-pinned') }}"
     runs-on: ubuntu-latest
@@ -1518,6 +1545,7 @@ jobs:
           fi
 
   test-setup-agent-skills-missing-input:
+    timeout-minutes: 5
     needs: [select-ci-tests]
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-setup-agent-skills-missing-input') }}"
     runs-on: ubuntu-latest
@@ -1552,6 +1580,7 @@ jobs:
           fi
 
   test-setup-agent-skills-malformed-line:
+    timeout-minutes: 5
     needs: [select-ci-tests]
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-setup-agent-skills-malformed-line') }}"
     runs-on: ubuntu-latest
@@ -1587,6 +1616,7 @@ jobs:
           fi
 
   test-setup-agent-skills-multi-agent:
+    timeout-minutes: 5
     needs: [select-ci-tests]
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-setup-agent-skills-multi-agent') }}"
     runs-on: ubuntu-latest
@@ -1635,6 +1665,7 @@ jobs:
 
   # ── setup-go-toolchain ─────────────────────────────────────
   test-setup-go-toolchain:
+    timeout-minutes: 5
     needs: [select-ci-tests]
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-setup-go-toolchain') }}"
     runs-on: ${{ matrix.os }}
@@ -1676,6 +1707,7 @@ jobs:
           echo "Go version: $GO_VERSION"
 
   test-setup-go-toolchain-private-modules:
+    timeout-minutes: 5
     needs: [select-ci-tests]
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-setup-go-toolchain-private-modules') }}"
     runs-on: ubuntu-latest
@@ -1714,6 +1746,7 @@ jobs:
 
   # ── setup-ksail-cli ────────────────────────────────────────
   test-setup-ksail-cli:
+    timeout-minutes: 5
     needs: [select-ci-tests]
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-setup-ksail-cli') }}"
     runs-on: ${{ matrix.os }}
@@ -1749,6 +1782,7 @@ jobs:
 
   # ── .scripts/retry.sh (shared reliability helper) ──────────
   test-retry-script:
+    timeout-minutes: 5
     needs: [select-ci-tests]
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-retry-script') }}"
     runs-on: ubuntu-latest
@@ -1846,6 +1880,7 @@ jobs:
 
   # ── guard-installed-skill-edits (composite + hermetic suite) ─────────────
   test-guard-installed-skill-edits:
+    timeout-minutes: 5
     name: 🧪 Test Guard Installed Skill Edits
     needs: [select-ci-tests]
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-guard-installed-skill-edits') }}"
@@ -1877,6 +1912,7 @@ jobs:
 
   # ── .scripts/ensure-gh-skill.sh (shared gh-skill bootstrap) ─
   test-ensure-gh-skill-script:
+    timeout-minutes: 5
     needs: [select-ci-tests]
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-ensure-gh-skill-script') }}"
     runs-on: ubuntu-latest
@@ -2490,6 +2526,7 @@ jobs:
 
   # ── .scripts/gh-skill-install.sh (shared idempotent install helper) ─
   test-gh-skill-install-script:
+    timeout-minutes: 5
     needs: [select-ci-tests]
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-gh-skill-install-script') }}"
     runs-on: ubuntu-latest
@@ -2512,6 +2549,7 @@ jobs:
 
   # ── .scripts/agent-skills-retry-env.sh (rate-limit-retry opt-in) ─
   test-agent-skills-retry-env:
+    timeout-minutes: 5
     needs: [select-ci-tests]
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-agent-skills-retry-env') }}"
     runs-on: ${{ matrix.os }}
@@ -2541,6 +2579,7 @@ jobs:
 
   # ── update-agent-skills ───────────────────────────────────
   test-update-agent-skills-noop:
+    timeout-minutes: 5
     needs: [select-ci-tests]
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-update-agent-skills-noop') }}"
     runs-on: ${{ matrix.os }}
@@ -2605,6 +2644,7 @@ jobs:
           fi
 
   test-update-agent-skills-dry-run:
+    timeout-minutes: 5
     needs: [select-ci-tests]
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-update-agent-skills-dry-run') }}"
     runs-on: ubuntu-latest
@@ -2660,6 +2700,7 @@ jobs:
           fi
 
   test-update-agent-skills-missing-dir:
+    timeout-minutes: 5
     needs: [select-ci-tests]
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-update-agent-skills-missing-dir') }}"
     runs-on: ubuntu-latest
@@ -2694,6 +2735,7 @@ jobs:
           fi
 
   test-update-agent-skills-mark-internal:
+    timeout-minutes: 5
     needs: [select-ci-tests]
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-update-agent-skills-mark-internal') }}"
     runs-on: ${{ matrix.os }}
@@ -2868,6 +2910,7 @@ jobs:
 
   # ── upload-coverage ─────────────────────────────────────────
   test-upload-coverage:
+    timeout-minutes: 5
     needs: [select-ci-tests]
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-upload-coverage') }}"
     runs-on: ubuntu-latest
@@ -2898,6 +2941,7 @@ jobs:
 
   # ── login-to-ghcr (negative path) ──────────────────────────
   test-login-to-ghcr-empty-token:
+    timeout-minutes: 5
     needs: [select-ci-tests]
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-login-to-ghcr-empty-token') }}"
     runs-on: ubuntu-latest
@@ -2933,6 +2977,7 @@ jobs:
 
   # ── setup-go-toolchain (negative path) ─────────────────────
   test-setup-go-toolchain-invalid-version:
+    timeout-minutes: 5
     needs: [select-ci-tests]
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-setup-go-toolchain-invalid-version') }}"
     runs-on: ubuntu-latest
@@ -2968,6 +3013,7 @@ jobs:
 
   # ── upsert-issue (offline issue lifecycle) ─────────────────
   test-upsert-issue:
+    timeout-minutes: 5
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
     name: "[Test] Upsert Issue - Offline Behavior"
     runs-on: ubuntu-latest
@@ -3015,6 +3061,7 @@ jobs:
 
   # ── run-dotnet-tests (negative path) ───────────────────────
   test-run-dotnet-tests-missing-working-directory:
+    timeout-minutes: 5
     needs: [select-ci-tests]
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-run-dotnet-tests-missing-working-directory') }}"
     runs-on: ubuntu-latest
@@ -3067,6 +3114,7 @@ jobs:
   # own `dotnet test` command at a fixture whose only test fails on purpose and asserts the
   # run is blocked. test-run-dotnet-tests-gate-lockstep keeps the command in sync with the gate.
   test-run-dotnet-tests-blocks:
+    timeout-minutes: 5
     needs: [select-ci-tests]
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-run-dotnet-tests-blocks') }}"
     name: "[Test] Run .NET Tests - Gate Blocks"
@@ -3128,6 +3176,7 @@ jobs:
 
   # ── run-dotnet-tests (gate lockstep) ───────────────────────
   test-run-dotnet-tests-gate-lockstep:
+    timeout-minutes: 5
     needs: [select-ci-tests]
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-run-dotnet-tests-gate-lockstep') }}"
     name: "[Test] Run .NET Tests - Gate Lockstep"
@@ -3190,6 +3239,7 @@ jobs:
   # input set, so a bump or input change to the wrapper cannot silently leave the inline
   # copy behind (mirrors test-govulncheck-action-lockstep).
   test-run-dotnet-tests-coverage-inline-lockstep:
+    timeout-minutes: 5
     needs: [select-ci-tests]
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-run-dotnet-tests-coverage-inline-lockstep') }}"
     name: "[Test] Run .NET Tests - Coverage Inline Lockstep"
@@ -3234,6 +3284,7 @@ jobs:
           echo "run-dotnet-tests inlined coverage step matches $WRAPPER (uses + input set) ✅"
 
   lint-shell-pipelines:
+    timeout-minutes: 5
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
     name: "[Lint] Shell Pipeline Assertions"
     runs-on: ubuntu-latest
@@ -3280,6 +3331,7 @@ jobs:
 
   # ── lint-readme-parity ──────────────────────────────────────
   lint-readme-parity:
+    timeout-minutes: 5
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
     runs-on: ubuntu-latest
     permissions:
@@ -3385,6 +3437,7 @@ jobs:
         run: bash .github/tests/test-workflow-readme-parity.sh
 
   test-publish-contracts:
+    timeout-minutes: 10
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
     runs-on: ubuntu-latest
     permissions:
@@ -3447,6 +3500,7 @@ jobs:
         run: bash .github/tests/test-publish-manifests-promotion.sh
 
   lint-ci-coverage-parity:
+    timeout-minutes: 10
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
     runs-on: ubuntu-latest
     permissions:
@@ -3644,6 +3698,14 @@ jobs:
 
       - name: Check capacity-based Go disk cleanup and failure controls
         run: bash .github/tests/test-go-disk-cleanup.sh
+
+      - name: Reject unbounded catalogue runner jobs
+        shell: bash
+        run: bash .github/tests/test-ci-runner-timeouts.sh
+
+      - name: Exercise missing and malformed runner deadline refusals
+        shell: bash
+        run: bash .github/tests/test-ci-runner-timeouts-blocks.sh
 
       - name: 🔐 Check every eligible step-bearing CI job hardens the runner first
         shell: bash
@@ -3996,6 +4058,7 @@ jobs:
       code-quality: write
 
   test-run-dotnet-tests-workflow:
+    timeout-minutes: 5
     needs: [select-ci-tests]
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-run-dotnet-tests-workflow') }}"
     name: "[Test] Run .NET Tests"
@@ -4023,6 +4086,7 @@ jobs:
           github-token: ${{ github.event_name != 'pull_request' && secrets.GITHUB_TOKEN || '' }}
 
   test-run-dotnet-tests-workflow-authenticated:
+    timeout-minutes: 5
     if: >-
       ${{
         github.event_name != 'merge_group' &&
@@ -4107,6 +4171,7 @@ jobs:
       contents: write
 
   test-enable-auto-merge-author-gate:
+    timeout-minutes: 5
     needs: [select-ci-tests]
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-enable-auto-merge-author-gate') }}"
     name: "[Test] Enable Auto-Merge - Author Gate"
@@ -4145,6 +4210,7 @@ jobs:
   # Exercise GitHub's scheduler without a PR mutation, checkout, or App token.
   # A three-job burst exposes queue:single's replacement of the middle job.
   test-enable-auto-merge-queue:
+    timeout-minutes: 5
     needs: [select-ci-tests]
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-enable-auto-merge-queue') }}"
     name: "[Test] Enable Auto-Merge - Queue Slot ${{ matrix.slot }}"
@@ -4169,6 +4235,7 @@ jobs:
         run: sleep 10
 
   test-enable-auto-merge-pentad-gate:
+    timeout-minutes: 5
     needs: [select-ci-tests]
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-enable-auto-merge-pentad-gate') }}"
     name: "[Test] Enable Auto-Merge - Pentad Gate"
@@ -4234,6 +4301,7 @@ jobs:
     permissions: {}
 
   test-create-release-config:
+    timeout-minutes: 10
     needs: [select-ci-tests]
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-create-release-config') }}"
     name: "[Test] Create Release - Least Privilege"
@@ -4294,6 +4362,7 @@ jobs:
         run: bash .github/tests/test-create-release-stable-channels.sh
 
   test-release-please-semantics:
+    timeout-minutes: 5
     needs: [select-ci-tests]
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-release-please-semantics') }}"
     name: "[Test] Release PR Lifecycle Guard"
@@ -4373,6 +4442,7 @@ jobs:
   # merged, so it is trusted. The trade-off is that a regression surfaces post-merge rather than on
   # the PR; the static contract test in the PR lane still covers the guard's own logic.
   test-publish-caller-pin-live:
+    timeout-minutes: 5
     if: "${{ github.event_name == 'push' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
     name: "[Test] Publish Caller Pin - Live OIDC"
     runs-on: ubuntu-latest
@@ -4568,6 +4638,7 @@ jobs:
   # The default-on caller scans this repo's clean fixture on main pushes. Dedicated
   # vulnerable fixtures below establish allowlist and strict-failure verdicts.
   test-govulncheck-allowlist-honored:
+    timeout-minutes: 5
     needs: [select-ci-tests]
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-govulncheck-allowlist-honored') }}"
     name: "[Test] Govulncheck Allowlist - Allowlisted Advisory Passes"
@@ -4615,6 +4686,7 @@ jobs:
         run: jq -es --arg version "go$GO_VERSION" '.[0].config.go_version == $version' govulncheck-allowlisted.json
 
   test-govulncheck-strict-blocks:
+    timeout-minutes: 5
     needs: [select-ci-tests]
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-govulncheck-strict-blocks') }}"
     name: "[Test] Govulncheck Allowlist - Strict Path Blocks"
@@ -4682,6 +4754,7 @@ jobs:
           echo "Strict scan correctly blocked on the reachable advisory ✅"
 
   test-govulncheck-action-lockstep:
+    timeout-minutes: 5
     needs: [select-ci-tests]
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-govulncheck-action-lockstep') }}"
     name: "[Test] Govulncheck Allowlist - Gate Uses Self-Tested Implementation"
@@ -4709,6 +4782,7 @@ jobs:
         run: bash .github/tests/test-govulncheck-download.sh
 
   test-govulncheck-timeout:
+    timeout-minutes: 5
     needs: [select-ci-tests]
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-govulncheck-timeout') }}"
     name: "[Test] Govulncheck - Timeout & Memory Safety Controls"
@@ -5169,6 +5243,7 @@ jobs:
           echo "A failure before the deadline fails the gate and is not retried ✅"
 
   test-govulncheck-main-coverage:
+    timeout-minutes: 5
     needs: [select-ci-tests]
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-govulncheck-main-coverage') }}"
     name: "[Test] Govulncheck - Default-Branch & Allowlist Trigger Coverage"
@@ -5197,6 +5272,7 @@ jobs:
   # and asserts it fails WITH THE EXPECTED MESSAGE, plus that it still passes the real
   # workflow — so neither an accept-everything nor a reject-everything guard passes.
   test-govulncheck-main-coverage-blocks:
+    timeout-minutes: 5
     needs: [select-ci-tests]
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-govulncheck-main-coverage-blocks') }}"
     name: "[Test] Govulncheck Trigger Guard - Blocks On Bad Input"
@@ -5218,6 +5294,7 @@ jobs:
         run: bash .github/tests/test-govulncheck-main-coverage-blocks.sh
 
   test-go-filter-nested-modules:
+    timeout-minutes: 5
     needs: [select-ci-tests]
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-go-filter-nested-modules') }}"
     name: "[Test] Go Filter Nested Modules"
@@ -5239,6 +5316,7 @@ jobs:
         run: bash .github/tests/test-go-filter-nested-modules.sh
 
   test-go-filter-nested-modules-blocks:
+    timeout-minutes: 5
     needs: [select-ci-tests]
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-go-filter-nested-modules-blocks') }}"
     name: "[Test] Go Filter Nested Modules - Blocks On Bad Input"
@@ -5266,6 +5344,7 @@ jobs:
   # the default branch keeps reporting green. Measured on ksail — a5ed9f85 changed four
   # files, none of them Go, broke internal/ciharness, and main stayed green.
   test-suite-default-branch-coverage:
+    timeout-minutes: 5
     needs: [select-ci-tests]
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-suite-default-branch-coverage') }}"
     name: "[Test] Go Suite - Default-Branch Trigger Coverage"
@@ -5312,6 +5391,7 @@ jobs:
   # the real workflow and a reflowed-but-equivalent gate, so neither an accept-everything
   # nor a reject-everything guard passes.
   test-suite-default-branch-coverage-blocks:
+    timeout-minutes: 5
     needs: [select-ci-tests]
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-suite-default-branch-coverage-blocks') }}"
     name: "[Test] Go Suite Trigger Guard - Blocks On Bad Input"
@@ -5346,6 +5426,7 @@ jobs:
   # path, audits it. Keep the action SHA in lockstep with the gate
   # (enforced by test-zizmor-action-lockstep).
   test-zizmor-blocks:
+    timeout-minutes: 5
     needs: [select-ci-tests]
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-zizmor-blocks') }}"
     name: "[Test] Zizmor - Blocks On Vulnerable Fixture"
@@ -5400,6 +5481,7 @@ jobs:
           echo "Zizmor gate correctly blocked on the vulnerable fixture ✅"
 
   test-zizmor-action-lockstep:
+    timeout-minutes: 5
     needs: [select-ci-tests]
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-zizmor-action-lockstep') }}"
     name: "[Test] Zizmor - Gate Pins Self-Tested Action"
@@ -5454,6 +5536,7 @@ jobs:
   # "the gate silently stopped blocking" into a red check. test-validate-go-gate-lockstep
   # keeps the tool pins hard-coded here in step with the gate.
   test-validate-go-lint-blocks:
+    timeout-minutes: 5
     needs: [select-ci-tests]
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-validate-go-lint-blocks') }}"
     name: "[Test] Validate Go Project - Lint Gate Blocks"
@@ -5517,6 +5600,7 @@ jobs:
           echo "Lint gate correctly blocked on the errcheck violation ✅"
 
   test-validate-go-test-blocks:
+    timeout-minutes: 5
     needs: [select-ci-tests]
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-validate-go-test-blocks') }}"
     name: "[Test] Validate Go Project - Test Gate Blocks"
@@ -5573,6 +5657,7 @@ jobs:
           echo "Test gate correctly blocked on the failing test ✅"
 
   test-validate-go-gate-lockstep:
+    timeout-minutes: 10
     needs: [select-ci-tests]
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-validate-go-gate-lockstep') }}"
     name: "[Test] Validate Go Project - Gate Lockstep"
@@ -5597,6 +5682,7 @@ jobs:
         run: bash .github/tests/test-catalogue-pin-guards-controls.sh
 
   test-validate-go-project-concurrency-key:
+    timeout-minutes: 5
     needs: [select-ci-tests]
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-validate-go-project-concurrency-key') }}"
     name: "[Test] Validate Go Project - Invocation-Aware Concurrency Key"
@@ -5658,6 +5744,7 @@ jobs:
           echo "validate-go-project.yaml concurrency group is invocation-aware ✅"
 
   test-lint-blocks:
+    timeout-minutes: 5
     needs: [select-ci-tests]
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-lint-blocks') }}"
     name: "[Test] Lint - Root Configuration"
@@ -5860,6 +5947,7 @@ jobs:
   # Exercise the internal exporter through the runner, including deletion of its
   # loaded helper checkout and upload recovery after an actual preparation error.
   test-prepare-fixes:
+    timeout-minutes: 5
     needs: [select-ci-tests]
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-prepare-fixes') }}"
     name: "[Test] Fix Exporter - ${{ matrix.scenario }}"
@@ -5932,6 +6020,7 @@ jobs:
         run: bash "$RUNNER_TEMP/prepare-fixes-runner.sh" verify
 
   test-lint-gate-lockstep:
+    timeout-minutes: 10
     needs: [select-ci-tests]
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-lint-gate-lockstep') }}"
     name: "[Test] Go Lint - Source and Credential Boundaries"
@@ -6105,6 +6194,7 @@ jobs:
 
   # ── gate ────────────────────────────────────────────────────
   validate-manifests:
+    timeout-minutes: 5
     name: 🧹 Validate manifests
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
     runs-on: ubuntu-latest
@@ -6301,6 +6391,7 @@ jobs:
         run: bash tests/repository-coverage.sh
 
   ci-required-checks:
+    timeout-minutes: 5
     name: CI - Required Checks
     if: ${{ always() }}
     needs:
