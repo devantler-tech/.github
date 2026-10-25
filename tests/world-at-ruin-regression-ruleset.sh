@@ -45,18 +45,16 @@ assert_json() {
 
 assert_value "ruleset name" "Require workflow - World at Ruin trusted regressions" '.spec.forProvider.name'
 assert_value "ruleset target" "branch" '.spec.forProvider.target'
-assert_value "ruleset enforcement" "active" '.spec.forProvider.enforcement'
+assert_value "ruleset enforcement" "disabled" '.spec.forProvider.enforcement'
 assert_json "management policy" '["Observe","Create","Update","LateInitialize"]' '.spec.managementPolicies'
 assert_json "target repository" '[1303188705]' '.spec.forProvider.conditions[0].repositoryId'
 assert_json "target branch" '["~DEFAULT_BRANCH"]' '.spec.forProvider.conditions[0].refName[0].include'
 assert_json "target exclusions" '[]' '.spec.forProvider.conditions[0].refName[0].exclude'
 assert_value "bypass actor count" "0" '(.spec.forProvider.bypassActors // []) | length'
 assert_value "rule count" "1" '.spec.forProvider.rules | length'
-assert_value "required workflow block count" "1" '.spec.forProvider.rules[0].requiredWorkflows | length'
-assert_value "required workflow count" "1" '.spec.forProvider.rules[0].requiredWorkflows[0].requiredWorkflow | length'
-assert_value "source repository" "933213756" '.spec.forProvider.rules[0].requiredWorkflows[0].requiredWorkflow[0].repositoryId'
-assert_value "source path" ".github/workflows/world-at-ruin-required-regressions.yaml" '.spec.forProvider.rules[0].requiredWorkflows[0].requiredWorkflow[0].path'
-assert_value "source ref" "refs/heads/main" '.spec.forProvider.rules[0].requiredWorkflows[0].requiredWorkflow[0].ref'
+# Native overlap passed before this retirement. The shared injection and the
+# executed-result binding are independently asserted by repository-admission-ruleset.sh.
+assert_json "inert retired rule" '[{"creation":false,"deletion":false,"nonFastForward":false,"requiredLinearHistory":false,"requiredSignatures":false,"update":false}]' '.spec.forProvider.rules'
 
 inventory="${repo_root}/deploy/organization-rulesets/README.md"
 grep -Fq 'The 15 imported org rulesets' "${inventory}" ||
@@ -78,19 +76,19 @@ managed_inventory_valid() {
 managed_inventory_valid "$inventory" || fail 'documented managed roster differs from the complete render'
 for control in missing replaced duplicate extra; do
   case "$control" in
-    missing)
-      awk 'index($0, "`require-world-at-ruin-trusted-regressions.yaml`")==0' "$inventory" >"$inventory_work/broken.md"
-      ;;
-    replaced)
-      sed 's/require-world-at-ruin-trusted-regressions.yaml/unknown-managed-policy.yaml/' "$inventory" >"$inventory_work/broken.md"
-      ;;
-    duplicate)
-      awk '{print; if(index($0, "`require-world-at-ruin-trusted-regressions.yaml`")) print}' "$inventory" >"$inventory_work/broken.md"
-      ;;
-    extra)
-      cp "$inventory" "$inventory_work/broken.md"
-      printf "| \`unknown-managed-policy.yaml\` | Extra | Managed (Create) |\n" >>"$inventory_work/broken.md"
-      ;;
+  missing)
+    awk 'index($0, "`require-world-at-ruin-trusted-regressions.yaml`")==0' "$inventory" >"$inventory_work/broken.md"
+    ;;
+  replaced)
+    sed 's/require-world-at-ruin-trusted-regressions.yaml/unknown-managed-policy.yaml/' "$inventory" >"$inventory_work/broken.md"
+    ;;
+  duplicate)
+    awk '{print; if(index($0, "`require-world-at-ruin-trusted-regressions.yaml`")) print}' "$inventory" >"$inventory_work/broken.md"
+    ;;
+  extra)
+    cp "$inventory" "$inventory_work/broken.md"
+    printf "| \`unknown-managed-policy.yaml\` | Extra | Managed (Create) |\n" >>"$inventory_work/broken.md"
+    ;;
   esac
   if managed_inventory_valid "$inventory_work/broken.md"; then fail "accepted $control managed inventory"; fi
 done

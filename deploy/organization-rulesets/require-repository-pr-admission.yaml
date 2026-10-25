@@ -1,6 +1,6 @@
 # Shared admission for monorepo, this catalogue and World; product decisions stay local.
-# Restore World after its reviewed engine setup repair. Its established
-# required workflow stays active until separate native overlap proof.
+# All three products passed native positive and tampering-refusal controls;
+# their separate executed-result bindings remain mandatory after singleton retirement.
 apiVersion: enterprise.github.m.upbound.io/v1alpha1
 kind: OrganizationRuleset
 metadata:

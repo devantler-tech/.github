@@ -175,7 +175,7 @@ committed as `fix:` (or `feat:`), not `ci:`/`refactor:`.
 These workflows do not declare `workflow_call`. Required CI checks this inventory against their actual triggers.
 
 `repository-pr-admission.yaml` shares only trusted-source resolution and a read-only runner.
-Enrollment covers monorepo and this configuration repository. Their product-owned validators and
+Enrollment covers monorepo, this configuration repository and World at Ruin. Their product-owned validators and
 repository-bound executed results replace the disabled singleton organization associations after
 native positive and tampering-refusal controls (#693). New enrollments require the same live proof
 before retiring their old gate. A broken reviewed source uses the maintainer-owned recovery procedure in
@@ -196,8 +196,9 @@ GitHub ignores activity filters for ruleset-injected workflows: only the default
 types run. Do not claim `edited` revalidates required metadata; this repository retains its
 existing full-CI edit feedback and manual reviewed-main metadata workflow during the migration.
 See [GitHub's ruleset event documentation](https://docs.github.com/en/enterprise-cloud@latest/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/troubleshooting-rules#supported-ruleset-workflow-events).
-World at Ruin's runtime blocker (#1495 in that repository) still has to clear before its admission
-cutover; the generic budget bound is not permission to omit tests or declare that outcome fixed.
+The maintainer explicitly decoupled World at Ruin's workflow ownership cleanup from its independent
+runtime target (#1495 in that repository). Keep that performance issue open until its own measurements
+pass; the generic budget bound is not permission to omit tests or declare that outcome fixed.
 
 | Workflow | Ownership |
 |---|---|
