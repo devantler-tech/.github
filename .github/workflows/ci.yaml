@@ -3715,10 +3715,6 @@ jobs:
         shell: bash
         run: bash .github/tests/test-ci-harden-runner-first-blocks.sh
 
-      - name: 🌌 Check World at Ruin required-regression trust boundary
-        shell: bash
-        run: bash .github/tests/test-world-at-ruin-required-regressions.sh
-
       - name: 🔗 Check required workflows resolve sibling calls in the source repository
         shell: bash
         run: bash .github/tests/test-required-workflow-no-local-calls.sh

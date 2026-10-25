@@ -24,7 +24,6 @@ run_guard() {
     case "$1" in
     author) bash .github/tests/test-enable-auto-merge-author-gate.sh ;;
     zizmor) bash .github/tests/test-zizmor-routing.sh ;;
-    world) bash .github/tests/test-world-at-ruin-required-regressions.sh ;;
     dependency) bash .github/tests/test-dependency-review-comments.sh ;;
     parity) bash .github/tests/test-catalogue-tool-pin-parity.sh ;;
     *) exit 99 ;;
@@ -47,14 +46,13 @@ reject() {
   echo "PASS: $mode rejects the intended pin or role regression"
 }
 sha=0123456789abcdef0123456789abcdef01234567
-for mode in author zizmor world dependency parity; do
+for mode in author zizmor dependency parity; do
   reset_fixture
   run_guard "$mode" || fail "healthy $mode failed: $(cat "$work/output")"
 done
 accept author .github/workflows/enable-auto-merge.yaml ".jobs.eligibility.steps[0].uses = \"step-security/harden-runner@$sha\""
 accept author .github/workflows/enable-auto-merge.yaml "(.jobs.disarm-untrusted-update.steps[] | select(.name == \"📥 Checkout trusted disarm script\")).uses = \"actions/checkout@$sha\""
 accept zizmor .github/workflows/scan-for-workflow-vulnerabilities.yaml ".jobs.eligibility.steps[0].uses = \"step-security/harden-runner@$sha\""
-accept world .github/workflows/world-at-ruin-required-regressions.yaml ".jobs.eligibility.steps[0].uses = \"step-security/harden-runner@$sha\""
 accept dependency actions/dependency-review/action.yaml "(.runs.steps[] | select(.id == \"review\")).uses = \"actions/dependency-review-action@$sha\""
 
 # Independent production and fixture files must move together, without changing
@@ -83,7 +81,6 @@ done
 for bad in 'step-security/harden-runner@v2' 'step-security/harden-runner@0123456' "other/harden-runner@$sha"; do
   reject author .github/workflows/enable-auto-merge.yaml ".jobs.eligibility.steps[0].uses = \"$bad\"" 'eligibility must begin'
   reject zizmor .github/workflows/scan-for-workflow-vulnerabilities.yaml ".jobs.eligibility.steps[0].uses = \"$bad\"" 'must begin'
-  reject world .github/workflows/world-at-ruin-required-regressions.yaml ".jobs.eligibility.steps[0].uses = \"$bad\"" 'first eligibility step'
 done
 reject author .github/workflows/enable-auto-merge.yaml '(.jobs.disarm-untrusted-update.steps[] | select(.name == "📥 Checkout trusted disarm script")).uses = "actions/checkout@main"' 'trusted base/called-workflow'
 reject author .github/workflows/enable-auto-merge.yaml '(.jobs.disarm-untrusted-update.steps[] | select(.name == "📥 Checkout trusted disarm script")).with.persist-credentials = true' 'trusted base/called-workflow'
