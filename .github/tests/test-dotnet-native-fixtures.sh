@@ -3,7 +3,8 @@
 set -euo pipefail
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 [[ ! -e "$root/.github/workflows/run-dotnet-tests.yaml" ]] || {
-  echo 'FAIL: singleton .NET workflow is still exported' >&2; exit 1;
+  echo 'FAIL: singleton .NET workflow is still exported' >&2
+  exit 1
 }
 ci="$root/.github/workflows/ci.yaml"
 action="$root/.github/actions/test-dotnet-fixture/action.yaml"
@@ -48,10 +49,71 @@ check_action() {
     all(.runs.steps[]; .["continue-on-error"]==null)
   ' "$1" >/dev/null
 }
-yq -o=json . "$ci" > "$work/ci.json"
-yq -o=json . "$action" > "$work/action.json"
-check_ci "$work/ci.json" || { echo 'FAIL: native OS, token or fixture binding changed' >&2; exit 1; }
-check_action "$work/action.json" || { echo 'FAIL: source-state comparison or real action binding changed' >&2; exit 1; }
+yq -o=json . "$ci" >"$work/ci.json"
+yq -o=json . "$action" >"$work/action.json"
+# Bind fixture provisioning to the real shared action. A floating channel can
+# resolve a version before its download exists, so every installed SDK is exact.
+check_sdks() {
+  jq -e --slurpfile sdk_action "$2" '
+    def setup: select((.uses // "") | test("^actions/setup-dotnet@[0-9a-f]{40}$"));
+    def versions: .with["dotnet-version"] | tostring | split("\n") | map(select(length>0));
+    def mandatory: .if==null and .["continue-on-error"]==null;
+    [$sdk_action[0].runs.steps[] | setup] as $shared |
+    [.jobs["test-run-dotnet-tests-preserves-source-mapping"].steps[] | setup] as $mapping |
+    [.jobs["test-run-dotnet-tests-blocks"].steps[] | setup] as $blocks |
+    ($shared[0]|versions) as $versions |
+    ($shared|length)==1 and ($mapping|length)==1 and ($blocks|length)==1 and
+    ($shared[0]|mandatory) and ($mapping[0]|mandatory) and ($blocks[0]|mandatory) and
+    ($versions|length)==2 and
+    ($versions[0]|test("^9[.]0[.][0-9]+$")) and
+    ($versions[1]|test("^10[.]0[.][0-9]+$")) and
+    ($mapping[0]|versions)==[$versions[1]] and
+    ($blocks[0]|versions)==$versions
+  ' "$1" >/dev/null
+}
+yq -o=json . "$root/actions/run-dotnet-tests/action.yaml" >"$work/sdk.json"
+check_sdks "$work/ci.json" "$work/sdk.json" || {
+  echo 'FAIL: .NET SDKs must be exact released-generation pins with complete fixture lockstep' >&2
+  exit 1
+}
+sdk_controls=0
+for mutation in \
+  '.runs.steps[0].with["dotnet-version"]="9\n10"' \
+  '.runs.steps[0].with["dotnet-version"]="9.0.x\n10.0.x"' \
+  '.runs.steps[0].with["dotnet-version"]="9.0.319"' \
+  '.runs.steps[0].with["dotnet-version"]="10.0.402"' \
+  '.runs.steps[0].with["dotnet-version"]="9.0.319\n10.0.402-preview.1"' \
+  '.runs.steps[0].if="false"' \
+  '.runs.steps[0]["continue-on-error"]=true' \
+  'del(.runs.steps[0])' \
+  '.runs.steps += [.runs.steps[0]]'; do
+  jq "$mutation" "$work/sdk.json" >"$work/broken-sdk.json"
+  if check_sdks "$work/ci.json" "$work/broken-sdk.json"; then
+    echo 'FAIL: accepted floating, incomplete or bypassed SDK provisioning' >&2
+    exit 1
+  fi
+  sdk_controls=$((sdk_controls + 1))
+done
+for mutation in \
+  '.jobs["test-run-dotnet-tests-preserves-source-mapping"].steps |= map(if (.uses // "" | startswith("actions/setup-dotnet@")) then .with["dotnet-version"]="10" else . end)' \
+  '.jobs["test-run-dotnet-tests-blocks"].steps |= map(select((.uses // "" | startswith("actions/setup-dotnet@")) | not))' \
+  '.jobs["test-run-dotnet-tests-blocks"].steps |= map(if (.uses // "" | startswith("actions/setup-dotnet@")) then .with["dotnet-version"]="9.0.318\n10.0.402" else . end)'; do
+  jq "$mutation" "$work/ci.json" >"$work/broken-sdk-ci.json"
+  if check_sdks "$work/broken-sdk-ci.json" "$work/sdk.json"; then
+    echo 'FAIL: accepted missing, floating or mismatched fixture SDKs' >&2
+    exit 1
+  fi
+  sdk_controls=$((sdk_controls + 1))
+done
+echo "PASS: exact SDK provisioning and $sdk_controls refusal controls"
+check_ci "$work/ci.json" || {
+  echo 'FAIL: native OS, token or fixture binding changed' >&2
+  exit 1
+}
+check_action "$work/action.json" || {
+  echo 'FAIL: source-state comparison or real action binding changed' >&2
+  exit 1
+}
 controls=0
 for id in test-run-dotnet-tests-workflow test-run-dotnet-tests-workflow-authenticated; do
   for mutation in \
@@ -63,9 +125,12 @@ for id in test-run-dotnet-tests-workflow test-run-dotnet-tests-workflow-authenti
     '.steps[-1].if="false"' \
     '.steps[-1]["continue-on-error"]=true' \
     '.steps[-1].uses="./another-action"'; do
-    jq --arg id "$id" ".jobs[\$id] |= ($mutation)" "$work/ci.json" > "$work/broken.json"
-    if check_ci "$work/broken.json"; then echo "FAIL: accepted native fixture mutation $id" >&2; exit 1; fi
-    controls=$((controls+1))
+    jq --arg id "$id" ".jobs[\$id] |= ($mutation)" "$work/ci.json" >"$work/broken.json"
+    if check_ci "$work/broken.json"; then
+      echo "FAIL: accepted native fixture mutation $id" >&2
+      exit 1
+    fi
+    controls=$((controls + 1))
   done
 done
 for mutation in \
@@ -79,19 +144,23 @@ for mutation in \
   '.runs.steps[3].run="echo unchanged"' \
   '.runs.steps[3].env.BEFORE_STATE=""' \
   '.runs.steps[3]["continue-on-error"]=true'; do
-  jq "$mutation" "$work/action.json" > "$work/broken.json"
-  if check_action "$work/broken.json"; then echo 'FAIL: accepted source-state or token regression' >&2; exit 1; fi
-  controls=$((controls+1))
+  jq "$mutation" "$work/action.json" >"$work/broken.json"
+  if check_action "$work/broken.json"; then
+    echo 'FAIL: accepted source-state or token regression' >&2
+    exit 1
+  fi
+  controls=$((controls + 1))
 done
 # Execute the actual isolation guard with a separate native action cache and
 # reject the former workspace-relative source placement, not just its spelling.
 mkdir -p "$work/action-cache" "$work/consumer/actions/inside"
-yq -r '.runs.steps[0].run' "$action" > "$work/isolation.sh"
+yq -r '.runs.steps[0].run' "$action" >"$work/isolation.sh"
 FIXTURE_ACTION_SOURCE="$work/action-cache" FIXTURE_WORKSPACE="$work/consumer" \
   bash "$work/isolation.sh"
 if FIXTURE_ACTION_SOURCE="$work/consumer/actions/inside" FIXTURE_WORKSPACE="$work/consumer" \
-  bash "$work/isolation.sh" > "$work/isolation-failure" 2>&1; then
-  echo 'FAIL: native action source may pollute the consumer workspace' >&2; exit 1;
+  bash "$work/isolation.sh" >"$work/isolation-failure" 2>&1; then
+  echo 'FAIL: native action source may pollute the consumer workspace' >&2
+  exit 1
 fi
 grep -q 'Native action source entered the consumer workspace' "$work/isolation-failure"
 echo "PASS: both native .NET fixture jobs and $controls refusal controls"

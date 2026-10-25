@@ -17,10 +17,11 @@ runs:
       uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
       with:
         # Provision both the previous STS (9) and the current LTS (10) so callers can
-        # target either TFM. Multiple lines install side-by-side SDKs.
+        # target either TFM. Exact published SDKs avoid premature channel redirects.
+        # Refresh these pins together with the two native fixture setup steps.
         dotnet-version: |
-          9
-          10
+          9.0.319
+          10.0.402
     - name: 🚚 Restore packages with GitHub Packages
       if: inputs.github-token != ''
       run: |
