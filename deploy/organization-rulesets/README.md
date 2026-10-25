@@ -46,7 +46,7 @@ verb — e.g. `require-pull-request.yaml`). Repo-scoped rulesets live next door 
 | `protect-release-tags.yaml` | **Protect release tags** (net-new) | Managed (Create) — block tag delete + force-move + require `v<semver>` |
 | `require-world-at-ruin-trusted-regressions.yaml` | **Require workflow - World at Ruin trusted regressions** (net-new) | Managed (Create) — target only World at Ruin and require the canonical catalogue's trusted regression workflow |
 | `require-monorepo-ci-aggregate-contract.yaml` | **Require workflow - Monorepo CI aggregate contract** (retired) | Managed (Create), non-deleting — disabled with one inert rule and no workflow association after native shared-admission proof |
-| `require-repository-pr-admission.yaml` | **Require workflow - Repository PR admission** | Managed (Create) — target monorepo, this catalogue and World at Ruin; trusted shared source runs each product-owned base-revision action, with a repository-bound executed result required for each |
+| `require-repository-pr-admission.yaml` | **Require workflow - Repository PR admission** | Managed (Create) — target monorepo and this catalogue; trusted shared source runs each product-owned base-revision action, with a repository-bound executed result required for each; World's new enrollment is paused within approved recovery |
 | `require-dotgithub-deploy-guards.yaml` | **Require workflow - .github deploy guards** (retired) | Managed (Create), non-deleting — disabled with one inert rule and no workflow association after native shared-admission proof |
 | `require-go-template-validation.yaml` | **Require workflow - Go template validation** (retired) | Managed (Create) — disabled after native repository validation proof; retain identity, selectors and non-deleting lifecycle |
 | `require-dotnet-template-tests.yaml` | **Require workflow - .NET template tests** (retired) | Managed (Create) — disabled with one inert rule (no required workflow; the provider requires a rules block) after native repository validation proof; retain identity, selectors and non-deleting lifecycle |
@@ -104,21 +104,23 @@ in [#703](https://github.com/devantler-tech/.github/issues/703).
 
 ### Shared admission rollout
 
-The shared runner enrolls monorepo, this configuration catalogue and World at Ruin. All three repositories also require
+The shared runner enrolls monorepo and this configuration catalogue. Both repositories also require
 `Run reviewed product admission` from GitHub Actions. The source-only `Admission not selected`
 result does not satisfy that requirement. Product validators and budgets come from their immutable
 reviewed bases, never from candidate actions. The monorepo and catalogue's former singleton organization associations
 are disabled inert records, without workflow associations or deletion authority. Their identity
-and narrow target selectors remain declared; the common workflow and all three repository result
+and narrow target selectors remain declared; the common workflow and both repository result
 bindings stay active without bypasses.
 
-World's enrollment is restored after the reviewed product-event repair
-([World #1550](https://github.com/devantler-tech/world-at-ruin/pull/1550)), completing the temporary
-recovery of its initial rejected events ([World #1547](https://github.com/devantler-tech/world-at-ruin/issues/1547)).
-Its executed-result identity, selector, producer and non-deleting lifecycle are unchanged. The
-established World-specific required workflow stays active for native overlap validation. Read back
-both restored bindings, then repeat native positive and refusal controls before any separate
-retirement of the old source. Enrollment alone does not prove execution or protection.
+World's event repair ([#1550](https://github.com/devantler-tech/world-at-ruin/pull/1550)) and
+restoration ([#753](https://github.com/devantler-tech/.github/pull/753)) reached native overlap.
+The documentation-only control [World #1551](https://github.com/devantler-tech/world-at-ruin/pull/1551)
+then verified its integration identity but exposed a missing host engine installation before regressions.
+Within the maintainer-approved recovery, its new selection is paused and its executed-result
+record retained disabled. Identity, selector, producer and non-deleting lifecycle are unchanged;
+the established World-specific workflow stays active. Repair and review the engine setup, restore
+both bindings, and repeat native positive and refusal controls before any separate old-source retirement.
+Enrollment alone does not prove execution or protection.
 
 Read back released native enforcement before exercising a product's real positive and tampering
 controls. Those controls must pass for that product before its old association is retired. Per-product
