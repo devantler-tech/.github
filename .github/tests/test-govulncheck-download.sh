@@ -57,53 +57,50 @@ blocks 'a skippable download' '(.runs.steps[] | select((.run // "") | contains("
 blocks 'a different Go toolchain from the scan' '(.runs.steps[] | select((.run // "") | contains("download.sh")) | .env.GOTOOLCHAIN) = "auto"'
 blocks 'a retried scan' '(.runs.steps[] | select(.id == "scan") | .run) = "bash \"$ACTION_PATH/../../../.scripts/retry.sh\" bash \"$ACTION_PATH/scan.sh\""'
 
-# Drive the real download script and retry helper. The fixture `go` answers the
-# offline load probe with OFFLINE_STATUS, and fails the first FAILURES download
-# calls the way the proxy does before succeeding.
+# The load must cover exactly what the scan reads: the same ./... pattern, without tests.
 script="$root/.github/actions/govulncheck/download.sh"
 retry="$root/.scripts/retry.sh"
+grep -qF '"$scanner" -format=json -scan=symbol ./...)' "$root/.github/actions/govulncheck/scan.sh" ||
+  fail 'the scan must load ./... without tests, as the download does'
+grep -qF 'bash "$retry" go list -deps ./... >/dev/null' "$script" ||
+  fail 'the download must load the packages the scan reads, through the retry helper'
+echo 'PASS: the download loads exactly the packages the scan reads'
+
+# Drive the real download script and retry helper. The fixture `go` fails the
+# first FAILURES loads the way the proxy does, then succeeds.
 attempts="$(yq -r '.runs.steps[] | select((.run // "") | contains("download.sh")) | .env.RETRY_MAX_ATTEMPTS' "$action")"
 mkdir -p "$work/bin" "$work/module with spaces"
 cat >"$work/bin/go" <<'SH'
 #!/usr/bin/env bash
 set -euo pipefail
-if [[ "$*" == 'list -deps ./...' ]]; then
-  printf '%s|%s|%s\n' "$PWD" "${GOPROXY-}" "$*" >>"$PROBES"
-  exit "$OFFLINE_STATUS"
-fi
-printf '%s|%s|%s\n' "$PWD" "${GOPROXY-}" "$*" >>"$CALLS"
+printf '%s|%s\n' "$PWD" "$*" >>"$CALLS"
 calls="$(wc -l <"$CALLS")"
 if ((calls <= FAILURES)); then
   echo 'stream error: stream ID 1; INTERNAL_ERROR; received from peer' >&2
   exit 1
 fi
+echo 'example.com/m'
 SH
 chmod +x "$work/bin/go"
-export PATH="$work/bin:$PATH" CALLS="$work/calls" PROBES="$work/probes" RETRY_MAX_ATTEMPTS="$attempts" RETRY_BASE_DELAY=0
-unset GOPROXY
+export PATH="$work/bin:$PATH" CALLS="$work/calls" RETRY_MAX_ATTEMPTS="$attempts" RETRY_BASE_DELAY=0
 module="$work/module with spaces"
-run() { # run <label> <offline-status> <failures> <want-exit> <want-calls> <expected-output>
+run() { # run <label> <failures> <want-exit> <want-calls> <expected-output>
   local label="$1" rc=0 out calls=0
   : >"$CALLS"
-  : >"$PROBES"
-  out="$(cd "$work" && OFFLINE_STATUS="$2" FAILURES="$3" bash "$script" "module with spaces" "$retry" 2>&1)" || rc=$?
+  out="$(cd "$work" && FAILURES="$2" bash "$script" "module with spaces" "$retry" 2>&1)" || rc=$?
   [[ -s "$CALLS" ]] && calls="$(wc -l <"$CALLS")"
-  if [[ "$rc" != "$4" ]] || ((calls != $5)) || [[ "$out" != *"$6"* ]]; then
-    printf 'FAIL: %s: wanted exit %s after %s downloads with %s; got exit %s after %s downloads\n%s\n' \
-      "$label" "$4" "$5" "$6" "$rc" "$calls" "$out" >&2
+  if [[ "$rc" != "$3" ]] || ((calls != $4)) || [[ "$out" != *"$5"* ]]; then
+    printf 'FAIL: %s: wanted exit %s after %s loads with %s; got exit %s after %s loads\n%s\n' \
+      "$label" "$3" "$4" "$5" "$rc" "$calls" "$out" >&2
     exit 1
   fi
-  # Exactly one probe, in the module, with the network off; downloads use the caller's proxy.
-  [[ "$(cat "$PROBES")" == "$module|off|list -deps ./..." ]] ||
-    fail "$label: the offline probe must run once in the module with GOPROXY=off: $(cat "$PROBES")"
-  if ((calls > 0)) && grep -vqxF "$module||mod download" "$CALLS"; then
-    fail "$label: download ran outside the module, offline or with other arguments: $(cat "$CALLS")"
+  if grep -vqxF "$module|list -deps ./..." "$CALLS"; then
+    fail "$label: Go ran outside the module or with other arguments: $(cat "$CALLS")"
   fi
+  [[ "$out" != *'example.com/m'* ]] || fail "$label: the package listing must not reach the log"
   echo "PASS: $label"
 }
-# Go loading every package offline covers vendoring, workspace vendoring, -mod flags and a warm cache.
-run 'packages Go loads offline need no download' 0 3 0 0 'nothing to download'
-run 'a reachable proxy downloads once' 1 0 0 1 'Downloaded the module dependencies'
-run 'a transient proxy error is retried' 1 2 0 3 'Downloaded the module dependencies'
-run 'an unreachable proxy fails naming the download' 1 3 1 3 'The scan did not run; this is not a vulnerability finding.'
+run 'available packages load once' 0 0 1 'Every package the scan reads is available.'
+run 'a transient proxy error is retried' 2 0 3 'Every package the scan reads is available.'
+run 'an unreachable proxy fails naming the load' 3 1 3 'The scan did not run; this is not a vulnerability finding.'
 echo 'PASS: module download retry and failure boundaries'
