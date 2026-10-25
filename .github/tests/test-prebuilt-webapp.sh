@@ -74,12 +74,68 @@ case "${*: -1}" in
   *) exit 82 ;;
 esac
 printf 'read\n' >> "$FIXTURE/reads"
-cat "$FIXTURE/current-run.json"
-if [[ "$FAULT" == attempt-changed && "$(grep -c '^read$' "$FIXTURE/reads")" == 3 ]]; then
-  printf '{"run_attempt":3}\n'
+output='' headers='' write_status=false
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --output) output="$2"; shift 2 ;;
+    --dump-header) headers="$2"; shift 2 ;;
+    --write-out) [[ "$2" == '%{http_code}' ]] || exit 92; write_status=true; shift 2 ;;
+    *) shift ;;
+  esac
+done
+status=200
+response_headers='HTTP/2 200'
+read_count="$(grep -c '^read$' "$FIXTURE/reads")"
+case "$FAULT" in
+  rate-transient)
+    if [[ "$read_count" == 1 ]]; then status=403; response_headers=$'HTTP/2 403\r\nRetry-After: 1'; fi ;;
+  rate-attempt-read)
+    if [[ "$read_count" == 2 ]]; then status=403; response_headers=$'HTTP/2 403\r\nRetry-After: 1'; fi ;;
+  rate-final-read)
+    if [[ "$read_count" == 3 ]]; then status=403; response_headers=$'HTTP/2 403\r\nRetry-After: 1'; fi ;;
+  rate-primary)
+    if [[ "$read_count" == 1 ]]; then status=403; response_headers=$'HTTP/2 403\r\nx-ratelimit-remaining: 0\r\nX-RateLimit-Reset: 1000000002'; fi ;;
+  rate-both-delays)
+    if [[ "$read_count" == 1 ]]; then status=403; response_headers=$'HTTP/2 403\r\nRetry-After: 1\r\nX-RateLimit-Remaining: 0\r\nX-RateLimit-Reset: 1000000002'; fi ;;
+  rate-secondary)
+    if [[ "$read_count" == 1 ]]; then status=429; response_headers='HTTP/2 429'; fi ;;
+  rate-secondary-persistent) status=429; response_headers='HTTP/2 429' ;;
+  rate-budget)
+    if [[ "$read_count" == 1 || "$read_count" == 3 || "$read_count" == 5 ]]; then
+      status=429; response_headers=$'HTTP/2 429\r\nRetry-After: 60'
+    fi ;;
+  malformed-delay) status=403; response_headers=$'HTTP/2 403\r\nRetry-After: invalid' ;;
+  duplicate-delay) status=403; response_headers=$'HTTP/2 403\r\nRetry-After: 1\r\nretry-after: 1' ;;
+  primary-long-reset) status=403; response_headers=$'HTTP/2 403\r\nX-RateLimit-Remaining: 0\r\nX-RateLimit-Reset: 1000003600' ;;
+  rate-persistent) status=429; response_headers=$'HTTP/2 429\r\nRetry-After: 1' ;;
+  forbidden) status=403; response_headers=$'HTTP/2 403\r\nX-RateLimit-Remaining: 42' ;;
+  long-rate-limit) status=403; response_headers=$'HTTP/2 403\r\nRetry-After: 3600' ;;
+esac
+[[ -z "$headers" ]] || printf '%s\r\n\r\n' "$response_headers" > "$headers"
+if [[ -n "$output" ]]; then
+  cat "$FIXTURE/current-run.json" > "$output"
+else
+  cat "$FIXTURE/current-run.json"
 fi
+if [[ "$FAULT" == attempt-changed && "$(grep -c '^read$' "$FIXTURE/reads")" == 3 ]]; then
+  if [[ -n "$output" ]]; then printf '{"run_attempt":3}\n' >> "$output"; else printf '{"run_attempt":3}\n'; fi
+fi
+if "$write_status"; then printf '%s' "$status"; fi
+[[ "$status" == 200 ]] || exit 22
 [[ "$FAULT" != partial-read ]] || exit 83
 CURL
+cat > "$work/bin/sleep" << 'SLEEP'
+#!/usr/bin/env bash
+set -euo pipefail
+[[ $# == 1 && "$1" =~ ^[0-9]+$ ]] || exit 93
+printf '%s\n' "$1" >> "$FIXTURE/waits"
+SLEEP
+cat > "$work/bin/date" << 'DATE'
+#!/usr/bin/env bash
+set -euo pipefail
+[[ "$*" == '+%s' ]] || exit 94
+printf '1000000000\n'
+DATE
 cat > "$work/bin/cosign" << 'COSIGN'
 #!/usr/bin/env bash
 set -euo pipefail
@@ -103,8 +159,9 @@ case "$1" in
   *) exit 91 ;;
 esac
 COSIGN
-chmod +x "$work/bin/curl" "$work/bin/cosign"
+chmod +x "$work/bin/curl" "$work/bin/cosign" "$work/bin/sleep" "$work/bin/date"
 
+# Restore independent source, signature, provenance and output state for one case.
 reset_fixture() {
   cp "$work/run.json" "$work/current-run.json"
   cp "$work/signature.json" "$work/current-signature.json"
@@ -114,7 +171,9 @@ reset_fixture() {
   cp "$work/deploy/webapp.yaml" "$work/before.yaml"
   : > "$work/output"
   : > "$work/reads"
+  : > "$work/waits"
 }
+# Run the actual verifier with only its external observations replaced by fixtures.
 invoke() {
   local fault="$1"
   shift
@@ -134,6 +193,39 @@ yq -o=json -I=0 '.' "$work/deploy/webapp.yaml" | jq -s -e --arg image "ghcr.io/d
   ]' > /dev/null || fail 'did not pin only the selected image and preserve other documents'
 grep -qx "digest=$image_digest" "$work/output" || fail 'missing verified image output'
 grep -qx "public-digest=$public_digest" "$work/output" || fail 'missing verified public digest output'
+
+# Removing recovery must reject a valid source after a transient quota refusal.
+for fault in rate-transient rate-attempt-read rate-final-read rate-primary rate-both-delays rate-secondary; do
+  reset_fixture
+  invoke "$fault" > "$work/log" 2>&1 || fail "transient quota refusal prevented valid verification ($fault): $(cat "$work/log")"
+  [[ "$(grep -c '^read$' "$work/reads")" == 4 ]] || fail 'transient refusal did not retain all three source observations'
+  case "$fault" in
+    rate-primary|rate-both-delays) expected_wait=2 ;;
+    rate-secondary) expected_wait=60 ;;
+    *) expected_wait=1 ;;
+  esac
+  [[ "$(cat "$work/waits")" == "$expected_wait" ]] || fail "$fault did not respect the required wait before recovery"
+  grep -qx "digest=$image_digest" "$work/output" || fail 'recovered verification omitted its output'
+done
+
+# Broad retries, unbounded recovery, or accepting error response bytes must fail.
+for fault in rate-persistent forbidden long-rate-limit primary-long-reset malformed-delay duplicate-delay rate-secondary-persistent rate-budget; do
+  reset_fixture
+  if invoke "$fault" > "$work/log" 2>&1; then fail "accepted $fault"; fi
+  cmp -s "$work/before.yaml" "$work/deploy/webapp.yaml" || fail "$fault changed manifests"
+  [[ ! -s "$work/output" ]] || fail "$fault exposed successful outputs"
+  if [[ "$fault" == rate-persistent ]]; then
+    [[ "$(grep -c '^read$' "$work/reads")" == 3 ]] || fail 'persistent quota refusal escaped the three-read bound'
+    [[ "$(cat "$work/waits")" == $'1\n1' ]] || fail 'persistent refusal did not respect the advertised waits'
+    grep -q 'public CI API rate limit' "$work/log" || fail 'quota exhaustion was not identified'
+  elif [[ "$fault" == rate-secondary-persistent ]]; then
+    [[ "$(grep -c '^read$' "$work/reads")" == 2 && "$(cat "$work/waits")" == 60 ]] || fail 'secondary retries ignored increasing backoff or the total budget'
+  elif [[ "$fault" == rate-budget ]]; then
+    [[ "$(grep -c '^read$' "$work/reads")" == 5 && "$(cat "$work/waits")" == $'60\n60' ]] || fail 'separate observations escaped the shared delay budget'
+  else
+    [[ "$(grep -c '^read$' "$work/reads")" == 1 && ! -s "$work/waits" ]] || fail "$fault was retried"
+  fi
+done
 
 for fault in partial-read partial-signature partial-attestation attempt-changed; do
   reset_fixture
