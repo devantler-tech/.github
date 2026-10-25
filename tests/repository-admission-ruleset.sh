@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Bind active products and retain World's established gate during enrollment recovery.
+# Bind all three products while retaining World's established overlap gate.
 set -euo pipefail
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 work="$(mktemp -d)"
@@ -45,7 +45,7 @@ check_render() {
       managementPolicies:managed,
       forProvider:{
         name:"Require workflow - Repository PR admission",target:"branch",enforcement:"active",
-        conditions:[{refName:[{include:["~DEFAULT_BRANCH"],exclude:[]}],repositoryId:[786274843,933213756]}],
+        conditions:[{refName:[{include:["~DEFAULT_BRANCH"],exclude:[]}],repositoryId:[786274843,933213756,1303188705]}],
         rules:[{requiredWorkflows:[{requiredWorkflow:[{
           repositoryId:933213756,path:".github/workflows/repository-pr-admission.yaml",ref:"refs/heads/main"
         }]}]}]
@@ -57,7 +57,7 @@ check_render() {
     $dotgithub[0].apiVersion=="repo.github.m.upbound.io/v1alpha1" and
     $dotgithub[0].spec==repository_spec(".github") and
     $world[0].apiVersion=="repo.github.m.upbound.io/v1alpha1" and
-    $world[0].spec==(repository_spec("world-at-ruin") | .forProvider.enforcement="disabled") and
+    $world[0].spec==repository_spec("world-at-ruin") and
     $oldWorld[0].apiVersion=="enterprise.github.m.upbound.io/v1alpha1" and
     $oldWorld[0].spec=={
       managementPolicies:managed,
@@ -133,7 +133,7 @@ done
 for mutation in \
   '.spec.forProvider.conditions[0].repositoryId += [933213756]' \
   '.spec.forProvider.conditions[0].repositoryId = [786274843]' \
-  '.spec.forProvider.conditions[0].repositoryId += [1303188705]' \
+  '.spec.forProvider.conditions[0].repositoryId = [786274843,933213756]' \
   '.spec.forProvider.conditions[0].repositoryId += [123456789]' \
   '.spec.forProvider.rules[0].requiredWorkflows[0].requiredWorkflow[0].repositoryId=786274843' \
   '.spec.forProvider.rules[0].requiredWorkflows[0].requiredWorkflow[0].ref="refs/heads/feature"' \
@@ -160,4 +160,4 @@ for mutation in \
   if check_ci "$work/ci.yaml"; then fail 'accepted skipped or missing required CI invocation'; fi
   count=$((count+1))
 done
-printf 'repository admission policy: two active products, retained World recovery record, original World gate and %s refusal controls passed\n' "$count"
+printf 'repository admission policy: three active products, original World overlap gate and %s refusal controls passed\n' "$count"
