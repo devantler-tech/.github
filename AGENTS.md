@@ -107,7 +107,7 @@ for the architecture, the GitHub App credential setup, and the Observe-first ado
 ## Maintenance
 
 The **roadmap of record** is GitHub Issues — epic [#56](https://github.com/devantler-tech/.github/issues/56)
-("declarative GitHub-org-as-code") with `roadmap`-labelled children. Triage incoming issues into that
+("declarative GitHub-org-as-code") with native issue types and sub-issue links. Triage incoming issues into that
 structure; implementing PRs use `Fixes #N`.
 
 Organization settings not represented by the provider are audited against

@@ -27,8 +27,10 @@ out-of-band changes made in the GitHub UI.
   each granting a team a permission on a repo. The active policy grants
   `maintain` to Maintainers and `admin` to Admins without claiming Delete.
 - `labels/` — one `IssueLabels` per managed repo. The canonical org label
-  taxonomy lives once in `labels/kustomization.yaml` (a shared patch appended to
-  every repo); each `<repo>.yaml` adds only that repo's automation-specific
+  taxonomy has fifteen cross-cutting/lifecycle labels and lives once in
+  `labels/kustomization.yaml` (a shared patch appended to every repo). Native
+  issue types own classification; duplicate type-labels are retired (#747).
+  Each `<repo>.yaml` adds only that repo's automation-specific
   extras, including dependency/ecosystem and lifecycle labels. Authoritative —
   out-of-band label drift is reverted. This is
   the Crossplane replacement for the old EndBug/label-sync workflow.

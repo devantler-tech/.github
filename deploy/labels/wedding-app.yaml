@@ -1,4 +1,4 @@
-# Issue labels for devantler-tech/wedding-app. The canonical org taxonomy (22 labels)
+# Issue labels for devantler-tech/wedding-app. The canonical org taxonomy (15 labels)
 # is appended to every IssueLabels by the shared patch in kustomization.yaml; this
 # file adds only wedding-app's repo-specific extras (the dependency/ecosystem labels
 # Dependabot/Renovate apply), declared so the authoritative set doesn't churn
