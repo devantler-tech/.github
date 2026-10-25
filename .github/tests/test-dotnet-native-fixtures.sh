@@ -59,11 +59,15 @@ check_sdks() {
     def versions: .with["dotnet-version"] | tostring | split("\n") | map(select(length>0));
     def mandatory: .if==null and .["continue-on-error"]==null;
     [$sdk_action[0].runs.steps[] | setup] as $shared |
+    [$sdk_action[0].runs.steps[] | select(.id=="sdk-check")] as $probe |
     [.jobs["test-run-dotnet-tests-preserves-source-mapping"].steps[] | setup] as $mapping |
     [.jobs["test-run-dotnet-tests-blocks"].steps[] | setup] as $blocks |
     ($shared[0]|versions) as $versions |
     ($shared|length)==1 and ($mapping|length)==1 and ($blocks|length)==1 and
-    ($shared[0]|mandatory) and ($mapping[0]|mandatory) and ($blocks[0]|mandatory) and
+    $shared[0].if=="steps.sdk-check.outputs.install-needed != '\''false'\''" and
+    $shared[0]["continue-on-error"]==null and
+    ($probe|length)==1 and ($probe[0]|mandatory) and $probe[0].shell=="bash" and
+    ($probe[0].env.SDK_VERSIONS|tostring|split("\n")|map(select(length>0)))==$versions and ($mapping[0]|mandatory) and ($blocks[0]|mandatory) and
     ($versions|length)==2 and
     ($versions[0]|test("^9[.]0[.][0-9]+$")) and
     ($versions[1]|test("^10[.]0[.][0-9]+$")) and
@@ -78,15 +82,18 @@ check_sdks "$work/ci.json" "$work/sdk.json" || {
 }
 sdk_controls=0
 for mutation in \
-  '.runs.steps[0].with["dotnet-version"]="9\n10"' \
-  '.runs.steps[0].with["dotnet-version"]="9.0.x\n10.0.x"' \
-  '.runs.steps[0].with["dotnet-version"]="9.0.319"' \
-  '.runs.steps[0].with["dotnet-version"]="10.0.402"' \
-  '.runs.steps[0].with["dotnet-version"]="9.0.319\n10.0.402-preview.1"' \
+  '.runs.steps[1].with["dotnet-version"]="9\n10"' \
+  '.runs.steps[1].with["dotnet-version"]="9.0.x\n10.0.x"' \
+  '.runs.steps[1].with["dotnet-version"]="9.0.319"' \
+  '.runs.steps[1].with["dotnet-version"]="10.0.402"' \
+  '.runs.steps[1].with["dotnet-version"]="9.0.319\n10.0.402-preview.1"' \
+  '.runs.steps[0].env.SDK_VERSIONS="9.0.319"' \
   '.runs.steps[0].if="false"' \
-  '.runs.steps[0]["continue-on-error"]=true' \
   'del(.runs.steps[0])' \
-  '.runs.steps += [.runs.steps[0]]'; do
+  '.runs.steps[1].if="false"' \
+  '.runs.steps[1]["continue-on-error"]=true' \
+  'del(.runs.steps[1])' \
+  '.runs.steps += [.runs.steps[1]]'; do
   jq "$mutation" "$work/sdk.json" >"$work/broken-sdk.json"
   if check_sdks "$work/ci.json" "$work/broken-sdk.json"; then
     echo 'FAIL: accepted floating, incomplete or bypassed SDK provisioning' >&2
@@ -105,6 +112,52 @@ for mutation in \
   fi
   sdk_controls=$((sdk_controls + 1))
 done
+# Execute the actual selection step against complete and refused SDK listings.
+yq -r '.runs.steps[] | select(.id=="sdk-check") | .run' "$root/actions/run-dotnet-tests/action.yaml" >"$work/sdk-probe.sh"
+yq -r '.runs.steps[] | select(.id=="sdk-check") | .env.SDK_VERSIONS' "$root/actions/run-dotnet-tests/action.yaml" >"$work/sdk-versions"
+mkdir -p "$work/sdk-bin"
+cat >"$work/sdk-bin/dotnet" <<'DOTNET'
+#!/usr/bin/env bash
+[[ "$*" == --list-sdks ]] || exit 91
+printf '%s' "$SDK_LISTING"
+exit "$SDK_LIST_EXIT"
+DOTNET
+chmod +x "$work/sdk-bin/dotnet"
+probe_case() {
+  local name=$1 expected=$2 listing=$3 result=$4
+  : >"$work/sdk-output"
+  DOTNET_INSTALL_DIR='' SDK_LISTING="$listing" SDK_LIST_EXIT="$result" SDK_VERSIONS="$(cat "$work/sdk-versions")" \
+  GITHUB_OUTPUT="$work/sdk-output" PATH="$work/sdk-bin:$PATH" bash "$work/sdk-probe.sh"
+  grep -qx "install-needed=$expected" "$work/sdk-output" || {
+    echo "FAIL: SDK listing $name misclassified" >&2
+    exit 1
+  }
+}
+first=$(sed -n '1p' "$work/sdk-versions")
+second=$(sed -n '2p' "$work/sdk-versions")
+complete="$first [/fixture/sdk]"$'\n'"$second [/fixture/sdk]"
+probe_case exact false "$complete" 0
+probe_case missing true '' 0
+probe_case missing_previous true "$second [/fixture/sdk]" 0
+probe_case missing_current true "$first [/fixture/sdk]" 0
+probe_case near_miss true "$first"'0 [/fixture/sdk]'$'\n'"$second [/fixture/sdk]" 0
+probe_case partial_failure true "$complete" 19
+: >"$work/sdk-output"
+DOTNET_INSTALL_DIR="$work/custom-sdk" SDK_LISTING="$complete" SDK_LIST_EXIT=0 SDK_VERSIONS="$(cat "$work/sdk-versions")" \
+GITHUB_OUTPUT="$work/sdk-output" PATH="$work/sdk-bin:$PATH" bash "$work/sdk-probe.sh"
+grep -qx 'install-needed=true' "$work/sdk-output" || {
+  echo 'FAIL: explicit install directory bypassed setup' >&2
+  exit 1
+}
+: >"$work/sdk-output"
+if SDK_VERSIONS='' GITHUB_OUTPUT="$work/sdk-output" PATH="$work/sdk-bin:$PATH" bash "$work/sdk-probe.sh"; then
+  echo 'FAIL: actual SDK probe accepted missing requirements' >&2
+  exit 1
+fi
+[[ ! -s "$work/sdk-output" ]] || {
+  echo 'FAIL: invalid requirements published output' >&2
+  exit 1
+}
 echo "PASS: exact SDK provisioning and $sdk_controls refusal controls"
 check_ci "$work/ci.json" || {
   echo 'FAIL: native OS, token or fixture binding changed' >&2
