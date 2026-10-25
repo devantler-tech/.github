@@ -55,7 +55,8 @@ yq -o=json . "$action" >"$work/action.json"
 # resolve a version before its download exists, so every installed SDK is exact.
 check_sdks() {
   jq -e --slurpfile sdk_action "$2" '
-    def setup: select((.uses // "") | test("^actions/setup-dotnet@[0-9a-f]{40}$"));
+    def setup: select((.uses // "") | startswith("actions/setup-dotnet@"));
+    def full_pin: (.uses // "") | test("^actions/setup-dotnet@[0-9a-f]{40}$");
     def versions: .with["dotnet-version"] | tostring | split("\n") | map(select(length>0));
     def mandatory: .if==null and .["continue-on-error"]==null;
     [$sdk_action[0].runs.steps[] | setup] as $shared |
@@ -64,6 +65,7 @@ check_sdks() {
     [.jobs["test-run-dotnet-tests-blocks"].steps[] | setup] as $blocks |
     ($shared[0]|versions) as $versions |
     ($shared|length)==1 and ($mapping|length)==1 and ($blocks|length)==1 and
+    all($shared[]; full_pin) and all($mapping[]; full_pin) and all($blocks[]; full_pin) and
     $shared[0].if=="steps.sdk-check.outputs.install-needed != '\''false'\''" and
     $shared[0]["continue-on-error"]==null and
     ($probe|length)==1 and ($probe[0]|mandatory) and $probe[0].shell=="bash" and
@@ -93,7 +95,8 @@ for mutation in \
   '.runs.steps[1].if="false"' \
   '.runs.steps[1]["continue-on-error"]=true' \
   'del(.runs.steps[1])' \
-  '.runs.steps += [.runs.steps[1]]'; do
+  '.runs.steps += [.runs.steps[1]]' \
+  '.runs.steps += [(.runs.steps[1] | .uses="actions/setup-dotnet@v4")]'; do
   jq "$mutation" "$work/sdk.json" >"$work/broken-sdk.json"
   if check_sdks "$work/ci.json" "$work/broken-sdk.json"; then
     echo 'FAIL: accepted floating, incomplete or bypassed SDK provisioning' >&2
@@ -104,7 +107,9 @@ done
 for mutation in \
   '.jobs["test-run-dotnet-tests-preserves-source-mapping"].steps |= map(if (.uses // "" | startswith("actions/setup-dotnet@")) then .with["dotnet-version"]="10" else . end)' \
   '.jobs["test-run-dotnet-tests-blocks"].steps |= map(select((.uses // "" | startswith("actions/setup-dotnet@")) | not))' \
-  '.jobs["test-run-dotnet-tests-blocks"].steps |= map(if (.uses // "" | startswith("actions/setup-dotnet@")) then .with["dotnet-version"]="9.0.318\n10.0.402" else . end)'; do
+  '.jobs["test-run-dotnet-tests-blocks"].steps |= map(if (.uses // "" | startswith("actions/setup-dotnet@")) then .with["dotnet-version"]="9.0.318\n10.0.402" else . end)' \
+  '.jobs["test-run-dotnet-tests-preserves-source-mapping"].steps += [{uses:"actions/setup-dotnet@v4",with:{"dotnet-version":"10.0.402"}}]' \
+  '.jobs["test-run-dotnet-tests-blocks"].steps += [{uses:"actions/setup-dotnet@v4",with:{"dotnet-version":"9.0.319\n10.0.402"}}]'; do
   jq "$mutation" "$work/ci.json" >"$work/broken-sdk-ci.json"
   if check_sdks "$work/broken-sdk-ci.json" "$work/sdk.json"; then
     echo 'FAIL: accepted missing, floating or mismatched fixture SDKs' >&2
