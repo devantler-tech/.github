@@ -43,10 +43,54 @@ ref="$image@$PREBUILT_IMAGE_DIGEST"
 identity="https://github.com/$REPOSITORY/.github/workflows/ci.yaml@refs/heads/main"
 run_url="https://api.github.com/repos/$REPOSITORY/actions/runs/$PREBUILT_CI_RUN_ID"
 
+rate_limit_waited=0
+response_header() {
+  awk -v field="$1" '
+    index(tolower($0), field ":") == 1 {
+      count++; value = substr($0, length(field) + 2)
+      sub(/^[ \t]+/, "", value); sub(/\r$/, "", value)
+    }
+    END { if (count > 1) exit 1; if (count == 1) print value }
+  ' "$work/run.headers"
+}
 read_run() {
   # Deliberately credential-free. Private or inaccessible source CI is unsupported.
-  curl -q --fail --silent --show-error --connect-timeout 10 --max-time 20 --max-filesize 1048576 --proto '=https' \
-    -H 'Accept: application/vnd.github+json' "$1" > "$work/run.json" || fail 'cannot read complete public CI evidence'
+  local attempt http_code curl_status retry_after remaining reset wait_seconds reset_wait now
+  for attempt in 1 2 3; do
+    : > "$work/run.json"
+    : > "$work/run.headers"
+    curl_status=0
+    http_code="$(curl -q --fail --silent --show-error --connect-timeout 10 --max-time 20 --max-filesize 1048576 --proto '=https' \
+      --dump-header "$work/run.headers" --output "$work/run.json" --write-out '%{http_code}' \
+      -H 'Accept: application/vnd.github+json' "$1")" || curl_status=$?
+    if [[ "$curl_status" == 0 && "$http_code" == 200 ]]; then break; fi
+    [[ "$curl_status" == 22 && ( "$http_code" == 403 || "$http_code" == 429 ) ]] ||
+      fail 'cannot read complete public CI evidence'
+    retry_after="$(response_header retry-after)" || fail 'cannot read public CI rate-limit headers'
+    remaining="$(response_header x-ratelimit-remaining)" || fail 'cannot read public CI rate-limit headers'
+    reset="$(response_header x-ratelimit-reset)" || fail 'cannot read public CI rate-limit headers'
+    wait_seconds=$((60 * attempt))
+    if [[ -n "$retry_after" ]]; then
+      [[ "$retry_after" =~ ^[0-9]{1,9}$ ]] || fail 'invalid public CI rate-limit delay'
+      wait_seconds=$((10#$retry_after))
+    elif [[ "$remaining" != 0 && "$http_code" != 429 ]]; then
+      fail 'cannot read complete public CI evidence'
+    fi
+    if [[ "$remaining" == 0 ]]; then
+      [[ "$reset" =~ ^[0-9]{1,10}$ ]] || fail 'invalid public CI rate-limit reset'
+      now="$(date +%s)" || fail 'cannot observe the public CI rate-limit clock'
+      [[ "$now" =~ ^[0-9]{1,10}$ ]] || fail 'invalid public CI rate-limit clock'
+      reset_wait=$((10#$reset - 10#$now))
+      if [[ "$reset_wait" -lt 0 ]]; then reset_wait=0; fi
+      if [[ -z "$retry_after" || "$reset_wait" -gt "$wait_seconds" ]]; then wait_seconds=$reset_wait; fi
+    fi
+    # Respect GitHub's delay or stop. Never retry early to fit the CI budget.
+    [[ "$attempt" -lt 3 && "$wait_seconds" -le $((120 - rate_limit_waited)) ]] ||
+      fail 'public CI API rate limit exceeds bounded recovery; retry after quota resets'
+    echo "::warning::public CI API rate limit; retrying read after ${wait_seconds}s (attempt $attempt/3)" >&2
+    sleep "$wait_seconds" || fail 'cannot wait for the public CI API rate limit'
+    rate_limit_waited=$((rate_limit_waited + wait_seconds))
+  done
   jq -se --arg repo "$REPOSITORY" --arg sha "$SOURCE_SHA" --arg run "$PREBUILT_CI_RUN_ID" --arg attempt "$PREBUILT_CI_RUN_ATTEMPT" '
     length == 1 and (.[0] |
     .id == ($run | tonumber) and .run_attempt == ($attempt | tonumber) and

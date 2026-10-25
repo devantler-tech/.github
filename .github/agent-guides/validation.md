@@ -54,6 +54,13 @@ required CI. Legacy recovery must refuse prebuilt-marked evidence even when the
 new mode input is omitted. Caller/verifier adoption remains separate; #684 owns
 the finite rollout gate review and retirement.
 
+Public CI evidence reads remain credential-free. Retry only HTTP 429 or a 403
+with an explicit rate-limit header, at most three reads per observation and 120
+seconds of waiting across the complete verification. Respect Retry-After or the
+primary reset time; unadvertised 429 delays use increasing one-minute backoff.
+A longer required delay fails with a quota diagnosis instead of retrying early.
+Other failures and mismatched successful evidence are never retried.
+
 **Manifest naming:** Every `validate-naming` call validates the caller's versioned
 configuration. Keep the Linux/macOS clean fixtures, seeded naming violations and
 missing-configuration failures required in CI. Failed calls never report a
