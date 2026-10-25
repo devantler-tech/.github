@@ -149,8 +149,8 @@ These operate this catalogue itself; they are not reusable consumer interfaces.
 These are selected by declarative rulesets, not installed by copying a reusable-workflow example.
 Dependency review, auto-merge policy, workflow scanning and Go validation serve multiple products.
 Reviewed repository admission also serves multiple products while each product owns its validator.
-The World at Ruin source remains a compatibility gate pending its separate performance and
-native-enforcement migration; it is not a reusable consumer interface.
+World's product-specific evaluator lives in its own repository. Its former singleton source
+was retired after native positive and tampering controls passed under the shared runner.
 
 | Reference | Current responsibility | Source |
 |---|---|---|
@@ -159,10 +159,9 @@ native-enforcement migration; it is not a reusable consumer interface.
 | [Scan workflow vulnerabilities](#workflow-scan-workflows) | Shared workflow-security PR gate | [scan-for-workflow-vulnerabilities.yaml](.github/workflows/scan-for-workflow-vulnerabilities.yaml) |
 | [Validate Go project](#workflow-validate-go) | Shared Go validation, also reused by repository-owned jobs | [validate-go-project.yaml](.github/workflows/validate-go-project.yaml) |
 | [Repository PR admission](#workflow-repository-admission) | Shared read-only runner for each enrolled product's reviewed-base validation | [repository-pr-admission.yaml](.github/workflows/repository-pr-admission.yaml) |
-| [World at Ruin regressions](#workflow-world-regressions) | Trusted World at Ruin candidate validation from its reviewed base | [world-at-ruin-required-regressions.yaml](.github/workflows/world-at-ruin-required-regressions.yaml) |
 
-Do not remove or disable a compatibility gate merely because a local caller is green. The owning
-migration must prove the replacement's live enforcement first.
+An ownership migration must prove the replacement's live enforcement before retiring an older
+gate; a passing local caller alone is insufficient.
 
 ## Repository-owned PR checks
 
@@ -192,8 +191,8 @@ documented in the reference below, including internal interfaces.
 
 ## Workflow reference
 
-Every peer entry has one independently collapsible reference. Internal components and compatibility
-sources retain their interfaces here so the same input/secret parity check covers them.
+Every peer entry has one independently collapsible reference. Internal components retain their
+interfaces here so the same input/secret parity check covers them.
 
 <a name="workflow-repository-admission"></a>
 
@@ -208,9 +207,9 @@ runner execute each product's own admission action from the immutable reviewed b
 candidate implementation. Each repository separately requires the executed result from GitHub
 Actions; the source-only skipped job cannot satisfy that binding.
 
-World at Ruin's enrollment is restored after the reviewed engine setup repair. Its established
-regression workflow remains required during fresh native overlap validation. Restoration alone
-does not retire that protection; the remaining proof and cutover are tracked in [#693](https://github.com/devantler-tech/.github/issues/693).
+The former singleton sources are retired. Product validation and time budgets stay with each
+product; [catalogue ownership](.github/agent-guides/catalogue.md#repository-workflows) describes
+the shared boundary and the proof required before changing enforcement.
 
 This is not a `workflow_call` export and has no caller inputs or secrets. Product-specific rules
 and time budgets stay in the owning repository. New enrollments require actual positive and
@@ -234,38 +233,6 @@ singleton organization association is disabled without a workflow reference.
 This is not a reusable export and has no `workflow_call` inputs or secrets. There is no
 `merge_group` entrypoint: that event lacks the PR title, commits and body needed by the guards,
 so unsupported merge-group metadata cannot become an empty successful validation.
-
-</details>
-
-<a name="workflow-world-regressions"></a>
-
-### Ruleset workflow source: World at Ruin trusted regressions
-
-<details>
-<summary>Purpose, interface and usage</summary>
-
-[`world-at-ruin-required-regressions.yaml`](.github/workflows/world-at-ruin-required-regressions.yaml)
-is a target-specific GitHub ruleset workflow source, not a caller-facing reusable workflow. The
-World at Ruin organization ruleset is managed declaratively by `devantler-tech/.github` and selects
-this repository, path and `refs/heads/main`. provider-upjet-github v0.20.0 does not expose GitHub's
-immutable workflow SHA selector, so reviewed Actions `main` is the strongest source binding the
-deployed provider can express. `github.workflow_sha` still binds each individual run to the exact
-Actions revision GitHub selected. At runtime the workflow checks out candidate product bytes at
-`github.sha`, then separately checks out World at Ruin at GitHub's pull-request or merge-group base
-SHA. Only that trusted base snapshot supplies `client/tests`,
-`tools/required-regression-control.sh`, the test runner, and the aggregate verdict.
-
-The workflow deliberately completes as a no-op for ordinary events in this source repository and
-fails closed for every target other than `devantler-tech/world-at-ruin`. Keep the source workflow active:
-the eligibility no-op is the declarative-safe source-repository behavior, while disabling it would
-introduce unmanaged imperative state.
-
-Change the control boundary in this order: merge an exact-head-reviewed source change here, confirm a
-required-workflow run reports the merged `github.workflow_sha`, and verify live positive and negative
-World at Ruin controls. A repository/path/ref change additionally goes through a reviewed `.github`
-PR, released signed manifest bundle, reconciliation, and live ruleset read-back. Changes confined to
-World at Ruin tests or its controller need no source-workflow change because each run takes those
-bytes from the GitHub-supplied trusted base.
 
 </details>
 

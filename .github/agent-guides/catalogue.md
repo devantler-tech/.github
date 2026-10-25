@@ -177,7 +177,9 @@ These workflows do not declare `workflow_call`. Required CI checks this inventor
 `repository-pr-admission.yaml` shares only trusted-source resolution and a read-only runner.
 Enrollment covers monorepo, this configuration repository and World at Ruin. Their product-owned validators and
 repository-bound executed results replace the disabled singleton organization associations after
-native positive and tampering-refusal controls (#693). New enrollments require the same live proof
+native positive and tampering-refusal controls (#693). The unused World-only catalogue source
+and resolver are retired after native controls also passed with its old rule inactive;
+World retains its own evaluator and containment helpers. New enrollments require the same live proof
 before retiring their old gate. A broken reviewed source uses the maintainer-owned recovery procedure in
 [Maintenance](../../AGENTS.md#maintenance), never a candidate-controlled fallback or an automatic protection bypass.
 Each enrolled product owns `.github/actions/pr-admission/action.yaml`, with the fixed
@@ -219,4 +221,3 @@ pass; the generic budget bound is not permission to omit tests or declare that o
 | `repository-drift-check.yaml` | This repository |
 | `repository-pr-admission.yaml` | Shared read-only organization admission plumbing; product validators remain local |
 | `stale-repository-identifier.yaml` | This repository |
-| `world-at-ruin-required-regressions.yaml` | This repository |

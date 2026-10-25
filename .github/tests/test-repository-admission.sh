@@ -20,6 +20,12 @@ fail() {
   exit 1
 }
 [[ -f "$resolver" ]] || fail 'resolver is missing'
+# Product-specific evaluators belong to the product; the shared source stays generic.
+for retired in .github/workflows/world-at-ruin-required-regressions.yaml \
+  .github/scripts/resolve-world-at-ruin-regression-base.sh \
+  .github/tests/test-world-at-ruin-required-regressions.sh; do
+  [[ ! -e "$root/$retired" && ! -L "$root/$retired" ]] || fail 'retired World-only source remains in the shared catalogue'
+done
 mkdir "$scratch/bin"
 cat >"$scratch/bin/gh" <<'GH'
 #!/usr/bin/env bash
@@ -179,8 +185,16 @@ check_workflow() {
   ' >/dev/null
 }
 check_workflow "$workflow" || fail 'shared workflow loses the immutable read-only admission boundary'
+# Immutable pin updates remain maintainable without editing this source-boundary guard.
+for job in resolve admission; do
+  yq ".jobs.$job.steps[0].uses = \"step-security/harden-runner@0123456789abcdef0123456789abcdef01234567\"" "$workflow" >"$scratch/workflow.yaml"
+  check_workflow "$scratch/workflow.yaml" || fail 'shared admission rejected a complete harden-runner pin update'
+done
 # shellcheck disable=SC2016 # GitHub expressions remain literal mutation data.
 for mutation in \
+  '.jobs.resolve.steps[0].uses = "step-security/harden-runner@v2"' \
+  '.jobs.admission.steps[0].uses = "step-security/harden-runner@0123456"' \
+  '.jobs.admission.steps[0].uses = "other/harden-runner@0123456789abcdef0123456789abcdef01234567"' \
   '.jobs.resolve.permissions.contents = "write"' \
   '.jobs.resolve.steps[1].with.ref = "${{ github.sha }}"' \
   '.jobs.resolve.steps[1].with["persist-credentials"] = true' \
