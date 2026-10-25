@@ -1318,7 +1318,7 @@ jobs:
       - name: ⚙️ Setup .NET
         uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
-          dotnet-version: 10
+          dotnet-version: 10.0.402
 
       - name: 📦 Build mapped local package
         run: >-
@@ -3137,8 +3137,8 @@ jobs:
         with:
           # Match actions/run-dotnet-tests/action.yaml's SDK provisioning (previous STS + current LTS).
           dotnet-version: |
-            9
-            10
+            9.0.319
+            10.0.402
 
       # Mirror actions/run-dotnet-tests/action.yaml's test step (`dotnet test …`) against a fixture
       # whose only test fails on purpose, so the run exits non-zero — exactly the gate's

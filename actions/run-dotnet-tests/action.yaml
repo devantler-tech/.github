@@ -13,14 +13,44 @@ inputs:
 runs:
   using: composite
   steps:
+    - name: 🔎 Check exact installed .NET SDKs
+      id: sdk-check
+      shell: bash
+      env:
+        # Keep this list aligned with Setup .NET and the native fixture callsites.
+        SDK_VERSIONS: |
+          9.0.319
+          10.0.402
+      run: |
+        set -euo pipefail
+        count=0
+        while IFS= read -r version; do
+          [[ -z "$version" ]] && continue
+          [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || exit 1
+          count=$((count + 1))
+        done <<<"$SDK_VERSIONS"
+        [[ "$count" == 2 ]] || exit 1
+        install_needed=true
+        if [[ -z "${DOTNET_INSTALL_DIR:-}" ]] && sdk_listing="$(dotnet --list-sdks 2>/dev/null)"; then
+          install_needed=false
+          while IFS= read -r version; do
+            [[ -z "$version" ]] && continue
+            if ! awk -v expected="$version" '$1 == expected { found=1 } END { exit !found }' <<<"$sdk_listing"; then
+              install_needed=true
+            fi
+          done <<<"$SDK_VERSIONS"
+        fi
+        printf 'install-needed=%s\n' "$install_needed" >>"$GITHUB_OUTPUT"
     - name: ⚙️ Setup .NET
+      if: steps.sdk-check.outputs.install-needed != 'false'
       uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
       with:
         # Provision both the previous STS (9) and the current LTS (10) so callers can
-        # target either TFM. Multiple lines install side-by-side SDKs.
+        # target either TFM. Exact published SDKs avoid premature channel redirects.
+        # Refresh these pins together with the two native fixture setup steps.
         dotnet-version: |
-          9
-          10
+          9.0.319
+          10.0.402
     - name: 🚚 Restore packages with GitHub Packages
       if: inputs.github-token != ''
       run: |
