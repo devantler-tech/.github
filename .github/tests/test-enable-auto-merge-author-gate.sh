@@ -232,15 +232,16 @@ workflow_queue="$(yq -r '.concurrency.queue // "single"' "$workflow")"
 expected_workflow_cancel="\${{ (inputs.enforce-actor-trust || vars.ENFORCE_ACTOR_TRUST == 'true') && (github.event_name == 'pull_request' || ((inputs.enforce-review-gates || vars.ENFORCE_MERGE_GATES == 'true') && (github.event.action == 'dismissed' || github.event.action == 'deleted'))) }}"
 # The opt-in retains pending evaluations only when cancellation is disabled.
 # Omitted/false inputs preserve the legacy queue in all event configurations.
-# Direct and required runs have no inputs, so they opt in through the
-# QUEUE_PENDING_EVALUATIONS variable instead. The variable is read only when the
+# Direct and required runs have no inputs, so they retain the queue by default
+# and opt out only when the QUEUE_PENDING_EVALUATIONS variable is false (an
+# unset variable reads as the empty string). The variable is read only when the
 # inputs context is empty AND this file is the running workflow: a workflow_call
 # run carries every declared input and its caller's workflow_ref, so the
 # variable can never override an explicit or defaulted `false` input.
 cancel_condition="${expected_workflow_cancel#\$\{\{ }"
 cancel_condition="${cancel_condition% \}\}}"
 expected_workflow_cancel="\${{ !inputs.dry-run && $cancel_condition }}"
-queue_enabled="(inputs.queue-pending-evaluations || (toJSON(inputs) == '{}' && startsWith(github.workflow_ref, 'devantler-tech/.github/.github/workflows/enable-auto-merge.yaml@') && vars.QUEUE_PENDING_EVALUATIONS == 'true'))"
+queue_enabled="(inputs.queue-pending-evaluations || (toJSON(inputs) == '{}' && startsWith(github.workflow_ref, 'devantler-tech/.github/.github/workflows/enable-auto-merge.yaml@') && vars.QUEUE_PENDING_EVALUATIONS != 'false'))"
 expected_workflow_queue="\${{ $queue_enabled && !($cancel_condition) && 'max' || 'single' }}"
 expected_job_queue="\${{ $queue_enabled && 'max' || 'single' }}"
 # shellcheck disable=SC2016 # GitHub expressions are compared literally.

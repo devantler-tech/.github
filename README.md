@@ -501,11 +501,12 @@ evaluations in non-cancelling workflow runs and both approval/revocation jobs. T
 defaults to `false`: omitted/false inputs keep the existing single queue, which can replace a waiting
 evaluation.
 
-Direct and organization-required runs take no inputs, so they opt in with the
-`QUEUE_PENDING_EVALUATIONS` repository or organization variable set to `true`. Without it they keep
-the single queue. The variable applies only to those runs: a `workflow_call` invocation always follows
-its own input, so an explicit `false` stays honoured. Rollout and flag removal are tracked in
-[#277](https://github.com/devantler-tech/.github/issues/277).
+Direct and organization-required runs take no inputs, so they retain pending evaluations by default.
+A repository or organization can return to the single queue by setting the
+`QUEUE_PENDING_EVALUATIONS` variable to `false`; an unset variable or any other value keeps the
+queue. The variable applies only to those runs: a `workflow_call` invocation always follows its own
+input, so an explicit `false` stays honoured. Removal of the temporary input and variable is tracked
+in [#277](https://github.com/devantler-tech/.github/issues/277).
 
 When opted in, GitHub processes queued evaluations in the order they begin waiting, which can
 differ from event delivery order; evaluations still read current PR state. Actor-enforced lifecycle
@@ -594,7 +595,7 @@ jobs:
 | `enforce-actor-trust`  | Input  | `false` | No       | Opt-in trusted-trigger enforcement with fail-closed revocation            |
 | `enforce-review-gates` | Input  | `false` | No       | Opt-in fail-closed gate before approval; agent arms after live pentad     |
 | `queue-pending-evaluations` | Input | `false` | No | Temporary opt-in to retain pending evaluations during event bursts |
-| `QUEUE_PENDING_EVALUATIONS` | Variable | unset | No | The same temporary opt-in for direct and organization-required runs only |
+| `QUEUE_PENDING_EVALUATIONS` | Variable | unset | No | Temporary opt-out for direct and organization-required runs only: `false` restores the single queue |
 | `concurrency-key`      | Input  | `""`    | No       | Recommended with actor trust; omitted calls share a safe fallback lane    |
 
 </details>
