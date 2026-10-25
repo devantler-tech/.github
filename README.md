@@ -6,6 +6,12 @@ building blocks every product repository uses, documented below. To make a small
 documentation contribution, start with [Contributing](CONTRIBUTING.md). The
 [repository contract](AGENTS.md) carries the detailed ownership and engineering rules.
 
+New repositories deliberately enrolled in Renovate inherit the organization's
+[onboarding preset](renovate-config.json): recommended updates with the Dependency Dashboard
+disabled. Renovate [discovers this preset during onboarding](https://docs.renovatebot.com/config-presets/#grouporganization-level-presets).
+Templates using Dependabot need no inactive Renovate config. Existing Renovate configurations
+keep their own settings; this preset does not enroll repositories or replace them.
+
 Workflow ownership follows three rules:
 
 - Organization-required workflows cover pull-request concerns shared across repositories.
