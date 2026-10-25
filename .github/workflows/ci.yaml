@@ -6202,6 +6202,9 @@ jobs:
       - name: 🧪 Test native issue-type label retirement
         run: bash tests/issue-label-taxonomy.sh
 
+      - name: 🧪 Test organization Renovate onboarding policy
+        run: bash tests/renovate-onboarding-preset.sh
+
       - name: 🧪 Test declarative coverage failure handling
         run: bash tests/declarative-coverage-fail-closed.sh
 
