@@ -1,6 +1,6 @@
-# Shared admission for monorepo and this catalogue; product decisions stay local.
-# World's unproven enrollment is rolled back for maintainer-coordinated recovery
-# of its reviewed-base action. Its established required workflow remains active.
+# Shared admission for monorepo, this catalogue and World; product decisions stay local.
+# Restore World only after its reviewed-base event repair. Its established
+# required workflow remains active until separate native overlap proof.
 apiVersion: enterprise.github.m.upbound.io/v1alpha1
 kind: OrganizationRuleset
 metadata:
@@ -19,7 +19,7 @@ spec:
       - refName:
           - include: ["~DEFAULT_BRANCH"]
             exclude: []
-        repositoryId: [786274843, 933213756]
+        repositoryId: [786274843, 933213756, 1303188705]
     rules:
       - requiredWorkflows:
           - requiredWorkflow:

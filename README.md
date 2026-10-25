@@ -197,14 +197,14 @@ sources retain their interfaces here so the same input/secret parity check cover
 <summary>Purpose, interface and usage</summary>
 
 [`repository-pr-admission.yaml`](.github/workflows/repository-pr-admission.yaml) is selected by
-declarative organization rules for monorepo and this catalogue. Its shared resolver and read-only
+declarative organization rules for monorepo, this catalogue and World at Ruin. Its shared resolver and read-only
 runner execute each product's own admission action from the immutable reviewed base, never the
 candidate implementation. Each repository separately requires the executed result from GitHub
 Actions; the source-only skipped job cannot satisfy that binding.
 
-World at Ruin's initial enrollment is paused for reviewed recovery of its event binding. Its
-established World-specific regression workflow remains required. Re-enrollment and native overlap
-proof are tracked in [#693](https://github.com/devantler-tech/.github/issues/693).
+World at Ruin's established regression workflow remains required during native overlap validation
+of the restored shared enrollment. Re-enrollment alone does not complete that proof or retire the
+original gate; the remaining cutover is tracked in [#693](https://github.com/devantler-tech/.github/issues/693).
 
 This is not a `workflow_call` export and has no caller inputs or secrets. Product-specific rules
 and time budgets stay in the owning repository. New enrollments require actual positive and
