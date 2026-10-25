@@ -44,6 +44,7 @@ identity="https://github.com/$REPOSITORY/.github/workflows/ci.yaml@refs/heads/ma
 run_url="https://api.github.com/repos/$REPOSITORY/actions/runs/$PREBUILT_CI_RUN_ID"
 
 rate_limit_waited=0
+# Read one response header, rejecting duplicate values instead of choosing one.
 response_header() {
   awk -v field="$1" '
     index(tolower($0), field ":") == 1 {
@@ -53,6 +54,7 @@ response_header() {
     END { if (count > 1) exit 1; if (count == 1) print value }
   ' "$work/run.headers"
 }
+# Recover bounded quota refusals, then validate the complete original CI identity.
 read_run() {
   # Deliberately credential-free. Private or inaccessible source CI is unsupported.
   local attempt http_code curl_status retry_after remaining reset wait_seconds reset_wait now

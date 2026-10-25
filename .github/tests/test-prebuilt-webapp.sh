@@ -161,6 +161,7 @@ esac
 COSIGN
 chmod +x "$work/bin/curl" "$work/bin/cosign" "$work/bin/sleep" "$work/bin/date"
 
+# Restore independent source, signature, provenance and output state for one case.
 reset_fixture() {
   cp "$work/run.json" "$work/current-run.json"
   cp "$work/signature.json" "$work/current-signature.json"
@@ -172,6 +173,7 @@ reset_fixture() {
   : > "$work/reads"
   : > "$work/waits"
 }
+# Run the actual verifier with only its external observations replaced by fixtures.
 invoke() {
   local fault="$1"
   shift
