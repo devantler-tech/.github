@@ -29,7 +29,7 @@ cleanup() {
 }
 trap cleanup EXIT
 image='postgres:17.11-bookworm@sha256:3645570cccdfa447589da9f57dd740faa29b30938e861289a5574b6ca6b03826'
-container="$(docker create --name "$name" --publish 127.0.0.1:55444:5432 \
+container="$(docker create --name "$name" --publish 127.0.0.1::5432 \
   --env POSTGRES_USER=ci_fixture_fixture_owner --env POSTGRES_PASSWORD=fixture-only \
   --env POSTGRES_DB=postgres "$image")"
 [[ "$container" =~ ^[a-f0-9]{64}$ ]] || { echo 'FAIL: unbound native service' >&2; exit 1; }
@@ -49,12 +49,16 @@ state="$(docker inspect "$container" --format '{{json .State}}')"
 jq -e '.Status == "exited" and .Running == false and .ExitCode == 0' <<<"$state" >/dev/null
 bash "$root/.github/scripts/go-postgresql-fixture.sh" provision ci_fixture ci_fixture_workflow_test "$container" >"$scratch/env"
 [[ "$(docker inspect "$container" --format '{{.State.Running}}')" == true ]] || { echo 'FAIL: native service was not recovered' >&2; exit 1; }
+binding="$(docker port "$container" 5432/tcp)"
+[[ "$binding" =~ ^127\.0\.0\.1:([1-9][0-9]{0,4})$ ]] || { echo 'FAIL: recovered service has no single loopback port' >&2; exit 1; }
+port="${BASH_REMATCH[1]}"
+((port <= 65535)) || { echo 'FAIL: recovered service port is out of range' >&2; exit 1; }
 while IFS='=' read -r key value; do
   case "$key" in
     CI_FIXTURE_TEST_DATABASE_URL|CI_FIXTURE_TEST_MIGRATION_DATABASE_URL)
       # The production provisioner uses the service job's fixed port. This local
-      # regression uses its own loopback port accepted by the native Go fixture.
-      export "$key=${value/127.0.0.1:5432/127.0.0.1:55444}"
+      # regression uses the recovered service's allocated loopback port.
+      export "$key=${value/127.0.0.1:5432/127.0.0.1:$port}"
       ;;
     *) echo 'FAIL: unexpected fixture output' >&2; exit 1 ;;
   esac
