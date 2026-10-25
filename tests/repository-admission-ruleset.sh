@@ -1,11 +1,14 @@
 #!/usr/bin/env bash
-# Bind all three products while retaining World's established overlap gate.
+# Bind all three products and retain each retired singleton as an inert record.
 set -euo pipefail
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
 # Report the violated policy boundary and stop before accepting a partial check.
-fail() { printf 'repository admission policy: %s\n' "$*" >&2; exit 1; }
+fail() {
+  printf 'repository admission policy: %s\n' "$*" >&2
+  exit 1
+}
 # Validate the complete rendered provider payload, including product-scoped
 # result bindings. A same-named rule on another repository cannot stand in.
 check_render() {
@@ -62,11 +65,9 @@ check_render() {
     $oldWorld[0].spec=={
       managementPolicies:managed,
       forProvider:{
-        name:"Require workflow - World at Ruin trusted regressions",target:"branch",enforcement:"active",
+        name:"Require workflow - World at Ruin trusted regressions",target:"branch",enforcement:"disabled",
         conditions:[{refName:[{include:["~DEFAULT_BRANCH"],exclude:[]}],repositoryId:[1303188705]}],
-        rules:[{requiredWorkflows:[{requiredWorkflow:[{
-          repositoryId:933213756,path:".github/workflows/world-at-ruin-required-regressions.yaml",ref:"refs/heads/main"
-        }]}]}]
+        rules:[{creation:false,deletion:false,nonFastForward:false,requiredLinearHistory:false,requiredSignatures:false,update:false}]
       },
       providerConfigRef:provider
     } and
@@ -93,9 +94,9 @@ check_ci() {
     jq -e '[.[] | select(.run=="bash tests/repository-admission-ruleset.sh")] |
       length==1 and (.[0] | .if==null and .["continue-on-error"]==null)' >/dev/null
 }
-kubectl kustomize "$root/deploy" > "$work/render.yaml"
-yq -o=json -I=0 "." "$work/render.yaml" | jq -s "." > "$work/render.json"
-check_render "$work/render.json" || fail 'product enrollment, producer binding or original trusted gate changed'
+kubectl kustomize "$root/deploy" >"$work/render.yaml"
+yq -o=json -I=0 "." "$work/render.yaml" | jq -s "." >"$work/render.json"
+check_render "$work/render.json" || fail 'product enrollment, producer binding or retired singleton record changed'
 check_ci "$root/.github/workflows/ci.yaml" || fail 'required policy test is absent or skippable'
 count=0
 for name in require-repository-pr-admission monorepo-require-reviewed-admission dotgithub-require-reviewed-admission world-at-ruin-require-reviewed-admission require-monorepo-ci-aggregate-contract require-dotgithub-deploy-guards require-world-at-ruin-trusted-regressions; do
@@ -108,26 +109,26 @@ for name in require-repository-pr-admission monorepo-require-reviewed-admission 
     '.spec.forProvider.conditions[0].refName[0].include=["~ALL"]' \
     '.metadata.namespace="elsewhere"' \
     '.metadata.annotations["crossplane.io/external-name"]="123"'; do
-    jq --arg name "$name" "map(if .metadata.name==\$name then ($mutation) else . end)" "$work/render.json" > "$work/broken.json"
+    jq --arg name "$name" "map(if .metadata.name==\$name then ($mutation) else . end)" "$work/render.json" >"$work/broken.json"
     if check_render "$work/broken.json"; then fail "accepted $mutation on $name"; fi
-    count=$((count+1))
+    count=$((count + 1))
   done
-  jq --arg name "$name" '. + [.[] | select(.metadata.name==$name)]' "$work/render.json" > "$work/broken.json"
+  jq --arg name "$name" '. + [.[] | select(.metadata.name==$name)]' "$work/render.json" >"$work/broken.json"
   if check_render "$work/broken.json"; then fail "accepted duplicate $name"; fi
-  count=$((count+1))
-  jq --arg name "$name" 'map(select(.metadata.name!=$name))' "$work/render.json" > "$work/broken.json"
+  count=$((count + 1))
+  jq --arg name "$name" 'map(select(.metadata.name!=$name))' "$work/render.json" >"$work/broken.json"
   if check_render "$work/broken.json"; then fail "accepted missing $name"; fi
-  count=$((count+1))
+  count=$((count + 1))
 done
 # Retired records must neither regain a source association nor lose the inert
 # provider-required rule, even while their enforcement remains disabled.
-for name in require-monorepo-ci-aggregate-contract require-dotgithub-deploy-guards; do
+for name in require-monorepo-ci-aggregate-contract require-dotgithub-deploy-guards require-world-at-ruin-trusted-regressions; do
   for mutation in \
     '.spec.forProvider.rules=[]' \
     '.spec.forProvider.rules[0].requiredWorkflows=[{requiredWorkflow:[{repositoryId:933213756,path:".github/workflows/deploy-guards.yaml",ref:"refs/heads/main"}]}]'; do
-    jq --arg name "$name" "map(if .metadata.name==\$name then ($mutation) else . end)" "$work/render.json" > "$work/broken.json"
+    jq --arg name "$name" "map(if .metadata.name==\$name then ($mutation) else . end)" "$work/render.json" >"$work/broken.json"
     if check_render "$work/broken.json"; then fail "accepted restored association or invalid provider record on $name"; fi
-    count=$((count+1))
+    count=$((count + 1))
   done
 done
 for mutation in \
@@ -138,26 +139,26 @@ for mutation in \
   '.spec.forProvider.rules[0].requiredWorkflows[0].requiredWorkflow[0].repositoryId=786274843' \
   '.spec.forProvider.rules[0].requiredWorkflows[0].requiredWorkflow[0].ref="refs/heads/feature"' \
   '.spec.forProvider.rules[0].requiredWorkflows[0].requiredWorkflow[0].path=".github/workflows/ci.yaml"'; do
-  jq "map(if .metadata.name==\"require-repository-pr-admission\" then ($mutation) else . end)" "$work/render.json" > "$work/broken.json"
+  jq "map(if .metadata.name==\"require-repository-pr-admission\" then ($mutation) else . end)" "$work/render.json" >"$work/broken.json"
   if check_render "$work/broken.json"; then fail 'accepted widened canary or substituted source'; fi
-  count=$((count+1))
+  count=$((count + 1))
 done
 for name in monorepo-require-reviewed-admission dotgithub-require-reviewed-admission world-at-ruin-require-reviewed-admission; do
   for mutation in \
     '.spec.forProvider.repository="another-product"' \
     '.spec.forProvider.rules[0].requiredStatusChecks[0].requiredCheck[0].context="Admission not selected"' \
     '.spec.forProvider.rules[0].requiredStatusChecks[0].requiredCheck[0].integrationId=123'; do
-    jq --arg name "$name" "map(if .metadata.name==\$name then ($mutation) else . end)" "$work/render.json" > "$work/broken.json"
+    jq --arg name "$name" "map(if .metadata.name==\$name then ($mutation) else . end)" "$work/render.json" >"$work/broken.json"
     if check_render "$work/broken.json"; then fail 'accepted a skipped result, another producer or another product'; fi
-    count=$((count+1))
+    count=$((count + 1))
   done
 done
 for mutation in \
   'del(.jobs["validate-manifests"].steps[] | select(.run=="bash tests/repository-admission-ruleset.sh"))' \
   '(.jobs["validate-manifests"].steps[] | select(.run=="bash tests/repository-admission-ruleset.sh")).if="false"' \
   '(.jobs["validate-manifests"].steps[] | select(.run=="bash tests/repository-admission-ruleset.sh"))["continue-on-error"]=true'; do
-  yq "$mutation" "$root/.github/workflows/ci.yaml" > "$work/ci.yaml"
+  yq "$mutation" "$root/.github/workflows/ci.yaml" >"$work/ci.yaml"
   if check_ci "$work/ci.yaml"; then fail 'accepted skipped or missing required CI invocation'; fi
-  count=$((count+1))
+  count=$((count + 1))
 done
-printf 'repository admission policy: three active products, original World overlap gate and %s refusal controls passed\n' "$count"
+printf 'repository admission policy: three active products, three inert singleton records and %s refusal controls passed\n' "$count"

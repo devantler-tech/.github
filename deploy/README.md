@@ -37,9 +37,10 @@ out-of-band changes made in the GitHub UI.
 - `organization-rulesets/` — one `OrganizationRuleset` per file (org-wide branch/tag
   protection). 9 existing org rulesets remain **Observe-only**; the existing signing
   rule is retained disabled with only Observe/Update and its full observed fields.
-  Six net-new rulesets are managed: `v*` tag protection, World at Ruin's trusted-regression
-  workflow, monorepo's independent CI aggregate check, this repository's `deploy/` guards
-  run from its reviewed `main`, go-template's Go validation workflow, and dotnet-template's .NET tests workflow. Unadopted org rulesets remain outside managed updates;
+  Managed rules cover `v*` tag protection, shared reviewed admission and metadata code scanning.
+  Earlier product-specific workflow records remain declared but disabled after native replacement
+  proof, with their identities, selectors and non-deleting lifecycle preserved.
+  Unadopted org rulesets remain outside managed updates;
   schema-supported adoption work is distinct from remaining provider gaps — see
   [`organization-rulesets/README.md`](organization-rulesets/README.md) for the full
   importability matrix and the push/tag/Actions-policy analysis.

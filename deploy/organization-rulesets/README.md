@@ -44,7 +44,7 @@ verb — e.g. `require-pull-request.yaml`). Repo-scoped rulesets live next door 
 | 3 `require-workflows-*.yaml` imports | **DependencyReview**, **EnableAutoMerge** and **ScanGitHubActions** | Observe + Update — preserve the observed policy and maintained source; never create or delete |
 | `require-workflows-dotnet.yaml` | language-selected **.NET** (retired) | Observe + Update — disabled with one inert rule (no required workflow; the provider requires a rules block) after a complete effective-policy census found no consumers; retain identity and selectors, never create or delete |
 | `protect-release-tags.yaml` | **Protect release tags** (net-new) | Managed (Create) — block tag delete + force-move + require `v<semver>` |
-| `require-world-at-ruin-trusted-regressions.yaml` | **Require workflow - World at Ruin trusted regressions** (net-new) | Managed (Create) — target only World at Ruin and require the canonical catalogue's trusted regression workflow |
+| `require-world-at-ruin-trusted-regressions.yaml` | **Require workflow - World at Ruin trusted regressions** (retired) | Managed (Create), non-deleting — disabled with one inert rule and no workflow association after native shared-admission proof |
 | `require-monorepo-ci-aggregate-contract.yaml` | **Require workflow - Monorepo CI aggregate contract** (retired) | Managed (Create), non-deleting — disabled with one inert rule and no workflow association after native shared-admission proof |
 | `require-repository-pr-admission.yaml` | **Require workflow - Repository PR admission** | Managed (Create) — target monorepo, this catalogue and World at Ruin; trusted shared source runs each product-owned base-revision action, with a repository-bound executed result required for each |
 | `require-dotgithub-deploy-guards.yaml` | **Require workflow - .github deploy guards** (retired) | Managed (Create), non-deleting — disabled with one inert rule and no workflow association after native shared-admission proof |
@@ -107,20 +107,24 @@ in [#703](https://github.com/devantler-tech/.github/issues/703).
 The shared runner enrolls monorepo, this configuration catalogue and World at Ruin. All three repositories also require
 `Run reviewed product admission` from GitHub Actions. The source-only `Admission not selected`
 result does not satisfy that requirement. Product validators and budgets come from their immutable
-reviewed bases, never from candidate actions. The monorepo and catalogue's former singleton organization associations
+reviewed bases, never from candidate actions. All three former singleton organization associations
 are disabled inert records, without workflow associations or deletion authority. Their identity
 and narrow target selectors remain declared; the common workflow and all three repository result
 bindings stay active without bypasses.
 
-World's event repair ([#1550](https://github.com/devantler-tech/world-at-ruin/pull/1550)) reached native
-overlap, where [control #1551](https://github.com/devantler-tech/world-at-ruin/pull/1551) exposed missing
-host engine setup before regressions. The approved [temporary recovery #754](https://github.com/devantler-tech/.github/pull/754)
-retained original protection while [engine repair #1552](https://github.com/devantler-tech/world-at-ruin/pull/1552)
-passed full CI and review and merged. Both new bindings are restored, retaining their identities,
-selectors, producer and non-deleting lifecycle. The established World-specific workflow stays active.
-Read back the signed publication, actual application and native bindings, then run fresh positive
-and refusal controls against the repaired product base before any separate old-source retirement.
-Enrollment alone does not prove execution or protection.
+World's event and engine repairs ([#1550](https://github.com/devantler-tech/world-at-ruin/pull/1550),
+[#1552](https://github.com/devantler-tech/world-at-ruin/pull/1552)) passed full CI and review and merged.
+[Restoration #757](https://github.com/devantler-tech/.github/pull/757) was signed, published and
+independently verified in the live reconciler and native policies before fresh controls:
+the [opened event](https://github.com/devantler-tech/world-at-ruin/actions/runs/40199676030) and
+[synchronized event](https://github.com/devantler-tech/world-at-ruin/actions/runs/40199849830)
+each passed all 187 trusted scenes. The [deliberately tampered candidate](https://github.com/devantler-tech/world-at-ruin/actions/runs/40203805764)
+was refused by the reviewed action during contained import, after immutable identity and engine setup
+succeeded; its no-op candidate action could not supply a green result. The established gate remained
+active throughout that overlap. Its retired record now preserves the original selector, identity and
+non-deleting lifecycle without a workflow association. Read back this retirement's signed publication,
+live application and native policies, then repeat positive and refusal controls with the old gate
+inactive before claiming the cutover complete. Enrollment alone does not prove execution or protection.
 
 Read back released native enforcement before exercising a product's real positive and tampering
 controls. Those controls must pass for that product before its old association is retired. Per-product

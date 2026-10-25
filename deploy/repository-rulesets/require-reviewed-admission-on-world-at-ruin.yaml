@@ -1,6 +1,6 @@
 # Restore the executed-result binding after the reviewed engine setup repair.
 # Keep its identity, selector, producer and non-deleting lifecycle unchanged;
-# the established World-specific required workflow stays active for native proof.
+# native 187-scene positives and the intended candidate-tampering refusal preceded singleton retirement.
 apiVersion: repo.github.m.upbound.io/v1alpha1
 kind: RepositoryRuleset
 metadata:
