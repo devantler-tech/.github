@@ -10,9 +10,10 @@
 # including dependency/ecosystem labels (`dependencies`, `go`, `docker`, …) and
 # lifecycle labels whose presence carries automation state. Declaring them keeps
 # the authoritative set from deleting state that those automations require. The
-# shared patch below appends the CANONICAL org taxonomy (the 22 labels
-# previously in `actions/.github/labels.yaml`) to every IssueLabels — this patch is
-# now the single source of truth for that taxonomy. Mirrors the org-wide settings
+# shared patch below appends the CANONICAL org taxonomy (15 independent lifecycle
+# and cross-cutting labels) to every IssueLabels. Native issue types own issue
+# classification; the seven duplicate type-labels are retired (#747). This patch is
+# the single source of truth for the taxonomy. Mirrors the org-wide settings
 # patch in ../repositories/kustomization.yaml.
 #
 # Scope = the repos managed in ../repositories/ + this repo (.github) + the
@@ -48,8 +49,8 @@ resources:
   # Observe-first adoption; existing labels remain read-only (#556).
   - client-orders.yaml
 # Canonical org-wide label taxonomy, appended to EVERY IssueLabels (single source
-# of truth — was actions/.github/labels.yaml). Verbatim names + colours from that
-# file so the switch from label-sync to Crossplane changes no labels.
+# of truth — was actions/.github/labels.yaml). Retained names and colours are
+# unchanged; repository-specific automation labels remain in their own resources.
 patches:
   - target:
       group: repo.github.m.upbound.io
@@ -67,22 +68,10 @@ patches:
         value: {name: next, color: "5d3fd3"}
       - op: add
         path: /spec/forProvider/label/-
-        value: {name: roadmap, color: "0e8a16"}
-      - op: add
-        path: /spec/forProvider/label/-
-        value: {name: bug, color: "d73a4a"}
-      - op: add
-        path: /spec/forProvider/label/-
-        value: {name: enhancement, color: "a2eeef"}
-      - op: add
-        path: /spec/forProvider/label/-
         value: {name: help wanted, color: "008672"}
       - op: add
         path: /spec/forProvider/label/-
         value: {name: good first issue, color: "7057ff"}
-      - op: add
-        path: /spec/forProvider/label/-
-        value: {name: documentation, color: "0075ca"}
       - op: add
         path: /spec/forProvider/label/-
         value: {name: question, color: "d876e3"}
@@ -107,15 +96,6 @@ patches:
       - op: add
         path: /spec/forProvider/label/-
         value: {name: breaking change, color: "b60205"}
-      - op: add
-        path: /spec/forProvider/label/-
-        value: {name: performance, color: "f9d0c4"}
-      - op: add
-        path: /spec/forProvider/label/-
-        value: {name: security, color: "b60205"}
-      - op: add
-        path: /spec/forProvider/label/-
-        value: {name: refactor, color: "c5def5"}
       - op: add
         path: /spec/forProvider/label/-
         value: {name: automation, color: "bfdadc"}

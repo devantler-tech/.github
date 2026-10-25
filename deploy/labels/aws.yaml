@@ -1,4 +1,4 @@
-# Issue labels for devantler-tech/aws. The canonical org taxonomy (22 labels)
+# Issue labels for devantler-tech/aws. The canonical org taxonomy (15 labels)
 # is appended to every IssueLabels by the shared patch in kustomization.yaml; this
 # file adds only aws's repo-specific extras. See ../README.md.
 apiVersion: repo.github.m.upbound.io/v1alpha1
