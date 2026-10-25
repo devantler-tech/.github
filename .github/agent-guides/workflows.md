@@ -37,6 +37,15 @@ on:
 
 #### Test jobs
 
+**Catalogue runner deadlines:** Every direct runner job in `ci.yaml` has a literal
+1–15 minute execution limit, including the workspace-independent reducer. The
+[measured baseline](../../docs/ci-runner-deadlines.md) explains the current five- and
+ten-minute values. Keep `test-ci-runner-timeouts.sh` and its refusal controls
+required; a step deadline cannot replace a runner deadline. Reusable call jobs
+cannot declare this key: their callee-owned runner limits and immutable adoption
+remain under #749. These limits do not bound queue wait or establish whole-PR
+feedback time, and must not preempt the existing scanner timeout/retry contract.
+
 Publication safety fixtures run in the independent always-on `test-publish-contracts` job,
 alongside catalogue guards. Both jobs feed the required reducer; publication coverage retains
 the contents-read ceiling, synthetic credentials and disposable native registry controls.
