@@ -1,6 +1,6 @@
-# Shared admission for monorepo and this catalogue; product decisions stay local.
-# World's native overlap exposed a missing engine setup step. Pause only its
-# new enrollment for the approved recovery; its established gate stays active.
+# Shared admission for monorepo, this catalogue and World; product decisions stay local.
+# Restore World after its reviewed engine setup repair. Its established
+# required workflow stays active until separate native overlap proof.
 apiVersion: enterprise.github.m.upbound.io/v1alpha1
 kind: OrganizationRuleset
 metadata:
@@ -19,7 +19,7 @@ spec:
       - refName:
           - include: ["~DEFAULT_BRANCH"]
             exclude: []
-        repositoryId: [786274843, 933213756]
+        repositoryId: [786274843, 933213756, 1303188705]
     rules:
       - requiredWorkflows:
           - requiredWorkflow:
