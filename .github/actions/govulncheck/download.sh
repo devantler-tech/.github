@@ -7,19 +7,14 @@
 set -euo pipefail
 module="$1" retry="$2"
 cd "$module"
-# A vendored build reads vendor/ and needs no download. In workspace mode Go uses
-# only the workspace's vendor directory, beside go.work, and ignores a module's own.
-workspace="$(go env GOWORK)"
-vendor_dir=vendor
-if [[ -n "$workspace" && "$workspace" != off ]]; then
-  vendor_dir="$(dirname "$workspace")/vendor"
-fi
-if [[ -f "$vendor_dir/modules.txt" ]]; then
-  echo "The build reads vendored dependencies from $vendor_dir and needs no download."
+# Skip only when Go itself loads every scanned package with the network off.
+# Go, not this script, then decides vendoring, workspaces, -mod flags and the cache.
+if GOPROXY=off go list -deps ./... >/dev/null 2>&1; then
+  echo 'Every package the scan reads is already available offline; nothing to download.'
   exit 0
 fi
 if ! bash "$retry" go mod download; then
-  echo "::error::Could not download the module's dependencies after ${RETRY_MAX_ATTEMPTS:-3} attempts. This is a module-proxy or network failure, not a vulnerability finding: the scan did not run."
+  echo "::error::Could not download the module's dependencies after ${RETRY_MAX_ATTEMPTS:-3} attempts (see the errors above). The scan did not run; this is not a vulnerability finding."
   exit 1
 fi
 echo 'Downloaded the module dependencies the scan reads.'

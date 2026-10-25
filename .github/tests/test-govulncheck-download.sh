@@ -57,8 +57,9 @@ blocks 'a skippable download' '(.runs.steps[] | select((.run // "") | contains("
 blocks 'a different Go toolchain from the scan' '(.runs.steps[] | select((.run // "") | contains("download.sh")) | .env.GOTOOLCHAIN) = "auto"'
 blocks 'a retried scan' '(.runs.steps[] | select(.id == "scan") | .run) = "bash \"$ACTION_PATH/../../../.scripts/retry.sh\" bash \"$ACTION_PATH/scan.sh\""'
 
-# Drive the real download script and retry helper. The fixture `go` fails the
-# first FAILURES calls the way the proxy does, then succeeds.
+# Drive the real download script and retry helper. The fixture `go` answers the
+# offline load probe with OFFLINE_STATUS, and fails the first FAILURES download
+# calls the way the proxy does before succeeding.
 script="$root/.github/actions/govulncheck/download.sh"
 retry="$root/.scripts/retry.sh"
 attempts="$(yq -r '.runs.steps[] | select((.run // "") | contains("download.sh")) | .env.RETRY_MAX_ATTEMPTS' "$action")"
@@ -66,11 +67,11 @@ mkdir -p "$work/bin" "$work/module with spaces"
 cat >"$work/bin/go" <<'SH'
 #!/usr/bin/env bash
 set -euo pipefail
-if [[ "$*" == 'env GOWORK' ]]; then
-  printf '%s\n' "$STUB_GOWORK"
-  exit 0
+if [[ "$*" == 'list -deps ./...' ]]; then
+  printf '%s|%s|%s\n' "$PWD" "${GOPROXY-}" "$*" >>"$PROBES"
+  exit "$OFFLINE_STATUS"
 fi
-printf '%s|%s\n' "$PWD" "$*" >>"$CALLS"
+printf '%s|%s|%s\n' "$PWD" "${GOPROXY-}" "$*" >>"$CALLS"
 calls="$(wc -l <"$CALLS")"
 if ((calls <= FAILURES)); then
   echo 'stream error: stream ID 1; INTERNAL_ERROR; received from peer' >&2
@@ -78,33 +79,31 @@ if ((calls <= FAILURES)); then
 fi
 SH
 chmod +x "$work/bin/go"
-export PATH="$work/bin:$PATH" CALLS="$work/calls" RETRY_MAX_ATTEMPTS="$attempts" RETRY_BASE_DELAY=0 STUB_GOWORK=''
+export PATH="$work/bin:$PATH" CALLS="$work/calls" PROBES="$work/probes" RETRY_MAX_ATTEMPTS="$attempts" RETRY_BASE_DELAY=0
+unset GOPROXY
 module="$work/module with spaces"
-run() { # run <label> <failures> <want-exit> <want-calls> <expected-output>
+run() { # run <label> <offline-status> <failures> <want-exit> <want-calls> <expected-output>
   local label="$1" rc=0 out calls=0
   : >"$CALLS"
-  out="$(cd "$work" && FAILURES="$2" bash "$script" "module with spaces" "$retry" 2>&1)" || rc=$?
+  : >"$PROBES"
+  out="$(cd "$work" && OFFLINE_STATUS="$2" FAILURES="$3" bash "$script" "module with spaces" "$retry" 2>&1)" || rc=$?
   [[ -s "$CALLS" ]] && calls="$(wc -l <"$CALLS")"
-  if [[ "$rc" != "$3" ]] || ((calls != $4)) || [[ "$out" != *"$5"* ]]; then
-    printf 'FAIL: %s: wanted exit %s after %s calls with %s; got exit %s after %s calls\n%s\n' \
-      "$label" "$3" "$4" "$5" "$rc" "$calls" "$out" >&2
+  if [[ "$rc" != "$4" ]] || ((calls != $5)) || [[ "$out" != *"$6"* ]]; then
+    printf 'FAIL: %s: wanted exit %s after %s downloads with %s; got exit %s after %s downloads\n%s\n' \
+      "$label" "$4" "$5" "$6" "$rc" "$calls" "$out" >&2
     exit 1
   fi
-  if ((calls > 0)) && grep -vqxF "$module|mod download" "$CALLS"; then
-    fail "$label: download ran outside the module or with other arguments: $(cat "$CALLS")"
+  # Exactly one probe, in the module, with the network off; downloads use the caller's proxy.
+  [[ "$(cat "$PROBES")" == "$module|off|list -deps ./..." ]] ||
+    fail "$label: the offline probe must run once in the module with GOPROXY=off: $(cat "$PROBES")"
+  if ((calls > 0)) && grep -vqxF "$module||mod download" "$CALLS"; then
+    fail "$label: download ran outside the module, offline or with other arguments: $(cat "$CALLS")"
   fi
   echo "PASS: $label"
 }
-run 'a reachable proxy downloads once' 0 0 1 'Downloaded the module dependencies'
-run 'a transient proxy error is retried' 2 0 3 'Downloaded the module dependencies'
-run 'an unreachable proxy fails naming the download' 3 1 3 'not a vulnerability finding: the scan did not run'
-mkdir -p "$module/vendor"
-: >"$module/vendor/modules.txt"
-run 'a vendored module needs no download' 3 0 0 'needs no download'
-STUB_GOWORK=off run 'a vendored module with workspaces off needs no download' 3 0 0 'needs no download'
-# In workspace mode Go reads only the workspace's vendor directory, never the module's.
-STUB_GOWORK="$work/go.work" run 'a workspace ignores the module vendor directory' 0 0 1 'Downloaded the module dependencies'
-mkdir -p "$work/vendor"
-: >"$work/vendor/modules.txt"
-STUB_GOWORK="$work/go.work" run 'a vendored workspace needs no download' 3 0 0 'needs no download'
+# Go loading every package offline covers vendoring, workspace vendoring, -mod flags and a warm cache.
+run 'packages Go loads offline need no download' 0 3 0 0 'nothing to download'
+run 'a reachable proxy downloads once' 1 0 0 1 'Downloaded the module dependencies'
+run 'a transient proxy error is retried' 1 2 0 3 'Downloaded the module dependencies'
+run 'an unreachable proxy fails naming the download' 1 3 1 3 'The scan did not run; this is not a vulnerability finding.'
 echo 'PASS: module download retry and failure boundaries'
