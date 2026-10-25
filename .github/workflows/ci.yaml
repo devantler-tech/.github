@@ -4705,6 +4705,9 @@ jobs:
       - name: Exercise vulnerability verdict and operational failure boundaries
         run: bash .github/tests/test-govulncheck-scan.sh
 
+      - name: Exercise the retried module download before the scan
+        run: bash .github/tests/test-govulncheck-download.sh
+
   test-govulncheck-timeout:
     needs: [select-ci-tests]
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-govulncheck-timeout') }}"
