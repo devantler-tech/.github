@@ -7,8 +7,15 @@
 set -euo pipefail
 module="$1" retry="$2"
 cd "$module"
-if [[ -f vendor/modules.txt ]]; then
-  echo 'The module vendors its dependencies; the scan reads vendor/ and needs no download.'
+# A vendored build reads vendor/ and needs no download. In workspace mode Go uses
+# only the workspace's vendor directory, beside go.work, and ignores a module's own.
+workspace="$(go env GOWORK)"
+vendor_dir=vendor
+if [[ -n "$workspace" && "$workspace" != off ]]; then
+  vendor_dir="$(dirname "$workspace")/vendor"
+fi
+if [[ -f "$vendor_dir/modules.txt" ]]; then
+  echo "The build reads vendored dependencies from $vendor_dir and needs no download."
   exit 0
 fi
 if ! bash "$retry" go mod download; then

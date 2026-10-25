@@ -66,6 +66,10 @@ mkdir -p "$work/bin" "$work/module with spaces"
 cat >"$work/bin/go" <<'SH'
 #!/usr/bin/env bash
 set -euo pipefail
+if [[ "$*" == 'env GOWORK' ]]; then
+  printf '%s\n' "$STUB_GOWORK"
+  exit 0
+fi
 printf '%s|%s\n' "$PWD" "$*" >>"$CALLS"
 calls="$(wc -l <"$CALLS")"
 if ((calls <= FAILURES)); then
@@ -74,7 +78,7 @@ if ((calls <= FAILURES)); then
 fi
 SH
 chmod +x "$work/bin/go"
-export PATH="$work/bin:$PATH" CALLS="$work/calls" RETRY_MAX_ATTEMPTS="$attempts" RETRY_BASE_DELAY=0
+export PATH="$work/bin:$PATH" CALLS="$work/calls" RETRY_MAX_ATTEMPTS="$attempts" RETRY_BASE_DELAY=0 STUB_GOWORK=''
 module="$work/module with spaces"
 run() { # run <label> <failures> <want-exit> <want-calls> <expected-output>
   local label="$1" rc=0 out calls=0
@@ -97,4 +101,10 @@ run 'an unreachable proxy fails naming the download' 3 1 3 'not a vulnerability 
 mkdir -p "$module/vendor"
 : >"$module/vendor/modules.txt"
 run 'a vendored module needs no download' 3 0 0 'needs no download'
+STUB_GOWORK=off run 'a vendored module with workspaces off needs no download' 3 0 0 'needs no download'
+# In workspace mode Go reads only the workspace's vendor directory, never the module's.
+STUB_GOWORK="$work/go.work" run 'a workspace ignores the module vendor directory' 0 0 1 'Downloaded the module dependencies'
+mkdir -p "$work/vendor"
+: >"$work/vendor/modules.txt"
+STUB_GOWORK="$work/go.work" run 'a vendored workspace needs no download' 3 0 0 'needs no download'
 echo 'PASS: module download retry and failure boundaries'
