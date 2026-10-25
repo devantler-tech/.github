@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/url"
 	"os"
+	"strconv"
 	"testing"
 	"time"
 
@@ -13,15 +14,55 @@ import (
 	_ "github.com/jackc/pgx/v5/stdlib"
 )
 
+func fixtureHost(port string) (string, error) {
+	if port == "" {
+		return "127.0.0.1:5432", nil
+	}
+	n, err := strconv.ParseUint(port, 10, 16)
+	if err != nil || n == 0 || strconv.FormatUint(n, 10) != port {
+		return "", errors.New("invalid disposable fixture port")
+	}
+	return "127.0.0.1:" + port, nil
+}
+
+func TestFixtureHost(t *testing.T) {
+	for _, tc := range []struct {
+		name, port, want string
+		wantErr          bool
+	}{
+		{name: "workflow default", want: "127.0.0.1:5432"},
+		{name: "allocated port", port: "32768", want: "127.0.0.1:32768"},
+		{name: "highest port", port: "65535", want: "127.0.0.1:65535"},
+		{name: "zero", port: "0", wantErr: true},
+		{name: "out of range", port: "65536", wantErr: true},
+		{name: "negative", port: "-1", wantErr: true},
+		{name: "noncanonical", port: "032768", wantErr: true},
+		{name: "whitespace", port: "32768 ", wantErr: true},
+		{name: "host injection", port: "example.com:5432", wantErr: true},
+		{name: "URL suffix", port: "32768/other", wantErr: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := fixtureHost(tc.port)
+			if (err != nil) != tc.wantErr || got != tc.want {
+				t.Fatalf("fixtureHost(%q) = %q, %v; want %q, error=%t", tc.port, got, err, tc.want, tc.wantErr)
+			}
+		})
+	}
+}
+
 func fixtureDB(t *testing.T, key, role string) *sql.DB {
 	t.Helper()
+	host, err := fixtureHost(os.Getenv("CI_FIXTURE_TEST_PORT"))
+	if err != nil {
+		t.Fatal(err)
+	}
 	raw := os.Getenv(key)
 	u, err := url.Parse(raw)
 	if err != nil || u == nil || u.User == nil {
 		t.Fatal("explicit disposable database URL is required")
 	}
 	password, ok := u.User.Password()
-	if u.Scheme != "postgres" || (u.Host != "127.0.0.1:5432" && u.Host != "127.0.0.1:55444") ||
+	if u.Scheme != "postgres" || u.Host != host ||
 		u.Path != "/ci_fixture_workflow_test" || u.User.Username() != role ||
 		!ok || password != "fixture-only" || u.RawQuery != "sslmode=disable" || u.Fragment != "" {
 		t.Fatal("database is not the explicitly isolated CI fixture")

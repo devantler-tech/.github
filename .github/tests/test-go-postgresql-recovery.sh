@@ -63,6 +63,7 @@ while IFS='=' read -r key value; do
     *) echo 'FAIL: unexpected fixture output' >&2; exit 1 ;;
   esac
 done <"$scratch/env"
+export CI_FIXTURE_TEST_PORT="$port"
 cd "$root/.github/tests/go-postgresql-fixture"
 go test -count=1 -race -timeout=90s ./...
 echo 'PASS: stopped native service recovered; real database and restricted-role tests passed'
