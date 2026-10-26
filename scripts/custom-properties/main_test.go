@@ -137,12 +137,40 @@ func TestSchemaReconciliationAndNoop(t *testing.T) {
 	}
 }
 
+func TestSchemaCreatesAndUpdatesDefinitions(t *testing.T) {
+	c := fixture(t)
+	for _, existing := range []bool{false, true} {
+		f := &fakeAPI{schema: []property{}}
+		if existing {
+			f.schema = append(f.schema, c.Properties...)
+			for i := range f.schema {
+				f.schema[i].Source = "organization"
+				f.schema[i].Description = "old description"
+			}
+		}
+		if err := reconcile(c, f.call); err != nil {
+			t.Fatal(err)
+		}
+		if len(f.writes) != len(c.Properties) {
+			t.Fatalf("expected one PUT per definition, got %v", f.writes)
+		}
+		for _, write := range f.writes {
+			if !strings.HasPrefix(write, "PUT ") {
+				t.Fatalf("unexpected mutation: %s", write)
+			}
+		}
+		if err := verifyDesired(c, f.schema, false); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
 func TestSchemaFailsBeforeWrites(t *testing.T) {
 	for _, f := range []*fakeAPI{
 		{failRead: true},
-		{rule: json.RawMessage(`{"id":1,"name":"consumer","source_type":"Organization","source":"devantler-tech","conditions":{"repository_property":{"include":[{"name":"LintDocumentation"}]}},"rules":[]}`)},
-		{rule: json.RawMessage(`{"id":2,"name":"wrong identity","source_type":"Organization","source":"devantler-tech","conditions":{},"rules":[]}`)},
-		{rule: json.RawMessage(`{"id":1,"name":"malformed conditions","source_type":"Organization","source":"devantler-tech","conditions":"unknown","rules":[]}`)},
+		{schema: []property{}, rule: json.RawMessage(`{"id":1,"name":"consumer","source_type":"Organization","source":"devantler-tech","conditions":{"repository_property":{"include":[{"name":"LintDocumentation"}]}},"rules":[]}`)},
+		{schema: []property{}, rule: json.RawMessage(`{"id":2,"name":"wrong identity","source_type":"Organization","source":"devantler-tech","conditions":{},"rules":[]}`)},
+		{schema: []property{}, rule: json.RawMessage(`{"id":1,"name":"malformed conditions","source_type":"Organization","source":"devantler-tech","conditions":"unknown","rules":[]}`)},
 		{schema: []property{{Name: "Unexpected", Source: "organization"}}},
 		{schema: []property{{Name: "Type", Source: "enterprise"}}},
 	} {
@@ -156,9 +184,12 @@ func TestSchemaFailsBeforeWrites(t *testing.T) {
 }
 
 func TestSchemaWriteAndReadbackFailures(t *testing.T) {
-	for _, f := range []*fakeAPI{{failWrite: true}, {corrupt: true}} {
+	for _, f := range []*fakeAPI{{schema: []property{}, failWrite: true}, {schema: []property{}, corrupt: true}} {
 		if err := reconcile(fixture(t), f.call); err == nil {
 			t.Fatal("failed mutation or mismatched readback accepted")
+		}
+		if len(f.writes) == 0 {
+			t.Fatal("test never reached a schema mutation")
 		}
 	}
 }
