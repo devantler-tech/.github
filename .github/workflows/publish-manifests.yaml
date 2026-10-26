@@ -65,6 +65,7 @@ jobs:
   publish-manifests:
     name: Publish manifests
     if: ${{ !inputs.dry-run }}
+    timeout-minutes: 60
     runs-on: ubuntu-latest
     concurrency:
       group: ${{ format('publish-verified-{0}', inputs.oci-name || github.repository) }}

@@ -42,9 +42,13 @@ on:
 [measured baseline](../../docs/ci-runner-deadlines.md) explains the current five- and
 ten-minute values. Keep `test-ci-runner-timeouts.sh` and its refusal controls
 required; a step deadline cannot replace a runner deadline. Reusable call jobs
-cannot declare this key: their callee-owned runner limits and immutable adoption
-remain under #749. These limits do not bound queue wait or establish whole-PR
-feedback time, and must not preempt the existing scanner timeout/retry contract.
+cannot declare this key. The same guard's `--callees .github/workflows` pass
+requires literal 1–60 minute limits on every local callable runner, including new
+workflows. See the baseline for each selected limit and unmeasured production
+paths. Updating this source does not update callers pinned to older revisions:
+immutable adoption remains under #749. These limits do not bound queue wait or
+establish whole-PR feedback time, and must not preempt the existing scanner
+timeout/retry contract.
 
 Publication safety fixtures run in the independent always-on `test-publish-contracts` job,
 alongside catalogue guards. Both jobs feed the required reducer; publication coverage retains

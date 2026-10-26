@@ -85,6 +85,7 @@ jobs:
   # Detect if Go files changed to conditionally skip jobs for non-Go changes
   changes:
     name: "\U0001F50D Detect Changes"
+    timeout-minutes: 5
     runs-on: ubuntu-latest
     # Direct required runs skip this repository unless a fixture module is selected.
     # Skip merge queue — these checks already passed on the PR
@@ -292,6 +293,7 @@ jobs:
           done
   tidy:
     name: "\U0001F4E6 Tidy"
+    timeout-minutes: 10
     runs-on: ubuntu-latest
     needs: [changes]
     defaults:
@@ -383,6 +385,7 @@ jobs:
           fi
   golangci-lint:
     name: "\U0001F9F9 Lint - golangci-lint"
+    timeout-minutes: 15
     runs-on: ubuntu-latest
     needs: [changes]
     defaults:
@@ -762,6 +765,7 @@ jobs:
           allow-file: ${{ steps.govulncheck-allow.outputs.present == 'true' && format('{0}/.govulncheck-allow.txt', needs.changes.outputs.module-directory) || '' }}
   lint:
     name: "\U0001F9F9 Lint - mega-linter"
+    timeout-minutes: 15
     runs-on: ubuntu-latest
     needs: [changes]
     defaults:
@@ -878,6 +882,7 @@ jobs:
       GITHUB_STATUS_REPORTER: false
   build:
     name: "\U0001F3D7️ Build"
+    timeout-minutes: 20
     runs-on: ubuntu-latest
     needs: [changes]
     defaults:
@@ -1015,6 +1020,7 @@ jobs:
           fi
   test:
     name: "\U0001F9EA Test"
+    timeout-minutes: 30
     runs-on: ubuntu-latest
     needs: [changes]
     services:
@@ -1288,6 +1294,7 @@ jobs:
           key: ${{ steps.kubeconform-cache.outputs.cache-primary-key }}
   coverage:
     name: "\U0001F4CA Code Coverage"
+    timeout-minutes: 40
     runs-on: ubuntu-latest
     needs: [changes]
     services:

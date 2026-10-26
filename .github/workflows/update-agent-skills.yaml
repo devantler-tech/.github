@@ -101,6 +101,7 @@ jobs:
   update-agent-skills:
     name: Update agent skills
     if: ${{ !inputs.dry-run }}
+    timeout-minutes: 60
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -219,6 +220,7 @@ jobs:
     name: Open PR for ${{ matrix.skill.path }}
     needs: update-agent-skills
     if: ${{ inputs.pr-per-skill && needs.update-agent-skills.outputs.skills != '' && needs.update-agent-skills.outputs.skills != '[]' }}
+    timeout-minutes: 15
     runs-on: ubuntu-latest
     permissions:
       contents: write

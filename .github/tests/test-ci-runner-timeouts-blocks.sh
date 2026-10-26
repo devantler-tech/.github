@@ -69,4 +69,70 @@ yq '.jobs.new-unbounded = {"runs-on": "ubuntu-latest", "steps": [{"run": "true"}
   .github/workflows/ci.yaml >"$tmp/bad.yaml"
 reject 'new unbounded runner' "$tmp/bad.yaml"
 
+# Shared workflows own their runner limits, including the existing scanner's
+# deliberate 60-minute ceiling. The direct CI job ceiling must stay at fifteen.
+yq '.on.workflow_call = null | .jobs.run.timeout-minutes = 60' \
+  "$tmp/good.yaml" >"$tmp/callee.yaml"
+bash "$guard" --callee "$tmp/callee.yaml" >"$tmp/out" 2>&1
+reject 'a callee budget used on a direct CI runner' "$tmp/callee.yaml"
+
+reject_callee() {
+  local name=$1 file=$2
+  if bash "$guard" --callee "$file" >"$tmp/out" 2>&1; then
+    echo "FAIL: callee deadline guard accepted $name" >&2
+    exit 1
+  fi
+  grep -qF 'invalid direct job deadline or reusable call' "$tmp/out" || {
+    cat "$tmp/out" >&2
+    exit 1
+  }
+  cases=$((cases + 1))
+}
+for value in 0 61 1.5 '"10"' null; do
+  TIMEOUT_JSON="$value" yq '.jobs.run.timeout-minutes = (strenv(TIMEOUT_JSON) | from_json)' \
+    "$tmp/callee.yaml" >"$tmp/bad-callee.yaml"
+  reject_callee "invalid shared limit $value" "$tmp/bad-callee.yaml"
+done
+yq 'del(.jobs.run.timeout-minutes)' "$tmp/callee.yaml" >"$tmp/bad-callee.yaml"
+reject_callee 'unbounded shared runner' "$tmp/bad-callee.yaml"
+yq '.jobs.call.timeout-minutes = 10' "$tmp/callee.yaml" >"$tmp/bad-callee.yaml"
+reject_callee 'unsupported caller-level limit in a shared workflow' "$tmp/bad-callee.yaml"
+
+mkdir "$tmp/callees" "$tmp/empty"
+cp "$tmp/callee.yaml" "$tmp/callees/good.yaml"
+# A repo-owned workflow is outside this guard's callable-only scope.
+printf 'on: push\njobs: {owner: {runs-on: ubuntu-latest}}\n' >"$tmp/callees/owner.yml"
+bash "$guard" --callees "$tmp/callees" >"$tmp/out" 2>&1
+for trigger in '"workflow_call"' '["push", "workflow_call"]'; do
+  TRIGGER_JSON="$trigger" yq '.on = (strenv(TRIGGER_JSON) | from_json)' \
+    "$tmp/callee.yaml" >"$tmp/callees/good.yaml"
+  bash "$guard" --callees "$tmp/callees" >"$tmp/out" 2>&1
+done
+cp "$tmp/callee.yaml" "$tmp/callees/good.yaml"
+printf 'on: null\njobs: {}\n' >"$tmp/callees/unknown.yaml"
+if bash "$guard" --callees "$tmp/callees" >"$tmp/out" 2>&1; then
+  echo 'FAIL: an unclassified workflow trigger was ignored' >&2
+  exit 1
+fi
+grep -qF 'cannot classify workflow triggers' "$tmp/out"
+rm "$tmp/callees/unknown.yaml"
+if bash "$guard" --callees "$tmp/empty" >"$tmp/out" 2>&1; then
+  echo 'FAIL: empty callable inventory accepted' >&2
+  exit 1
+fi
+grep -qF 'no callable workflows examined' "$tmp/out"
+cp "$tmp/bad-callee.yaml" "$tmp/callees/new.yaml"
+if bash "$guard" --callees "$tmp/callees" >"$tmp/out" 2>&1; then
+  echo 'FAIL: a newly added unsafe callable workflow was ignored' >&2
+  exit 1
+fi
+grep -qF 'invalid direct job deadline or reusable call' "$tmp/out"
+rm "$tmp/callees/new.yaml"
+ln -s "$tmp/callee.yaml" "$tmp/callees/linked.yaml"
+if bash "$guard" --callees "$tmp/callees" >"$tmp/out" 2>&1; then
+  echo 'FAIL: symlinked callable metadata was followed' >&2
+  exit 1
+fi
+grep -qF 'expected a regular workflow' "$tmp/out"
+
 echo "PASS: $cases deadline refusal controls and valid literal/callee-owned boundaries"

@@ -3701,7 +3701,9 @@ jobs:
 
       - name: Reject unbounded catalogue runner jobs
         shell: bash
-        run: bash .github/tests/test-ci-runner-timeouts.sh
+        run: |
+          bash .github/tests/test-ci-runner-timeouts.sh
+          bash .github/tests/test-ci-runner-timeouts.sh --callees .github/workflows
 
       - name: Exercise missing and malformed runner deadline refusals
         shell: bash

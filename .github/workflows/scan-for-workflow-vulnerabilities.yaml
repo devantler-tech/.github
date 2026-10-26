@@ -15,6 +15,7 @@ jobs:
   # groups complete green as a deliberate no-op while the scan stays skipped.
   eligibility:
     permissions: {}
+    timeout-minutes: 5
     runs-on: ubuntu-latest
     outputs:
       scan: ${{ steps.classify.outputs.scan }}
@@ -39,6 +40,7 @@ jobs:
   zizmor:
     needs: eligibility
     if: needs.eligibility.outputs.scan == 'true'
+    timeout-minutes: 15
     runs-on: ubuntu-latest
     permissions:
       security-events: write

@@ -32,6 +32,7 @@ jobs:
   release:
     if: "!inputs.offline-test"
     name: Release
+    timeout-minutes: 15
     runs-on: ubuntu-latest
     # One release at a time per repository and ref, so overlapping merges cannot compute the same
     # version and fail on each other's tag. Queued runs are kept in order rather than cancelled or
@@ -331,6 +332,7 @@ jobs:
   offline-test:
     name: Offline release decisions
     if: inputs.offline-test
+    timeout-minutes: 10
     runs-on: ubuntu-latest
     # Every nested job is validated even when skipped. Keep existing permissions:{} callers valid.
     permissions: {}
