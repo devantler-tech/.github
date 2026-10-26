@@ -47,6 +47,23 @@ blocker; do not widen the App or substitute a personal credential.
 There is no transaction with another organization owner changing policies concurrently. The final
 consumer recheck narrows that race, and subsequent runs detect schema drift.
 
+## Required App authority
+
+GitHub separates definition management from value editing. The schema workflow's `botantler-1`
+App needs **Custom properties: Admin** at organization scope
+(`organization_custom_properties: admin`), plus its existing organization-administration read
+authority for the consumer census. Write alone can edit values but cannot create, update or delete
+property definitions. See the [schema API permissions](https://docs.github.com/en/rest/orgs/custom-properties#create-or-update-a-custom-property-for-an-organization).
+
+Crossplane's `provider-upjet-github` App needs **Custom properties: Read and write** at repository
+scope (`repository_custom_properties: write`). The catalogue preserves `org_and_repo_actors` so
+that permission can set the explicit values. See the [repository value API permissions](https://docs.github.com/en/rest/repos/custom-properties#create-or-update-custom-property-values-for-a-repository).
+
+These are deployment prerequisites, not grants made by the workflow. The maintainer must configure
+and accept any required App permission updates before this catalogue is merged. An accepted
+installation grant is required; the workflow's token request cannot supply missing authority. Inspect only permission metadata;
+never print a private key or token, broaden an App automatically, or substitute personal credentials.
+
 ## Delivery and evidence
 
 Deploy platform#5389 first: it activates exactly this namespaced CRD and grants the existing tenant
