@@ -6289,6 +6289,9 @@ jobs:
       - name: 🧪 Test declarative coverage
         run: bash tests/declarative-coverage.sh
 
+      - name: Test explicit custom properties and schema boundaries
+        run: bash tests/custom-properties.sh
+
       - name: 🧪 Test native issue-type label retirement
         run: bash tests/issue-label-taxonomy.sh
 

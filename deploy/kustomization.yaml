@@ -26,3 +26,5 @@ resources:
   # active in the platform: without it these resources never become ready, and
   # the tenant's health check stalls every prod deploy behind them.
   - repository-permissions/
+  # Explicit values; requires platform#5389's CRD activation and scoped Role.
+  - repository-properties/
