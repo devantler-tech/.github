@@ -59,6 +59,7 @@ jobs:
       && github.event.pull_request.head.repo.fork != true
       && !contains(fromJSON('["dependabot[bot]","dependabot","renovate[bot]","renovatebot","renovate"]'), github.event.pull_request.user.login)
       && !contains(fromJSON('["dependabot[bot]","dependabot","renovate[bot]","renovatebot","renovate"]'), inputs.pr-owner)
+    timeout-minutes: 5
     runs-on: ubuntu-latest
     permissions:
       contents: read

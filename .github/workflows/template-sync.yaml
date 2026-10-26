@@ -89,6 +89,7 @@ jobs:
   template-sync:
     name: Template sync
     if: ${{ !inputs.dry-run }}
+    timeout-minutes: 60
     runs-on: ubuntu-latest
     permissions:
       contents: write

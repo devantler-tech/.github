@@ -14,7 +14,37 @@ Existing five- and ten-minute budgets are retained. Newly bounded jobs use five 
 
 The required guard rejects missing, nonnumeric, fractional, nonpositive and greater-than-15-minute direct-job limits. Its negative controls exercise the shipping graph, including removal of the native .NET job’s limit and addition of an unbounded runner. Scanner step deadlines, retries, permissions, selection and scenario coverage are unchanged.
 
-GitHub does not support `timeout-minutes` on [jobs that call reusable workflows](https://docs.github.com/en/actions/reference/workflows-and-actions/reusing-workflow-configurations#supported-keywords-for-jobs-that-call-a-reusable-workflow). The 31 reusable callsites therefore retain callee ownership. Their reachable runner limits and immutable-pin adoption remain on #749; this table proves nothing about them. GitHub’s [runner-job timeout setting](https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax#jobsjob_idtimeout-minutes) limits execution rather than organization runner queues.
+GitHub does not support `timeout-minutes` on [jobs that call reusable workflows](https://docs.github.com/en/actions/reference/workflows-and-actions/reusing-workflow-configurations#supported-keywords-for-jobs-that-call-a-reusable-workflow). The 31 reusable callsites therefore retain callee ownership. The direct-runner table proves nothing about them; the local callee baseline below covers their source. Immutable-pin adoption remains on #749. GitHub’s [runner-job timeout setting](https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax#jobsjob_idtimeout-minutes) limits execution rather than organization runner queues.
+
+## Local callable runner limits
+
+The required guard also inventories every local YAML workflow with a `workflow_call` trigger. Each runner must have a positive literal integer limit of at most 60 minutes. Unknown trigger shapes, an empty inventory, symbolic links and malformed jobs fail the observation. This checks the local implementation; it cannot establish what an older immutable remote revision executes.
+
+The following limits replace the six-hour default. Existing deadcode (15 minutes), govulncheck (60 minutes, including its separate step timeout/retry contract), and release-recovery fixture (10 minutes) remain unchanged. Generated read-only Go and TODO fixtures inherit the canonical source limits through their generators.
+
+| Workflow | Runner jobs and limits in minutes | Evidence and remaining uncertainty |
+|---|---|---|
+| `apply-signed-fixes` | apply-fixes: 5 | Two native fixture jobs; maximum 19 seconds. |
+| `create-release` | release: 15; offline-test: 10 | Offline fixture maximum 56 seconds. A [KSail release](https://github.com/devantler-tech/ksail/actions/runs/40248945111) executed for 72 seconds after 428 seconds queued. |
+| `dependency-review` | dependency-review: 10 | Two native fixture jobs; maximum 19 seconds. |
+| `enable-auto-merge` | dry-run, eligibility, disarm-untrusted-update, auto-merge: 5 each | Dry-run maximum 26 seconds; authenticated mutation paths have no successful observation in this sample. |
+| `publish-app` | publish: 60 | Conservative initial bound; production publication was not measured by these fixtures. |
+| `publish-manifests` | publish-manifests: 60 | Conservative initial bound; production publication was not measured by these fixtures. |
+| `scan-for-todo-comments` | dry-run: 5; todos: 60 | Generated offline fixture maxima 38–46 seconds; authenticated scanning and issue publication remain unmeasured. |
+| `scan-for-workflow-vulnerabilities` | eligibility: 5; zizmor: 15 | Native fixture maxima 16 and 32 seconds respectively. |
+| `template-sync` | template-sync: 60 | Conservative initial bound; repository count and authenticated updates were not measured. |
+| `update-agent-skills` | update-agent-skills: 60; open-skill-pull-requests: 15 | Conservative initial bounds; authenticated update/publication paths were not measured. |
+| `validate-go-project` | changes: 5; tidy: 10; golangci-lint: 15; lint: 15; build: 20; test: 30; coverage: 40 | Real consumer observations below exceed the small offline fixture durations. |
+
+Two dedicated steps in the existing required catalogue guard job run the direct-job and local-callee checks. Its refusal controls retain the fifteen-minute direct-job ceiling, accept a valid sixty-minute callee, reject unsupported caller-level limits, and detect a newly added unbounded callable workflow. No validation commands, permissions, selection, retries or scenario counts are removed by these deadlines.
+
+### Real Go consumer baseline
+
+[KSail run 40244883356, attempt 1](https://github.com/devantler-tech/ksail/actions/runs/40244883356), at `f6c1f9b84ba198f59c4eac8972f01f0cce473bc8`, completed all twelve jobs successfully in 1,525 seconds. The test job executed for 1,062 seconds and coverage for 1,505 seconds; their main test commands consumed 848 and 1,337 seconds respectively. Queue delays for those jobs were small. Fifteen-minute runner limits would terminate work that previously succeeded, so this boundedness change retains enough execution time while the separate performance work addresses the measured compute bottleneck.
+
+[Business-site run 40305534007, attempt 1](https://github.com/devantler-tech/business-site/actions/runs/40305534007) completed all twelve jobs successfully in 324 seconds. Its test and coverage jobs took 212 and 299 seconds. These observations demonstrate workload variation; they are not cold-cache or percentile guarantees.
+
+The portfolio's whole-PR fifteen-minute objective remains [#654](https://github.com/devantler-tech/.github/issues/654). Finite runner limits do not satisfy it. #749 remains open until the remaining immutable signed-fix callers adopt the bounded implementation and full native CI confirms that previously successful jobs still complete.
 
 ## Baseline by direct runner job
 

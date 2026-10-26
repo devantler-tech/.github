@@ -38,6 +38,7 @@ jobs:
     if: ${{ inputs.dry-run }}
     permissions:
       contents: read
+    timeout-minutes: 5
     runs-on: ubuntu-latest
     steps:
       - name: "\U0001F6E1️ Harden runner"
@@ -87,6 +88,7 @@ jobs:
     if: ${{ !inputs.dry-run }}
     permissions:
       contents: read
+    timeout-minutes: 60
     runs-on: ubuntu-latest
     steps:
       - name: "\U0001F6E1️ Harden runner"

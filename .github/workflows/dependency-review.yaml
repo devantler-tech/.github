@@ -61,6 +61,7 @@ on:
 
 jobs:
   dependency-review:
+    timeout-minutes: 10
     runs-on: ubuntu-latest
     # Dependency Review needs a PR diff (base..head is auto-resolved only on pull_request /
     # pull_request_target). On any other caller event — push, merge_group, schedule, … — the
