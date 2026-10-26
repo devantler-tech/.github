@@ -18,6 +18,7 @@ YAML
 
 bash "$guard" "$tmp/good.yaml" >"$tmp/out" 2>&1
 cases=0
+# reject requires an invalid direct-job fixture to fail with its expected diagnostic.
 reject() {
   local name=$1 file=$2 expected=${3:-'invalid direct job deadline or reusable call'}
   if bash "$guard" "$file" >"$tmp/out" 2>&1; then
@@ -76,6 +77,7 @@ yq '.on.workflow_call = null | .jobs.run.timeout-minutes = 60' \
 bash "$guard" --callee "$tmp/callee.yaml" >"$tmp/out" 2>&1
 reject 'a callee budget used on a direct CI runner' "$tmp/callee.yaml"
 
+# reject_callee checks the separate shared-job ceiling without weakening the direct CI limit.
 reject_callee() {
   local name=$1 file=$2
   if bash "$guard" --callee "$file" >"$tmp/out" 2>&1; then
@@ -135,6 +137,7 @@ if bash "$guard" --callees "$tmp/callees" >"$tmp/out" 2>&1; then
 fi
 grep -qF 'expected a regular workflow' "$tmp/out"
 
+# callee_invocation_present requires one unconditional, failure-propagating inventory step in CI.
 callee_invocation_present() {
   yq -o=json '.' "$1" | jq -e --arg run \
     'bash .github/tests/test-ci-runner-timeouts.sh --callees .github/workflows' '
