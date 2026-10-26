@@ -115,7 +115,7 @@ jobs:
       signed-fixes: "false"
     steps:
       - name: "\U0001F6E1️ Harden runner"
-        uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
+        uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2.22.2
         with:
           egress-policy: audit
       - name: "\U0001F4C4 Checkout"
@@ -319,7 +319,7 @@ jobs:
       contents: read
     steps:
       - name: "\U0001F6E1️ Harden runner"
-        uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
+        uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2.22.2
         with:
           egress-policy: audit
       - name: "\U0001F4C4 Checkout"
@@ -401,7 +401,7 @@ jobs:
       contents: read
     steps:
       - name: "\U0001F6E1️ Harden runner"
-        uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
+        uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2.22.2
         with:
           egress-policy: audit
       - name: "\U0001F4C4 Checkout"
@@ -512,7 +512,7 @@ jobs:
       GO_MEMORY_LIMIT: ${{ toJSON(inputs) == '{}' && '8GiB' || inputs.go-memory-limit }}
     steps:
       - name: "\U0001F6E1️ Harden runner"
-        uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
+        uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2.22.2
         with:
           egress-policy: audit
       - name: "\U0001F4C4 Checkout"
@@ -656,7 +656,7 @@ jobs:
       GO_MEMORY_LIMIT: ${{ toJSON(inputs) == '{}' && '8GiB' || inputs.go-memory-limit }}
     steps:
       - name: "\U0001F6E1️ Harden runner"
-        uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
+        uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2.22.2
         with:
           egress-policy: audit
       - name: "\U0001F4C4 Checkout"
@@ -777,7 +777,7 @@ jobs:
       contents: read
     steps:
       - name: "\U0001F6E1️ Harden runner"
-        uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
+        uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2.22.2
         with:
           egress-policy: audit
       - name: "\U0001F4C4 Checkout"
@@ -890,7 +890,7 @@ jobs:
       contents: read
     steps:
       - name: "\U0001F6E1️ Harden runner"
-        uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
+        uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2.22.2
         with:
           egress-policy: audit
       - name: "\U0001F4D1 Checkout"
@@ -1068,7 +1068,7 @@ jobs:
       contents: read
     steps:
       - name: "\U0001F6E1️ Harden runner"
-        uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
+        uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2.22.2
         with:
           egress-policy: audit
       - name: "\U0001F4D1 Checkout"
@@ -1313,7 +1313,7 @@ jobs:
       code-quality: write
     steps:
       - name: "\U0001F6E1️ Harden runner"
-        uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
+        uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2.22.2
         with:
           egress-policy: audit
       - name: "\U0001F4D1 Checkout"

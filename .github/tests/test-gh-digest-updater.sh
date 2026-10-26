@@ -22,7 +22,7 @@ check_boundary() {
     ($steps | length) == 5 and all($steps[];
       (keys - ["name","id","if","uses","with","run"] | length) == 0) and
     ($steps[0] | del(.name)) == {
-      uses:"step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25",
+      uses:"step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2",
       with:{"egress-policy":"audit"}} and
     ([$steps[]|select(.id=="source")|{uses,with}] == [{
       uses:"actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
