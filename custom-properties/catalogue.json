@@ -42,6 +42,7 @@
     "dotnet-template": {"type": "Template", "auto_merge": true, "scan_actions": true},
     "fleet-gitops": {"type": "Infrastructure", "auto_merge": true, "scan_actions": true},
     "go-template": {"type": "Template", "auto_merge": true, "scan_actions": true},
+    "guard-installed-skill-edits-action": {"type": "Library", "auto_merge": true, "scan_actions": true},
     "homebrew-tap": {"type": "Marketplace", "auto_merge": true, "scan_actions": true},
     "khoist": {"type": "Application", "auto_merge": true, "scan_actions": true},
     "ksail": {"type": "Application", "auto_merge": true, "scan_actions": true},
@@ -51,7 +52,9 @@
     "platform-template": {"type": "Template", "auto_merge": true, "scan_actions": true},
     "platform-tenant-template": {"type": "Template", "auto_merge": true, "scan_actions": true},
     "provider-upjet-unifi": {"type": "Library", "auto_merge": true, "scan_actions": true},
+    "setup-agent-skills-action": {"type": "Library", "auto_merge": true, "scan_actions": true},
     "unifi": {"type": "Infrastructure", "auto_merge": true, "scan_actions": true},
+    "update-agent-skills-action": {"type": "Library", "auto_merge": true, "scan_actions": true},
     "wedding-app": {"type": "Application", "auto_merge": true, "scan_actions": true},
     "world-at-ruin": {"type": "Application", "auto_merge": true, "scan_actions": true}
   }

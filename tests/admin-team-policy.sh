@@ -30,9 +30,9 @@ require_fixed_count() {
 
 require_count 1 '^  name: admins$' "$production_render"
 require_count 1 '^  name: admins-devantler$' "$production_render"
-require_count 24 '^  name: admins-' "$production_render"
-require_count 23 '^    permission: admin$' "$production_render"
-require_count 24 '^      name: admins$' "$production_render"
+require_count 27 '^  name: admins-' "$production_render"
+require_count 26 '^    permission: admin$' "$production_render"
+require_count 27 '^      name: admins$' "$production_render"
 
 grant_files=("$repo_root"/deploy/team-repositories/grant-admins-on-*.yaml)
 policy_files=(
@@ -40,16 +40,19 @@ policy_files=(
   "$repo_root/deploy/team-memberships/add-devantler-to-admins.yaml"
   "${grant_files[@]}"
 )
-[[ "${#grant_files[@]}" == 23 ]] ||
-  fail "expected 23 Admins grants, got ${#grant_files[@]}"
-[[ "${#policy_files[@]}" == 25 ]] ||
-  fail "expected 25 Admins policy files, got ${#policy_files[@]}"
+[[ "${#grant_files[@]}" == 26 ]] ||
+  fail "expected 26 Admins grants, got ${#grant_files[@]}"
+[[ "${#policy_files[@]}" == 28 ]] ||
+  fail "expected 28 Admins policy files, got ${#policy_files[@]}"
 cat "${policy_files[@]}" >"$policy_source"
 
 repositories=(
   .github
   agent-plugins
   agent-skills
+  setup-agent-skills-action
+  update-agent-skills-action
+  guard-installed-skill-edits-action
   ascoachingogvaner
   aws
   business-site
