@@ -8,7 +8,7 @@
 # actions roadmap (devantler-tech/actions#247).
 #
 # Shared across composite actions and resolved relative to ${GITHUB_ACTION_PATH}
-# (like .scripts/ensure-gh-skill.sh) so the retry logic lives in one place —
+# so the retry logic lives in one place —
 # composite actions cannot share steps, but they can share a bundled script that
 # works for both local `uses: ./<action>` callers and external
 # `uses: devantler-tech/.github/actions/<action>@<ref>` consumers.

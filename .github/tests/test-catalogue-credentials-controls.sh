@@ -53,9 +53,6 @@ mutable callee	.github/workflows/ci.yaml	.jobs["test-template-sync"].uses="devan
 missing callee	.github/workflows/ci.yaml	.jobs["test-template-sync"].uses="./.github/workflows/missing.yaml"	2	UNKNOWN
 removed template dry run	.github/workflows/ci.yaml	del(.jobs["test-template-sync"].with["dry-run"])	1	write authority
 restored template writer	.github/workflows/template-sync.yaml	del(.jobs["template-sync"].if)	1	write authority
-restored skills writer	.github/workflows/update-agent-skills.yaml	del(.jobs["update-agent-skills"].if)	1	write authority
-removed skipped dependency	.github/workflows/update-agent-skills.yaml	del(.jobs["open-skill-pull-requests"].needs)	1	write authority
-always restores skipped writer	.github/workflows/update-agent-skills.yaml	.jobs["open-skill-pull-requests"].if="${{ always() }}"	1	write authority
 restored auto merge	.github/workflows/enable-auto-merge.yaml	.jobs["disarm-untrusted-update"].if="${{ always() }}"	1	write authority
 restored test package writer	.github/workflows/ci.yaml	.jobs["test-run-dotnet-tests-workflow"].permissions.packages="write"	1	write authority
 restored application writer	.github/workflows/publish-app.yaml	del(.jobs.publish.if)	1	write authority
@@ -87,5 +84,5 @@ format replacement identity	.github/workflows/ci.yaml	.jobs.new={"if":"${{ forma
 unverified recovery helper	.github/workflows/validate-go-project-readonly.yaml	(.jobs.lint.steps[]|select(.id == "fixes")).if |= sub("steps.fix-exporter.outcome == 'success' && ";"")	2	UNKNOWN successful local action checkout
 unverified best-effort helper	.github/workflows/validate-go-project-readonly.yaml	del(.jobs.coverage.steps[]|select((.uses // "")|endswith("/actions/upload-coverage"))|.if)	2	UNKNOWN successful local action checkout
 CASES
-[[ "$controls" == 44 ]] || { echo 'FAIL: incomplete control set' >&2; exit 1; }
+[[ "$controls" == 41 ]] || { echo 'FAIL: incomplete control set' >&2; exit 1; }
 echo "PASS: complete source graph rejects $controls real-source credential regressions"

@@ -124,7 +124,7 @@ One component may reference another **in this repository**. GitHub resolves thes
   workflow has been reviewed and its blob id (`git rev-parse <commit>:.github/workflows/apply-signed-fixes.yaml`)
   is recorded in the test. `test-required-workflow-no-local-calls-blocks.sh` proves each unsafe
   reference is rejected (#484).
-- **Composite action → shared script:** invoke via `${{ github.action_path }}/../../.scripts/…` (resolves at the calling ref, no pin). See `setup-agent-skills` / `update-agent-skills`.
+- **Composite action → shared script:** invoke via `${{ github.action_path }}/../../.scripts/…` (resolves at the calling ref, no pin). Skill maintenance actions are published independently and resolve scripts within their own repositories.
 - **Reusable workflow → a sibling action:** native `$/actions/<action>` uses the workflow's
   own source. Existing same-commit self-checkouts bind `${{ job.workflow_repository }}`
   and `${{ job.workflow_sha }}` into `.devantler-tech-actions` before a workspace-relative
@@ -214,7 +214,6 @@ pass; the generic budget bound is not permission to omit tests or declare that o
 | `organization-settings-audit.yaml` | This repository |
 | `pr-metadata-guards.yaml` | This repository |
 | `publish-release-recovery.yaml` | This repository; default-off confirmed manual recovery, not a reusable consumer interface |
-| `refresh-gh-digests.yaml` | This repository |
 | `release.yaml` | This repository |
 | `repository-admin-team-audit.yaml` | This repository |
 | `repository-coverage-check.yaml` | This repository |

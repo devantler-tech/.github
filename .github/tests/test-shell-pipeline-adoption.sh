@@ -18,9 +18,7 @@ GOWORK=off go -C "$root/actions/validate-shell-pipelines" build -mod=readonly -o
 files=(
   .scripts/retry.sh
   .github/scripts/resolve-repository-admission.sh
-  .github/tests/test-update-agent-skills-mark-internal.sh
-  actions/guard-installed-skill-edits/guard-installed-skill-edits.sh
-  actions/update-agent-skills/mark-internal.sh
+  .github/tests/test-catalogue-credentials.sh
 )
 fixture="$work/consumer"
 mkdir -p "$fixture"

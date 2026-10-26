@@ -4,7 +4,7 @@ Find shell assertions that can lose a producer's exit status when `grep` stops
 reading a pipe early. Every call performs validation.
 
 This repository's required CI uses this guard for `.scripts`, `.github/scripts`,
-`.github/tests`, `actions/guard-installed-skill-edits`, and `actions/update-agent-skills`. This
+and `.github/tests`. This
 covers its real helpers and their tests. Deliberately invalid product fixtures
 under `.github/fixtures` belong to the separate positive/negative action tests.
 The adoption regression test reads CI's actual scope and injects a finding into
