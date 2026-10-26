@@ -36,7 +36,7 @@ The following limits replace the six-hour default. Existing deadcode (15 minutes
 | `update-agent-skills` | update-agent-skills: 60; open-skill-pull-requests: 15 | Conservative initial bounds; authenticated update/publication paths were not measured. |
 | `validate-go-project` | changes: 5; tidy: 10; golangci-lint: 15; lint: 15; build: 20; test: 30; coverage: 40 | Real consumer observations below exceed the small offline fixture durations. |
 
-The same existing required CI step runs both the direct-job and local-callee guards. Its refusal controls retain the fifteen-minute direct-job ceiling, accept a valid sixty-minute callee, reject unsupported caller-level limits, and detect a newly added unbounded callable workflow. No commands, permissions, selection, retries or scenario counts change with these deadlines.
+Two dedicated steps in the existing required catalogue guard job run the direct-job and local-callee checks. Its refusal controls retain the fifteen-minute direct-job ceiling, accept a valid sixty-minute callee, reject unsupported caller-level limits, and detect a newly added unbounded callable workflow. No validation commands, permissions, selection, retries or scenario counts are removed by these deadlines.
 
 ### Real Go consumer baseline
 

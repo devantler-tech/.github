@@ -374,7 +374,10 @@ job_structure="$(
 [[ -n "$job_structure" ]] ||
   fail "apply-fixes yielded no job structure to pin; this assertion is not reading the job it thinks it is"
 structure_digest="$(printf '%s' "$job_structure" | sha256_of)"
-audited_structure_digest="8fa68cfb7eddf437cfc943e5c2dd8629f13d89b759f6e5bc1c798bf3f2032fed"
+# #749 adds only the literal five-minute runner deadline. The complete job,
+# workflow defaults and environment otherwise match the previously audited
+# structure; the separate run-text digest remains unchanged.
+audited_structure_digest="1f309fc5920ebf77324b81198dbfd23fb56833714a543a99a855a3d24b999b96"
 [[ "$structure_digest" == "$audited_structure_digest" ]] ||
   fail "apply-fixes' job structure changed (found ${structure_digest}, audited ${audited_structure_digest}). Something other than the run text moved -- a step's or the job's \`env\` (BASH_ENV executes a file before the script), \`shell\`, \`working-directory\`, \`defaults.run\`, or a key this guard has never seen. Confirm it cannot execute code from the checked-out tree, then set audited_structure_digest to the value above. Dependency bumps of the pinned actions do NOT reach here."
 

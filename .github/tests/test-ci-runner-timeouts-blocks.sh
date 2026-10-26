@@ -135,4 +135,24 @@ if bash "$guard" --callees "$tmp/callees" >"$tmp/out" 2>&1; then
 fi
 grep -qF 'expected a regular workflow' "$tmp/out"
 
+callee_invocation_present() {
+  yq -o=json '.' "$1" | jq -e --arg run \
+    'bash .github/tests/test-ci-runner-timeouts.sh --callees .github/workflows' '
+      [.jobs["lint-ci-coverage-parity"].steps[]
+       | select(.run == $run and .shell == "bash" and (has("if") | not)
+         and ((has("continue-on-error") | not) or .["continue-on-error"] == false))]
+      | length == 1' >/dev/null
+}
+callee_invocation_present .github/workflows/ci.yaml || {
+  echo 'FAIL: required catalogue guard lost its dedicated callee inventory step' >&2
+  exit 1
+}
+SCAN_RUN='bash .github/tests/test-ci-runner-timeouts.sh --callees .github/workflows' \
+  yq '.jobs.lint-ci-coverage-parity.steps |= map(select(.run != strenv(SCAN_RUN)))' \
+  .github/workflows/ci.yaml >"$tmp/missing-scan.yaml"
+if callee_invocation_present "$tmp/missing-scan.yaml"; then
+  echo 'FAIL: removing the actual callee inventory invocation was not detected' >&2
+  exit 1
+fi
+
 echo "PASS: $cases deadline refusal controls and valid literal/callee-owned boundaries"

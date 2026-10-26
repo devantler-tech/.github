@@ -78,7 +78,7 @@ printf '{"value":"probe"}\n' >"$scratch/probe-token.json"
 if OIDC_FIXTURE="$scratch/probe-token.json" OIDC_CALLS="$scratch/probe-oidc-calls" \
   ACTIONS_ID_TOKEN_REQUEST_TOKEN=stub-not-a-secret ACTIONS_ID_TOKEN_REQUEST_URL=https://oidc.invalid/token \
   "$scratch/bin/curl" -fsS --max-time 10 -H 'Authorization: bearer stub-not-a-secret' \
-    'https://oidc.invalid/token&audience=sigstore' --data '{}' >/dev/null 2>&1; then
+  'https://oidc.invalid/token&audience=sigstore' --data '{}' >/dev/null 2>&1; then
   fail 'the token stub accepted an unmodelled network upload'
 fi
 
@@ -272,9 +272,15 @@ run_job() {
   [[ "$(wf '.jobs | keys | join(" ")')" == "$sim_job" ]] ||
     fail "$sim_workflow runs jobs besides $sim_job, which could publish while it refuses; model them"
   unmodelled="$(in_job '$J | keys | map(select(. != "name" and . != "if" and . != "runs-on"
-    and . != "permissions" and . != "env" and . != "steps" and . != "concurrency")) | join(" ")')"
+    and . != "permissions" and . != "env" and . != "steps" and . != "concurrency"
+    and . != "timeout-minutes")) | join(" ")')"
   [[ -z "$unmodelled" ]] ||
     fail "$sim_workflow job $sim_job sets $unmodelled, which this test does not model"
+  # Runner execution is independently bounded by native Actions. The offline
+  # publication model checks its literal metadata without claiming to simulate
+  # the runner clock; it still refuses unknown execution-affecting keys.
+  [[ "$(in_job '$J["timeout-minutes"] | type == "number" and . >= 1 and . <= 60 and . == floor')" == true ]] ||
+    fail "$sim_workflow job $sim_job has an invalid runner deadline"
   # Both publisher modes serialize one target without replacing pending releases.
   local concurrency_group
   case "$sim_job" in
@@ -283,9 +289,9 @@ run_job() {
     *) fail 'unmodelled publication concurrency group' ;;
   esac
   [[ "$(in_job '$J.concurrency | keys | sort | join(" ")')" == 'cancel-in-progress group queue' &&
-     "$(in_job '$J.concurrency.group')" == "$concurrency_group" &&
-     "$(in_job '$J.concurrency.queue')" == max &&
-     "$(in_job '$J.concurrency["cancel-in-progress"]')" == false ]] ||
+  "$(in_job '$J.concurrency.group')" == "$concurrency_group" &&
+  "$(in_job '$J.concurrency.queue')" == max &&
+  "$(in_job '$J.concurrency["cancel-in-progress"]')" == false ]] ||
     fail "$sim_workflow does not serialize verified publication without canceling releases"
   # shellcheck disable=SC2016 # GitHub expression compared literally.
   [[ "$(in_job '$J.if // ""')" == '${{ !inputs.dry-run }}' ]] ||
@@ -340,7 +346,7 @@ run_job() {
           printf 'setup %s\n' "$action" >>"$log"
           if [[ "$action" == actions/checkout && "$(step '.with.path // ""')" == .devantler-tech-publisher ]]; then
             [[ "$(resolve "$(step '.with.repository')")" == devantler-tech/.github &&
-              "$(resolve "$(step '.with.ref')")" == "$sha40" ]] || fail 'helper checkout does not select immutable publisher source'
+            "$(resolve "$(step '.with.ref')")" == "$sha40" ]] || fail 'helper checkout does not select immutable publisher source'
             mkdir -p "$workdir/.devantler-tech-publisher/.github/scripts"
             cp "$repo_root/.github/scripts/require-unpublished-version.sh" \
               "$repo_root/.github/scripts/prepare-prebuilt-webapp.sh" \
@@ -466,6 +472,21 @@ manifests=.github/workflows/publish-manifests.yaml
 
 # ---- 0. the simulation catches a command outside its tool set, even silenced ------------------
 
+# Deadline metadata must be understood before exercising any registry effects.
+# Distinct filenames avoid reusing the simulator's parsed-workflow cache.
+for value in 0 61 1.5 '"60"' null; do
+  probe="$scratch/deadline-${value//[^[:alnum:]]/_}.yaml"
+  TIMEOUT_JSON="$value" yq '.jobs.publish.timeout-minutes = (strenv(TIMEOUT_JSON) | from_json)' \
+    "$app" >"$probe"
+  if out="$(run_job "$probe" publish "$scratch" tag v1.2.3 2>&1)"; then
+    fail "the simulation accepted an invalid runner deadline"
+  fi
+  [[ "$out" == *"has an invalid runner deadline"* ]] ||
+    fail "the simulation refused deadline metadata for the wrong reason: $out"
+  nothing_pushed 'invalid runner deadline'
+done
+echo "ok   the simulation refuses malformed and unbounded deadline metadata"
+
 # The hook that records it needs bash 4+, which CI runs; macOS's bash 3.2 has only the visible
 # `command not found` message, so there the silenced case is skipped rather than claimed.
 if [[ "$("$scratch/tools/bash" -c 'echo "${BASH_VERSINFO[0]}"')" -ge 4 ]]; then
@@ -545,16 +566,16 @@ echo 'ok   both publishers enforce omitted/true pin inputs before checkout and p
 for workflow in "$app" "$manifests"; do
   job=publish
   [[ "$workflow" == "$app" ]] || job=publish-manifests
-for prerequisites in 'enable-signed-promotion=false enable-caller-pin=true' 'enable-signed-promotion=true enable-caller-pin=false' 'enable-signed-promotion=false enable-caller-pin=false'; do
-  wd="$scratch/recovery-refused"
-  mkdir -p "$wd"
-  # shellcheck disable=SC2086 # fixed input pairs, not content from a repository
-  if run_job "$workflow" "$job" "$wd" tag v1.2.3 app-name=app enable-signed-recovery=true $prerequisites; then
-    fail 'recovery bypassed signed-promotion/caller admission'
-  fi
-  nothing_pushed 'recovery without its prerequisites'
-  refused_with 'recovery without its prerequisites' 'recovery requires signed promotion and caller pinning'
-done
+  for prerequisites in 'enable-signed-promotion=false enable-caller-pin=true' 'enable-signed-promotion=true enable-caller-pin=false' 'enable-signed-promotion=false enable-caller-pin=false'; do
+    wd="$scratch/recovery-refused"
+    mkdir -p "$wd"
+    # shellcheck disable=SC2086 # fixed input pairs, not content from a repository
+    if run_job "$workflow" "$job" "$wd" tag v1.2.3 app-name=app enable-signed-recovery=true $prerequisites; then
+      fail 'recovery bypassed signed-promotion/caller admission'
+    fi
+    nothing_pushed 'recovery without its prerequisites'
+    refused_with 'recovery without its prerequisites' 'recovery requires signed promotion and caller pinning'
+  done
 done
 echo 'ok   explicit recovery cannot fall through to legacy publication'
 
