@@ -205,6 +205,7 @@ pass; the generic budget bound is not permission to omit tests or declare that o
 | Workflow | Ownership |
 |---|---|
 | `apply-workflow-execution-policies.yaml` | This repository |
+| `apply-custom-properties.yaml` | This repository; organization schema only, repository values reconcile through Crossplane |
 | `cd.yaml` | This repository |
 | `ci.yaml` | This repository |
 | `deploy-guards.yaml` | This repository |
