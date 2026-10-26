@@ -44,7 +44,7 @@ Two dedicated steps in the existing required catalogue guard job run the direct-
 
 [Business-site run 40305534007, attempt 1](https://github.com/devantler-tech/business-site/actions/runs/40305534007) completed all twelve jobs successfully in 324 seconds. Its test and coverage jobs took 212 and 299 seconds. These observations demonstrate workload variation; they are not cold-cache or percentile guarantees.
 
-The portfolio's whole-PR fifteen-minute objective remains [#654](https://github.com/devantler-tech/.github/issues/654). Finite runner limits do not satisfy it. #749 remains open until the remaining immutable signed-fix callers adopt the bounded implementation and full native CI confirms that previously successful jobs still complete.
+The portfolio's whole-PR fifteen-minute objective remains [#654](https://github.com/devantler-tech/.github/issues/654). Finite runner limits do not satisfy it. [PR #771](https://github.com/devantler-tech/.github/pull/771) released the bounded callable source in [v13.2.14](https://github.com/devantler-tech/.github/releases/tag/v13.2.14). The three Go signed-fix callers now use that release's immutable commit and its reviewed workflow blob. The generated read-only projection continues to remove those credentialed jobs. Issue #749 closes only after full native CI and post-merge verification confirm this adoption; it does not close the portfolio performance objective.
 
 ## Baseline by direct runner job
 
