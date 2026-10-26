@@ -34,7 +34,8 @@ jq -se '
   echo 'FAIL: every managed repository needs exactly three explicit non-deleting property assignments' >&2
   exit 1
 }
-go -C "$root/scripts/custom-properties" test ./...
+# The catalogue and shell renderer live outside this Go module's cache boundary.
+go -C "$root/scripts/custom-properties" test -count=1 ./...
 go -C "$root/scripts/custom-properties" run . --root "$root" --check
 yq -o=json '.' "$root/.github/workflows/apply-custom-properties.yaml" >"$work/workflow.json"
 jq -e '

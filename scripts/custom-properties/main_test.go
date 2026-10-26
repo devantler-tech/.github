@@ -23,8 +23,8 @@ func TestRenderExplicitAssignments(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Count(out, "kind: RepositoryCustomProperty\n") != 69 {
-		t.Fatal("expected 23 repositories with three assignments")
+	if got, want := strings.Count(out, "kind: RepositoryCustomProperty\n"), 3*len(c.Repositories); got != want {
+		t.Fatalf("expected %d repositories with three assignments (%d total), got %d", len(c.Repositories), want, got)
 	}
 	for _, forbidden := range []string{"crossplane.io/external-name", "LateInitialize", "- Delete", "AutomaticallyRequestCopilotCodeReview", "LintDocumentation"} {
 		if strings.Contains(out, forbidden) {
