@@ -1,0 +1,21 @@
+apiVersion: repo.github.m.upbound.io/v1alpha1
+kind: Repository
+metadata:
+  name: setup-agent-skills
+  annotations:
+    crossplane.io/external-name: setup-agent-skills
+spec:
+  managementPolicies: ["Observe", "Create", "Update"]
+  initProvider:
+    # Seed main through the declarative owner so implementation can land by PR.
+    autoInit: true
+  forProvider:
+    name: setup-agent-skills
+    visibility: public
+    archived: false
+    description: "Install agent skills for one or more coding agents with reviewed version pins"
+    hasIssues: true
+    topics: ["github-actions", "agent-skills", "ai-agents"]
+  providerConfigRef:
+    kind: ProviderConfig
+    name: default
