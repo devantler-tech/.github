@@ -46,7 +46,7 @@ jq -e '
   ([.jobs.apply.steps[] | select(.uses? | strings | startswith("actions/checkout@"))] |
     length == 1 and .[0].with.ref == "${{ github.workflow_sha }}" and .[0].with."persist-credentials" == false) and
   ([.jobs.apply.steps[] | select(.id? == "token")] | length == 1 and
-    .[0].with."permission-organization-administration" == "read" and
+    .[0].with."permission-organization-administration" == "write" and
     .[0].with."permission-organization-custom-properties" == "admin" and
     .[0].with.repositories == ".github") and
   ([.jobs.apply.steps | to_entries[] | select(.value.run? | strings | endswith("--check")) | .key][0] <

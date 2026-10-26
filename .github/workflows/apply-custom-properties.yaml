@@ -56,7 +56,9 @@ jobs:
           private-key: ${{ secrets.APP_PRIVATE_KEY }}
           owner: devantler-tech
           repositories: .github
-          permission-organization-administration: read
+          # GitHub requires write even for GET of org rulesets and Actions policies.
+          # The reconciler only reads those consumers; mutations target the schema.
+          permission-organization-administration: write
           permission-organization-custom-properties: admin
       - name: Reconcile schema after complete native consumer checks
         env:

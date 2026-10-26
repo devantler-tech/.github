@@ -51,8 +51,12 @@ consumer recheck narrows that race, and subsequent runs detect schema drift.
 
 GitHub separates definition management from value editing. The schema workflow's `botantler-1`
 App needs **Custom properties: Admin** at organization scope
-(`organization_custom_properties: admin`), plus its existing organization-administration read
-authority for the consumer census. Write alone can edit values but cannot create, update or delete
+(`organization_custom_properties: admin`), plus its existing organization-administration write
+authority for the consumer census. GitHub requires that write permission even for
+[listing organization rulesets](https://docs.github.com/en/rest/orgs/rules#get-all-organization-repository-rulesets)
+and [listing Actions policies](https://docs.github.com/en/rest/actions/policies#list-organization-actions-policies).
+The reconciler only reads those consumers; it does not change their configuration.
+Custom-properties write alone can edit values but cannot create, update or delete
 property definitions. See the [schema API permissions](https://docs.github.com/en/rest/orgs/custom-properties#create-or-update-a-custom-property-for-an-organization).
 
 Crossplane's `provider-upjet-github` App needs **Custom properties: Read and write** at repository
