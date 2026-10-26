@@ -1,0 +1,15 @@
+apiVersion: actions.github.m.upbound.io/v1alpha1
+kind: RepositoryPermissions
+metadata:
+  name: guard-installed-skill-edits-action
+  annotations:
+    crossplane.io/external-name: guard-installed-skill-edits-action
+spec:
+  managementPolicies: ["Observe", "Create", "Update"]
+  forProvider:
+    repository: guard-installed-skill-edits-action
+    enabled: true
+    allowedActions: all
+  providerConfigRef:
+    kind: ProviderConfig
+    name: default

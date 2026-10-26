@@ -1,0 +1,21 @@
+apiVersion: repo.github.m.upbound.io/v1alpha1
+kind: Repository
+metadata:
+  name: guard-installed-skill-edits-action
+  annotations:
+    crossplane.io/external-name: guard-installed-skill-edits-action
+spec:
+  managementPolicies: ["Observe", "Create", "Update"]
+  initProvider:
+    # Seed main through the declarative owner so implementation can land by PR.
+    autoInit: true
+  forProvider:
+    name: guard-installed-skill-edits-action
+    visibility: public
+    archived: false
+    description: "Protect installed agent skills from edits that bypass their upstream source"
+    hasIssues: true
+    topics: ["github-actions", "agent-skills", "ai-agents"]
+  providerConfigRef:
+    kind: ProviderConfig
+    name: default

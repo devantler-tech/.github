@@ -1,0 +1,15 @@
+apiVersion: actions.github.m.upbound.io/v1alpha1
+kind: RepositoryPermissions
+metadata:
+  name: update-agent-skills-action
+  annotations:
+    crossplane.io/external-name: update-agent-skills-action
+spec:
+  managementPolicies: ["Observe", "Create", "Update"]
+  forProvider:
+    repository: update-agent-skills-action
+    enabled: true
+    allowedActions: all
+  providerConfigRef:
+    kind: ProviderConfig
+    name: default
