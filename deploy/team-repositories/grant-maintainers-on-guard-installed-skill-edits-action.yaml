@@ -1,16 +1,16 @@
 apiVersion: team.github.m.upbound.io/v1alpha1
 kind: TeamRepository
 metadata:
-  name: admins-guard-installed-skill-edits
+  name: maintainers-guard-installed-skill-edits-action
 spec:
   managementPolicies: ["Observe", "Create", "Update"]
   forProvider:
     teamIdRef:
-      name: admins
+      name: maintainers
       policy:
         resolve: Always
-    repository: guard-installed-skill-edits
-    permission: admin
+    repository: guard-installed-skill-edits-action
+    permission: maintain
   providerConfigRef:
     kind: ProviderConfig
     name: default

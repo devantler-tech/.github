@@ -50,9 +50,9 @@ repositories=(
   .github
   agent-plugins
   agent-skills
-  setup-agent-skills
-  update-agent-skills
-  guard-installed-skill-edits
+  setup-agent-skills-action
+  update-agent-skills-action
+  guard-installed-skill-edits-action
   ascoachingogvaner
   aws
   business-site

@@ -1,16 +1,16 @@
 apiVersion: team.github.m.upbound.io/v1alpha1
 kind: TeamRepository
 metadata:
-  name: maintainers-update-agent-skills
+  name: admins-update-agent-skills-action
 spec:
   managementPolicies: ["Observe", "Create", "Update"]
   forProvider:
     teamIdRef:
-      name: maintainers
+      name: admins
       policy:
         resolve: Always
-    repository: update-agent-skills
-    permission: maintain
+    repository: update-agent-skills-action
+    permission: admin
   providerConfigRef:
     kind: ProviderConfig
     name: default

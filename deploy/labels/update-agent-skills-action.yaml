@@ -1,13 +1,13 @@
 apiVersion: repo.github.m.upbound.io/v1alpha1
 kind: IssueLabels
 metadata:
-  name: guard-installed-skill-edits
+  name: update-agent-skills-action
   annotations:
-    crossplane.io/external-name: guard-installed-skill-edits
+    crossplane.io/external-name: update-agent-skills-action
 spec:
   managementPolicies: ["Observe", "Create", "Update"]
   forProvider:
-    repository: guard-installed-skill-edits
+    repository: update-agent-skills-action
     # The shared patch supplies the canonical taxonomy; retain updater labels.
     label:
       - name: dependencies
