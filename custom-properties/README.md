@@ -17,6 +17,11 @@ inventories confirm that no consumer still references them. This never requests 
 An unreadable, partial or changed policy identity stops schema writes. An enterprise-sourced or
 unexpected property is preserved and stops reconciliation for an ownership review.
 
+The disabled legacy Copilot-review ruleset still selects the retiring review property. Its
+Observe-only [import](../deploy/organization-rulesets/observe-disabled-copilot-review.yaml)
+collects complete provider state for a separately reviewed selector retirement. It cannot change
+the native policy. Schema retirement remains blocked until every native consumer reference is gone.
+
 ## Ownership and reconciliation
 
 Repository actors retain the existing permission to set values; Crossplane restores the reviewed
