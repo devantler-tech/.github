@@ -431,6 +431,8 @@ func repositoryValues(c catalogue, r repository, schema []property) []assignment
 	return values
 }
 
+// verifyValues requires complete, unambiguous native readback for every declared
+// repository and rejects any missing, duplicate or mismatched property value.
 func verifyValues(wanted map[string][]assignment, api apiFunc) error {
 	// A separate read-only token covers exactly the validated catalogue. The
 	// schema-writing token remains restricted to this configuration repository.
