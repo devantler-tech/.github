@@ -98,7 +98,7 @@ func validate(c catalogue) error {
 			return errors.New("workflow scanning remains enabled across the portfolio")
 		}
 		if *r.CopilotReview {
-			return errors.New("automatic Copilot review remains disabled across the portfolio")
+			return errors.New("automatic Copilot review is enabled; copilot_review must be false across the portfolio")
 		}
 	}
 	return nil
