@@ -23,10 +23,10 @@ func TestRenderExplicitAssignments(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got, want := strings.Count(out, "kind: RepositoryCustomProperty\n"), 3*len(c.Repositories); got != want {
-		t.Fatalf("expected %d repositories with three assignments (%d total), got %d", len(c.Repositories), want, got)
+	if got, want := strings.Count(out, "kind: RepositoryCustomProperty\n"), 4*len(c.Repositories); got != want {
+		t.Fatalf("expected %d repositories with four assignments (%d total), got %d", len(c.Repositories), want, got)
 	}
-	for _, forbidden := range []string{"crossplane.io/external-name", "LateInitialize", "- Delete", "AutomaticallyRequestCopilotCodeReview", "LintDocumentation"} {
+	for _, forbidden := range []string{"crossplane.io/external-name", "LateInitialize", "- Delete", "LintDocumentation"} {
 		if strings.Contains(out, forbidden) {
 			t.Fatalf("unsafe or retired setting: %s", forbidden)
 		}
@@ -43,6 +43,13 @@ func TestCatalogueRejectsMissingAndUnknownValues(t *testing.T) {
 		func(c *catalogue) { c.Properties[0].Explicit = false },
 		func(c *catalogue) { c.Properties = append(c.Properties, c.Properties[0]) },
 		func(c *catalogue) { c.Retire = append(c.Retire, "EnableAutoMerge") },
+		func(c *catalogue) { r := c.Repositories["ksail"]; r.CopilotReview = nil; c.Repositories["ksail"] = r },
+		func(c *catalogue) {
+			r := c.Repositories["ksail"]
+			value := true
+			r.CopilotReview = &value
+			c.Repositories["ksail"] = r
+		},
 	} {
 		c := fixture(t)
 		mutation(&c)
@@ -57,12 +64,20 @@ type fakeAPI struct {
 	rule                         json.RawMessage
 	failRead, failWrite, corrupt bool
 	writes                       []string
+	values                       map[string][]map[string]string
 }
 
 func (f *fakeAPI) call(method, path string, body []byte) ([]byte, error) {
 	if method == "GET" {
 		if f.failRead {
 			return nil, errors.New("unavailable")
+		}
+		if path == "orgs/devantler-tech/properties/values?per_page=100&page=1" {
+			rows := []map[string]any{}
+			for name, values := range f.values {
+				rows = append(rows, map[string]any{"repository_id": len(rows) + 1, "repository_name": name, "repository_full_name": "devantler-tech/" + name, "properties": values})
+			}
+			return json.Marshal(rows)
 		}
 		switch path {
 		case "orgs/devantler-tech/properties/schema":
@@ -82,6 +97,37 @@ func (f *fakeAPI) call(method, path string, body []byte) ([]byte, error) {
 	f.writes = append(f.writes, method+" "+path)
 	if f.failWrite {
 		return nil, errors.New("write denied")
+	}
+	if method == "PATCH" && path == "orgs/devantler-tech/properties/values" {
+		var request struct {
+			Repositories []string            `json:"repository_names"`
+			Properties   []map[string]string `json:"properties"`
+		}
+		if err := json.Unmarshal(body, &request); err != nil {
+			return nil, err
+		}
+		if len(request.Repositories) != 1 || len(request.Properties) == 0 {
+			return nil, errors.New("incomplete value request")
+		}
+		for _, p := range f.schema {
+			if !p.Required || !p.Explicit {
+				continue
+			}
+			found := false
+			for _, v := range request.Properties {
+				if v["property_name"] == p.Name {
+					found = true
+				}
+			}
+			if !found {
+				return nil, errors.New("required explicit value missing from atomic request")
+			}
+		}
+		if f.values == nil {
+			f.values = map[string][]map[string]string{}
+		}
+		f.values[request.Repositories[0]] = request.Properties
+		return []byte{}, nil
 	}
 	name := path[strings.LastIndex(path, "/")+1:]
 	if method == "DELETE" {
@@ -118,22 +164,220 @@ func (f *fakeAPI) call(method, path string, body []byte) ([]byte, error) {
 	return []byte(`{}`), nil
 }
 
-func TestSchemaReconciliationAndNoop(t *testing.T) {
+// Native GitHub rejects independent value creation when other required values
+// are missing. Exercise the reconciler against that complete request boundary.
+func TestBootstrapBeforeRetirement(t *testing.T) {
+	for _, failure := range []string{"", "write", "readback", "wrong-value", "duplicate", "missing-private"} {
+		t.Run(failure, func(t *testing.T) {
+			c := fixture(t)
+			f := &fakeAPI{schema: append([]property{}, c.Properties...)}
+			for i := range f.schema {
+				f.schema[i].Source = "organization"
+			}
+			for _, name := range c.Retire {
+				f.schema = append(f.schema, property{Name: name, Type: "true_false", Source: "organization", Required: true, Explicit: true, Default: "false"})
+			}
+			patched := map[string]bool{}
+			deleted := false
+			api := func(method, path string, body []byte) ([]byte, error) {
+				if method == "DELETE" {
+					deleted = true
+					if len(patched) != len(c.Repositories) {
+						return nil, errors.New("retirement preceded complete initialization")
+					}
+				}
+				if method == "PATCH" {
+					if failure == "write" {
+						return nil, errors.New("native write refused")
+					}
+					var request struct {
+						Repositories []string            `json:"repository_names"`
+						Properties   []map[string]string `json:"properties"`
+					}
+					if err := json.Unmarshal(body, &request); err != nil {
+						return nil, err
+					}
+					if len(request.Repositories) != 1 {
+						t.Fatal("bootstrap must bind one catalogue repository")
+					}
+					name := request.Repositories[0]
+					if _, ok := c.Repositories[name]; !ok {
+						t.Fatal("bootstrap escaped catalogue")
+					}
+					values := map[string]string{}
+					for _, p := range request.Properties {
+						values[p["property_name"]] = p["value"]
+					}
+					if values["AutomaticallyRequestCopilotCodeReview"] != "false" || values["ScanGitHubActions"] != "true" || values["Type"] != c.Repositories[name].Type {
+						t.Fatal("unsafe or incomplete initial values")
+					}
+					if values["LintDocumentation"] != "false" {
+						t.Fatal("retiring required value must remain explicit until removal")
+					}
+					patched[name] = true
+				}
+				if failure == "readback" && method == "GET" && strings.HasPrefix(path, "orgs/devantler-tech/properties/values?") {
+					return []byte(`[]`), nil
+				}
+				if (failure == "wrong-value" || failure == "duplicate" || failure == "missing-private") && method == "GET" && strings.HasPrefix(path, "orgs/devantler-tech/properties/values?") {
+					b, err := f.call(method, path, body)
+					if err != nil {
+						return nil, err
+					}
+					var rows []struct {
+						ID         int                 `json:"repository_id"`
+						Name       string              `json:"repository_name"`
+						FullName   string              `json:"repository_full_name"`
+						Properties []map[string]string `json:"properties"`
+					}
+					if err = json.Unmarshal(b, &rows); err != nil {
+						return nil, err
+					}
+					if failure == "wrong-value" {
+						rows[0].Properties[0]["value"] = "unexpected"
+					} else if failure == "duplicate" {
+						rows[0].Properties[0] = rows[0].Properties[1]
+					} else {
+						for i, row := range rows {
+							if row.Name == "client-orders" {
+								rows = append(rows[:i], rows[i+1:]...)
+								break
+							}
+						}
+					}
+					return json.Marshal(rows)
+				}
+				return f.call(method, path, body)
+			}
+			err := reconcile(c, api)
+			if failure == "" {
+				if err != nil || len(patched) != len(c.Repositories) || !deleted {
+					t.Fatalf("initialization did not complete: %v, patched=%d deleted=%v", err, len(patched), deleted)
+				}
+			} else if err == nil || deleted {
+				t.Fatalf("failed bootstrap allowed retirement: %v deleted=%v", err, deleted)
+			}
+		})
+	}
+}
+
+func TestTemplateClassificationsPreserveNativeCodeQLCoverage(t *testing.T) {
+	c := fixture(t)
+	for name, want := range map[string]string{"go-template": "Application", "dotnet-template": "Application", "platform-tenant-template": "Application", "platform-template": "Infrastructure"} {
+		if got := c.Repositories[name].Type; got != want {
+			t.Fatalf("%s classification %q would change existing native policy coverage; want %q", name, got, want)
+		}
+	}
+}
+
+func TestDisabledReviewConsumerCanRemainWithoutActivation(t *testing.T) {
+	c := fixture(t)
+	f := &fakeAPI{schema: []property{}, rule: json.RawMessage(`{"id":1,"name":"disabled review","source_type":"Organization","source":"devantler-tech","enforcement":"disabled","conditions":{"repository_property":{"include":[{"name":"AutomaticallyRequestCopilotCodeReview"}]}},"rules":[]}`)}
+	if err := reconcile(c, f.call); err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range f.schema {
+		if p.Name == "AutomaticallyRequestCopilotCodeReview" && p.Default == "false" {
+			return
+		}
+	}
+	t.Fatal("retained disabled-review switch lacks safe false default")
+}
+
+func TestReadbackRequiresCompleteOrganizationInventory(t *testing.T) {
+	for _, failure := range []string{"", "unavailable-page", "duplicate-id", "duplicate-name", "foreign-owner"} {
+		t.Run(failure, func(t *testing.T) {
+			c := fixture(t)
+			f := &fakeAPI{schema: append([]property{}, c.Properties...)}
+			for i := range f.schema {
+				f.schema[i].Source = "organization"
+			}
+			f.schema = append(f.schema, property{Name: "LintDocumentation", Type: "true_false", Source: "organization"})
+			secondPage := false
+			api := func(method, path string, body []byte) ([]byte, error) {
+				if method == "GET" && path == "orgs/devantler-tech/properties/values?per_page=100&page=1" {
+					b, err := f.call(method, path, body)
+					if err != nil {
+						return nil, err
+					}
+					var rows []map[string]any
+					if err = json.Unmarshal(b, &rows); err != nil {
+						return nil, err
+					}
+					for len(rows) < 100 {
+						id := len(rows) + 1000
+						name := fmt.Sprintf("archived-%d", id)
+						rows = append(rows, map[string]any{"repository_id": id, "repository_name": name, "repository_full_name": "devantler-tech/" + name, "properties": []any{}})
+					}
+					return json.Marshal(rows)
+				}
+				if method == "GET" && path == "orgs/devantler-tech/properties/values?per_page=100&page=2" {
+					secondPage = true
+					if failure == "unavailable-page" {
+						return nil, errors.New("unavailable page")
+					}
+					rows := []map[string]any{}
+					if failure != "" {
+						id := 2000
+						name := "additional"
+						owner := "devantler-tech/"
+						if failure == "duplicate-id" {
+							id = 1
+						}
+						if failure == "duplicate-name" {
+							name = "client-orders"
+						}
+						if failure == "foreign-owner" {
+							owner = "other/"
+						}
+						rows = append(rows, map[string]any{"repository_id": id, "repository_name": name, "repository_full_name": owner + name, "properties": []any{}})
+					}
+					return json.Marshal(rows)
+				}
+				return f.call(method, path, body)
+			}
+			err := reconcile(c, api)
+			if !secondPage {
+				t.Fatal("stopped before complete organization collection")
+			}
+			if failure == "" && err != nil {
+				t.Fatal(err)
+			}
+			if failure != "" {
+				if err == nil {
+					t.Fatal("incomplete or ambiguous collection accepted")
+				}
+				for _, write := range f.writes {
+					if strings.HasPrefix(write, "DELETE ") {
+						t.Fatal("retirement preceded complete readback")
+					}
+				}
+			}
+		})
+	}
+}
+
+func TestSchemaReconciliationAndRetry(t *testing.T) {
 	c := fixture(t)
 	f := &fakeAPI{schema: append([]property{}, c.Properties...)}
 	for i := range f.schema {
 		f.schema[i].Source = "organization"
 	}
-	f.schema = append(f.schema, property{Name: c.Retire[0], Source: "organization"}, property{Name: c.Retire[1], Source: "organization"})
+	f.schema = append(f.schema, property{Name: "LintDocumentation", Type: "true_false", Source: "organization"})
 	if err := reconcile(c, f.call); err != nil {
 		t.Fatal(err)
 	}
-	if len(f.writes) != 2 || !strings.HasPrefix(f.writes[0], "DELETE ") {
+	if len(f.writes) != len(c.Repositories)+1 || f.writes[len(f.writes)-1] != "DELETE orgs/devantler-tech/properties/schema/LintDocumentation" {
 		t.Fatalf("unexpected changes: %v", f.writes)
 	}
 	f.writes = nil
-	if err := reconcile(c, f.call); err != nil || len(f.writes) != 0 {
-		t.Fatalf("matching retry changed state: %v %v", err, f.writes)
+	if err := reconcile(c, f.call); err != nil || len(f.writes) != len(c.Repositories) {
+		t.Fatalf("retry did not reassert complete explicit assignments: %v %v", err, f.writes)
+	}
+	for _, write := range f.writes {
+		if write != "PATCH orgs/devantler-tech/properties/values" {
+			t.Fatalf("matching schema changed on retry: %s", write)
+		}
 	}
 }
 
@@ -151,10 +395,10 @@ func TestSchemaCreatesAndUpdatesDefinitions(t *testing.T) {
 		if err := reconcile(c, f.call); err != nil {
 			t.Fatal(err)
 		}
-		if len(f.writes) != len(c.Properties) {
-			t.Fatalf("expected one PUT per definition, got %v", f.writes)
+		if len(f.writes) != len(c.Properties)+len(c.Repositories) {
+			t.Fatalf("expected definitions and complete assignments, got %v", f.writes)
 		}
-		for _, write := range f.writes {
+		for _, write := range f.writes[:len(c.Properties)] {
 			if !strings.HasPrefix(write, "PUT ") {
 				t.Fatalf("unexpected mutation: %s", write)
 			}
@@ -173,6 +417,7 @@ func TestSchemaFailsBeforeWrites(t *testing.T) {
 		{schema: []property{}, rule: json.RawMessage(`{"id":1,"name":"malformed conditions","source_type":"Organization","source":"devantler-tech","conditions":"unknown","rules":[]}`)},
 		{schema: []property{{Name: "Unexpected", Source: "organization"}}},
 		{schema: []property{{Name: "Type", Source: "enterprise"}}},
+		{schema: []property{{Name: "LintDocumentation", Type: "string", Source: "organization"}}},
 	} {
 		if err := reconcile(fixture(t), f.call); err == nil {
 			t.Fatal("incomplete or unsafe evidence accepted")

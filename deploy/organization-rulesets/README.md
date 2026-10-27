@@ -9,7 +9,7 @@ Reconciled by the platform `github-config` tenant like the rest of `deploy/`.
 
 ## How adoption works
 
-- **Observe-first (read-only).** The ten Observe-only org imports are bound with
+- **Observe-first (read-only).** The nine Observe-only org imports are bound with
   `managementPolicies: ["Observe"]` — Crossplane mirrors live GitHub state into
   `status.atProvider` and **never writes, reverts, or deletes**. This is pure GitOps
   *visibility*, with zero behaviour change (the same flow `repositories/` and `teams/`
@@ -38,7 +38,7 @@ verb — e.g. `require-pull-request.yaml`). Repo-scoped rulesets live next door 
 
 | Files | Rulesets | Policy |
 |---|---|---|
-| 10 `OrganizationRuleset` files | the imported org rulesets below except the six managed imports in this table | Observe (read-only import) |
+| 9 `OrganizationRuleset` files | the imported org rulesets below except the six managed imports in this table | Observe (read-only import) |
 | `require-signed-commits.yaml` | **Require signed commits** (existing, retired) | Observe + Update — retain the disabled record; never create or delete |
 | `require-workflows-go.yaml` | **Require workflows to pass before merging for Go** (existing, adopted) | Observe + Update — preserve the complete observed policy and require the maintained Go workflow; never create or delete |
 | 3 `require-workflows-*.yaml` imports | **DependencyReview**, **EnableAutoMerge** and **ScanGitHubActions** | Observe + Update — preserve the observed policy and maintained source; never create or delete |
@@ -53,7 +53,7 @@ verb — e.g. `require-pull-request.yaml`). Repo-scoped rulesets live next door 
 | `require-metadata-code-scanning-results.yaml` | **Require code scanning results - Metadata** (net-new) | Managed (Create) — centrally require CodeQL with both finding thresholds at all on `.github` and `monorepo`; no bypass actors |
 | (in `../repository-rulesets/`) `require-merge-queue-on-platform.yaml` | `platform` "Require merge queue" | Observe + Update (managed import, full ruleset backfilled) |
 
-The 16 imported org rulesets: Automatically request Copilot code review (disabled) · Block force pushes · Require a pull request before
+The 15 imported org rulesets: Block force pushes · Require a pull request before
 merging · Require conversation resolution before merging · Require code scanning results · Require linear history ·
 Require signed commits · Require status checks to pass · Restrict deletions · Restrict
 branch names · Restrict commit metadata · Require workflows (DependencyReview) · Require workflows (Go) ·
