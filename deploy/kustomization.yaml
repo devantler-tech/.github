@@ -28,3 +28,5 @@ resources:
   - repository-permissions/
   # Explicit values; requires platform#5389's CRD activation and scoped Role.
   - repository-properties/
+  # Requires platform#5427's resource activation and scoped tenant Role.
+  - release-environments/
