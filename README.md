@@ -106,19 +106,21 @@ declaration. These are steps inside a caller-owned job, not required workflows.
 
 ### Distribution
 
-The remaining catalogue actions share this repository and release stream. Marketplace actions
-live in their own repositories and are released independently.
+The catalogue actions share this repository and release stream. The three Marketplace actions
+are Git submodules at their original `actions/` paths, pinned to independently published release
+commits in their public repositories.
 
 ### Marketplace actions
 
-| Action | Purpose |
-| --- | --- |
-| [setup-agent-skills-action](https://github.com/devantler-tech/setup-agent-skills-action) | Install skills for one or more coding agents |
-| [update-agent-skills-action](https://github.com/devantler-tech/update-agent-skills-action) | Update installed skills and open reviewable update PRs |
-| [guard-installed-skill-edits-action](https://github.com/devantler-tech/guard-installed-skill-edits-action) | Refuse edits that bypass a skill's upstream source |
+| Action | Purpose | Catalogue source |
+| --- | --- | --- |
+| [setup-agent-skills-action](https://github.com/devantler-tech/setup-agent-skills-action) | Install skills for one or more coding agents | [actions/setup-agent-skills](actions/setup-agent-skills) |
+| [update-agent-skills-action](https://github.com/devantler-tech/update-agent-skills-action) | Update installed skills and open reviewable update PRs | [actions/update-agent-skills](actions/update-agent-skills) |
+| [guard-installed-skill-edits-action](https://github.com/devantler-tech/guard-installed-skill-edits-action) | Refuse edits that bypass a skill's upstream source | [actions/guard-installed-skill-edits](actions/guard-installed-skill-edits) |
 
-Use a full commit pin from the standalone action's release. The update repository also owns
-the reusable update workflow and the installer repositories maintain their own reviewed CLI digests.
+Use the public repository and a full release commit pin in workflows. The submodules retain the
+usual catalogue locations for source navigation. The update repository also owns the reusable
+update workflow and the installer repositories maintain their own reviewed CLI digests.
 
 ## Reusable workflows
 

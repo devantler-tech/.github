@@ -1,0 +1,9 @@
+[submodule "actions/setup-agent-skills"]
+	path = actions/setup-agent-skills
+	url = https://github.com/devantler-tech/setup-agent-skills-action.git
+[submodule "actions/update-agent-skills"]
+	path = actions/update-agent-skills
+	url = https://github.com/devantler-tech/update-agent-skills-action.git
+[submodule "actions/guard-installed-skill-edits"]
+	path = actions/guard-installed-skill-edits
+	url = https://github.com/devantler-tech/guard-installed-skill-edits-action.git
