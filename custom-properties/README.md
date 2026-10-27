@@ -29,13 +29,20 @@ The reviewed-main workflow therefore writes each repository's complete assignmen
 including the retiring documentation switch as false while that definition still exists. It
 reads back every assignment through the completely paged organization values collection before
 retiring the unused definition. Repository names, organization ownership and unique native IDs
-must agree; missing private entries or a failed later page block retirement. The workflow keeps
-its token restricted to this repository. GitHub documents these organization endpoints as using
-organization custom-property authority. The first native apply must prove that this token can
-write and read back every declared repository, including private entries; offline tests do not
-establish that live access. A rejected write or incomplete read is a deployment blocker, never
-permission to expand the token's repository selection. Repeated runs reassert the same complete
-catalogue; an effective default alone never replaces a successful explicit write.
+must agree; missing private entries or a failed later page block retirement. The native apply proved
+that the organization writer can initialize every assignment while restricted to this repository,
+but its repository selection made the organization readback incomplete. The writer stays restricted.
+A separate, short-lived read-only token selects exactly the validated catalogue and supplies only
+the organization-value readback. It requests organization custom-property read authority and no
+repository content access; GitHub also includes repository metadata read access for its selected
+repositories. Neither that token nor its alternate credential is passed to schema or value mutations.
+The action revokes both tokens at job completion.
+
+The maintainer must approve this dedicated readback selection before deployment; changing its
+selection is never an automatic response to incomplete results. Native full-portfolio readback,
+including private entries, remains required after deployment; offline tests do not establish it.
+Repeated runs reassert the same complete catalogue; an effective default alone never replaces a
+successful explicit write.
 
 The installed provider v0.20.0 supports namespaced `RepositoryCustomProperty` resources. Generate
 them with:

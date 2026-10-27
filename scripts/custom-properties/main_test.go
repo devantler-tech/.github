@@ -4,9 +4,38 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
+
+func TestGHAPIUsesReadOnlyCredentialOnlyForValueReadback(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "gh"), []byte("#!/bin/sh\nprintf '%s:%s' \"$GH_TOKEN\" \"${GH_PROPERTY_READBACK_TOKEN-unset}\"\n"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	t.Setenv("GH_TOKEN", "schema-writer")
+	t.Setenv("GH_PROPERTY_READBACK_TOKEN", "portfolio-reader")
+	for _, tc := range []struct{ method, path, want string }{
+		{"GET", "orgs/devantler-tech/properties/values?per_page=100&page=1", "portfolio-reader:unset"},
+		{"GET", "orgs/devantler-tech/properties/schema", "schema-writer:unset"},
+		{"PATCH", "orgs/devantler-tech/properties/values", "schema-writer:unset"},
+		{"DELETE", "orgs/devantler-tech/properties/schema/LintDocumentation", "schema-writer:unset"},
+	} {
+		t.Run(tc.method+tc.path, func(t *testing.T) {
+			out, err := ghAPI(tc.method, tc.path, nil)
+			if err != nil || string(out) != tc.want {
+				t.Fatalf("credential routing: got %q, error %v; want %q", out, err, tc.want)
+			}
+		})
+	}
+	t.Setenv("GH_PROPERTY_READBACK_TOKEN", "")
+	if _, err := ghAPI("GET", "orgs/devantler-tech/properties/values?per_page=100&page=1", nil); err == nil {
+		t.Fatal("missing read-only credential must block readback, never fall back to the writer")
+	}
+}
 
 func fixture(t *testing.T) catalogue {
 	t.Helper()

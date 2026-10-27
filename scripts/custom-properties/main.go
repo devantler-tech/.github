@@ -14,6 +14,7 @@ import (
 	"reflect"
 	"regexp"
 	"slices"
+	"strings"
 )
 
 type property struct {
@@ -123,6 +124,21 @@ func ghAPI(method, path string, body []byte) ([]byte, error) {
 		args = append(args, "--input", "-")
 	}
 	cmd := exec.Command("gh", args...)
+	readback := method == "GET" && strings.HasPrefix(path, "orgs/devantler-tech/properties/values?")
+	readToken := os.Getenv("GH_PROPERTY_READBACK_TOKEN")
+	if readback && readToken == "" {
+		return nil, errors.New("portfolio readback requires its dedicated read-only credential")
+	}
+	for _, entry := range os.Environ() {
+		if strings.HasPrefix(entry, "GH_PROPERTY_READBACK_TOKEN=") ||
+			(readback && (strings.HasPrefix(entry, "GH_TOKEN=") || strings.HasPrefix(entry, "GITHUB_TOKEN="))) {
+			continue
+		}
+		cmd.Env = append(cmd.Env, entry)
+	}
+	if readback {
+		cmd.Env = append(cmd.Env, "GH_TOKEN="+readToken)
+	}
 	cmd.Stdin = bytes.NewReader(body)
 	// Do not copy credential/service diagnostics into the public Actions log.
 	out, err := cmd.Output()
@@ -362,8 +378,8 @@ func initializeValues(c catalogue, schema []property, api apiFunc) error {
 		}
 		wanted[name] = values
 	}
-	// The App is repository-restricted. Read the organization collection with
-	// organization property authority, including private catalogue entries.
+	// A separate read-only token covers exactly the validated catalogue. The
+	// schema-writing token remains restricted to this configuration repository.
 	seenIDs := map[int64]bool{}
 	seenRepos := map[string]bool{}
 	for page := 1; page <= 100; page++ {
