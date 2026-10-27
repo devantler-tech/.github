@@ -27,8 +27,34 @@ guard() {
       $w.on.workflow_call.inputs["dry-run"].default != false or
       $w.on.workflow_call.secrets.APP_PRIVATE_KEY.required != false
     then error("offline-test must be default-off and secret-free")
-    elif $w.jobs.release.if != "!inputs.offline-test"
+    elif $w.jobs.release.if != "!inputs.offline-test && !inputs.protected-release" or
+      $w.jobs["release-protected"].if != "!inputs.offline-test && inputs.protected-release"
     then error("offline-test must exclude the production release job")
+    elif $w.on.workflow_call.inputs["protected-release"].type != "boolean" or
+      $w.on.workflow_call.inputs["protected-release"].default != false or
+      $w.jobs["release-protected"].environment != "release" or
+      $w.on.workflow_call.secrets.RELEASE_APP_PRIVATE_KEY.required != false or
+      ([$w.jobs["release-protected"].steps[] | select(.id == "app-token") |
+        select(.with."client-id" == "${{ vars.RELEASE_APP_CLIENT_ID }}" and
+          .with."private-key" == "${{ secrets.RELEASE_APP_PRIVATE_KEY }}")] | length) != 1 or
+      ($w.jobs["release-protected"].steps | map(select(.name != "Verify protected release source") |
+        if .id == "app-token" then .with."client-id"="${{ vars.APP_CLIENT_ID }}" |
+          .with."private-key"="${{ secrets.APP_PRIVATE_KEY }}" else . end)) != $w.jobs.release.steps or
+      $w.jobs["release-protected"].concurrency != $w.jobs.release.concurrency
+    then error("protected releases require the fixed environment, named secret interface and common implementation")
+    elif ($w.jobs["release-protected"] as $p |
+      [$p.steps | to_entries[] | select(.value.name == "Verify protected release source")] as $source |
+      [$p.steps | to_entries[] | select(.value.id == "app-token")] as $token |
+      ($p["continue-on-error"] // false) != false or
+      ($source | length) != 1 or
+      $source[0].value.if != "inputs.protected-release" or
+      $source[0].value.shell != "bash" or
+      ($source[0].value["continue-on-error"] // false) != false or
+      $source[0].value.env.SOURCE_REF != "${{ github.ref }}" or
+      $source[0].value.env.DEFAULT_BRANCH != "${{ github.event.repository.default_branch }}" or
+      $source[0].value.env.REF_PROTECTED != "${{ github.ref_protected }}" or
+      $source[0].key >= $token[0].key)
+    then error("protected source guard must be fatal, correctly bound and precede app-token")
     elif $j.if != "inputs.offline-test" or $j.needs != null or
       ($j["continue-on-error"] // false) != false
     then error("offline-test must execute independently")
@@ -92,6 +118,23 @@ required secret	.workflow.on.workflow_call.secrets.APP_PRIVATE_KEY.required=true
 changed default	.workflow.on.workflow_call.inputs["offline-test"].default=true	default-off
 consumer preview changed	.workflow.on.workflow_call.inputs["dry-run"].default=true	default-off
 production execution	.workflow.jobs.release.if=null	exclude the production
+protected production execution	.workflow.jobs["release-protected"].if=null	exclude the production
+unprotected environment	.workflow.jobs["release-protected"].environment="other"	fixed environment
+missing protected key interface	del(.workflow.on.workflow_call.secrets.RELEASE_APP_PRIVATE_KEY)	named secret interface
+legacy key fallback	.workflow.jobs["release-protected"].steps |= map(if .id=="app-token" then .with."private-key"="${{ secrets.APP_PRIVATE_KEY }}" else . end)	fixed environment
+protected default enabled	.workflow.on.workflow_call.inputs["protected-release"].default=true	fixed environment
+protected steps diverge	.workflow.jobs["release-protected"].steps=[]	common implementation
+protected queue diverges	.workflow.jobs["release-protected"].concurrency.queue="single"	common implementation
+missing protected source guard	.workflow.jobs["release-protected"].steps |= map(select(.name != "Verify protected release source"))	protected source guard
+duplicate protected source guard	.workflow.jobs["release-protected"].steps += [.workflow.jobs["release-protected"].steps[] | select(.name == "Verify protected release source")]	protected source guard
+disabled protected source guard	.workflow.jobs["release-protected"].steps |= map(if .name == "Verify protected release source" then .if="false" else . end)	protected source guard
+misbound protected source ref	.workflow.jobs["release-protected"].steps |= map(if .name == "Verify protected release source" then .env.SOURCE_REF="refs/heads/main" else . end)	protected source guard
+misbound protected default branch	.workflow.jobs["release-protected"].steps |= map(if .name == "Verify protected release source" then .env.DEFAULT_BRANCH="main" else . end)	protected source guard
+misbound protected ref status	.workflow.jobs["release-protected"].steps |= map(if .name == "Verify protected release source" then .env.REF_PROTECTED="true" else . end)	protected source guard
+nonfatal protected source guard	.workflow.jobs["release-protected"].steps |= map(if .name == "Verify protected release source" then .["continue-on-error"]=true else . end)	protected source guard
+nonfatal protected release job	.workflow.jobs["release-protected"]["continue-on-error"]=true	protected source guard
+wrong protected source shell	.workflow.jobs["release-protected"].steps |= map(if .name == "Verify protected release source" then .shell="sh" else . end)	protected source guard
+late protected source guard	.workflow.jobs["release-protected"].steps |= (map(select(.name != "Verify protected release source")) + map(select(.name == "Verify protected release source")))	protected source guard
 skipped fixture	.workflow.jobs["offline-test"].if="false"	execute independently
 fixture prerequisite	.workflow.jobs["offline-test"].needs="release"	execute independently
 ignored failure	.workflow.jobs["offline-test"]["continue-on-error"]=true	execute independently

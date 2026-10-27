@@ -1,0 +1,32 @@
+# Protection is configured before the credential custodian adds an environment key.
+# Selected branches with no branch policy deny deployment while reconciliation settles.
+apiVersion: repo.github.m.upbound.io/v1alpha1
+kind: Environment
+metadata:
+  name: update-agent-skills-action-release
+spec:
+  managementPolicies: [Observe, Create, Update]
+  forProvider:
+    environment: release
+    repository: update-agent-skills-action
+    canAdminsBypass: false
+    deploymentBranchPolicy:
+      - customBranchPolicies: true
+        protectedBranches: false
+  providerConfigRef:
+    kind: ProviderConfig
+    name: default
+---
+apiVersion: repo.github.m.upbound.io/v1alpha1
+kind: EnvironmentDeploymentPolicy
+metadata:
+  name: update-agent-skills-action-release-main
+spec:
+  managementPolicies: [Observe, Create, Update]
+  forProvider:
+    environment: release
+    repository: update-agent-skills-action
+    branchPattern: main
+  providerConfigRef:
+    kind: ProviderConfig
+    name: default
