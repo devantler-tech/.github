@@ -1,20 +1,25 @@
 # Repository custom properties
 
-The catalogue owns four properties. Every active managed repository has an explicit value in
+The catalogue owns three properties. Every active managed repository has an explicit value in
 [`catalogue.json`](catalogue.json), including the deliberate automatic-merge opt-out for the adopted
-private intake repository. Automatic review requests remain explicitly disabled.
+private intake repository.
 
 | Property | Purpose |
 |---|---|
 | `Type` | Portfolio purpose: application, infrastructure, library, marketplace, metadata or documentation. Existing templates retain their native application/infrastructure classifications so the legacy CodeQL selector continues to cover them. |
 | `EnableAutoMerge` | Select the existing organization automatic-merge workflow policy. This does not grant approval or bypass any readiness, review or branch-protection requirement. |
 | `ScanGitHubActions` | Select the existing organization workflow-vulnerability scanning policy; explicitly enabled everywhere. |
-| `AutomaticallyRequestCopilotCodeReview` | Preserve the disabled legacy policy's referenced property; false by default and explicitly false in every repository. |
 
 GitHub already supplies language, visibility, archival and template status. Do not mirror those as
-new custom properties. `LintDocumentation` is retired only after complete native
-organization-ruleset and Actions-policy inventories confirm that no consumer still references it.
-The disabled legacy review ruleset remains untouched. This never requests a Copilot review.
+new custom properties. `LintDocumentation` and `AutomaticallyRequestCopilotCodeReview` are retired
+after complete native organization-ruleset and Actions-policy inventories confirm no remaining
+consumer. The only consumer that may be removed is the observed disabled legacy review ruleset
+`14426508`, named `Automatically request Copilot code review`. The reconciler requires its
+organization identity, disabled branch target, empty bypass list, default-branch-only selector,
+the single retired-property selector set to true and the sole Copilot review rule. It rechecks the
+complete record after all values are initialized and read back, then verifies its removal before
+deleting either property. Any active, renamed, expanded or concurrently changed policy blocks
+retirement. All active policies remain untouched. This never requests a Copilot review.
 An unreadable, partial or changed policy identity stops schema writes. An enterprise-sourced or
 unexpected property is preserved and stops reconciliation for an ownership review.
 
@@ -26,16 +31,23 @@ GitHub fallback and do not establish compliance.
 
 GitHub rejects independent property creation when other required explicit values are missing.
 The reviewed-main workflow therefore writes each repository's complete assignment atomically,
-including the retiring documentation switch as false while that definition still exists. It
+including either retiring switch as false while its definition still exists. It
 reads back every assignment through the completely paged organization values collection before
 retiring the unused definition. Repository names, organization ownership and unique native IDs
-must agree; missing private entries or a failed later page block retirement. The workflow keeps
-its token restricted to this repository. GitHub documents these organization endpoints as using
-organization custom-property authority. The first native apply must prove that this token can
-write and read back every declared repository, including private entries; offline tests do not
-establish that live access. A rejected write or incomplete read is a deployment blocker, never
-permission to expand the token's repository selection. Repeated runs reassert the same complete
-catalogue; an effective default alone never replaces a successful explicit write.
+must agree; missing private entries or a failed later page block retirement. The native apply proved
+that the organization writer can initialize every assignment while restricted to this repository,
+but its repository selection made the organization readback incomplete. The writer stays restricted.
+A separate, short-lived read-only token selects exactly the validated catalogue and supplies only
+the organization-value readback. It requests organization custom-property read authority and no
+repository content access; GitHub also includes repository metadata read access for its selected
+repositories. Neither that token nor its alternate credential is passed to schema or value mutations.
+The action revokes both tokens at job completion.
+
+The readback selection is exactly the reviewed catalogue; changing that selection requires
+maintainer direction, rather than an automatic response to incomplete results. Native full-portfolio readback,
+including private entries, remains required after deployment; offline tests do not establish it.
+Repeated runs reassert the same complete catalogue; an effective default alone never replaces a
+successful explicit write.
 
 The installed provider v0.20.0 supports namespaced `RepositoryCustomProperty` resources. Generate
 them with:
@@ -55,9 +67,10 @@ The provider exposes no organization-schema resource. The repository-owned
 the reviewed schema on main changes, daily and on demand, following the existing workflow-execution
 policy pattern. It checks generated-source parity before minting an App token, reads every native
 consumer before a mutation, verifies replacement definitions before retirement and reads back the
-final schema. It also initializes complete repository values through the
+final schema and all final repository values. It also initializes complete repository values through the
 [organization values API](https://docs.github.com/en/rest/orgs/custom-properties#create-or-update-custom-property-values-for-organization-repositories)
-using its existing custom-properties authority. It never changes a ruleset. Token permission failure is a
+using its existing custom-properties authority. The sole ruleset mutation is retirement of the
+guarded disabled legacy review rule described above. Token permission failure is a
 blocker; do not widen the App or substitute a personal credential.
 
 There is no transaction with another organization owner changing policies concurrently. The final
@@ -68,10 +81,10 @@ consumer recheck narrows that race, and subsequent runs detect schema drift.
 GitHub separates definition management from value editing. The schema workflow's `botantler-1`
 App needs **Custom properties: Admin** at organization scope
 (`organization_custom_properties: admin`), plus its existing organization-administration write
-authority for the consumer census. GitHub requires that write permission even for
+authority for the consumer census and the guarded disabled-rule retirement. GitHub requires that write permission even for
 [listing organization rulesets](https://docs.github.com/en/rest/orgs/rules#get-all-organization-repository-rulesets)
 and [listing Actions policies](https://docs.github.com/en/rest/actions/policies#list-organization-actions-policies).
-The reconciler only reads those consumers; it does not change their configuration.
+Other consumer policies are read-only; only the identified disabled legacy rule can be deleted.
 Custom-properties write alone can edit values but cannot create, update or delete
 property definitions. See the [schema API permissions](https://docs.github.com/en/rest/orgs/custom-properties#create-or-update-a-custom-property-for-an-organization).
 

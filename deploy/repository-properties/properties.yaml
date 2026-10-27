@@ -49,21 +49,6 @@ spec:
 apiVersion: repo.github.m.upbound.io/v1alpha1
 kind: RepositoryCustomProperty
 metadata:
-  name: dot-github-automaticallyrequestcopilotcodereview
-spec:
-  managementPolicies: [Observe, Create, Update]
-  forProvider:
-    repository: ".github"
-    propertyName: AutomaticallyRequestCopilotCodeReview
-    propertyType: true_false
-    propertyValue: ["false"]
-  providerConfigRef:
-    kind: ProviderConfig
-    name: default
----
-apiVersion: repo.github.m.upbound.io/v1alpha1
-kind: RepositoryCustomProperty
-metadata:
   name: agent-plugins-type
 spec:
   managementPolicies: [Observe, Create, Update]
@@ -102,21 +87,6 @@ spec:
     propertyName: ScanGitHubActions
     propertyType: true_false
     propertyValue: ["true"]
-  providerConfigRef:
-    kind: ProviderConfig
-    name: default
----
-apiVersion: repo.github.m.upbound.io/v1alpha1
-kind: RepositoryCustomProperty
-metadata:
-  name: agent-plugins-automaticallyrequestcopilotcodereview
-spec:
-  managementPolicies: [Observe, Create, Update]
-  forProvider:
-    repository: "agent-plugins"
-    propertyName: AutomaticallyRequestCopilotCodeReview
-    propertyType: true_false
-    propertyValue: ["false"]
   providerConfigRef:
     kind: ProviderConfig
     name: default
@@ -169,21 +139,6 @@ spec:
 apiVersion: repo.github.m.upbound.io/v1alpha1
 kind: RepositoryCustomProperty
 metadata:
-  name: agent-skills-automaticallyrequestcopilotcodereview
-spec:
-  managementPolicies: [Observe, Create, Update]
-  forProvider:
-    repository: "agent-skills"
-    propertyName: AutomaticallyRequestCopilotCodeReview
-    propertyType: true_false
-    propertyValue: ["false"]
-  providerConfigRef:
-    kind: ProviderConfig
-    name: default
----
-apiVersion: repo.github.m.upbound.io/v1alpha1
-kind: RepositoryCustomProperty
-metadata:
   name: ascoachingogvaner-type
 spec:
   managementPolicies: [Observe, Create, Update]
@@ -222,21 +177,6 @@ spec:
     propertyName: ScanGitHubActions
     propertyType: true_false
     propertyValue: ["true"]
-  providerConfigRef:
-    kind: ProviderConfig
-    name: default
----
-apiVersion: repo.github.m.upbound.io/v1alpha1
-kind: RepositoryCustomProperty
-metadata:
-  name: ascoachingogvaner-automaticallyrequestcopilotcodereview
-spec:
-  managementPolicies: [Observe, Create, Update]
-  forProvider:
-    repository: "ascoachingogvaner"
-    propertyName: AutomaticallyRequestCopilotCodeReview
-    propertyType: true_false
-    propertyValue: ["false"]
   providerConfigRef:
     kind: ProviderConfig
     name: default
@@ -289,21 +229,6 @@ spec:
 apiVersion: repo.github.m.upbound.io/v1alpha1
 kind: RepositoryCustomProperty
 metadata:
-  name: aws-automaticallyrequestcopilotcodereview
-spec:
-  managementPolicies: [Observe, Create, Update]
-  forProvider:
-    repository: "aws"
-    propertyName: AutomaticallyRequestCopilotCodeReview
-    propertyType: true_false
-    propertyValue: ["false"]
-  providerConfigRef:
-    kind: ProviderConfig
-    name: default
----
-apiVersion: repo.github.m.upbound.io/v1alpha1
-kind: RepositoryCustomProperty
-metadata:
   name: business-site-type
 spec:
   managementPolicies: [Observe, Create, Update]
@@ -342,21 +267,6 @@ spec:
     propertyName: ScanGitHubActions
     propertyType: true_false
     propertyValue: ["true"]
-  providerConfigRef:
-    kind: ProviderConfig
-    name: default
----
-apiVersion: repo.github.m.upbound.io/v1alpha1
-kind: RepositoryCustomProperty
-metadata:
-  name: business-site-automaticallyrequestcopilotcodereview
-spec:
-  managementPolicies: [Observe, Create, Update]
-  forProvider:
-    repository: "business-site"
-    propertyName: AutomaticallyRequestCopilotCodeReview
-    propertyType: true_false
-    propertyValue: ["false"]
   providerConfigRef:
     kind: ProviderConfig
     name: default
@@ -409,21 +319,6 @@ spec:
 apiVersion: repo.github.m.upbound.io/v1alpha1
 kind: RepositoryCustomProperty
 metadata:
-  name: client-orders-automaticallyrequestcopilotcodereview
-spec:
-  managementPolicies: [Observe, Create, Update]
-  forProvider:
-    repository: "client-orders"
-    propertyName: AutomaticallyRequestCopilotCodeReview
-    propertyType: true_false
-    propertyValue: ["false"]
-  providerConfigRef:
-    kind: ProviderConfig
-    name: default
----
-apiVersion: repo.github.m.upbound.io/v1alpha1
-kind: RepositoryCustomProperty
-metadata:
   name: cloudflare-type
 spec:
   managementPolicies: [Observe, Create, Update]
@@ -462,21 +357,6 @@ spec:
     propertyName: ScanGitHubActions
     propertyType: true_false
     propertyValue: ["true"]
-  providerConfigRef:
-    kind: ProviderConfig
-    name: default
----
-apiVersion: repo.github.m.upbound.io/v1alpha1
-kind: RepositoryCustomProperty
-metadata:
-  name: cloudflare-automaticallyrequestcopilotcodereview
-spec:
-  managementPolicies: [Observe, Create, Update]
-  forProvider:
-    repository: "cloudflare"
-    propertyName: AutomaticallyRequestCopilotCodeReview
-    propertyType: true_false
-    propertyValue: ["false"]
   providerConfigRef:
     kind: ProviderConfig
     name: default
@@ -529,21 +409,6 @@ spec:
 apiVersion: repo.github.m.upbound.io/v1alpha1
 kind: RepositoryCustomProperty
 metadata:
-  name: dotnet-template-automaticallyrequestcopilotcodereview
-spec:
-  managementPolicies: [Observe, Create, Update]
-  forProvider:
-    repository: "dotnet-template"
-    propertyName: AutomaticallyRequestCopilotCodeReview
-    propertyType: true_false
-    propertyValue: ["false"]
-  providerConfigRef:
-    kind: ProviderConfig
-    name: default
----
-apiVersion: repo.github.m.upbound.io/v1alpha1
-kind: RepositoryCustomProperty
-metadata:
   name: fleet-gitops-type
 spec:
   managementPolicies: [Observe, Create, Update]
@@ -582,21 +447,6 @@ spec:
     propertyName: ScanGitHubActions
     propertyType: true_false
     propertyValue: ["true"]
-  providerConfigRef:
-    kind: ProviderConfig
-    name: default
----
-apiVersion: repo.github.m.upbound.io/v1alpha1
-kind: RepositoryCustomProperty
-metadata:
-  name: fleet-gitops-automaticallyrequestcopilotcodereview
-spec:
-  managementPolicies: [Observe, Create, Update]
-  forProvider:
-    repository: "fleet-gitops"
-    propertyName: AutomaticallyRequestCopilotCodeReview
-    propertyType: true_false
-    propertyValue: ["false"]
   providerConfigRef:
     kind: ProviderConfig
     name: default
@@ -649,21 +499,6 @@ spec:
 apiVersion: repo.github.m.upbound.io/v1alpha1
 kind: RepositoryCustomProperty
 metadata:
-  name: go-template-automaticallyrequestcopilotcodereview
-spec:
-  managementPolicies: [Observe, Create, Update]
-  forProvider:
-    repository: "go-template"
-    propertyName: AutomaticallyRequestCopilotCodeReview
-    propertyType: true_false
-    propertyValue: ["false"]
-  providerConfigRef:
-    kind: ProviderConfig
-    name: default
----
-apiVersion: repo.github.m.upbound.io/v1alpha1
-kind: RepositoryCustomProperty
-metadata:
   name: guard-installed-skill-edits-action-type
 spec:
   managementPolicies: [Observe, Create, Update]
@@ -702,21 +537,6 @@ spec:
     propertyName: ScanGitHubActions
     propertyType: true_false
     propertyValue: ["true"]
-  providerConfigRef:
-    kind: ProviderConfig
-    name: default
----
-apiVersion: repo.github.m.upbound.io/v1alpha1
-kind: RepositoryCustomProperty
-metadata:
-  name: guard-installed-skill-edits-action-automaticallyrequestcopilotcodereview
-spec:
-  managementPolicies: [Observe, Create, Update]
-  forProvider:
-    repository: "guard-installed-skill-edits-action"
-    propertyName: AutomaticallyRequestCopilotCodeReview
-    propertyType: true_false
-    propertyValue: ["false"]
   providerConfigRef:
     kind: ProviderConfig
     name: default
@@ -769,21 +589,6 @@ spec:
 apiVersion: repo.github.m.upbound.io/v1alpha1
 kind: RepositoryCustomProperty
 metadata:
-  name: homebrew-tap-automaticallyrequestcopilotcodereview
-spec:
-  managementPolicies: [Observe, Create, Update]
-  forProvider:
-    repository: "homebrew-tap"
-    propertyName: AutomaticallyRequestCopilotCodeReview
-    propertyType: true_false
-    propertyValue: ["false"]
-  providerConfigRef:
-    kind: ProviderConfig
-    name: default
----
-apiVersion: repo.github.m.upbound.io/v1alpha1
-kind: RepositoryCustomProperty
-metadata:
   name: khoist-type
 spec:
   managementPolicies: [Observe, Create, Update]
@@ -822,21 +627,6 @@ spec:
     propertyName: ScanGitHubActions
     propertyType: true_false
     propertyValue: ["true"]
-  providerConfigRef:
-    kind: ProviderConfig
-    name: default
----
-apiVersion: repo.github.m.upbound.io/v1alpha1
-kind: RepositoryCustomProperty
-metadata:
-  name: khoist-automaticallyrequestcopilotcodereview
-spec:
-  managementPolicies: [Observe, Create, Update]
-  forProvider:
-    repository: "khoist"
-    propertyName: AutomaticallyRequestCopilotCodeReview
-    propertyType: true_false
-    propertyValue: ["false"]
   providerConfigRef:
     kind: ProviderConfig
     name: default
@@ -889,21 +679,6 @@ spec:
 apiVersion: repo.github.m.upbound.io/v1alpha1
 kind: RepositoryCustomProperty
 metadata:
-  name: ksail-automaticallyrequestcopilotcodereview
-spec:
-  managementPolicies: [Observe, Create, Update]
-  forProvider:
-    repository: "ksail"
-    propertyName: AutomaticallyRequestCopilotCodeReview
-    propertyType: true_false
-    propertyValue: ["false"]
-  providerConfigRef:
-    kind: ProviderConfig
-    name: default
----
-apiVersion: repo.github.m.upbound.io/v1alpha1
-kind: RepositoryCustomProperty
-metadata:
   name: kyverno-policies-type
 spec:
   managementPolicies: [Observe, Create, Update]
@@ -942,21 +717,6 @@ spec:
     propertyName: ScanGitHubActions
     propertyType: true_false
     propertyValue: ["true"]
-  providerConfigRef:
-    kind: ProviderConfig
-    name: default
----
-apiVersion: repo.github.m.upbound.io/v1alpha1
-kind: RepositoryCustomProperty
-metadata:
-  name: kyverno-policies-automaticallyrequestcopilotcodereview
-spec:
-  managementPolicies: [Observe, Create, Update]
-  forProvider:
-    repository: "kyverno-policies"
-    propertyName: AutomaticallyRequestCopilotCodeReview
-    propertyType: true_false
-    propertyValue: ["false"]
   providerConfigRef:
     kind: ProviderConfig
     name: default
@@ -1009,21 +769,6 @@ spec:
 apiVersion: repo.github.m.upbound.io/v1alpha1
 kind: RepositoryCustomProperty
 metadata:
-  name: monorepo-automaticallyrequestcopilotcodereview
-spec:
-  managementPolicies: [Observe, Create, Update]
-  forProvider:
-    repository: "monorepo"
-    propertyName: AutomaticallyRequestCopilotCodeReview
-    propertyType: true_false
-    propertyValue: ["false"]
-  providerConfigRef:
-    kind: ProviderConfig
-    name: default
----
-apiVersion: repo.github.m.upbound.io/v1alpha1
-kind: RepositoryCustomProperty
-metadata:
   name: platform-type
 spec:
   managementPolicies: [Observe, Create, Update]
@@ -1062,21 +807,6 @@ spec:
     propertyName: ScanGitHubActions
     propertyType: true_false
     propertyValue: ["true"]
-  providerConfigRef:
-    kind: ProviderConfig
-    name: default
----
-apiVersion: repo.github.m.upbound.io/v1alpha1
-kind: RepositoryCustomProperty
-metadata:
-  name: platform-automaticallyrequestcopilotcodereview
-spec:
-  managementPolicies: [Observe, Create, Update]
-  forProvider:
-    repository: "platform"
-    propertyName: AutomaticallyRequestCopilotCodeReview
-    propertyType: true_false
-    propertyValue: ["false"]
   providerConfigRef:
     kind: ProviderConfig
     name: default
@@ -1129,21 +859,6 @@ spec:
 apiVersion: repo.github.m.upbound.io/v1alpha1
 kind: RepositoryCustomProperty
 metadata:
-  name: platform-template-automaticallyrequestcopilotcodereview
-spec:
-  managementPolicies: [Observe, Create, Update]
-  forProvider:
-    repository: "platform-template"
-    propertyName: AutomaticallyRequestCopilotCodeReview
-    propertyType: true_false
-    propertyValue: ["false"]
-  providerConfigRef:
-    kind: ProviderConfig
-    name: default
----
-apiVersion: repo.github.m.upbound.io/v1alpha1
-kind: RepositoryCustomProperty
-metadata:
   name: platform-tenant-template-type
 spec:
   managementPolicies: [Observe, Create, Update]
@@ -1182,21 +897,6 @@ spec:
     propertyName: ScanGitHubActions
     propertyType: true_false
     propertyValue: ["true"]
-  providerConfigRef:
-    kind: ProviderConfig
-    name: default
----
-apiVersion: repo.github.m.upbound.io/v1alpha1
-kind: RepositoryCustomProperty
-metadata:
-  name: platform-tenant-template-automaticallyrequestcopilotcodereview
-spec:
-  managementPolicies: [Observe, Create, Update]
-  forProvider:
-    repository: "platform-tenant-template"
-    propertyName: AutomaticallyRequestCopilotCodeReview
-    propertyType: true_false
-    propertyValue: ["false"]
   providerConfigRef:
     kind: ProviderConfig
     name: default
@@ -1249,21 +949,6 @@ spec:
 apiVersion: repo.github.m.upbound.io/v1alpha1
 kind: RepositoryCustomProperty
 metadata:
-  name: provider-upjet-unifi-automaticallyrequestcopilotcodereview
-spec:
-  managementPolicies: [Observe, Create, Update]
-  forProvider:
-    repository: "provider-upjet-unifi"
-    propertyName: AutomaticallyRequestCopilotCodeReview
-    propertyType: true_false
-    propertyValue: ["false"]
-  providerConfigRef:
-    kind: ProviderConfig
-    name: default
----
-apiVersion: repo.github.m.upbound.io/v1alpha1
-kind: RepositoryCustomProperty
-metadata:
   name: setup-agent-skills-action-type
 spec:
   managementPolicies: [Observe, Create, Update]
@@ -1302,21 +987,6 @@ spec:
     propertyName: ScanGitHubActions
     propertyType: true_false
     propertyValue: ["true"]
-  providerConfigRef:
-    kind: ProviderConfig
-    name: default
----
-apiVersion: repo.github.m.upbound.io/v1alpha1
-kind: RepositoryCustomProperty
-metadata:
-  name: setup-agent-skills-action-automaticallyrequestcopilotcodereview
-spec:
-  managementPolicies: [Observe, Create, Update]
-  forProvider:
-    repository: "setup-agent-skills-action"
-    propertyName: AutomaticallyRequestCopilotCodeReview
-    propertyType: true_false
-    propertyValue: ["false"]
   providerConfigRef:
     kind: ProviderConfig
     name: default
@@ -1369,21 +1039,6 @@ spec:
 apiVersion: repo.github.m.upbound.io/v1alpha1
 kind: RepositoryCustomProperty
 metadata:
-  name: unifi-automaticallyrequestcopilotcodereview
-spec:
-  managementPolicies: [Observe, Create, Update]
-  forProvider:
-    repository: "unifi"
-    propertyName: AutomaticallyRequestCopilotCodeReview
-    propertyType: true_false
-    propertyValue: ["false"]
-  providerConfigRef:
-    kind: ProviderConfig
-    name: default
----
-apiVersion: repo.github.m.upbound.io/v1alpha1
-kind: RepositoryCustomProperty
-metadata:
   name: update-agent-skills-action-type
 spec:
   managementPolicies: [Observe, Create, Update]
@@ -1422,21 +1077,6 @@ spec:
     propertyName: ScanGitHubActions
     propertyType: true_false
     propertyValue: ["true"]
-  providerConfigRef:
-    kind: ProviderConfig
-    name: default
----
-apiVersion: repo.github.m.upbound.io/v1alpha1
-kind: RepositoryCustomProperty
-metadata:
-  name: update-agent-skills-action-automaticallyrequestcopilotcodereview
-spec:
-  managementPolicies: [Observe, Create, Update]
-  forProvider:
-    repository: "update-agent-skills-action"
-    propertyName: AutomaticallyRequestCopilotCodeReview
-    propertyType: true_false
-    propertyValue: ["false"]
   providerConfigRef:
     kind: ProviderConfig
     name: default
@@ -1489,21 +1129,6 @@ spec:
 apiVersion: repo.github.m.upbound.io/v1alpha1
 kind: RepositoryCustomProperty
 metadata:
-  name: wedding-app-automaticallyrequestcopilotcodereview
-spec:
-  managementPolicies: [Observe, Create, Update]
-  forProvider:
-    repository: "wedding-app"
-    propertyName: AutomaticallyRequestCopilotCodeReview
-    propertyType: true_false
-    propertyValue: ["false"]
-  providerConfigRef:
-    kind: ProviderConfig
-    name: default
----
-apiVersion: repo.github.m.upbound.io/v1alpha1
-kind: RepositoryCustomProperty
-metadata:
   name: world-at-ruin-type
 spec:
   managementPolicies: [Observe, Create, Update]
@@ -1542,21 +1167,6 @@ spec:
     propertyName: ScanGitHubActions
     propertyType: true_false
     propertyValue: ["true"]
-  providerConfigRef:
-    kind: ProviderConfig
-    name: default
----
-apiVersion: repo.github.m.upbound.io/v1alpha1
-kind: RepositoryCustomProperty
-metadata:
-  name: world-at-ruin-automaticallyrequestcopilotcodereview
-spec:
-  managementPolicies: [Observe, Create, Update]
-  forProvider:
-    repository: "world-at-ruin"
-    propertyName: AutomaticallyRequestCopilotCodeReview
-    propertyType: true_false
-    propertyValue: ["false"]
   providerConfigRef:
     kind: ProviderConfig
     name: default

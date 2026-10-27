@@ -48,6 +48,18 @@ jobs:
         env:
           GOTOOLCHAIN: local
         run: go -C scripts/custom-properties run . --root ../.. --check
+      - name: Select validated readback repositories
+        id: readback-repositories
+        run: jq -r '"repositories=" + (.repositories | keys | join(","))' custom-properties/catalogue.json >>"$GITHUB_OUTPUT"
+      - name: Get read-only portfolio property token
+        id: readback-token
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          client-id: ${{ vars.APP_CLIENT_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+          owner: devantler-tech
+          repositories: ${{ steps.readback-repositories.outputs.repositories }}
+          permission-organization-custom-properties: read
       - name: Get narrowly scoped organization token
         id: token
         uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
@@ -57,11 +69,12 @@ jobs:
           owner: devantler-tech
           repositories: .github
           # GitHub requires write even for GET of org rulesets and Actions policies.
-          # The reconciler only reads those consumers; mutations target the schema.
+          # Only the guarded disabled legacy Copilot policy may be retired.
           permission-organization-administration: write
           permission-organization-custom-properties: admin
       - name: Reconcile schema after complete native consumer checks
         env:
           GH_TOKEN: ${{ steps.token.outputs.token }}
+          GH_PROPERTY_READBACK_TOKEN: ${{ steps.readback-token.outputs.token }}
           GOTOOLCHAIN: local
         run: go -C scripts/custom-properties run . --root ../.. --apply-schema
