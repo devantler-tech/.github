@@ -478,7 +478,7 @@ func verifyValues(wanted map[string][]assignment, api apiFunc) error {
 		if len(rows) < 100 {
 			for name := range wanted {
 				if !seenRepos[name] {
-					return errors.New("catalogue repository missing from property readback")
+					return fmt.Errorf("catalogue repository missing from property readback (observed=%d, declared=%d)", len(seenRepos), len(wanted))
 				}
 			}
 			return nil
