@@ -46,16 +46,175 @@ func fixture(t *testing.T) catalogue {
 	return c
 }
 
+const legacyReviewPolicyFixture = `{"id":14426508,"name":"Automatically request Copilot code review","target":"branch","enforcement":"disabled","source_type":"Organization","source":"devantler-tech","bypass_actors":[],"conditions":{"ref_name":{"include":["~DEFAULT_BRANCH"],"exclude":[]},"repository_property":{"include":[{"name":"AutomaticallyRequestCopilotCodeReview","property_values":["true"],"source":"custom"}],"exclude":[]}},"rules":[{"type":"copilot_code_review"}]}`
+
+func TestUnusedPropertiesAndDisabledConsumerAreFullyRetired(t *testing.T) {
+	c := fixture(t)
+	c.Properties = c.Properties[:3]
+	c.Retire = []string{"LintDocumentation", "AutomaticallyRequestCopilotCodeReview"}
+	f := &fakeAPI{schema: append([]property{}, c.Properties...)}
+	for i := range f.schema {
+		f.schema[i].Source = "organization"
+	}
+	for _, name := range c.Retire {
+		f.schema = append(f.schema, property{Name: name, Type: "true_false", Required: true, Explicit: true, Default: "false", Source: "organization"})
+	}
+	legacy := []byte(legacyReviewPolicyFixture)
+	present, deleted := true, 0
+	api := func(method, path string, body []byte) ([]byte, error) {
+		if method == "GET" && path == "orgs/devantler-tech/rulesets?per_page=100&page=1" {
+			if present {
+				return []byte(`[{"id":1,"source_type":"Organization","source":"devantler-tech"},{"id":14426508,"source_type":"Organization","source":"devantler-tech"}]`), nil
+			}
+		}
+		if path == "orgs/devantler-tech/rulesets/14426508" {
+			if method == "GET" {
+				return legacy, nil
+			}
+			if method == "DELETE" {
+				if len(f.values) != len(c.Repositories) {
+					t.Fatal("policy retirement preceded complete value initialization")
+				}
+				present = false
+				deleted++
+				return nil, nil
+			}
+		}
+		if method == "DELETE" && present {
+			t.Fatal("property retirement preceded removal of its disabled consumer")
+		}
+		return f.call(method, path, body)
+	}
+	if err := reconcile(c, api); err != nil {
+		t.Fatal(err)
+	}
+	if deleted != 1 || len(f.schema) != 3 {
+		t.Fatalf("legacy state retained: policy deletes=%d schema=%v", deleted, f.schema)
+	}
+	for _, p := range f.schema {
+		if p.Name == "LintDocumentation" || p.Name == "AutomaticallyRequestCopilotCodeReview" {
+			t.Fatalf("retired property remains: %s", p.Name)
+		}
+	}
+	if err := reconcile(c, api); err != nil || deleted != 1 {
+		t.Fatalf("retirement must be idempotent: %v deletes=%d", err, deleted)
+	}
+}
+
+func TestLegacyReviewRetirementRejectsChangedOrActivePolicies(t *testing.T) {
+	for name, mutate := range map[string]func(map[string]any){
+		"active":          func(p map[string]any) { p["enforcement"] = "active" },
+		"evaluate":        func(p map[string]any) { p["enforcement"] = "evaluate" },
+		"renamed":         func(p map[string]any) { p["name"] = "New policy" },
+		"foreign-owner":   func(p map[string]any) { p["source"] = "other" },
+		"enterprise":      func(p map[string]any) { p["source_type"] = "Enterprise" },
+		"other-target":    func(p map[string]any) { p["target"] = "tag" },
+		"bypass":          func(p map[string]any) { p["bypass_actors"] = []any{map[string]any{"actor_type": "OrganizationAdmin"}} },
+		"missing-bypass":  func(p map[string]any) { delete(p, "bypass_actors") },
+		"protection-rule": func(p map[string]any) { p["rules"] = []any{map[string]any{"type": "code_scanning"}} },
+		"extra-rule":      func(p map[string]any) { p["rules"] = append(p["rules"].([]any), map[string]any{"type": "deletion"}) },
+		"other-branches": func(p map[string]any) {
+			p["conditions"].(map[string]any)["ref_name"].(map[string]any)["include"] = []any{"~ALL"}
+		},
+		"extra-selector": func(p map[string]any) {
+			p["conditions"].(map[string]any)["repository_name"] = map[string]any{"include": []any{".github"}}
+		},
+		"other-property": func(p map[string]any) {
+			p["conditions"].(map[string]any)["repository_property"].(map[string]any)["include"].([]any)[0].(map[string]any)["name"] = "Type"
+		},
+		"other-value": func(p map[string]any) {
+			p["conditions"].(map[string]any)["repository_property"].(map[string]any)["include"].([]any)[0].(map[string]any)["property_values"] = []any{"false"}
+		},
+		"system-property": func(p map[string]any) {
+			p["conditions"].(map[string]any)["repository_property"].(map[string]any)["include"].([]any)[0].(map[string]any)["source"] = "system"
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			var policy map[string]any
+			if err := json.Unmarshal([]byte(legacyReviewPolicyFixture), &policy); err != nil {
+				t.Fatal(err)
+			}
+			mutate(policy)
+			b, err := json.Marshal(policy)
+			if err != nil {
+				t.Fatal(err)
+			}
+			f := &fakeAPI{schema: []property{}}
+			api := func(method, path string, body []byte) ([]byte, error) {
+				if method == "GET" && path == "orgs/devantler-tech/rulesets?per_page=100&page=1" {
+					return []byte(`[{"id":14426508,"source_type":"Organization","source":"devantler-tech"}]`), nil
+				}
+				if method == "GET" && path == "orgs/devantler-tech/rulesets/14426508" {
+					return b, nil
+				}
+				return f.call(method, path, body)
+			}
+			if err := reconcile(fixture(t), api); err == nil || len(f.writes) != 0 {
+				t.Fatalf("unsafe retirement admitted: %v %v", err, f.writes)
+			}
+		})
+	}
+}
+
+func TestLegacyReviewRetirementPreservesPropertiesOnLateFailures(t *testing.T) {
+	for _, failure := range []string{"changed-policy", "missing-readback", "delete-failed", "delete-not-applied"} {
+		t.Run(failure, func(t *testing.T) {
+			c := fixture(t)
+			f := &fakeAPI{schema: append([]property{}, c.Properties...)}
+			for i := range f.schema {
+				f.schema[i].Source = "organization"
+			}
+			for _, name := range c.Retire {
+				f.schema = append(f.schema, property{Name: name, Type: "true_false", Source: "organization", Required: true, Explicit: true})
+			}
+			reads := 0
+			api := func(method, path string, body []byte) ([]byte, error) {
+				if method == "GET" && path == "orgs/devantler-tech/rulesets?per_page=100&page=1" {
+					return []byte(`[{"id":14426508,"source_type":"Organization","source":"devantler-tech"}]`), nil
+				}
+				if path == "orgs/devantler-tech/rulesets/14426508" {
+					if method == "GET" {
+						reads++
+						b := []byte(legacyReviewPolicyFixture)
+						if failure == "changed-policy" && reads > 1 {
+							b = []byte(strings.Replace(legacyReviewPolicyFixture, `"type":"copilot_code_review"`, `"type":"copilot_code_review","parameters":{"review_on_push":true}`, 1))
+						}
+						return b, nil
+					}
+					if method == "DELETE" && failure == "delete-failed" {
+						return nil, errors.New("deletion refused")
+					}
+					if method == "DELETE" {
+						return nil, nil
+					}
+				}
+				if failure == "missing-readback" && method == "GET" && strings.HasPrefix(path, "orgs/devantler-tech/properties/values?") {
+					return []byte(`[]`), nil
+				}
+				return f.call(method, path, body)
+			}
+			if err := reconcile(c, api); err == nil {
+				t.Fatal("late failure incorrectly reported success")
+			}
+			for _, write := range f.writes {
+				if strings.HasPrefix(write, "DELETE ") {
+					t.Fatalf("property retired after late failure: %s", write)
+				}
+			}
+		})
+	}
+}
+
 func TestRenderExplicitAssignments(t *testing.T) {
 	c := fixture(t)
 	out, err := render(c, "../..")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got, want := strings.Count(out, "kind: RepositoryCustomProperty\n"), 4*len(c.Repositories); got != want {
-		t.Fatalf("expected %d repositories with four assignments (%d total), got %d", len(c.Repositories), want, got)
+	if got, want := strings.Count(out, "kind: RepositoryCustomProperty\n"), 3*len(c.Repositories); got != want {
+		t.Fatalf("expected %d repositories with three assignments (%d total), got %d", len(c.Repositories), want, got)
 	}
-	for _, forbidden := range []string{"crossplane.io/external-name", "LateInitialize", "- Delete", "LintDocumentation"} {
+	for _, forbidden := range []string{"crossplane.io/external-name", "LateInitialize", "- Delete", "LintDocumentation", "AutomaticallyRequestCopilotCodeReview"} {
 		if strings.Contains(out, forbidden) {
 			t.Fatalf("unsafe or retired setting: %s", forbidden)
 		}
@@ -72,13 +231,7 @@ func TestCatalogueRejectsMissingAndUnknownValues(t *testing.T) {
 		func(c *catalogue) { c.Properties[0].Explicit = false },
 		func(c *catalogue) { c.Properties = append(c.Properties, c.Properties[0]) },
 		func(c *catalogue) { c.Retire = append(c.Retire, "EnableAutoMerge") },
-		func(c *catalogue) { r := c.Repositories["ksail"]; r.CopilotReview = nil; c.Repositories["ksail"] = r },
-		func(c *catalogue) {
-			r := c.Repositories["ksail"]
-			value := true
-			r.CopilotReview = &value
-			c.Repositories["ksail"] = r
-		},
+		func(c *catalogue) { c.Retire = []string{"LintDocumentation"} },
 	} {
 		c := fixture(t)
 		mutation(&c)
@@ -165,6 +318,15 @@ func (f *fakeAPI) call(method, path string, body []byte) ([]byte, error) {
 				f.schema = append(f.schema[:i], f.schema[i+1:]...)
 				break
 			}
+		}
+		for repo, values := range f.values {
+			kept := []map[string]string{}
+			for _, value := range values {
+				if value["property_name"] != name {
+					kept = append(kept, value)
+				}
+			}
+			f.values[repo] = kept
 		}
 	} else {
 		var p property
@@ -299,18 +461,12 @@ func TestTemplateClassificationsPreserveNativeCodeQLCoverage(t *testing.T) {
 	}
 }
 
-func TestDisabledReviewConsumerCanRemainWithoutActivation(t *testing.T) {
+func TestUnknownDisabledReviewConsumerBlocksRetirement(t *testing.T) {
 	c := fixture(t)
 	f := &fakeAPI{schema: []property{}, rule: json.RawMessage(`{"id":1,"name":"disabled review","source_type":"Organization","source":"devantler-tech","enforcement":"disabled","conditions":{"repository_property":{"include":[{"name":"AutomaticallyRequestCopilotCodeReview"}]}},"rules":[]}`)}
-	if err := reconcile(c, f.call); err != nil {
-		t.Fatal(err)
+	if err := reconcile(c, f.call); err == nil || len(f.writes) != 0 {
+		t.Fatalf("unknown consumer must block every mutation: %v %v", err, f.writes)
 	}
-	for _, p := range f.schema {
-		if p.Name == "AutomaticallyRequestCopilotCodeReview" && p.Default == "false" {
-			return
-		}
-	}
-	t.Fatal("retained disabled-review switch lacks safe false default")
 }
 
 func TestReadbackRequiresCompleteOrganizationInventory(t *testing.T) {

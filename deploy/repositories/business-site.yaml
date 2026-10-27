@@ -3,9 +3,8 @@ kind: Repository
 metadata:
   name: business-site
   annotations:
-    # One-time creation must supply the five required org custom properties,
-    # which this provider CRD cannot represent. See issue #530.
-    # Type=Application; AutomaticallyRequestCopilotCodeReview=false.
+    # Required property values, including Type=Application, are maintained by
+    # the catalogue's RepositoryCustomProperty resources.
     crossplane.io/external-name: business-site
 spec:
   # Reconcile the adopted repository's declared settings without Delete or

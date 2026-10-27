@@ -29,10 +29,9 @@ type property struct {
 	Source      string   `json:"source_type,omitempty"`
 }
 type repository struct {
-	Type          string `json:"type"`
-	AutoMerge     *bool  `json:"auto_merge"`
-	ScanActions   *bool  `json:"scan_actions"`
-	CopilotReview *bool  `json:"copilot_review"`
+	Type        string `json:"type"`
+	AutoMerge   *bool  `json:"auto_merge"`
+	ScanActions *bool  `json:"scan_actions"`
 }
 type catalogue struct {
 	Properties   []property            `json:"properties"`
@@ -40,7 +39,7 @@ type catalogue struct {
 	Repositories map[string]repository `json:"repositories"`
 }
 
-var names = []string{"Type", "EnableAutoMerge", "ScanGitHubActions", "AutomaticallyRequestCopilotCodeReview"}
+var names = []string{"Type", "EnableAutoMerge", "ScanGitHubActions"}
 var types = []string{"Application", "Infrastructure", "Library", "Marketplace", "Metadata", "Documentation"}
 
 func load(path string) (catalogue, error) {
@@ -62,8 +61,8 @@ func load(path string) (catalogue, error) {
 }
 
 func validate(c catalogue) error {
-	if len(c.Properties) != len(names) || len(c.Repositories) < 10 || !reflect.DeepEqual(c.Retire, []string{"LintDocumentation"}) {
-		return errors.New("expected four managed properties, the retired documentation switch and the complete portfolio")
+	if len(c.Properties) != len(names) || len(c.Repositories) < 10 || !reflect.DeepEqual(c.Retire, []string{"LintDocumentation", "AutomaticallyRequestCopilotCodeReview"}) {
+		return errors.New("expected three managed properties, both retired switches and the complete portfolio")
 	}
 	seen := map[string]bool{}
 	for _, p := range c.Properties {
@@ -81,25 +80,18 @@ func validate(c catalogue) error {
 				}
 			}
 		} else {
-			want := "true"
-			if p.Name == "AutomaticallyRequestCopilotCodeReview" {
-				want = "false"
-			}
-			if p.Type != "true_false" || p.Default != want || len(p.Allowed) != 0 {
+			if p.Type != "true_false" || p.Default != "true" || len(p.Allowed) != 0 {
 				return errors.New("invalid policy switch definition")
 			}
 		}
 	}
 	validRepo := regexp.MustCompile(`^(\.github|[a-z0-9][a-z0-9-]*)$`)
 	for name, r := range c.Repositories {
-		if !validRepo.MatchString(name) || !slices.Contains(types, r.Type) || r.AutoMerge == nil || r.ScanActions == nil || r.CopilotReview == nil {
+		if !validRepo.MatchString(name) || !slices.Contains(types, r.Type) || r.AutoMerge == nil || r.ScanActions == nil {
 			return fmt.Errorf("missing or invalid explicit values for %q", name)
 		}
 		if !*r.ScanActions {
 			return errors.New("workflow scanning remains enabled across the portfolio")
-		}
-		if *r.CopilotReview {
-			return errors.New("automatic Copilot review is enabled; copilot_review must be false across the portfolio")
 		}
 	}
 	return nil
@@ -162,7 +154,7 @@ func readSchema(api apiFunc) ([]property, error) {
 
 // Every native policy is read in full before the first schema mutation. A failed,
 // malformed or incomplete inventory never authorizes retiring a switch.
-func noConsumers(api apiFunc, retired []string) error {
+func noConsumers(api apiFunc, retired []string, retiring ...*legacyReviewRetirement) error {
 	seen := map[int]bool{}
 	for page := 1; page <= 100; page++ {
 		path := fmt.Sprintf("orgs/devantler-tech/rulesets?per_page=100&page=%d", page)
@@ -197,6 +189,15 @@ func noConsumers(api apiFunc, retired []string) error {
 			}
 			if json.Unmarshal(b, &full) != nil || full.ID != r.ID || full.Name == "" || full.SourceType != r.SourceType || full.Source != r.Source || !jsonObject(full.Conditions) || full.Rules == nil {
 				return errors.New("incomplete ruleset detail")
+			}
+			if full.ID == 14426508 && len(retiring) == 1 {
+				if !slices.Contains(retired, "AutomaticallyRequestCopilotCodeReview") {
+					return errors.New("legacy policy retirement lacks its property declaration")
+				}
+				if err = retiring[0].observe(b); err != nil {
+					return err
+				}
+				continue
 			}
 			if err = rejectConsumers(b, retired); err != nil {
 				return err
@@ -259,6 +260,59 @@ func noConsumers(api apiFunc, retired []string) error {
 		}
 	}
 	return errors.New("workflow-policy inventory exceeded its bound")
+}
+
+// The maintainer requested full removal of these unused properties. Only this
+// observed disabled Copilot policy may be retired; no active protection is touched.
+type legacyReviewRetirement struct{ snapshot any }
+
+func (r *legacyReviewRetirement) observe(b []byte) error {
+	var policy struct {
+		ID          int               `json:"id"`
+		Name        string            `json:"name"`
+		Target      string            `json:"target"`
+		Enforcement string            `json:"enforcement"`
+		SourceType  string            `json:"source_type"`
+		Source      string            `json:"source"`
+		Bypass      []json.RawMessage `json:"bypass_actors"`
+		Conditions  json.RawMessage   `json:"conditions"`
+		Rules       []struct {
+			Type string `json:"type"`
+		} `json:"rules"`
+	}
+	if json.Unmarshal(b, &policy) != nil || policy.ID != 14426508 || policy.Name != "Automatically request Copilot code review" ||
+		policy.Target != "branch" || policy.Enforcement != "disabled" || policy.SourceType != "Organization" || policy.Source != "devantler-tech" ||
+		policy.Bypass == nil || len(policy.Bypass) != 0 || len(policy.Rules) != 1 || policy.Rules[0].Type != "copilot_code_review" {
+		return errors.New("legacy review policy differs from the observed disabled retirement target")
+	}
+	var conditions struct {
+		Refs struct {
+			Include []string `json:"include"`
+			Exclude []string `json:"exclude"`
+		} `json:"ref_name"`
+		Properties struct {
+			Include []struct {
+				Name   string   `json:"name"`
+				Values []string `json:"property_values"`
+				Source string   `json:"source"`
+			} `json:"include"`
+			Exclude []json.RawMessage `json:"exclude"`
+		} `json:"repository_property"`
+	}
+	d := json.NewDecoder(bytes.NewReader(policy.Conditions))
+	d.DisallowUnknownFields()
+	if d.Decode(&conditions) != nil || !reflect.DeepEqual(conditions.Refs.Include, []string{"~DEFAULT_BRANCH"}) || len(conditions.Refs.Exclude) != 0 ||
+		len(conditions.Properties.Include) != 1 || len(conditions.Properties.Exclude) != 0 {
+		return errors.New("legacy review policy selectors changed")
+	}
+	selector := conditions.Properties.Include[0]
+	if selector.Name != "AutomaticallyRequestCopilotCodeReview" || !reflect.DeepEqual(selector.Values, []string{"true"}) || (selector.Source != "custom" && selector.Source != "") {
+		return errors.New("legacy review policy property selector changed")
+	}
+	if err := rejectConsumers(b, []string{"LintDocumentation"}); err != nil {
+		return err
+	}
+	return json.Unmarshal(b, &r.snapshot)
 }
 
 func rejectConsumers(b []byte, retired []string) error {
@@ -343,12 +397,6 @@ type assignment struct {
 // Keep the still-live retiring switch in that request until every repository
 // has been initialized and independently read back. Crossplane owns later drift.
 func initializeValues(c catalogue, schema []property, api apiFunc) error {
-	retiring := false
-	for _, p := range schema {
-		if p.Name == "LintDocumentation" {
-			retiring = true
-		}
-	}
 	repos := make([]string, 0, len(c.Repositories))
 	for name := range c.Repositories {
 		repos = append(repos, name)
@@ -357,15 +405,7 @@ func initializeValues(c catalogue, schema []property, api apiFunc) error {
 	wanted := map[string][]assignment{}
 	for _, name := range repos {
 		r := c.Repositories[name]
-		values := []assignment{
-			{"Type", r.Type},
-			{"EnableAutoMerge", fmt.Sprint(*r.AutoMerge)},
-			{"ScanGitHubActions", fmt.Sprint(*r.ScanActions)},
-			{"AutomaticallyRequestCopilotCodeReview", fmt.Sprint(*r.CopilotReview)},
-		}
-		if retiring {
-			values = append(values, assignment{"LintDocumentation", "false"})
-		}
+		values := repositoryValues(c, r, schema)
 		body, err := json.Marshal(struct {
 			Repositories []string     `json:"repository_names"`
 			Properties   []assignment `json:"properties"`
@@ -378,6 +418,20 @@ func initializeValues(c catalogue, schema []property, api apiFunc) error {
 		}
 		wanted[name] = values
 	}
+	return verifyValues(wanted, api)
+}
+
+func repositoryValues(c catalogue, r repository, schema []property) []assignment {
+	values := []assignment{{"Type", r.Type}, {"EnableAutoMerge", fmt.Sprint(*r.AutoMerge)}, {"ScanGitHubActions", fmt.Sprint(*r.ScanActions)}}
+	for _, p := range schema {
+		if slices.Contains(c.Retire, p.Name) {
+			values = append(values, assignment{p.Name, "false"})
+		}
+	}
+	return values
+}
+
+func verifyValues(wanted map[string][]assignment, api apiFunc) error {
 	// A separate read-only token covers exactly the validated catalogue. The
 	// schema-writing token remains restricted to this configuration repository.
 	seenIDs := map[int64]bool{}
@@ -456,7 +510,8 @@ func reconcile(c catalogue, api apiFunc) error {
 			return errors.New("property type changed; nothing was applied")
 		}
 	}
-	if err = noConsumers(api, c.Retire); err != nil {
+	retirement := &legacyReviewRetirement{}
+	if err = noConsumers(api, c.Retire, retirement); err != nil {
 		return err
 	}
 	for _, p := range c.Properties {
@@ -493,6 +548,19 @@ func reconcile(c catalogue, api apiFunc) error {
 	if err = initializeValues(c, got, api); err != nil {
 		return err
 	}
+	confirmation := &legacyReviewRetirement{}
+	if err = noConsumers(api, c.Retire, confirmation); err != nil {
+		return err
+	}
+	if !reflect.DeepEqual(retirement.snapshot, confirmation.snapshot) {
+		return errors.New("legacy review policy changed during initialization; nothing was retired")
+	}
+	if retirement.snapshot != nil {
+		if _, err = api("DELETE", "orgs/devantler-tech/rulesets/14426508", nil); err != nil {
+			return err
+		}
+		fmt.Println("RETIRED disabled legacy review policy")
+	}
 	if err = noConsumers(api, c.Retire); err != nil {
 		return err
 	}
@@ -515,7 +583,14 @@ func reconcile(c catalogue, api apiFunc) error {
 	if err = verifyDesired(c, got, false); err != nil {
 		return err
 	}
-	fmt.Println("VERIFIED: four organization properties and complete explicit repository values; Crossplane maintains assignments")
+	wanted := map[string][]assignment{}
+	for name, r := range c.Repositories {
+		wanted[name] = repositoryValues(c, r, got)
+	}
+	if err = verifyValues(wanted, api); err != nil {
+		return err
+	}
+	fmt.Println("VERIFIED: three organization properties and complete explicit repository values; both unused properties and their legacy consumer are absent")
 	return nil
 }
 
