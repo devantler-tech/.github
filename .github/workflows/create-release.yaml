@@ -22,7 +22,15 @@ on:
         required: false
         default: false
         type: boolean
+      protected-release:
+        description: "Use the caller's main-only release environment and its dedicated release App credentials"
+        required: false
+        default: false
+        type: boolean
     secrets:
+      RELEASE_APP_PRIVATE_KEY:
+        description: Named binding for the protected release environment's key; keep its value only in that environment.
+        required: false
       APP_PRIVATE_KEY:
         required: false
 
@@ -30,7 +38,7 @@ permissions: {}
 
 jobs:
   release:
-    if: "!inputs.offline-test"
+    if: "!inputs.offline-test && !inputs.protected-release"
     name: Release
     timeout-minutes: 15
     runs-on: ubuntu-latest
@@ -328,6 +336,321 @@ jobs:
           ${{ inputs.dry-run && '--dry-run' || '' }}
         env:
           GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
+
+  # Environment protection runs before any job step or environment secret is available.
+    # Common publishing steps stay in parity through the offline boundary regressions.
+    # Only this path adds protected-source admission and environment-only credentials.
+  release-protected:
+    if: "!inputs.offline-test && inputs.protected-release"
+    name: Release
+    timeout-minutes: 15
+    runs-on: ubuntu-latest
+    environment: release
+    concurrency:
+      group: create-release-${{ github.repository }}-${{ github.ref }}
+      cancel-in-progress: false
+      queue: max
+    steps:
+      - name: 🛡️ Harden runner
+        uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2.22.2
+        with:
+          egress-policy: audit
+
+      - name: Verify protected release source
+        if: inputs.protected-release
+        shell: bash
+        env:
+          SOURCE_REF: ${{ github.ref }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          REF_PROTECTED: ${{ github.ref_protected }}
+        run: |
+          set -euo pipefail
+          if [[ -z "$DEFAULT_BRANCH" || "$SOURCE_REF" != "refs/heads/$DEFAULT_BRANCH" || "$REF_PROTECTED" != true ]]; then
+            echo "::error::Protected releases require the protected default branch."
+            exit 1
+          fi
+
+      - name: 🔑 Get GitHub App Token
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        id: app-token
+        with:
+          client-id: ${{ vars.RELEASE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+          # Keep existing notification-hook permissions by default for compatibility.
+          # Opted-in callers omit them alongside the disabled hooks below.
+          permission-contents: write
+          permission-issues: ${{ !inputs.disable-issue-side-effects && 'write' || '' }}
+          permission-pull-requests: ${{ !inputs.disable-issue-side-effects && 'write' || '' }}
+
+      - name: 📑 Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+          token: ${{ steps.app-token.outputs.token }}
+
+      - name: 📦 Setup Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          # setup-node auto-detects npm from package.json and otherwise invokes the runner-bundled
+          # npm before the alignment step below. An npm 11 consumer can reject that npm 10
+          # cache probe through devEngines, so disable setup-node's automatic probing.
+          package-manager-cache: false
+
+      - name: 📦 Align npm with consumer contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ -f package.json ]] || exit 0
+
+          if ! npm_contract="$(
+            jq -ce '
+              def dev_engine_record:
+                if type != "object"
+                then error("devEngines.packageManager entries must be objects")
+                elif ((keys_unsorted - ["name", "version", "onFail"]) | length) != 0
+                then error("devEngines.packageManager entries contain unknown properties")
+                elif (has("name") | not) or ((.name | type) != "string")
+                then error("devEngines.packageManager names must be strings")
+                elif has("version") and ((.version | type) != "string")
+                then error("devEngines.packageManager versions must be strings when present")
+                elif has("onFail") and ((.onFail | type) != "string")
+                then error("devEngines.packageManager onFail must be a string when present")
+                elif has("onFail") and
+                  (.onFail != "error" and .onFail != "warn" and
+                   .onFail != "ignore" and .onFail != "download")
+                then error("devEngines.packageManager onFail must be error, warn, ignore, or download")
+                else {
+                  name: .name,
+                  version: (if has("version") then .version else null end),
+                  onFail: (if has("onFail") then .onFail else "error" end)
+                }
+                end;
+              {
+                packageManager: (
+                  if has("packageManager")
+                  then
+                    if (.packageManager | type) != "string"
+                    then error("packageManager must be a string")
+                    elif (.packageManager | startswith("npm"))
+                    then .packageManager
+                    else null
+                    end
+                  else null
+                  end
+                ),
+                devEngines: (
+                  if (has("devEngines") | not)
+                  then []
+                  elif (.devEngines | type) != "object"
+                  then error("devEngines must be an object")
+                  elif (.devEngines | has("packageManager") | not)
+                  then []
+                  else .devEngines.packageManager as $package_manager
+                  | if ($package_manager | type) == "array"
+                    then
+                      if ($package_manager | length) == 0
+                      then []
+                      else [$package_manager[] | dev_engine_record]
+                      end
+                    else [$package_manager | dev_engine_record]
+                    end
+                  end
+                )
+              }
+            ' package.json
+          )"; then
+            echo '::error::package.json contains an unreadable npm contract.' >&2
+            exit 1
+          fi
+
+          package_manager_requirement="$(jq -r '.packageManager // empty' <<<"$npm_contract")"
+          dev_engine_records="$(
+            jq -c '.devEngines[]' <<<"$npm_contract"
+          )"
+          if [[ -z "$package_manager_requirement" ]] \
+            && ! jq -e 'any(.devEngines[]; .name == "npm")' <<<"$npm_contract" >/dev/null; then
+            exit 0
+          fi
+
+          current_npm="$(npm --version)"
+          npm_major=''
+          npm_target=''
+          target_is_exact=0
+          exact_range='^([1-9][0-9]*)\.[0-9]+\.[0-9]+$'
+          if [[ -n "$package_manager_requirement" ]]; then
+            case "$package_manager_requirement" in
+              npm@*) package_manager_requirement=${package_manager_requirement#npm@} ;;
+              *)
+                echo "::error::Malformed npm packageManager declaration '$package_manager_requirement'." >&2
+                exit 1
+                ;;
+            esac
+            if [[ "$package_manager_requirement" =~ $exact_range ]]; then
+              npm_major="${BASH_REMATCH[1]}"
+              npm_target="$package_manager_requirement"
+            else
+              echo "::error::Unsupported packageManager npm descriptor '$package_manager_requirement'; declare one exact stable version without an unverifiable integrity suffix." >&2
+              exit 1
+            fi
+            target_is_exact=1
+          fi
+
+          broad_major_range='^([1-9][0-9]*)(\.[xX*]){0,2}$'
+          caret_major_range='^\^([1-9][0-9]*)\.0\.0$'
+          bounded_major_range='^>=([1-9][0-9]*)\.0\.0[[:space:]]+<([1-9][0-9]*)\.0\.0$'
+          first_installable_major=''
+          unsupported_requirement=''
+          dev_engines_satisfied=0
+          effective_failure_policy=''
+          while IFS= read -r dev_engine_record; do
+            [[ -n "$dev_engine_record" ]] || continue
+            engine_name="$(jq -r '.name' <<<"$dev_engine_record")"
+            failure_policy="$(jq -r '.onFail' <<<"$dev_engine_record")"
+            effective_failure_policy="$failure_policy"
+            [[ "$engine_name" == "npm" ]] || continue
+            npm_requirement="$(jq -r '.version // empty' <<<"$dev_engine_record")"
+            if [[ -z "$npm_requirement" ]]; then
+              dev_engines_satisfied=1
+              continue
+            fi
+            requirement_major=''
+            supported_requirement=1
+            if [[ "$npm_requirement" =~ $broad_major_range ]]; then
+              requirement_major="${BASH_REMATCH[1]}"
+            elif [[ "$npm_requirement" =~ $caret_major_range ]]; then
+              requirement_major="${BASH_REMATCH[1]}"
+            elif [[ "$npm_requirement" =~ $bounded_major_range ]] \
+              && (( BASH_REMATCH[2] == BASH_REMATCH[1] + 1 )); then
+              requirement_major="${BASH_REMATCH[1]}"
+            elif (( target_is_exact == 1 )) && [[ "$npm_requirement" == "$npm_target" ]]; then
+              requirement_major="$npm_major"
+            else
+              supported_requirement=0
+            fi
+
+            if (( supported_requirement == 1 && target_is_exact == 1 )) \
+              && [[ "$requirement_major" == "$npm_major" ]]; then
+              dev_engines_satisfied=1
+            elif (( supported_requirement == 1 && target_is_exact == 0 )) \
+              && [[ "$requirement_major" == "${current_npm%%.*}" ]]; then
+              dev_engines_satisfied=1
+            fi
+
+            if (( supported_requirement == 1 )) && [[ -z "$first_installable_major" ]]; then
+              first_installable_major="$requirement_major"
+            elif (( supported_requirement == 0 )) && [[ -z "$unsupported_requirement" ]]; then
+              unsupported_requirement="$npm_requirement"
+            fi
+          done <<<"$dev_engine_records"
+
+          blocking_contract=0
+          if [[ "$effective_failure_policy" == "error" || "$effective_failure_policy" == "download" ]]; then
+            blocking_contract=1
+          fi
+          if (( target_is_exact == 1 && blocking_contract == 1 && dev_engines_satisfied == 0 )); then
+            if [[ -n "$unsupported_requirement" ]]; then
+              echo "::error::Unsupported blocking npm devEngines requirement '$unsupported_requirement'; use a complete-major range or the exact packageManager version." >&2
+            else
+              echo '::error::package.json contains contradictory npm package-manager contracts.' >&2
+            fi
+            exit 1
+          elif (( target_is_exact == 0 && dev_engines_satisfied == 1 )); then
+            exit 0
+          elif (( target_is_exact == 0 && blocking_contract == 0 )); then
+            exit 0
+          elif (( target_is_exact == 0 )) && [[ -n "$first_installable_major" ]]; then
+            npm_major="$first_installable_major"
+            npm_target="$first_installable_major"
+          elif (( target_is_exact == 0 )) && [[ -n "$unsupported_requirement" ]]; then
+            echo "::error::Unsupported blocking npm devEngines requirement '$unsupported_requirement'; use a complete-major range." >&2
+            exit 1
+          elif (( target_is_exact == 0 )); then
+            echo '::error::Blocking devEngines.packageManager alternatives contain no supported npm requirement.' >&2
+            exit 1
+          fi
+
+          if (( target_is_exact == 1 )) && [[ "$current_npm" == "$npm_target" ]]; then
+            exit 0
+          elif (( target_is_exact == 0 )) && [[ "${current_npm%%.*}" == "$npm_major" ]]; then
+            exit 0
+          fi
+
+          cd "$RUNNER_TEMP"
+          npm install --global "npm@$npm_target"
+          cd "$GITHUB_WORKSPACE"
+          installed_npm="$(npm --version)"
+          if (( target_is_exact == 1 )) && [[ "$installed_npm" != "$npm_target" ]]; then
+            echo "::error::npm $npm_target was requested, but npm $installed_npm is active." >&2
+            exit 1
+          elif (( target_is_exact == 0 )) && [[ "${installed_npm%%.*}" != "$npm_major" ]]; then
+            echo "::error::npm major $npm_major was requested, but npm $installed_npm is active." >&2
+            exit 1
+          fi
+
+      - name: 🔎 Check breaking-change configuration
+        id: breaking-bang-guard
+        if: ${{ inputs.warn-missing-breaking-bang }}
+        continue-on-error: true
+        timeout-minutes: 1
+        shell: bash
+        run: |
+          # Only inspect unambiguous JSON. Never execute config, resolve shared
+          # presets, rewrite files, or turn a diagnostic into a release gate.
+          check_breaking_bang() {
+            local path config='' source='' count=0
+            for path in .releaserc.{yml,yaml,js,cjs,mjs,ts,cts} release.config.{js,cjs,mjs,ts,cts}; do
+              [[ ! -e "$path" ]] || return 0
+            done
+            if [[ -e package.json ]]; then
+              config="$(jq -cse 'select(length == 1) | .[0] | select(type == "object")' package.json 2>/dev/null)" || return 0
+              config="$(jq -c '.release // null' <<<"$config" 2>/dev/null)" || return 0
+              if [[ "$config" != null ]]; then
+                source='package.json'
+                count=$((count + 1))
+              fi
+            fi
+            for path in .releaserc .releaserc.json; do
+              if [[ -e "$path" ]]; then
+                config="$(jq -cse 'select(length == 1) | .[0]' "$path" 2>/dev/null)" || return 0
+                source="$path"
+                count=$((count + 1))
+              fi
+            done
+            # Multiple configs require semantic-release's resolver; guessing its
+            # precedence would create warning noise on an unused file.
+            [[ "$count" == 1 ]] || return 0
+            if jq -e '
+              select(type == "object" and (has("extends") | not)) |
+              . as $root | .plugins | select(type == "array") |
+              any(.[];
+                (if type == "string" then
+                   select(. == "@semantic-release/commit-analyzer") | {}
+                 elif type == "array" and length == 2 then
+                   select(.[0] == "@semantic-release/commit-analyzer") | .[1] | select(type == "object")
+                 else empty end) as $options |
+                ($root + $options) |
+                select((has("preset") or has("config")) | not) |
+                .parserOpts.breakingHeaderPattern | type != "string" or length == 0
+              )
+            ' <<<"$config" >/dev/null 2>&1; then
+              printf '%s\n' "::warning::${source}: @semantic-release/commit-analyzer does not declare parserOpts.breakingHeaderPattern. Restore your type!: breaking-header configuration and verify breaking changes select a major release. This check does not modify configuration or block releases."
+            fi
+          }
+          check_breaking_bang
+
+      - name: 🎉 Release
+        # GitHub already closes local issues from merge keywords. Disable the
+        # nonessential notification hooks so a bare issue reference intended for
+        # another repository cannot turn an otherwise-published release red.
+        run: >-
+          npx semantic-release@25.0.9
+          ${{ inputs.disable-issue-side-effects && '--success false --fail false' || '' }}
+          ${{ inputs.dry-run && '--dry-run' || '' }}
+        env:
+          GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
+
 
   offline-test:
     name: Offline release decisions

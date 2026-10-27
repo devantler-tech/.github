@@ -428,4 +428,24 @@ if (
   exit 1
 fi
 
+protected_source_guard="$(yq -r '.jobs."release-protected".steps[] | select(.name == "Verify protected release source") | .run' "$workflow")"
+while IFS='|' read -r protected_ref protected_default protected_state protected_expected; do
+  protected_actual=0
+  env SOURCE_REF="$protected_ref" DEFAULT_BRANCH="$protected_default" REF_PROTECTED="$protected_state" \
+    bash -c "$protected_source_guard" >"$tmp_dir/protected-source-result" 2>&1 || protected_actual=$?
+  if [[ "$protected_expected" == pass && "$protected_actual" != 0 ]] ||
+    [[ "$protected_expected" == fail && "$protected_actual" == 0 ]]; then
+    cat "$tmp_dir/protected-source-result" >&2
+    echo "unexpected protected-source result for $protected_ref" >&2
+    exit 1
+  fi
+done <<'EOF'
+refs/heads/main|main|true|pass
+refs/heads/topic|main|true|fail
+refs/tags/main|main|true|fail
+refs/heads/main|main|false|fail
+refs/heads/main||true|fail
+EOF
+
 echo "semantic-release issue side effects are opt-in disabled at least privilege"
+echo "protected-source guard accepts the protected default branch and rejects four invalid contexts"

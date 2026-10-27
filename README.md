@@ -309,7 +309,7 @@ Consumer rollout and flag removal are tracked in [#275](https://github.com/devan
 
 [.github/workflows/create-release.yaml](.github/workflows/create-release.yaml) is a workflow used to create releases using semantic-release.
 
-The release is published with a GitHub App token, so the caller must set the `APP_CLIENT_ID` repository/organization **variable** alongside the `APP_PRIVATE_KEY` **secret**. The App always needs `contents: write` (tags/releases). By default it also needs `issues: write` + `pull-requests: write` for semantic-release success/fail hooks. Set `disable-issue-side-effects: true` to suppress those hooks and mint the token with `contents: write` only.
+The release is published with a GitHub App token. In the default mode, the caller sets the `APP_CLIENT_ID` repository/organization **variable** and forwards the `APP_PRIVATE_KEY` **secret**. The protected mode below uses a separate environment credential. The App always needs `contents: write` (tags/releases). By default it also needs `issues: write` + `pull-requests: write` for semantic-release success/fail hooks. Set `disable-issue-side-effects: true` to suppress those hooks and mint the token with `contents: write` only.
 
 Npm alignment runs unconditionally. Release runs read requirements from the consumer's `packageManager` field and npm entries under `devEngines.packageManager` after checkout. An exact stable `packageManager` version is installed exactly; integrity-suffixed descriptors fail explicitly because this workflow cannot verify their digest. Otherwise, blocking `devEngines` entries must describe complete npm majors (`11`, `11.x`, `^11.0.0`, or `>=11.0.0 <12.0.0`). Arrays are alternatives: versionless npm entries satisfy the contract, and when no entry matches the final alternative's `onFail` controls the result. Without an exact npm `packageManager` requirement, `warn` and `ignore` keep the current npm; `error` and `download` align to a supported complete-major alternative or fail. Compatible declarations resolve to the exact `packageManager` version, consumers with neither an exact npm `packageManager` requirement nor a blocking npm `devEngines` version keep the bundled npm, and explicit nulls, unknown properties, malformed, contradictory, prerelease, or otherwise unenforceable contracts fail explicitly.
 
@@ -347,10 +347,18 @@ jobs:
 |------------------------------|-----------------|---------|----------|---------------------------------------------------------------------------|
 | `APP_CLIENT_ID`              | Variable        | -       | Yes      | GitHub App client ID used to mint the release token                       |
 | `APP_PRIVATE_KEY`            | Secret          | -       | No       | GitHub App private key; required for consumer releases and previews, omitted for offline tests |
+| `RELEASE_APP_PRIVATE_KEY`    | Secret          | -       | No       | Explicit named binding for the protected release environment secret; keep its value only in that environment |
 | `disable-issue-side-effects` | Input (boolean) | `false` | No       | Disable success/fail hooks and omit issue/pull-request token permissions  |
 | `warn-missing-breaking-bang` | Input (boolean) | `false` | No       | Warn about missing explicit breaking-header handling in supported JSON configurations |
 | `dry-run`                    | Input (boolean) | `false` | No       | Run semantic-release in dry-run mode (no tags or publishes)               |
 | `offline-test`               | Input (boolean) | `false` | No       | Run secret-free catalogue release-decision fixtures; requires dry-run     |
+| `protected-release`          | Input (boolean) | `false` | No       | Use the caller's protected `release` environment and dedicated App credentials; see [setup and acceptance](.github/agent-guides/protected-releases.md) |
+
+The protected mode obtains `RELEASE_APP_CLIENT_ID` and `RELEASE_APP_PRIVATE_KEY` from the
+caller's `release` environment. Explicitly bind `RELEASE_APP_PRIVATE_KEY` in the caller's
+`secrets` block as shown in the setup guide; keep its value only in the environment. Environment protection
+and removal of alternative publishing credentials are prerequisites, verified separately from
+workflow syntax and offline tests. The default preserves existing consumer releases.
 
 </details>
 
