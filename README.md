@@ -340,6 +340,7 @@ jobs:
 |------------------------------|-----------------|---------|----------|---------------------------------------------------------------------------|
 | `APP_CLIENT_ID`              | Variable        | -       | Yes      | GitHub App client ID used to mint the release token                       |
 | `APP_PRIVATE_KEY`            | Secret          | -       | No       | GitHub App private key; required for consumer releases and previews, omitted for offline tests |
+| `RELEASE_APP_PRIVATE_KEY`    | Secret          | -       | No       | Explicit named binding for the protected release environment secret; keep its value only in that environment |
 | `disable-issue-side-effects` | Input (boolean) | `false` | No       | Disable success/fail hooks and omit issue/pull-request token permissions  |
 | `warn-missing-breaking-bang` | Input (boolean) | `false` | No       | Warn about missing explicit breaking-header handling in supported JSON configurations |
 | `dry-run`                    | Input (boolean) | `false` | No       | Run semantic-release in dry-run mode (no tags or publishes)               |
