@@ -3,8 +3,9 @@
 `create-release.yaml` supports an opt-in `protected-release: true` mode. It uses the same release
 steps, permissions, queue and recovery behavior as the existing mode, but the release job names
 the fixed `release` environment. It reads only that environment's `RELEASE_APP_CLIENT_ID` variable
-and `RELEASE_APP_PRIVATE_KEY` secret. The protected private key is not a workflow-call input,
-and an absent protected key never falls back to the legacy App key.
+and `RELEASE_APP_PRIVATE_KEY` secret. The caller explicitly binds that secret name as required
+by GitHub's reusable-workflow interface; its value exists only in the environment and is empty
+outside it. An absent protected key never falls back to the legacy App key.
 
 The two jobs keep their common publishing steps in parity through the existing offline
 boundary checks. Explicit job blocks preserve legacy callers without creating an environment
@@ -34,6 +35,8 @@ jobs:
     with:
       protected-release: true
       disable-issue-side-effects: true
+    secrets:
+      RELEASE_APP_PRIVATE_KEY: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
 ```
 
 The source check also requires the protected default branch before minting the App token.
@@ -58,8 +61,7 @@ repaired.
 GitHub documents [environment protection and secret availability](https://docs.github.com/en/actions/how-tos/deploy/configure-and-manage-deployments/manage-environments)
 and [the write-access trust boundary for repository secrets](https://docs.github.com/en/actions/reference/security/secure-use).
 
-For local syntax checks, actionlint 1.7.12 treats a reusable workflow's declared caller secrets as
-the complete secret context. It does not recognize the additional job environment secret. Keep
-the environment key out of the caller interface; restrict any local compatibility filter to
-the exact `release_app_private_key` undefined-property diagnostic. GitHub's native compiler and
-the live protected release observations remain required.
+GitHub requires the explicit named binding even when the secret exists only in the environment.
+Do not use `secrets: inherit` or create a repository or organization copy to satisfy that binding.
+The environment secret takes precedence when the protected job starts. GitHub's native compiler
+and the live protected release observations remain required.

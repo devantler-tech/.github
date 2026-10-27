@@ -347,7 +347,8 @@ jobs:
 | `protected-release`          | Input (boolean) | `false` | No       | Use the caller's protected `release` environment and dedicated App credentials; see [setup and acceptance](.github/agent-guides/protected-releases.md) |
 
 The protected mode obtains `RELEASE_APP_CLIENT_ID` and `RELEASE_APP_PRIVATE_KEY` from the
-caller's `release` environment. Omit the `secrets` block when using it. Environment protection
+caller's `release` environment. Explicitly bind `RELEASE_APP_PRIVATE_KEY` in the caller's
+`secrets` block as shown in the setup guide; keep its value only in the environment. Environment protection
 and removal of alternative publishing credentials are prerequisites, verified separately from
 workflow syntax and offline tests. The default preserves existing consumer releases.
 

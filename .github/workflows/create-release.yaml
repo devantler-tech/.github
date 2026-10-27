@@ -28,6 +28,9 @@ on:
         default: false
         type: boolean
     secrets:
+      RELEASE_APP_PRIVATE_KEY:
+        description: Named binding for the protected release environment's key; keep its value only in that environment.
+        required: false
       APP_PRIVATE_KEY:
         required: false
 

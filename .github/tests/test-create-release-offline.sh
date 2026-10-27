@@ -33,7 +33,7 @@ guard() {
     elif $w.on.workflow_call.inputs["protected-release"].type != "boolean" or
       $w.on.workflow_call.inputs["protected-release"].default != false or
       $w.jobs["release-protected"].environment != "release" or
-      $w.on.workflow_call.secrets.RELEASE_APP_PRIVATE_KEY != null or
+      $w.on.workflow_call.secrets.RELEASE_APP_PRIVATE_KEY.required != false or
       ([$w.jobs["release-protected"].steps[] | select(.id == "app-token") |
         select(.with."client-id" == "${{ vars.RELEASE_APP_CLIENT_ID }}" and
           .with."private-key" == "${{ secrets.RELEASE_APP_PRIVATE_KEY }}")] | length) != 1 or
@@ -41,7 +41,7 @@ guard() {
         if .id == "app-token" then .with."client-id"="${{ vars.APP_CLIENT_ID }}" |
           .with."private-key"="${{ secrets.APP_PRIVATE_KEY }}" else . end)) != $w.jobs.release.steps or
       $w.jobs["release-protected"].concurrency != $w.jobs.release.concurrency
-    then error("protected releases require the fixed environment without a forwarded key or duplicated implementation")
+    then error("protected releases require the fixed environment, named secret interface and common implementation")
     elif $j.if != "inputs.offline-test" or $j.needs != null or
       ($j["continue-on-error"] // false) != false
     then error("offline-test must execute independently")
@@ -107,11 +107,11 @@ consumer preview changed	.workflow.on.workflow_call.inputs["dry-run"].default=tr
 production execution	.workflow.jobs.release.if=null	exclude the production
 protected production execution	.workflow.jobs["release-protected"].if=null	exclude the production
 unprotected environment	.workflow.jobs["release-protected"].environment="other"	fixed environment
-forwarded protected key	.workflow.on.workflow_call.secrets.RELEASE_APP_PRIVATE_KEY={required:false}	forwarded key
+missing protected key interface	del(.workflow.on.workflow_call.secrets.RELEASE_APP_PRIVATE_KEY)	named secret interface
 legacy key fallback	.workflow.jobs["release-protected"].steps |= map(if .id=="app-token" then .with."private-key"="${{ secrets.APP_PRIVATE_KEY }}" else . end)	fixed environment
 protected default enabled	.workflow.on.workflow_call.inputs["protected-release"].default=true	fixed environment
-protected steps diverge	.workflow.jobs["release-protected"].steps=[]	duplicated implementation
-protected queue diverges	.workflow.jobs["release-protected"].concurrency.queue="single"	duplicated implementation
+protected steps diverge	.workflow.jobs["release-protected"].steps=[]	common implementation
+protected queue diverges	.workflow.jobs["release-protected"].concurrency.queue="single"	common implementation
 skipped fixture	.workflow.jobs["offline-test"].if="false"	execute independently
 fixture prerequisite	.workflow.jobs["offline-test"].needs="release"	execute independently
 ignored failure	.workflow.jobs["offline-test"]["continue-on-error"]=true	execute independently
