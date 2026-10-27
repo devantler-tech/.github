@@ -205,6 +205,28 @@ func TestLegacyReviewRetirementPreservesPropertiesOnLateFailures(t *testing.T) {
 	}
 }
 
+func TestFinalPortfolioReadbackCannotBeSkippedAfterRetirement(t *testing.T) {
+	c := fixture(t)
+	f := &fakeAPI{schema: append([]property{}, c.Properties...)}
+	for i := range f.schema {
+		f.schema[i].Source = "organization"
+	}
+	for _, name := range c.Retire {
+		f.schema = append(f.schema, property{Name: name, Type: "true_false", Source: "organization", Required: true, Explicit: true})
+	}
+	finalRead := false
+	api := func(method, path string, body []byte) ([]byte, error) {
+		if method == "GET" && strings.HasPrefix(path, "orgs/devantler-tech/properties/values?") && len(f.schema) == 3 {
+			finalRead = true
+			return []byte(`[]`), nil
+		}
+		return f.call(method, path, body)
+	}
+	if err := reconcile(c, api); err == nil || !finalRead {
+		t.Fatalf("incomplete final portfolio readback must block success: %v finalRead=%v", err, finalRead)
+	}
+}
+
 func TestRenderExplicitAssignments(t *testing.T) {
 	c := fixture(t)
 	out, err := render(c, "../..")
