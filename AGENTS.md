@@ -38,9 +38,11 @@ for the architecture, the GitHub App credential setup, and the Observe-first ado
   imperative change is at best a no-op and at worst churns against the reconciler. (Reading via
   `gh api` is fine; *writing* managed config is not.) Applying an **existing** label to an issue is
   triage (content, allowed); creating or editing a label **definition** is config (declarative-only).
-  The one setting the provider cannot express yet, Actions workflow execution policies, is declared
-  in [`workflow-execution-policies/`](workflow-execution-policies/) and applied from `main` by
-  `apply-workflow-execution-policies.yaml`; change those by editing the files, never the live policy.
+  Unsupported provider surfaces use reviewed-main reconcilers: Actions execution policies live in
+  [`workflow-execution-policies/`](workflow-execution-policies/), and organization custom-property
+  schemas in [`custom-properties/`](custom-properties/). Their repository-owned apply workflows
+  consume these declarations; change the files, never the live configuration. Repository property
+  values remain namespaced Crossplane resources under `deploy/repository-properties/`.
 - **Ownership goes to a team, not an individual.** The canonical owner across the suite is the
   `maintainers` team — model access on `Team`/`TeamRepository`, never on individual logins.
 - **Observe-first when adopting an existing resource.** A new `Repository`/`IssueLabels`/team CR for
@@ -100,6 +102,7 @@ for the architecture, the GitHub App credential setup, and the Observe-first ado
 | `deploy/team-repositories/` | one team-to-repository permission grant per file |
 | `deploy/labels/<repo>.yaml` | one `IssueLabels` per repo; canonical taxonomy in `labels/kustomization.yaml` |
 | `deploy/repository-permissions/<repo>.yaml` | one `RepositoryPermissions` per active (non-archived) repo; requires actions pinned to a full commit SHA |
+| `deploy/repository-properties/` | generated explicit values for each active repository; source and ownership in `custom-properties/` |
 | `deploy/provider-config.yaml` | the provider-upjet-github `ProviderConfig` (App credentials) |
 | `deploy/external-secret.yaml` | the `ExternalSecret` sourcing the GitHub App credentials |
 | `deploy/kustomization.yaml` | top-level kustomization wiring the above + the shared repo-settings patch |
@@ -156,6 +159,7 @@ Native application and ordinary consumer execution remain separate gates under #
 kubectl kustomize deploy/ > /dev/null   # must build clean
 bash tests/admin-team-policy.sh         # Admins policy invariants
 bash tests/declarative-coverage.sh      # every repo declared in every rendered dimension
+bash tests/custom-properties.sh        # explicit values, schema ownership and refusal controls
 bash tests/declarative-coverage-fail-closed.sh # rendered-label reads fail closed
 bash tests/actions-retirement.sh       # retired catalogue has no rendered management
 bash tests/repository-update-policy.sh  # active Repository update invariants

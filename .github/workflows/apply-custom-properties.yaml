@@ -1,0 +1,67 @@
+name: Apply organization custom-property schema
+
+# Repository values are Crossplane resources in deploy/repository-properties/.
+# The installed GitHub provider has no organization-schema resource (.github#773).
+on:
+  push:
+    branches: [main]
+    paths:
+      - custom-properties/**
+      - scripts/custom-properties/**
+      - scripts/generate-repository-properties.sh
+      - .github/workflows/apply-custom-properties.yaml
+  schedule:
+    - cron: "55 5 * * *"
+  workflow_dispatch: {}
+
+permissions: {}
+concurrency:
+  group: apply-organization-custom-properties
+  cancel-in-progress: false
+
+jobs:
+  apply:
+    if: >-
+      github.repository == 'devantler-tech/.github'
+      && github.ref == 'refs/heads/main'
+      && (github.event_name == 'push' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - name: Harden runner
+        uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2.22.2
+        with:
+          egress-policy: audit
+      - name: Checkout reviewed workflow source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.workflow_sha }}
+          persist-credentials: false
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: scripts/custom-properties/go.mod
+          cache: false
+      - name: Check reviewed declarations before obtaining authority
+        env:
+          GOTOOLCHAIN: local
+        run: go -C scripts/custom-properties run . --root ../.. --check
+      - name: Get narrowly scoped organization token
+        id: token
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          client-id: ${{ vars.APP_CLIENT_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+          owner: devantler-tech
+          repositories: .github
+          # GitHub requires write even for GET of org rulesets and Actions policies.
+          # The reconciler only reads those consumers; mutations target the schema.
+          permission-organization-administration: write
+          permission-organization-custom-properties: admin
+      - name: Reconcile schema after complete native consumer checks
+        env:
+          GH_TOKEN: ${{ steps.token.outputs.token }}
+          GOTOOLCHAIN: local
+        run: go -C scripts/custom-properties run . --root ../.. --apply-schema

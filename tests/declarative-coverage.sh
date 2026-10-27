@@ -45,6 +45,9 @@ dimensions=(
   'team-admins:select(.kind=="TeamRepository" and .spec.forProvider.teamIdRef.name=="admins")|.spec.forProvider.repository'
   'team-maintainers:select(.kind=="TeamRepository" and .spec.forProvider.teamIdRef.name=="maintainers")|.spec.forProvider.repository'
   'repository-permissions:select(.kind=="RepositoryPermissions")|.spec.forProvider.repository'
+  'property-type:select(.kind=="RepositoryCustomProperty" and .spec.forProvider.propertyName=="Type")|.spec.forProvider.repository'
+  'property-auto-merge:select(.kind=="RepositoryCustomProperty" and .spec.forProvider.propertyName=="EnableAutoMerge")|.spec.forProvider.repository'
+  'property-workflow-scan:select(.kind=="RepositoryCustomProperty" and .spec.forProvider.propertyName=="ScanGitHubActions")|.spec.forProvider.repository'
 )
 
 # Deliberate omissions, as "<dimension>/<repo>".
