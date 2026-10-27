@@ -50,9 +50,10 @@ jq -e '
     .[0].with."permission-organization-custom-properties" == "admin" and
     .[0].with.repositories == ".github") and
   ([.jobs.apply.steps[] | select(.id? == "readback-token")] | length == 1 and
-    (.[0].with | keys | sort) == ["client-id","owner","permission-organization-custom-properties","private-key","repositories"] and
+    (.[0].with | keys | sort) == ["client-id","owner","permission-metadata","permission-organization-custom-properties","private-key","repositories"] and
     .[0].with.owner == "devantler-tech" and
     .[0].with."permission-organization-custom-properties" == "read" and
+    .[0].with."permission-metadata" == "read" and
     .[0].with.repositories == "${{ steps.readback-repositories.outputs.repositories }}") and
   ([.jobs.apply.steps[] | select(.run? | strings | endswith("--apply-schema"))] | length == 1 and
     .[0].env.GH_PROPERTY_READBACK_TOKEN == "${{ steps.readback-token.outputs.token }}") and
