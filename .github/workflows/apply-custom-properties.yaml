@@ -60,6 +60,7 @@ jobs:
           owner: devantler-tech
           repositories: ${{ steps.readback-repositories.outputs.repositories }}
           permission-organization-custom-properties: read
+          permission-metadata: read
       - name: Get narrowly scoped organization token
         id: token
         uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0

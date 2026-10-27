@@ -38,9 +38,10 @@ must agree; missing private entries or a failed later page block retirement. The
 that the organization writer can initialize every assignment while restricted to this repository,
 but its repository selection made the organization readback incomplete. The writer stays restricted.
 A separate, short-lived read-only token selects exactly the validated catalogue and supplies only
-the organization-value readback. It requests organization custom-property read authority and no
-repository content access; GitHub also includes repository metadata read access for its selected
-repositories. Neither that token nor its alternate credential is passed to schema or value mutations.
+the organization-value readback. It explicitly requests both organization custom-property read
+authority and repository metadata read access for the selected repositories, with no repository
+content access. Repository selection alone does not request metadata authority when the token's
+permissions are explicitly limited. Neither that token nor its alternate credential is passed to schema or value mutations.
 The action revokes both tokens at job completion.
 
 The readback selection is exactly the reviewed catalogue; changing that selection requires
