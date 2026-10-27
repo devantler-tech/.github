@@ -9,7 +9,7 @@ yq -N -o=json -I=0 '.' "$work/render.yaml" >"$work/render.jsonl"
 jq -se '
   [.[] | select(.kind == "Repository" and .spec.forProvider.archived != true) | .spec.forProvider.name] as $repos |
   [.[] | select(.kind == "RepositoryCustomProperty")] as $props |
-  ["Type", "EnableAutoMerge", "ScanGitHubActions"] as $names |
+  ["Type", "EnableAutoMerge", "ScanGitHubActions", "AutomaticallyRequestCopilotCodeReview"] as $names |
   ($repos | length) >= 10 and
   ($props | length) == (($repos | length) * ($names | length)) and
   ([$props[] | [.spec.forProvider.repository, .spec.forProvider.propertyName]] | unique | length) == ($props | length) and
@@ -25,13 +25,15 @@ jq -se '
     (if .spec.forProvider.propertyName == "Type" then
       .spec.forProvider.propertyType == "single_select" and
       (.spec.forProvider.propertyValue[0] as $value |
-        ["Application","Infrastructure","Library","Marketplace","Metadata","Template","Documentation"] | index($value) != null)
+        ["Application","Infrastructure","Library","Marketplace","Metadata","Documentation"] | index($value) != null)
+    elif .spec.forProvider.propertyName == "AutomaticallyRequestCopilotCodeReview" then
+      .spec.forProvider.propertyType == "true_false" and .spec.forProvider.propertyValue == ["false"]
     else
       .spec.forProvider.propertyType == "true_false" and
       (.spec.forProvider.propertyValue[0] == "true" or .spec.forProvider.propertyValue[0] == "false")
     end))
 ' "$work/render.jsonl" >/dev/null || {
-  echo 'FAIL: every managed repository needs exactly three explicit non-deleting property assignments' >&2
+  echo 'FAIL: every managed repository needs four explicit non-deleting assignments with automatic Copilot review disabled' >&2
   exit 1
 }
 # The catalogue and shell renderer live outside this Go module's cache boundary.

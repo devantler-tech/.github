@@ -28,9 +28,10 @@ type property struct {
 	Source      string   `json:"source_type,omitempty"`
 }
 type repository struct {
-	Type        string `json:"type"`
-	AutoMerge   *bool  `json:"auto_merge"`
-	ScanActions *bool  `json:"scan_actions"`
+	Type          string `json:"type"`
+	AutoMerge     *bool  `json:"auto_merge"`
+	ScanActions   *bool  `json:"scan_actions"`
+	CopilotReview *bool  `json:"copilot_review"`
 }
 type catalogue struct {
 	Properties   []property            `json:"properties"`
@@ -38,8 +39,8 @@ type catalogue struct {
 	Repositories map[string]repository `json:"repositories"`
 }
 
-var names = []string{"Type", "EnableAutoMerge", "ScanGitHubActions"}
-var types = []string{"Application", "Infrastructure", "Library", "Marketplace", "Metadata", "Template", "Documentation"}
+var names = []string{"Type", "EnableAutoMerge", "ScanGitHubActions", "AutomaticallyRequestCopilotCodeReview"}
+var types = []string{"Application", "Infrastructure", "Library", "Marketplace", "Metadata", "Documentation"}
 
 func load(path string) (catalogue, error) {
 	var c catalogue
@@ -60,8 +61,8 @@ func load(path string) (catalogue, error) {
 }
 
 func validate(c catalogue) error {
-	if len(c.Properties) != 3 || len(c.Repositories) < 10 || !reflect.DeepEqual(c.Retire, []string{"AutomaticallyRequestCopilotCodeReview", "LintDocumentation"}) {
-		return errors.New("expected three useful properties, the two retired switches and the complete portfolio")
+	if len(c.Properties) != len(names) || len(c.Repositories) < 10 || !reflect.DeepEqual(c.Retire, []string{"LintDocumentation"}) {
+		return errors.New("expected four managed properties, the retired documentation switch and the complete portfolio")
 	}
 	seen := map[string]bool{}
 	for _, p := range c.Properties {
@@ -78,17 +79,26 @@ func validate(c catalogue) error {
 					return errors.New("missing Type option")
 				}
 			}
-		} else if p.Type != "true_false" || p.Default != "true" || len(p.Allowed) != 0 {
-			return errors.New("invalid policy switch definition")
+		} else {
+			want := "true"
+			if p.Name == "AutomaticallyRequestCopilotCodeReview" {
+				want = "false"
+			}
+			if p.Type != "true_false" || p.Default != want || len(p.Allowed) != 0 {
+				return errors.New("invalid policy switch definition")
+			}
 		}
 	}
 	validRepo := regexp.MustCompile(`^(\.github|[a-z0-9][a-z0-9-]*)$`)
 	for name, r := range c.Repositories {
-		if !validRepo.MatchString(name) || !slices.Contains(types, r.Type) || r.AutoMerge == nil || r.ScanActions == nil {
+		if !validRepo.MatchString(name) || !slices.Contains(types, r.Type) || r.AutoMerge == nil || r.ScanActions == nil || r.CopilotReview == nil {
 			return fmt.Errorf("missing or invalid explicit values for %q", name)
 		}
 		if !*r.ScanActions {
 			return errors.New("workflow scanning remains enabled across the portfolio")
+		}
+		if *r.CopilotReview {
+			return errors.New("automatic Copilot review is enabled; copilot_review must be false across the portfolio")
 		}
 	}
 	return nil
@@ -285,6 +295,9 @@ func verifyDesired(c catalogue, got []property, allowRetired bool) error {
 		}
 		seen[p.Name] = true
 		if allowRetired && slices.Contains(c.Retire, p.Name) {
+			if p.Type != "true_false" {
+				return errors.New("retired property type changed during reconciliation")
+			}
 			continue
 		}
 		match := false
@@ -305,6 +318,105 @@ func verifyDesired(c catalogue, got []property, allowRetired bool) error {
 	return nil
 }
 
+type assignment struct {
+	Name  string `json:"property_name"`
+	Value string `json:"value"`
+}
+
+// GitHub requires all explicit values together when initializing a repository.
+// Keep the still-live retiring switch in that request until every repository
+// has been initialized and independently read back. Crossplane owns later drift.
+func initializeValues(c catalogue, schema []property, api apiFunc) error {
+	retiring := false
+	for _, p := range schema {
+		if p.Name == "LintDocumentation" {
+			retiring = true
+		}
+	}
+	repos := make([]string, 0, len(c.Repositories))
+	for name := range c.Repositories {
+		repos = append(repos, name)
+	}
+	slices.Sort(repos)
+	wanted := map[string][]assignment{}
+	for _, name := range repos {
+		r := c.Repositories[name]
+		values := []assignment{
+			{"Type", r.Type},
+			{"EnableAutoMerge", fmt.Sprint(*r.AutoMerge)},
+			{"ScanGitHubActions", fmt.Sprint(*r.ScanActions)},
+			{"AutomaticallyRequestCopilotCodeReview", fmt.Sprint(*r.CopilotReview)},
+		}
+		if retiring {
+			values = append(values, assignment{"LintDocumentation", "false"})
+		}
+		body, err := json.Marshal(struct {
+			Repositories []string     `json:"repository_names"`
+			Properties   []assignment `json:"properties"`
+		}{[]string{name}, values})
+		if err != nil {
+			return err
+		}
+		if _, err = api("PATCH", "orgs/devantler-tech/properties/values", body); err != nil {
+			return err
+		}
+		wanted[name] = values
+	}
+	// The App is repository-restricted. Read the organization collection with
+	// organization property authority, including private catalogue entries.
+	seenIDs := map[int64]bool{}
+	seenRepos := map[string]bool{}
+	for page := 1; page <= 100; page++ {
+		b, err := api("GET", fmt.Sprintf("orgs/devantler-tech/properties/values?per_page=100&page=%d", page), nil)
+		if err != nil {
+			return err
+		}
+		var rows []struct {
+			ID         int64        `json:"repository_id"`
+			Name       string       `json:"repository_name"`
+			FullName   string       `json:"repository_full_name"`
+			Properties []assignment `json:"properties"`
+		}
+		if json.Unmarshal(b, &rows) != nil || rows == nil {
+			return errors.New("unreadable organization property values")
+		}
+		for _, row := range rows {
+			if row.ID <= 0 || row.Name == "" || row.FullName != "devantler-tech/"+row.Name || seenIDs[row.ID] || seenRepos[row.Name] {
+				return errors.New("ambiguous repository identity in property readback")
+			}
+			seenIDs[row.ID], seenRepos[row.Name] = true, true
+			values, managed := wanted[row.Name]
+			if !managed {
+				continue
+			}
+			if len(row.Properties) != len(values) {
+				return errors.New("repository property readback is incomplete")
+			}
+			seen := map[string]string{}
+			for _, value := range row.Properties {
+				if _, duplicate := seen[value.Name]; duplicate {
+					return errors.New("duplicate repository property readback")
+				}
+				seen[value.Name] = value.Value
+			}
+			for _, want := range values {
+				if value, ok := seen[want.Name]; !ok || value != want.Value {
+					return errors.New("repository property readback differs")
+				}
+			}
+		}
+		if len(rows) < 100 {
+			for name := range wanted {
+				if !seenRepos[name] {
+					return errors.New("catalogue repository missing from property readback")
+				}
+			}
+			return nil
+		}
+	}
+	return errors.New("property readback exceeded its page bound")
+}
+
 func reconcile(c catalogue, api apiFunc) error {
 	if err := validate(c); err != nil {
 		return err
@@ -319,6 +431,9 @@ func reconcile(c catalogue, api apiFunc) error {
 			return errors.New("unexpected or externally owned property; nothing was applied")
 		}
 		byName[p.Name] = p
+		if slices.Contains(c.Retire, p.Name) && p.Type != "true_false" {
+			return errors.New("retired property type changed; nothing was applied")
+		}
 	}
 	for _, p := range c.Properties {
 		if old, ok := byName[p.Name]; ok && old.Type != p.Type {
@@ -359,6 +474,9 @@ func reconcile(c catalogue, api apiFunc) error {
 	if err = verifyDesired(c, got, true); err != nil {
 		return err
 	}
+	if err = initializeValues(c, got, api); err != nil {
+		return err
+	}
 	if err = noConsumers(api, c.Retire); err != nil {
 		return err
 	}
@@ -381,7 +499,7 @@ func reconcile(c catalogue, api apiFunc) error {
 	if err = verifyDesired(c, got, false); err != nil {
 		return err
 	}
-	fmt.Println("VERIFIED: three meaningful organization properties; repository values are owned by Crossplane")
+	fmt.Println("VERIFIED: four organization properties and complete explicit repository values; Crossplane maintains assignments")
 	return nil
 }
 
