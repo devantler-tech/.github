@@ -3,14 +3,8 @@ kind: Repository
 metadata:
   name: kyverno-policies
   annotations:
-    # Adopted repo. The provider CRD cannot represent the org's 5 required
-    # custom properties, so the initial org-admin bootstrap had to set them
-    # through GitHub's API. Type=Library is the intended and current
-    # classification. AutomaticallyRequestCopilotCodeReview=false is intentional:
-    # the organization does not use Copilot Code Review. See
-    # https://github.com/devantler-tech/.github/issues/97 for the bootstrap
-    # resolution and provider gap. This CR manages every
-    # representable setting declaratively after adoption.
+    # Adopted repository. Required properties, including Type=Library, are
+    # maintained by the catalogue's RepositoryCustomProperty resources.
     # external-name pinned so the create/observe target is unambiguous.
     crossplane.io/external-name: kyverno-policies
 spec:

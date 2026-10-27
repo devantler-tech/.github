@@ -7,7 +7,14 @@
       "require_explicit_values": true,
       "default_value": "Application",
       "description": "Portfolio purpose for catalogue navigation; use native GitHub metadata for language, visibility and template status.",
-      "allowed_values": ["Application", "Infrastructure", "Library", "Marketplace", "Metadata", "Template", "Documentation"],
+      "allowed_values": [
+        "Application",
+        "Infrastructure",
+        "Library",
+        "Marketplace",
+        "Metadata",
+        "Documentation"
+      ],
       "values_editable_by": "org_and_repo_actors"
     },
     {
@@ -29,7 +36,10 @@
       "values_editable_by": "org_and_repo_actors"
     }
   ],
-  "retire": ["AutomaticallyRequestCopilotCodeReview", "LintDocumentation"],
+  "retire": [
+    "LintDocumentation",
+    "AutomaticallyRequestCopilotCodeReview"
+  ],
   "repositories": {
     ".github": {"type": "Metadata", "auto_merge": true, "scan_actions": true},
     "agent-plugins": {"type": "Marketplace", "auto_merge": true, "scan_actions": true},
@@ -39,9 +49,9 @@
     "business-site": {"type": "Application", "auto_merge": true, "scan_actions": true},
     "client-orders": {"type": "Metadata", "auto_merge": false, "scan_actions": true},
     "cloudflare": {"type": "Infrastructure", "auto_merge": true, "scan_actions": true},
-    "dotnet-template": {"type": "Template", "auto_merge": true, "scan_actions": true},
+    "dotnet-template": {"type": "Application", "auto_merge": true, "scan_actions": true},
     "fleet-gitops": {"type": "Infrastructure", "auto_merge": true, "scan_actions": true},
-    "go-template": {"type": "Template", "auto_merge": true, "scan_actions": true},
+    "go-template": {"type": "Application", "auto_merge": true, "scan_actions": true},
     "guard-installed-skill-edits-action": {"type": "Library", "auto_merge": true, "scan_actions": true},
     "homebrew-tap": {"type": "Marketplace", "auto_merge": true, "scan_actions": true},
     "khoist": {"type": "Application", "auto_merge": true, "scan_actions": true},
@@ -49,8 +59,8 @@
     "kyverno-policies": {"type": "Library", "auto_merge": true, "scan_actions": true},
     "monorepo": {"type": "Metadata", "auto_merge": true, "scan_actions": true},
     "platform": {"type": "Infrastructure", "auto_merge": true, "scan_actions": true},
-    "platform-template": {"type": "Template", "auto_merge": true, "scan_actions": true},
-    "platform-tenant-template": {"type": "Template", "auto_merge": true, "scan_actions": true},
+    "platform-template": {"type": "Infrastructure", "auto_merge": true, "scan_actions": true},
+    "platform-tenant-template": {"type": "Application", "auto_merge": true, "scan_actions": true},
     "provider-upjet-unifi": {"type": "Library", "auto_merge": true, "scan_actions": true},
     "setup-agent-skills-action": {"type": "Library", "auto_merge": true, "scan_actions": true},
     "unifi": {"type": "Infrastructure", "auto_merge": true, "scan_actions": true},

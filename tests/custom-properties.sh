@@ -25,13 +25,13 @@ jq -se '
     (if .spec.forProvider.propertyName == "Type" then
       .spec.forProvider.propertyType == "single_select" and
       (.spec.forProvider.propertyValue[0] as $value |
-        ["Application","Infrastructure","Library","Marketplace","Metadata","Template","Documentation"] | index($value) != null)
+        ["Application","Infrastructure","Library","Marketplace","Metadata","Documentation"] | index($value) != null)
     else
       .spec.forProvider.propertyType == "true_false" and
       (.spec.forProvider.propertyValue[0] == "true" or .spec.forProvider.propertyValue[0] == "false")
     end))
 ' "$work/render.jsonl" >/dev/null || {
-  echo 'FAIL: every managed repository needs exactly three explicit non-deleting property assignments' >&2
+  echo 'FAIL: every managed repository needs exactly three explicit non-deleting assignments and no retired property' >&2
   exit 1
 }
 # The catalogue and shell renderer live outside this Go module's cache boundary.
@@ -49,7 +49,23 @@ jq -e '
     .[0].with."permission-organization-administration" == "write" and
     .[0].with."permission-organization-custom-properties" == "admin" and
     .[0].with.repositories == ".github") and
+  ([.jobs.apply.steps[] | select(.id? == "readback-token")] | length == 1 and
+    (.[0].with | keys | sort) == ["client-id","owner","permission-metadata","permission-organization-custom-properties","private-key","repositories"] and
+    .[0].with.owner == "devantler-tech" and
+    .[0].with."permission-organization-custom-properties" == "read" and
+    .[0].with."permission-metadata" == "read" and
+    .[0].with.repositories == "${{ steps.readback-repositories.outputs.repositories }}") and
+  ([.jobs.apply.steps[] | select(.run? | strings | endswith("--apply-schema"))] | length == 1 and
+    .[0].env.GH_PROPERTY_READBACK_TOKEN == "${{ steps.readback-token.outputs.token }}") and
   ([.jobs.apply.steps | to_entries[] | select(.value.run? | strings | endswith("--check")) | .key][0] <
-    [.jobs.apply.steps | to_entries[] | select(.value.id? == "token") | .key][0])
+    [.jobs.apply.steps | to_entries[] | select(.value.id? == "token") | .key][0]) and
+  ([.jobs.apply.steps | to_entries[] | select(.value.run? | strings | endswith("--check")) | .key][0] <
+    [.jobs.apply.steps | to_entries[] | select(.value.id? == "readback-token") | .key][0])
 ' "$work/workflow.json" >/dev/null
+# Exercise the token's repository selector on a distinct complete catalogue.
+mkdir -p "$work/selection/custom-properties"
+printf '%s\n' '{"repositories":{"public-app":{},"private-intake":{}}}' >"$work/selection/custom-properties/catalogue.json"
+jq -r '.jobs.apply.steps[] | select(.id? == "readback-repositories") | .run' "$work/workflow.json" >"$work/selection/run.sh"
+(cd "$work/selection" && GITHUB_OUTPUT="$work/selected-repositories" bash run.sh)
+test "$(cat "$work/selected-repositories")" = 'repositories=private-intake,public-app'
 echo 'PASS: rendered property coverage, native generator and schema refusal controls'

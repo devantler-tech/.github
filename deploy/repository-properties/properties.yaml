@@ -371,7 +371,7 @@ spec:
     repository: "dotnet-template"
     propertyName: Type
     propertyType: single_select
-    propertyValue: ["Template"]
+    propertyValue: ["Application"]
   providerConfigRef:
     kind: ProviderConfig
     name: default
@@ -461,7 +461,7 @@ spec:
     repository: "go-template"
     propertyName: Type
     propertyType: single_select
-    propertyValue: ["Template"]
+    propertyValue: ["Application"]
   providerConfigRef:
     kind: ProviderConfig
     name: default
@@ -821,7 +821,7 @@ spec:
     repository: "platform-template"
     propertyName: Type
     propertyType: single_select
-    propertyValue: ["Template"]
+    propertyValue: ["Infrastructure"]
   providerConfigRef:
     kind: ProviderConfig
     name: default
@@ -866,7 +866,7 @@ spec:
     repository: "platform-tenant-template"
     propertyName: Type
     propertyType: single_select
-    propertyValue: ["Template"]
+    propertyValue: ["Application"]
   providerConfigRef:
     kind: ProviderConfig
     name: default
