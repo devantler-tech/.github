@@ -206,22 +206,58 @@ inventory, a reviewed full resource and live readback.
 
 | Capability | Reviewed schema | Remaining gate |
 |---|---|---|
-| Custom-property scoping | `conditions.repositoryProperty` is present | Full ruleset adoption and selector readback in [#69](https://github.com/devantler-tech/.github/issues/69) / [#121](https://github.com/devantler-tech/.github/issues/121) |
-| Copilot review | `rules.copilotCodeReview` is present | Maintainer activation decision and adoption; support does not enable review |
-| Push-file restrictions | All four restriction types and target `push` are present | A reviewed policy, scope and live positive/negative controls |
-| Required status checks | `doNotEnforceOnCreate` is a typed Boolean | Runtime create/reconcile evidence; imported rules remain Observe-only |
+| Custom-property scoping | `conditions.repositoryProperty` is present | Existing workflow-rule observation and adoption are recorded in [#674](https://github.com/devantler-tech/.github/issues/674); new rules still require their own selector readback |
+| Copilot review | `rules.copilotCodeReview` is present | Not adopted: the maintainer's standing direction excludes Copilot review requests |
+| Push-file restrictions | All four restriction types and target `push` are present | Not adopted for public repositories; an eligible private/internal policy needs a separate scoped decision |
+| Required status checks | `doNotEnforceOnCreate` is a typed Boolean | Runtime create/reconcile evidence remains necessary; retain each resource's documented management policy |
 | Enterprise-owner bypass | `EnterpriseOwner` is present | Declare the exact approved bypass list during adoption |
-| Code-quality rule | `codeQuality` is absent | Provider support in #69 / #121 |
+| Code-quality rule | `codeQuality` is absent | Provider support remains in [#69](https://github.com/devantler-tech/.github/issues/69) |
 | Repository name and transfer rules | Target `repository` and `repositoryTransfer` are absent | Provider support; an available bypass actor does not supply the missing rule |
 | Secret-scanning alert resolution | `require_secret_scanning_alert_resolution` and its parameters are absent | [#194](https://github.com/devantler-tech/.github/issues/194): provider support or an approved adapter, plus real merge-blocking controls |
 
 The [release's complete CRD tree](https://github.com/crossplane-contrib/provider-upjet-github/tree/a211e095e2fe49c477836acec2ad4a28aa60e030/package/crds)
 also contains organization and repository Actions
-permissions with `shaPinningRequired`, and `RepositoryCollaboratorSet`. Those
-#121 tasks are expressible, with authoritative ownership and live enforcement
-readback still required. Organization settings and actor/event workflow execution
-protection have no generated resource in that tree. Actions permissions and SHA
-pinning cannot stand in for those distinct policies.
+permissions with `shaPinningRequired`, and `RepositoryCollaboratorSet`. Schema
+availability does not require adopting every resource. The decisions and completed
+rollout are recorded in [#121](https://github.com/devantler-tech/.github/issues/121).
+
+### Adoption decisions — 2026-10-28
+
+- **Actions SHA pinning is delivered.** Per-repository `RepositoryPermissions`
+  resources remain the authoritative owner. The complete dated organization
+  readback covers 26 active repositories: all declare SHA pinning, report Ready
+  and Synced, and independently return `sha_pinning_required: true` through
+  GitHub's API. This is a dated acceptance snapshot; routine coverage and drift
+  audits remain responsible for later changes.
+- **Copilot review stays unadopted.** An automatic review ruleset would conflict
+  with the maintainer's standing instruction against requesting Copilot reviews.
+  This decision does not change unrelated Copilot features.
+- **Push rulesets are not a public-repository control.** GitHub restricts their
+  applicability to [private/internal repositories and their fork networks](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/about-rulesets#push-rulesets).
+  There is no approved private-repository restriction policy to implement here.
+  Reconsider only for a concrete eligible scope, with its own reviewed policy and
+  native positive/refusal controls. This is not a claim that eligible private
+  repositories lack plan support.
+- **Keep the existing collaborator owners.** `RepositoryCollaboratorSet` supports
+  teams as well as users, but its wrapped Terraform resource is authoritative and
+  [conflicts with `github_team_repository`](https://github.com/integrations/terraform-provider-github/blob/v6.13.0/docs/resources/repository_collaborators.md).
+  This deployment already manages grants through `TeamRepository`; introducing a
+  second authority would create competing reconcilers. No such adoption is
+  planned. A future replacement would need a complete, separately reviewed
+  ownership migration.
+- **Organization settings remain owned by [#85](https://github.com/devantler-tech/.github/issues/85).**
+  Follow the [maintainer's upstream-support direction](https://github.com/devantler-tech/.github/issues/85#issuecomment-4919334722),
+  retaining the existing read-only observer. The released provider has no general
+  organization-settings resource. The upstream path is provider generation for
+  Terraform's [supported settings](https://github.com/integrations/terraform-provider-github/blob/v6.13.0/docs/resources/organization_settings.md),
+  plus separate Terraform support for the absent `two_factor_requirement_enabled`
+  setting. No custom write adapter is introduced; #85's implementation and live
+  enforcement remain unfinished. External contributions require their separate
+  authorization.
+
+Actor/event workflow execution protection also has no generated resource in that
+release tree. Actions permissions and SHA pinning cannot stand in for those distinct
+policies. These non-adoption decisions install no additional protection or bypass.
 
 There is no current ruleset census in this schema inspection. Do not derive a
 remaining-rule count from the earlier inventory or from an admin-team audit PASS.
@@ -230,8 +266,8 @@ gates; a team audit cannot clear the latter two.
 
 ## Push / tag / Actions-policy considerations
 
-- **Push rulesets** — the reviewed schema can express their file restrictions.
-  Adoption remains issue-driven in [#69](https://github.com/devantler-tech/.github/issues/69);
+- **Push rulesets** — retain the non-adoption decision above. Any future eligible
+  private/internal proposal remains issue-driven in [#69](https://github.com/devantler-tech/.github/issues/69);
   schema support alone neither creates a policy nor proves its live coverage.
 - **Tag rulesets** — none existed; **added** here (`protect-release-tags.yaml`). Makes
   release tags immutable (block delete + force-move) and well-formed (`v<semver>`). See
