@@ -40,7 +40,7 @@ checkout_persistence="$(
 approve_inputs="$(
   yq -o=json -I=0 '
     .jobs."test-approve-pr".steps[]
-    | select(.uses == "./actions/approve-pr")
+    | select(.uses == "$/actions/approve-pr")
     | .with
   ' "$ci_workflow"
 )"

@@ -54,6 +54,8 @@ jobs:
 
 Replace `<full-commit-sha>` with the selected release's full 40-character commit SHA and `vX.Y.Z` with its version. The placeholders must be replaced before running these examples. The action and workflow indexes below link to their source or reference. Action READMEs and the collapsible workflow references describe the individual interfaces.
 
+Run this revision on GitHub.com with GitHub Actions Runner **2.336.0 or newer**. Update self-hosted runners before adopting it. Internal [native self-repository references](https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax#example-using-an-action-in-the-same-repository-as-the-workflow-at-the-running-commit-recommended) bind to the defining component's exact repository revision, independently of your checkout.
+
 The diagram below shows how GitHub Workflows, Jobs, Steps, Reusable Workflows, and Actions relate.
 
 ```mermaid

@@ -9,6 +9,7 @@ work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
 fail() { echo "FAIL: $*" >&2; exit 1; }
 [[ -f "$fixture" ]] || fail 'native default-off production fixture is missing'
+[[ -f "$root/.github/actions/test-todo-default-fixture/action.yaml" ]] || fail 'immutable offline action fixture is missing'
 yq -o=json '.' "$production" >"$work/source.json"
 yq -o=json '.' "$fixture" >"$work/fixture.json"
 yq -o=json '.' "$ci" >"$work/ci.json"
@@ -21,7 +22,8 @@ guard() {
     .on.workflow_call.inputs.project.default == "organization/devantler-tech/5" and
     .on.workflow_call.inputs["fixture-skip-app-token"].default == false and
     ([.jobs.todos.steps[] | select(.id == "fixture-scan")] | length == 1 and all(
-      .uses == "./.devantler-tech-actions/actions/create-issues-from-todos" and
+      .uses == "$/.github/actions/test-todo-default-fixture" and
+      .with["fixture-skip-app-token"] == "${{ inputs.fixture-skip-app-token }}" and
       .with.project == "${{ inputs.project }}" and
       .with["optional-project-auth"] == "${{ inputs.optional-project-auth }}" and
       .["continue-on-error"] == true)) and
@@ -43,7 +45,7 @@ guard() {
   ' "$1" >/dev/null || return 1
   jq -e '
     . as $ci | ["test-scan-for-todo-comments-default", "test-scan-for-todo-comments-default-control"] | all(. as $id |
-      $ci.jobs[$id].uses == "./.github/workflows/scan-for-todo-comments-default-fixture.yaml" and
+      $ci.jobs[$id].uses == "$/.github/workflows/scan-for-todo-comments-default-fixture.yaml" and
       $ci.jobs[$id].permissions == {contents:"read"} and
       $ci.jobs[$id].secrets == null and $ci.jobs[$id].env == null and
       $ci.jobs[$id].needs == null and
@@ -63,7 +65,9 @@ jq -S '
   del(.name, .on.workflow_call.inputs["fixture-skip-app-token"]) |
   .jobs.todos.steps |= map(select(.name != "Prepare default-path offline dependencies" and
     .name != "Verify native default-path replay") |
-    if .id == "fixture-scan" then del(.id, .["continue-on-error"]) else . end)
+    if .id == "fixture-scan" then
+      .uses = "$/actions/create-issues-from-todos" | del(.id, .["continue-on-error"], .with["fixture-skip-app-token"])
+    else . end)
 ' "$work/fixture.json" >"$work/actual.json"
 cmp -s "$work/expected.json" "$work/actual.json" || fail 'fixture differs from the complete production branch'
 for mutation in \

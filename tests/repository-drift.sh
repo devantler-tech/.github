@@ -481,8 +481,8 @@ report_contract='
     .permissions.contents == "read",
     .permissions.issues == "write",
     (has("continue-on-error") | not),
-    ([(.steps // [])[] | select(.uses == "./.devantler-tech-actions/actions/upsert-issue")] | length) == 2,
-    ([(.steps // [])[] | select(.uses == "./.devantler-tech-actions/actions/upsert-issue") | .with.title] | unique | length) == 1,
+    ([(.steps // [])[] | select(.uses == "$/actions/upsert-issue")] | length) == 2,
+    ([(.steps // [])[] | select(.uses == "$/actions/upsert-issue") | .with.title] | unique | length) == 1,
     ([(.steps // [])[] | select(.if == strenv(expected_report_failure_if) and ((.with.open // "true") == "true"))] | length) == 1,
     ([(.steps // [])[] | select(.if == strenv(expected_report_success_if) and .with.open == "false")] | length) == 1
   ] | all

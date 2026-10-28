@@ -129,11 +129,21 @@ EVENT_NAME=merge_group RUN_CATALOGUE=false GITHUB_OUTPUT="$work/output" \
   go -C "$root/.github/scripts/ci-selection" run . "$root" "$root/.github/scripts/ci-selection/inventory.json" "$work/workflow.json"
 [[ "$(tail -n 1 "$work/output")" == 'selected=[]' ]]
 # Independently verify all direct local action callers have their exact owner.
-jq -e --slurpfile inventory "$root/.github/scripts/ci-selection/inventory.json" '
-  all(.jobs | to_entries[] | select(.key | startswith("test-"));
-    .key as $id | all(.value.steps[]? | .uses? // empty | select(startswith("./actions/"));
-      (.[2:] + "/") as $owner | $inventory[0].jobs[$id] | index($owner) != null))
-' "$work/workflow.json" > /dev/null
+check_action_owners() {
+  jq -e --slurpfile inventory "$1" '
+    all(.jobs | to_entries[] | select(.key | startswith("test-"));
+      .key as $id | all(.value.steps[]? | .uses? // empty | select(startswith("./actions/") or startswith("$/actions/"));
+        (.[2:] + "/") as $owner | $inventory[0].jobs[$id] | index($owner) != null))
+  ' "$work/workflow.json" > /dev/null
+}
+check_action_owners "$root/.github/scripts/ci-selection/inventory.json"
+# A native action must not disappear from the independent ownership check.
+jq '.jobs["test-validate-naming"] = []' "$root/.github/scripts/ci-selection/inventory.json" >"$work/missing-action-owner.json"
+if check_action_owners "$work/missing-action-owner.json"; then
+  echo 'FAIL: native action without a selector owner was accepted' >&2
+  exit 1
+fi
+
 
 # The same exact Git diff formerly selected every gated job. Its four reviewed
 # dependencies include two native callers and two inline controls; the authenticated

@@ -65,14 +65,14 @@ ci_push_branches="$(yq -r '.on.push.branches | join(",")' "$ci")"
 
 reusable_scan_count="$(
   yq -r \
-    '[.jobs[] | select(.uses == "./.github/workflows/scan-for-workflow-vulnerabilities.yaml")] | length' \
+    '[.jobs[] | select(.uses == "$/.github/workflows/scan-for-workflow-vulnerabilities.yaml")] | length' \
     "$ci"
 )"
 [[ "$reusable_scan_count" == "1" ]] ||
   fail "CI must contain exactly one reusable Zizmor workflow call; found: $reusable_scan_count"
 
 test_zizmor_uses="$(yq -r '.jobs.test-zizmor.uses // ""' "$ci")"
-[[ "$test_zizmor_uses" == "./.github/workflows/scan-for-workflow-vulnerabilities.yaml" ]] ||
+[[ "$test_zizmor_uses" == "$/.github/workflows/scan-for-workflow-vulnerabilities.yaml" ]] ||
   fail "test-zizmor must remain the reusable Zizmor workflow caller"
 
 expected_test_condition="\${{ github.event_name == 'push' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"

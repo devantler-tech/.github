@@ -6,10 +6,10 @@ workflow="${1:-.github/workflows/validate-go-project.yaml}"
 ci="${2:-.github/workflows/ci.yaml}"
 fail() { echo "FAIL: $*" >&2; exit 1; }
 gate="$(yq -r '.jobs.govulncheck.steps[] | select(.id == "scan") | .uses' "$workflow")"
-[[ "$gate" == './.devantler-tech-actions/.github/actions/govulncheck' ]] || fail 'scan must use the shared internal implementation'
+[[ "$gate" == '$/.github/actions/govulncheck' ]] || fail 'scan must use the shared internal implementation'
 for job in test-govulncheck-allowlist-honored test-govulncheck-strict-blocks; do
   uses="$(yq -r ".jobs.\"$job\".steps[] | select(.with.\"work-dir\" != null) | .uses" "$ci")"
-  [[ "$uses" == "${gate/.devantler-tech-actions\//}" ]] || fail "$job does not exercise the production scanner"
+  [[ "$uses" == "$gate" ]] || fail "$job does not exercise the production scanner"
 done
 checkout="$(yq -o=json '[.jobs.govulncheck.steps[] | select(.with.path == ".devantler-tech-actions")]' "$workflow")"
 jq -e '
@@ -35,6 +35,12 @@ if (($# == 0)); then
   }
   blocks 'a different production scanner' \
     '(.jobs.govulncheck.steps[] | select(.id == "scan")).uses = "./another-action"' \
+    'scan must use the shared internal implementation'
+  blocks 'a workspace implementation substitution' \
+    '(.jobs.govulncheck.steps[] | select(.id == "scan")).uses = "./.devantler-tech-actions/.github/actions/govulncheck"' \
+    'scan must use the shared internal implementation'
+  blocks 'a mutable native implementation' \
+    '(.jobs.govulncheck.steps[] | select(.id == "scan")).uses = "$/.github/actions/govulncheck@main"' \
     'scan must use the shared internal implementation'
   blocks 'missing implementation checkout' \
     'del(.jobs.govulncheck.steps[] | select(.with.path == ".devantler-tech-actions"))' \

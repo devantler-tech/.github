@@ -100,14 +100,15 @@
         },
         {
           "name": "📝 Create issues from TODOs",
-          "uses": "./.devantler-tech-actions/actions/create-issues-from-todos",
+          "uses": "$/.github/actions/test-todo-default-fixture",
           "with": {
             "client-id": "${{ vars.APP_CLIENT_ID }}",
             "app-private-key": "${{ secrets.APP_PRIVATE_KEY }}",
             "project": "${{ inputs.project }}",
             "ignore": "${{ inputs.ignore }}",
             "exclude-vendored": "${{ inputs.exclude-vendored }}",
-            "optional-project-auth": "${{ inputs.optional-project-auth }}"
+            "optional-project-auth": "${{ inputs.optional-project-auth }}",
+            "fixture-skip-app-token": "${{ inputs.fixture-skip-app-token }}"
           },
           "id": "fixture-scan",
           "continue-on-error": true

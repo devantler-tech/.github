@@ -36,7 +36,7 @@ while IFS=$'\t' read -r source mutation diagnostic; do
 done <<'CASES'
 ci	.jobs["test-validate-go-project"].permissions.issues="write"	fixture grants mutation permissions
 ci	.jobs["test-validate-go-project"].secrets.APP_PRIVATE_KEY="${{ secrets.APP_PRIVATE_KEY }}"	fixture forwards a secret
-ci	.jobs["test-validate-go-project"].uses="./.github/workflows/validate-go-project.yaml"	production workflow must have only its non-executing interface call
+ci	.jobs["test-validate-go-project"].uses="$/.github/workflows/validate-go-project.yaml"	production workflow must have only its non-executing interface call
 ci	.jobs["test-validate-go-project-interface"].with["working-directory"]=".github/tests/go-valid-fixture"	production interface selected executable validation
 workflow	.jobs.lint.permissions["pull-requests"]="write"	Expected values to be strictly deep-equal
 workflow	.jobs.lint.env.TOKEN="${{ github.token }}"	lint: forwarded secret or reporter token

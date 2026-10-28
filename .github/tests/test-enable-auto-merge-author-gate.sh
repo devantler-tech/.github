@@ -23,7 +23,7 @@ if [[ "$actor_gate_default" != "false" || "$queue_default" != "false" || -n "$co
 fi
 queue_call="$(yq -o=json '.jobs."test-enable-auto-merge-queued"' "$ci_workflow")"
 if ! jq -e '
-  .uses == "./.github/workflows/enable-auto-merge.yaml"
+  .uses == "$/.github/workflows/enable-auto-merge.yaml"
   and .with["queue-pending-evaluations"] == true
   and .with["concurrency-key"] == "queued-self-test"
 ' <<<"$queue_call" >/dev/null ||
@@ -38,7 +38,7 @@ enabled_test_uses="$(yq -r '.jobs."test-enable-auto-merge-actor-trust".uses // "
 enabled_test_flag="$(yq -r '.jobs."test-enable-auto-merge-actor-trust".with."enforce-actor-trust" | tostring' "$ci_workflow")"
 enabled_test_key="$(yq -r '.jobs."test-enable-auto-merge-actor-trust".with."concurrency-key" // ""' "$ci_workflow")"
 enabled_test_permissions="$(yq -r '.jobs."test-enable-auto-merge-actor-trust".permissions | to_entries | sort_by(.key) | map(.key + ":" + .value) | join(",")' "$ci_workflow")"
-if [[ "$enabled_test_uses" != "./.github/workflows/enable-auto-merge.yaml" ||
+if [[ "$enabled_test_uses" != "$/.github/workflows/enable-auto-merge.yaml" ||
   "$enabled_test_flag" != "true" ||
   "$default_test_key" != "default-self-test" ||
   "$enabled_test_key" != "actor-trust-self-test" ||

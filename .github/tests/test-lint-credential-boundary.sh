@@ -26,7 +26,7 @@ caller_write_scopes="$(
 [[ "$caller_write_scopes" == "0" ]] ||
   fail "the clean-fixture caller may grant only coverage's code-quality write scope"
 
-[[ "$(yq -r '.jobs.test-validate-go-project.uses' "$ci_workflow")" == './.github/workflows/validate-go-project-readonly.yaml' ]] ||
+[[ "$(yq -r '.jobs.test-validate-go-project.uses' "$ci_workflow")" == '$/.github/workflows/validate-go-project-readonly.yaml' ]] ||
   fail 'the clean-fixture caller must exercise the actual read-only Go entrypoint'
 
 # The workflow-scoped half — contents: read, no App token, no App key, persist-credentials: false —

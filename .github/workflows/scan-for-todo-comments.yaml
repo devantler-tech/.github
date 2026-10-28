@@ -73,7 +73,7 @@ jobs:
         run: bash .devantler-tech-actions/.github/tests/todo-action-smoke.sh prepare
 
       - name: 🧪 Run actual wrapper offline
-        uses: ./.devantler-tech-actions/actions/create-issues-from-todos
+        uses: $/actions/create-issues-from-todos
         with:
           ignore: ${{ inputs.ignore }}
           exclude-vendored: ${{ inputs.exclude-vendored }}
@@ -127,7 +127,7 @@ jobs:
           persist-credentials: false
 
       - name: 📝 Create issues from TODOs
-        uses: ./.devantler-tech-actions/actions/create-issues-from-todos
+        uses: $/actions/create-issues-from-todos
         with:
           client-id: ${{ vars.APP_CLIENT_ID }}
           app-private-key: ${{ secrets.APP_PRIVATE_KEY }}
