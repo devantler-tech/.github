@@ -7,15 +7,16 @@ Existing production callers retain unconditional cleanup. The small CI fixtures 
 
 `Measure Go disk capacity` is a manual, default-off evaluation on reviewed `main`.
 Enable its existing `enabled` input only after its source has passed normal review and CI.
-All four isolated Ubuntu jobs use the same pinned KSail revision. Each phase runs
-in two separate policy jobs:
+All four isolated Ubuntu jobs use the same pinned KSail revision. Each literal
+phase key runs in two separate policy jobs. The `coverage` phase runs race-enabled
+coverage; artifact names use the phase key, for example `go-disk-coverage-capacity`.
 
-| Phase         | Policy     | Budget |
-| ------------- | ---------- | ------ |
-| Build         | `reclaim`  | 0 GiB  |
-| Build         | `capacity` | 64 GiB |
-| Race coverage | `reclaim`  | 0 GiB  |
-| Race coverage | `capacity` | 64 GiB |
+| Phase key  | Policy     | Budget |
+| ---------- | ---------- | ------ |
+| `build`    | `reclaim`  | 0 GiB  |
+| `build`    | `capacity` | 64 GiB |
+| `coverage` | `reclaim`  | 0 GiB  |
+| `coverage` | `capacity` | 64 GiB |
 
 The zero-budget jobs always reclaim space. The 64 GiB jobs reclaim when measured
 available space is below that budget or capacity cannot be measured.
