@@ -2666,7 +2666,7 @@ jobs:
     with:
       go-memory-limit: 4GiB
       measure-disk-usage: true
-      minimum-free-disk-gib: 32
+      minimum-free-disk-gib: 0
       working-directory: .github/tests/go-valid-fixture
       # The OFF state, passed explicitly now that the input defaults to true: the read-only path
       # must still run the fixers and reject an unexpected dirty tree without committing to the
@@ -2686,7 +2686,7 @@ jobs:
       working-directory: .github/tests/go-postgresql-fixture
       enable-postgresql-fixture: true
       apply-signed-fixes: false
-      minimum-free-disk-gib: 32
+      minimum-free-disk-gib: 0
     permissions:
       contents: read
       pull-requests: read
@@ -2728,7 +2728,7 @@ jobs:
       apply-signed-fixes: false
       manual-workflow-fixes: true
       measure-disk-usage: true
-      minimum-free-disk-gib: 32
+      minimum-free-disk-gib: 0
     permissions:
       contents: read
       pull-requests: read
@@ -2794,7 +2794,7 @@ jobs:
       working-directory: .github/tests/go-valid-fixture
       maintenance-default-branch: false
       measure-disk-usage: true
-      minimum-free-disk-gib: 32
+      minimum-free-disk-gib: 0
       apply-signed-fixes: false
     permissions:
       contents: read

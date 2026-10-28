@@ -19,6 +19,11 @@ jobs:
       fail-fast: false
       matrix:
         phase: [build, coverage]
+        policy:
+          - name: reclaim
+            budget: 0
+          - name: capacity
+            budget: 64
     permissions:
       contents: read
     defaults:
@@ -41,18 +46,31 @@ jobs:
           path: .disk-consumer
           persist-credentials: false
       - name: Record consumer baseline identity
+        env:
+          PHASE: ${{ matrix.phase }}
+          POLICY: ${{ matrix.policy.name }}
+          BUDGET: ${{ matrix.policy.budget }}
         run: |
           set -euo pipefail
+          umask 077
           [[ "$(git rev-parse HEAD)" == 3115397431e2bdf31d911930908a9002a93a4340 ]]
           printf 'GO_DISK_CONSUMER repository=devantler-tech/ksail head=%s\n' "$(git rev-parse HEAD)"
+          mkdir "$RUNNER_TEMP/go-disk-receipts"
+          jq -n --arg source "$GITHUB_SHA" --arg run "$GITHUB_RUN_ID" --arg attempt "$GITHUB_RUN_ATTEMPT" \
+            --arg consumer "$(git rev-parse HEAD)" --arg phase "$PHASE" --arg policy "$POLICY" \
+            --arg image "${ImageOS:-unknown}" --arg image_version "${ImageVersion:-unknown}" --argjson budget "$BUDGET" \
+            '{source:$source,run:$run,attempt:$attempt,consumer:$consumer,phase:$phase,policy:$policy,budget_gib:$budget,image:$image,image_version:$image_version,cache:false}' \
+            > "$RUNNER_TEMP/go-disk-receipts/identity.json"
       - name: Prepare cleanup measurement outside the consumer workspace
         run: install -m 700 "$GITHUB_WORKSPACE/.github/scripts/measure-go-disk.sh" "$RUNNER_TEMP/measure-go-disk.sh"
       - name: 🧹 Free disk space
         env:
-          MINIMUM_FREE_DISK_GIB: '0'
-          MEASURE_DISK_USAGE: 'true'
+          MINIMUM_FREE_DISK_GIB: ${{ matrix.policy.budget }}
+          MEASURE_DISK_USAGE: "true"
           GO_DISK_CLEANUP_PHASE: cleanup-${{ matrix.phase }}
           GO_DISK_WORKFLOW_SHA: ${{ github.sha }}
+          GO_DISK_CLEANUP_RECEIPT_FILE: ${{ runner.temp }}/go-disk-receipts/decision.json
+          GO_DISK_RECEIPT_FILE: ${{ runner.temp }}/go-disk-receipts/cleanup.json
         run: |
           set -euo pipefail
           cleanup_disk() {
@@ -92,8 +110,14 @@ jobs:
                 /usr/share/miniconda || true
               after="$(read_capacity)" || { after=null; status=unknown; }
             fi
-            printf 'GO_DISK_CLEANUP {"status":"%s","decision":"%s","minimum_free_gib":%s,"before_available_kib":%s,"after_available_kib":%s}\n' \
-              "$status" "$decision" "$MINIMUM_FREE_DISK_GIB" "$before" "$after"
+            record="$(printf '{"status":"%s","decision":"%s","minimum_free_gib":%s,"before_available_kib":%s,"after_available_kib":%s}' \
+              "$status" "$decision" "$MINIMUM_FREE_DISK_GIB" "$before" "$after")"
+            printf 'GO_DISK_CLEANUP %s\n' "$record"
+            if [[ -n "${GO_DISK_CLEANUP_RECEIPT_FILE:-}" ]]; then
+              if ! (umask 077; printf '%s\n' "$record" > "$GO_DISK_CLEANUP_RECEIPT_FILE"); then
+                echo '::warning::Go cleanup receipt could not be retained; native collection is incomplete' >&2
+              fi
+            fi
           }
           if [[ "$MEASURE_DISK_USAGE" == true ]]; then
             export -f cleanup_disk
@@ -110,10 +134,51 @@ jobs:
       - name: Measure the actual consumer command
         env:
           PHASE: ${{ matrix.phase }}
+          GO_DISK_RECEIPT_FILE: ${{ runner.temp }}/go-disk-receipts/command.json
         run: |
           set -euo pipefail
+          go env GOVERSION > "$RUNNER_TEMP/go-disk-receipts/toolchain.txt"
           case "$PHASE" in
             build) bash "$GITHUB_WORKSPACE/.github/scripts/measure-go-disk.sh" build go build -v ./... ;;
             coverage) bash "$GITHUB_WORKSPACE/.github/scripts/measure-go-disk.sh" coverage go test -race -coverprofile="$RUNNER_TEMP/ksail-disk-coverage.txt" -covermode=atomic ./... ;;
             *) exit 2 ;;
           esac
+      - name: Require complete observations
+        env:
+          PHASE: ${{ matrix.phase }}
+          POLICY: ${{ matrix.policy.name }}
+          BUDGET: ${{ matrix.policy.budget }}
+        run: |
+          set -euo pipefail
+          directory="$RUNNER_TEMP/go-disk-receipts"
+          for file in cleanup command; do
+            expected="$PHASE"
+            [[ "$file" != cleanup ]] || expected="cleanup-$PHASE"
+            jq -se --arg run "$GITHUB_RUN_ID" --arg attempt "$GITHUB_RUN_ATTEMPT" --arg head "$GITHUB_SHA" --arg phase "$expected" \
+              'length == 1 and .[0].status == "measured" and .[0].command_exit == 0 and .[0].run_id == $run and .[0].attempt == $attempt and .[0].head == $head and .[0].workflow_sha == $head and .[0].phase == $phase and
+               (.[0].samples | type == "number" and . >= 2 and floor == .) and
+               (.[0] | [.initial_available_kib,.final_available_kib,.minimum_available_kib,.maximum_used_kib] | all(.[]; type == "number" and . >= 0 and floor == .))' \
+              "$directory/$file.json" > /dev/null
+          done
+          jq -se --argjson budget "$BUDGET" '
+            length == 1 and .[0].status == "measured" and .[0].minimum_free_gib == $budget and
+            (.[0].before_available_kib | type == "number" and . >= 0 and floor == .) and
+            (.[0].after_available_kib | type == "number" and . >= 0 and floor == .) and
+            (.[0] | if $budget > 0 and .before_available_kib >= $budget * 1048576 then .decision == "retain" else .decision == "reclaim" end)
+          ' "$directory/decision.json" > /dev/null
+          jq -se --arg run "$GITHUB_RUN_ID" --arg attempt "$GITHUB_RUN_ATTEMPT" --arg head "$GITHUB_SHA" --arg phase "$PHASE" --arg policy "$POLICY" --argjson budget "$BUDGET" '
+            length == 1 and .[0].source == $head and .[0].run == $run and .[0].attempt == $attempt and
+            .[0].consumer == "3115397431e2bdf31d911930908a9002a93a4340" and .[0].phase == $phase and
+            .[0].policy == $policy and .[0].budget_gib == $budget and .[0].cache == false and
+            (.[0].image | type == "string" and length > 0 and . != "unknown") and
+            (.[0].image_version | type == "string" and length > 0 and . != "unknown")
+          ' "$directory/identity.json" > /dev/null
+          [[ "$(cat "$directory/toolchain.txt")" =~ ^go[0-9]+\.[0-9]+ ]]
+      - name: Retain small measurement receipts
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: go-disk-${{ matrix.phase }}-${{ matrix.policy.name }}
+          path: ${{ runner.temp }}/go-disk-receipts/
+          if-no-files-found: error
+          retention-days: 7

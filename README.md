@@ -1045,8 +1045,13 @@ production default. Choose a consumer budget only after measuring its build and 
 coverage, including cache restoration. Cleanup receipts report capacity before the
 decision, its outcome and capacity afterwards; an unreadable observation never permits
 a bypass. The default-off `Measure Go disk capacity` workflow runs only on reviewed
-main and measures a pinned KSail build and race coverage on separate cold runners.
-It changes no KSail workflow or production setting. Broader rollout remains in #527.
+main and compares unconditional cleanup with a 64 GiB experimental budget for a pinned
+KSail build and race coverage on four separate cold runners. Small receipt artifacts retain
+the actual cleanup decision, sampled headroom, source/run/attempt, toolchain and runner image,
+including partial evidence when a command fails. Incomplete observations fail the evaluation.
+See the [evaluation procedure](docs/go-disk-evaluation.md) for the budget calculation and
+matched-workload comparison. It changes no KSail workflow or production setting.
+Broader rollout remains in #527.
 
 Pass `measure-disk-usage: true` to collect disk headroom before and after runner
 cleanup and while the original Go commands run. Cleanup records use the phases

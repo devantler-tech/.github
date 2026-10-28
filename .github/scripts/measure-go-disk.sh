@@ -125,6 +125,11 @@ receipt="$(jq -cn --arg status "$status" --arg phase "$phase" \
   exit "$rc"
 }
 printf 'GO_DISK_USAGE %s\n' "$receipt" || true
+if [[ -n "${GO_DISK_RECEIPT_FILE:-}" ]]; then
+  if ! (umask 077; printf '%s\n' "$receipt" > "$GO_DISK_RECEIPT_FILE"); then
+    echo '::warning::Go disk receipt could not be retained; native collection is incomplete' >&2
+  fi
+fi
 if [[ -n "${GITHUB_STEP_SUMMARY:-}" ]]; then
   {
     printf '### Go disk usage: %s\n\nSampled filesystem headroom (1-second interval; not an exact peak).\n\n' "$phase"
