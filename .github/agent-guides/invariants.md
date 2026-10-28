@@ -52,7 +52,7 @@ fixture narrows only its own JSON checker; production scanner scope is unchanged
 Each standalone skill installer owns its digest updater and its source, credential, path and retained-pin controls. Native source publication and verified consumer adoption remain separate results.
 
 - **Triage** new issues/PRs; one insightful comment on the oldest un-commented item.
-- **Action/version hygiene:** keep third-party actions pinned & aligned; bundle Dependabot `github_actions` PRs; flag majors. (There are no first-party self-reference pins to bump — self-references bind to the defining file’s exact repository commit.)
+- **Action/version hygiene:** keep remote actions pinned & aligned; bundle Dependabot `github_actions` PRs; flag majors. Native `$/` self-references need no pin updates because they bind to the defining file’s exact repository commit. Deliberate remote first-party references still need pin maintenance, including the reviewed `apply-signed-fixes.yaml` exception described in the catalogue guide.
 - **Workflow health & dedup:** consolidate duplicated steps, split overgrown jobs, improve caching, remove dead workflows — backward-compatible, one concern per draft PR, `actionlint`-clean.
 - **Consistency** between actions and reusable workflows and with how consumer repos call them.
 - **Maintain your own PRs:** fix CI you caused, resolve conflicts.
