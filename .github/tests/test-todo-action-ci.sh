@@ -32,7 +32,7 @@ guard() {
         (((.with // {})|keys) != ["ignore","optional-project-auth"] or
           .with["optional-project-auth"] != "true"))] | length > 0)
     then error("live to-do action invocation in catalogue CI")
-    elif ([$job.steps[]|select(.uses == "./actions/create-issues-from-todos")] |
+    elif ([$job.steps[]|select(.uses == "$/actions/create-issues-from-todos")] |
       length != 1 or any(.if != null or (.["continue-on-error"] // false) != false))
     then error("actual hosted action must execute and propagate failures")
     elif (["test-todo-action.sh","test-todo-action-blocks.sh","test-todo-action-ci.sh",
@@ -45,7 +45,7 @@ guard() {
       ($ci.defaults.run["working-directory"]|root_directory)) | not
     then error("all behavior and fixture checks must execute")
     elif ($job.steps|to_entries|map(select((.value|command) == "bash .github/tests/todo-action-smoke.sh prepare"))|.[0].key) as $prepare |
-      ($job.steps|to_entries|map(select(.value.uses == "./actions/create-issues-from-todos"))|.[0].key) as $action |
+      ($job.steps|to_entries|map(select(.value.uses == "$/actions/create-issues-from-todos"))|.[0].key) as $action |
       ($job.steps|to_entries|map(select((.value|command) == "bash .github/tests/todo-action-smoke.sh verify"))|.[0].key) as $verify |
       ($prepare < $action and $action < $verify) | not
     then error("Docker fixture must prepare before the action and verify afterward")
@@ -94,13 +94,13 @@ fixture shadow directory	.jobs["test-create-issues-from-todos"].steps |= map(if 
 job shadow directory	.jobs["test-create-issues-from-todos"].defaults.run["working-directory"]="shadow"	all behavior and fixture
 workflow shadow directory	.defaults.run["working-directory"]="shadow"	all behavior and fixture
 swapped fixture order	.jobs["test-create-issues-from-todos"].steps |= map(if .run == "bash .github/tests/todo-action-smoke.sh prepare" then .run="bash .github/tests/todo-action-smoke.sh verify" elif .run == "bash .github/tests/todo-action-smoke.sh verify" then .run="bash .github/tests/todo-action-smoke.sh prepare" else . end)	prepare before the action
-action before fixture	.jobs["test-create-issues-from-todos"].steps |= ([.[]|select(.uses == "./actions/create-issues-from-todos")] + [.[]|select(.uses != "./actions/create-issues-from-todos")])	prepare before the action
-live project	.jobs["test-create-issues-from-todos"].steps |= map(if .uses == "./actions/create-issues-from-todos" then .with.project="organization/devantler-tech/5" else . end)	live to-do action invocation
-missing authentication opt-in	.jobs["test-create-issues-from-todos"].steps |= map(if .uses == "./actions/create-issues-from-todos" then del(.with["optional-project-auth"]) else . end)	live to-do action invocation
-live action elsewhere	.jobs.other={steps:[{uses:"./actions/create-issues-from-todos"}]}	live to-do action invocation
-equivalent live action path	.jobs.other={steps:[{uses:"./actions/other/../create-issues-from-todos/."}]}	live to-do action invocation
-missing hosted action	.jobs["test-create-issues-from-todos"].steps |= map(select(.uses != "./actions/create-issues-from-todos"))	actual hosted action
-skipped hosted action	.jobs["test-create-issues-from-todos"].steps |= map(if .uses == "./actions/create-issues-from-todos" then .if="false" else . end)	actual hosted action
+action before fixture	.jobs["test-create-issues-from-todos"].steps |= ([.[]|select(.uses == "$/actions/create-issues-from-todos")] + [.[]|select(.uses != "$/actions/create-issues-from-todos")])	prepare before the action
+live project	.jobs["test-create-issues-from-todos"].steps |= map(if .uses == "$/actions/create-issues-from-todos" then .with.project="organization/devantler-tech/5" else . end)	live to-do action invocation
+missing authentication opt-in	.jobs["test-create-issues-from-todos"].steps |= map(if .uses == "$/actions/create-issues-from-todos" then del(.with["optional-project-auth"]) else . end)	live to-do action invocation
+live action elsewhere	.jobs.other={steps:[{uses:"$/actions/create-issues-from-todos"}]}	live to-do action invocation
+equivalent live action path	.jobs.other={steps:[{uses:"$/actions/other/../create-issues-from-todos/."}]}	live to-do action invocation
+missing hosted action	.jobs["test-create-issues-from-todos"].steps |= map(select(.uses != "$/actions/create-issues-from-todos"))	actual hosted action
+skipped hosted action	.jobs["test-create-issues-from-todos"].steps |= map(if .uses == "$/actions/create-issues-from-todos" then .if="false" else . end)	actual hosted action
 missing required dependency	.jobs["ci-required-checks"].needs |= map(select(. != "test-create-issues-from-todos"))	gate required CI
 missing required verdict	.jobs["ci-required-checks"].steps |= map(if .env.JOB_RESULTS then .env.JOB_RESULTS |= gsub("needs.test-create-issues-from-todos.result";"needs.other.result") else . end)	evaluate the action smoke result
 CASES

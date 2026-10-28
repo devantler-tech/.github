@@ -112,12 +112,12 @@ One component may reference another **in this repository**. GitHub resolves thes
   runners must be at least 2.336.0; see the [GitHub announcement](https://github.blog/changelog/2026-07-30-reference-same-repository-actions-with-self-repository-syntax/).
   The private .NET fixture helper uses this form in native CI and nested composition.
   Preserve the credential graph's defining-file revision and refusal controls.
-- **CI job → workspace action:** existing `uses: ./actions/<action>` references require
-  `actions/checkout`. They resolve from workspace bytes, not the defining file; the
-  broader native-reference migration and its cross-repository proof are tracked in #271.
+- **CI job → a sibling action:** use `uses: $/actions/<action>`. The native source
+  does not depend on a workspace checkout. Retain a checkout when the test also needs
+  fixture data or scripts; it does not supply the native action implementation.
 - **Reusable workflow → co-located reusable workflow:** new calls use native
   `uses: $/.github/workflows/<x>.yaml` (the defining file's repository and commit).
-  Existing classic `./.github/workflows/` calls retain their source-boundary controls during #271.
+  The catalogue CI and release callsites use this form too.
   An organization-required
   workflow is injected into a consumer repository, where that path resolves against the consumer
   instead; it must call a sibling workflow through a full remote reference pinned to an immutable
@@ -132,9 +132,9 @@ One component may reference another **in this repository**. GitHub resolves thes
   reference is rejected (#484).
 - **Composite action → shared script:** invoke via `${{ github.action_path }}/../../.scripts/…` (resolves at the calling ref, no pin). Skill maintenance actions are published independently and resolve scripts within their own repositories.
 - **Reusable workflow → a sibling action:** native `$/actions/<action>` uses the workflow's
-  own source. Existing same-commit self-checkouts bind `${{ job.workflow_repository }}`
-  and `${{ job.workflow_sha }}` into `.devantler-tech-actions` before a workspace-relative
-  call. Keep their exact identity and cleanup until their #271 migration is proven.
+  own source. Checkouts retained for workflow scripts or fixture data bind `${{ job.workflow_repository }}`
+  and `${{ job.workflow_sha }}` into `.devantler-tech-actions`. Preserve their exact
+  identity and cleanup; native action resolution is independent of those workspace bytes.
   A tag self-reference is not SHA-pinned; a remote SHA self-pin necessarily names an
   earlier commit, so neither substitutes for exact same-commit composition.
 - **Composite action → a sibling composite action:** native `$/actions/<action>` keeps
@@ -151,6 +151,14 @@ identity supplies native same-commit actions outside the consumer workspace. Its
 isolation test deliberately places complete catalogue source, including unrelated projects
 and coverage, in a separate action cache and proves an in-workspace copy still fails.
 Keep the credential, source-state, three-OS and selector refusal controls when changing it.
+
+Native action source directories are runner cache paths, separate from the workspace.
+Consumer assertions must compare implementation content with platform line-ending handling,
+not require the same filesystem path. Native patch exporters need no source checkout; remove
+workflow-created helper checkouts before Git captures consumer changes. Keep compatibility
+coverage for explicitly workspace-bound helpers without broadening their cleanup authority.
+A fixture that substitutes dependencies is its own generated, reviewed component rather than a
+runtime edit of the production source.
 
 Everything is SHA-pinned by convention and gated by `zizmor` (`unpinned-uses` policy `"*": hash-pin` — no by-owner allowances) and CodeQL's `actions/unpinned-tag`.
 

@@ -36,7 +36,7 @@ while IFS=$'\t' read -r scope mutation diagnostic; do
 done <<'CASES'
 ci	.jobs["test-scan-for-todo-comments"].permissions.issues="write"	callers must grant only contents-read
 ci	.jobs["test-scan-for-todo-comments-ignore"].permissions.contents="write"	callers must grant only contents-read
-ci	.jobs["test-scan-for-todo-comments"].uses="./.github/workflows/scan-for-todo-comments.yaml"	read-only entrypoint
+ci	.jobs["test-scan-for-todo-comments"].uses="$/.github/workflows/scan-for-todo-comments.yaml"	read-only entrypoint
 ci	.jobs.extra = .jobs["test-scan-for-todo-comments"]	unexpected TODO workflow caller
 ci	.jobs["test-scan-for-todo-comments-ignore"].secrets="inherit"	secret-free read-only entrypoint
 ci	.jobs["test-scan-for-todo-comments"].env.GH_TOKEN="${{ secrets.APP_PRIVATE_KEY }}"	secret-free read-only entrypoint
@@ -56,7 +56,7 @@ production	.jobs["dry-run"].permissions.issues="write"	every job read-only
 production	.jobs.extra={"runs-on":"ubuntu-latest",permissions:{contents:"write"},steps:[]}	every job read-only
 production	.jobs["dry-run"].env.TOKEN="${{ secrets.APP_PRIVATE_KEY }}"	production credentials
 production	.jobs["dry-run"].steps |= map(if (.run // ""|endswith(" verify-once")) then .if="false" else . end)	exact-one verification
-production	.jobs["dry-run"].steps |= map(if .uses == "./.devantler-tech-actions/actions/create-issues-from-todos" then .with.ignore="" else . end)	actual offline action
+production	.jobs["dry-run"].steps |= map(if .uses == "$/actions/create-issues-from-todos" then .with.ignore="" else . end)	actual offline action
 production	.jobs.todos.if="${{ inputs.dry-run }}"	production gate
 CASES
 # A harmless production step must survive generation without editing the test.

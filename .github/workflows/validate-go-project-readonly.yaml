@@ -355,17 +355,9 @@ jobs:
         run: go mod tidy
       # Anchored at the repository ROOT: `git add .` is cwd-scoped and this job's
       # defaults.run.working-directory can be a nested module.
-      - name: "\U0001F4E5 Checkout fix exporter"
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          repository: ${{ job.workflow_repository }}
-          ref: ${{ job.workflow_sha }}
-          path: .devantler-tech-actions
-          persist-credentials: false
-          sparse-checkout: .github/actions/prepare-fixes
       - name: "\U0001F4E6 Prepare and upload applied fixes"
         id: fixes
-        uses: ./.devantler-tech-actions/.github/actions/prepare-fixes
+        uses: $/.github/actions/prepare-fixes
         with:
           artifact-name: tidy-fixes-${{ job.check_run_id }}
           upload-enabled: ${{ needs.changes.outputs.signed-fixes == 'true' && github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork != true && !contains(fromJSON('["dependabot[bot]","dependabot","renovate[bot]","renovatebot","renovate"]'), github.event.pull_request.user.login) && !contains(fromJSON('["dependabot[bot]","dependabot","renovate[bot]","renovatebot","renovate"]'), inputs.pr-owner) }}
@@ -448,17 +440,9 @@ jobs:
           verify: false
       # Anchored at the repository ROOT: `git add .` is cwd-scoped and this job's
       # defaults.run.working-directory can be a nested module.
-      - name: "\U0001F4E5 Checkout fix exporter"
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          repository: ${{ job.workflow_repository }}
-          ref: ${{ job.workflow_sha }}
-          path: .devantler-tech-actions
-          persist-credentials: false
-          sparse-checkout: .github/actions/prepare-fixes
       - name: "\U0001F4E6 Prepare and upload applied fixes"
         id: fixes
-        uses: ./.devantler-tech-actions/.github/actions/prepare-fixes
+        uses: $/.github/actions/prepare-fixes
         with:
           artifact-name: golangci-lint-fixes-${{ job.check_run_id }}
           upload-enabled: ${{ needs.changes.outputs.signed-fixes == 'true' && github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork != true && !contains(fromJSON('["dependabot[bot]","dependabot","renovate[bot]","renovatebot","renovate"]'), github.event.pull_request.user.login) && !contains(fromJSON('["dependabot[bot]","dependabot","renovate[bot]","renovatebot","renovate"]'), inputs.pr-owner) }}
@@ -704,7 +688,7 @@ jobs:
         continue-on-error: true
         timeout-minutes: 24
         # Keep exact-commit checkout until actionlint supports $/ (#1234).
-        uses: ./.devantler-tech-actions/.github/actions/govulncheck # zizmor: ignore[self-repository]
+        uses: $/.github/actions/govulncheck # zizmor: ignore[self-repository]
         with:
           work-dir: ${{ needs.changes.outputs.module-directory }}
           # No stable-channel override: scan using the version the caller ships.
@@ -758,7 +742,7 @@ jobs:
         if: ${{ steps.scan-timeout.outputs.retry == 'true' }}
         timeout-minutes: 24
         # Keep exact-commit checkout until actionlint supports $/ (#1234).
-        uses: ./.devantler-tech-actions/.github/actions/govulncheck # zizmor: ignore[self-repository]
+        uses: $/.github/actions/govulncheck # zizmor: ignore[self-repository]
         with:
           work-dir: ${{ needs.changes.outputs.module-directory }}
           go-version-file: ${{ needs.changes.outputs.module-directory }}/go.mod
@@ -843,20 +827,10 @@ jobs:
       # defaults.run.working-directory can be a nested module, which would silently drop any
       # untracked fix outside it. `git diff` emits root-relative paths regardless, which is what
       # apply-signed-fixes.yaml applies against.
-      - name: "\U0001F4E5 Checkout fix exporter"
-        if: ${{ !cancelled() && (success() || inputs.manual-workflow-fixes == true || inputs.manual-workflow-fixes == 'true') }}
-        id: fix-exporter
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          repository: ${{ job.workflow_repository }}
-          ref: ${{ job.workflow_sha }}
-          path: .devantler-tech-actions
-          persist-credentials: false
-          sparse-checkout: .github/actions/prepare-fixes
       - name: "\U0001F4E6 Prepare and upload applied fixes"
-        if: ${{ steps.fix-exporter.outcome == 'success' && !cancelled() && (success() || inputs.manual-workflow-fixes == true || inputs.manual-workflow-fixes == 'true') }}
+        if: ${{ !cancelled() && (success() || inputs.manual-workflow-fixes == true || inputs.manual-workflow-fixes == 'true') }}
         id: fixes
-        uses: ./.devantler-tech-actions/.github/actions/prepare-fixes
+        uses: $/.github/actions/prepare-fixes
         with:
           artifact-name: megalinter-fixes-${{ job.check_run_id }}
           upload-enabled: ${{ needs.changes.outputs.signed-fixes == 'true' && github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork != true && !contains(fromJSON('["dependabot[bot]","dependabot","renovate[bot]","renovatebot","renovate"]'), github.event.pull_request.user.login) && !contains(fromJSON('["dependabot[bot]","dependabot","renovate[bot]","renovatebot","renovate"]'), inputs.pr-owner) }}
@@ -1564,7 +1538,7 @@ jobs:
       - name: "\U0001F4CA Upload coverage"
         if: ${{ steps.coverage-helper.outcome == 'success' }}
         continue-on-error: true
-        uses: ./.devantler-tech-actions/actions/upload-coverage
+        uses: $/actions/upload-coverage
         with:
           file: ${{ needs.changes.outputs.module-directory }}/coverage.cobertura.xml
           language: Go

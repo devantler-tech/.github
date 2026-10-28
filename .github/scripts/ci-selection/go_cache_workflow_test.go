@@ -20,7 +20,7 @@ func TestNativeGoCacheObserverAndFixtureRemainRequiredTogether(t *testing.T) {
 }
 
 func TestNativeGoCacheObserverInventoryRejectsMissingOrBypassedEvidence(t *testing.T) {
-	for _, mutation := range []string{"remove both", "missing fixture", "missing observer", "wrong dependency", "missing dependency", "different owners", "both ownerless", "optional observer", "optional fixture", "preserved observer", "unbound fixture"} {
+	for _, mutation := range []string{"remove both", "missing fixture", "missing observer", "wrong dependency", "missing dependency", "different owners", "both ownerless", "optional observer", "optional fixture", "preserved observer", "unbound fixture", "workspace fixture"} {
 		t.Run(mutation, func(t *testing.T) {
 			i, w := dotnetSelectionFixture(t)
 			switch mutation {
@@ -53,6 +53,10 @@ func TestNativeGoCacheObserverInventoryRejectsMissingOrBypassedEvidence(t *testi
 				i.CatalogueOptional = append(i.CatalogueOptional, "test-validate-go-postgresql-fixture")
 			case "preserved observer":
 				i.Preserved["test-go-cache-native-observer"] = w.Jobs["test-go-cache-native-observer"]
+			case "workspace fixture":
+				j := w.Jobs["test-validate-go-postgresql-fixture"]
+				j.Uses = "./.github/workflows/validate-go-project-readonly.yaml"
+				w.Jobs["test-validate-go-postgresql-fixture"] = j
 			case "unbound fixture":
 				j := w.Jobs["test-validate-go-postgresql-fixture"]
 				j.Uses = "./.github/workflows/other.yaml"

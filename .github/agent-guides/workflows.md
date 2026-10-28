@@ -14,7 +14,7 @@ for manageable step groups. Retired Pages, policy-sync and run-cleanup exports m
 restored without a new ownership decision; immutable historical releases remain available.
 
 1. **Use the `workflow_call` trigger** — this is what makes them reusable.
-2. **Pin all remote actions to commit SHAs** — `uses: owner/repo@<sha> # <version>`; first-party self-references are never remote — they resolve by local path after the same-commit self-checkout (see the self-reference rule above).
+2. **Pin all remote actions to commit SHAs** — `uses: owner/repo@<sha> # <version>`; same-source self-references use native `$/` binding to the defining file's exact commit (see the catalogue reference rules).
 3. **Include `step-security/harden-runner`** as the first step of every job (`egress-policy: audit`).
 4. **Set `permissions: {}` at the workflow top level** — grant per-job.
 5. **Set `persist-credentials: false`** on `actions/checkout` unless the job pushes.
@@ -62,7 +62,7 @@ attempt. Invalid or incomplete evidence fails immediately; recovery requires a
 full CI rerun. The behavioral fixture and its mutation controls execute the actual
 inline observer from `ci.yaml` without network access.
 
-Actions and reusable workflows are exercised as jobs inside [`ci.yaml`](../../.github/workflows/ci.yaml): `test-<action>` jobs call the action via `uses: ./actions/<action>`; `[Test] <Workflow> - <Scenario>` jobs call the workflow via `uses: ./.github/workflows/<x>.yaml` with safe parameters (dry-run, fixtures from `.github/tests/` or `.github/fixtures/` — never destructive). Every new action/workflow gets a job, wired into the `ci-required-checks` job (display `CI - Required Checks`) in **two** places: the `needs:` list **and** `${{ needs.<job-id>.result }}` in the inline summary step's `JOB_RESULTS` value. `ci-required-checks` runs `if: ${{ always() }}`, holds `permissions: {}`, executes no checked-out action, and fails if any listed result is not `success` or `skipped`, so it is the single required status check — a job added to `needs:` but omitted from `JOB_RESULTS` would have its failure silently ignored. The `lint-ci-coverage-parity` job **guards this**: it fails the PR if any composite action lacks a `uses: ./actions/<action>` test job, if any reusable workflow (`workflow_call`) lacks a `uses: ./.github/workflows/<x>.yaml` test job, if `ci-required-checks.needs` and `JOB_RESULTS` name different sets of jobs, or if the gate regains a workspace-dependent step (so the silent-ignore and candidate-code footguns cannot recur). When a reusable-workflow test-job id would collide with an action's (for example, `test-dependency-review`), the workflow job carries a `-workflow` suffix.
+Actions and reusable workflows are exercised as jobs inside [`ci.yaml`](../../.github/workflows/ci.yaml): `test-<action>` jobs call the action via `uses: $/actions/<action>`; `[Test] <Workflow> - <Scenario>` jobs call the workflow via `uses: $/.github/workflows/<x>.yaml` with safe parameters (dry-run, fixtures from `.github/tests/` or `.github/fixtures/` — never destructive). Every new action/workflow gets a job, wired into the `ci-required-checks` job (display `CI - Required Checks`) in **two** places: the `needs:` list **and** `${{ needs.<job-id>.result }}` in the inline summary step's `JOB_RESULTS` value. `ci-required-checks` runs `if: ${{ always() }}`, holds `permissions: {}`, executes no checked-out action, and fails if any listed result is not `success` or `skipped`, so it is the single required status check — a job added to `needs:` but omitted from `JOB_RESULTS` would have its failure silently ignored. The `lint-ci-coverage-parity` job **guards this**: it fails the PR if any composite action lacks an exact native or classic action step in a test job, if any reusable workflow (`workflow_call`) lacks a `uses: $/.github/workflows/<x>.yaml` test job, if `ci-required-checks.needs` and `JOB_RESULTS` name different sets of jobs, or if the gate regains a workspace-dependent step (so the silent-ignore and candidate-code footguns cannot recur). When a reusable-workflow test-job id would collide with an action's (for example, `test-dependency-review`), the workflow job carries a `-workflow` suffix.
 
 `ci-required-checks` is the sole exception to the harden-runner-first rule: adding any action would weaken its workspace-independent trust boundary. Every other step-bearing job must start with SHA-pinned `step-security/harden-runner` in audit mode, and `lint-ci-coverage-parity` enforces both sides of that contract.
 
@@ -85,6 +85,14 @@ literal API expectations while removing TODO markers or corrupting an expected i
 each must fail for its own reason, paired with healthy executions. Supervisor race tests cover
 concurrent authorization and lost mutation responses. Workflow authentication and consumer
 rollout coverage remain in #340.
+
+**Immutable TODO default replay:** The compatibility workflow calls the private generated
+`test-todo-default-fixture` action through native defining-source binding. Regenerate its action
+with `bash .github/scripts/generate-todo-default-action.sh` and its workflow with
+`bash .github/scripts/generate-todo-default-fixture.sh`. Only token acquisition and checkout are
+replaced by offline dependencies; the complete production logic and helper paths have independent
+parity, refusal and actual execution tests. Do not rewrite production actions at runtime. The
+positive and missing-token native controls remain required and read-only.
 
 **Dependency-review comment coverage:** `test-dependency-review-comments` runs the pinned
 review action through the composite against `.github/tests/fixtures/offline-github-api/main.go`, a

@@ -109,14 +109,14 @@ jobs:
       - name: Accept current links and documented history
         id: valid
         # actionlint rejects $/ syntax (#1234); this tests the checked-out candidate.
-        uses: ./actions/validate-retired-repo-links # zizmor: ignore[self-repository]
+        uses: $/actions/validate-retired-repo-links
         with:
           enabled: "true"
           working-directory: .github/fixtures/retired-repo-links
       - name: Reject an unexcepted retired link
         id: violation
         continue-on-error: true
-        uses: ./actions/validate-retired-repo-links # zizmor: ignore[self-repository]
+        uses: $/actions/validate-retired-repo-links
         with:
           enabled: "true"
           working-directory: .github/fixtures/retired-repo-links
@@ -124,7 +124,7 @@ jobs:
       - name: Reject missing configuration without exposing successful outputs
         id: missing_config
         continue-on-error: true
-        uses: ./actions/validate-retired-repo-links # zizmor: ignore[self-repository]
+        uses: $/actions/validate-retired-repo-links
         with:
           enabled: "true"
           working-directory: .github/fixtures/retired-repo-links
@@ -149,7 +149,7 @@ jobs:
           test -z "$MISSING_VALIDATED"
           test -z "$MISSING_SOURCE"
           test -n "$SOURCE"
-          test "$(cd "$SOURCE" && pwd -P)" = "$(cd actions/validate-retired-repo-links && pwd -P)"
+          git diff --no-index --quiet --no-ext-diff --no-textconv --ignore-cr-at-eol -- actions/validate-retired-repo-links "$SOURCE"
       - name: Test consumer behavior and verify the negative fixture finding
         shell: bash
         env:
@@ -187,19 +187,19 @@ jobs:
       - name: Omitted input validates by default
         id: omitted
         # actionlint rejects $/ syntax (#1234); this tests the checked-out candidate.
-        uses: ./actions/validate-retired-repo-links # zizmor: ignore[self-repository]
+        uses: $/actions/validate-retired-repo-links
         with:
           working-directory: .github/fixtures/retired-repo-links
       - name: Omitted input rejects the seeded violation
         id: omitted_violation
         continue-on-error: true
-        uses: ./actions/validate-retired-repo-links # zizmor: ignore[self-repository]
+        uses: $/actions/validate-retired-repo-links
         with:
           working-directory: .github/fixtures/retired-repo-links
           config-file: invalid.json
       - name: Explicit false skips the seeded violation
         id: disabled
-        uses: ./actions/validate-retired-repo-links # zizmor: ignore[self-repository]
+        uses: $/actions/validate-retired-repo-links
         with:
           enabled: "false"
           working-directory: .github/fixtures/retired-repo-links
@@ -207,7 +207,7 @@ jobs:
       - name: Reject invalid opt-in spelling
         id: invalid
         continue-on-error: true
-        uses: ./actions/validate-retired-repo-links # zizmor: ignore[self-repository]
+        uses: $/actions/validate-retired-repo-links
         with:
           enabled: "yes"
       - name: Assert default calls validate and disabled or invalid calls do not
@@ -225,7 +225,7 @@ jobs:
         run: |
           test "$OMITTED" = true
           test -n "$OMITTED_SOURCE"
-          test "$(cd "$OMITTED_SOURCE" && pwd -P)" = "$(cd actions/validate-retired-repo-links && pwd -P)"
+          git diff --no-index --quiet --no-ext-diff --no-textconv --ignore-cr-at-eol -- actions/validate-retired-repo-links "$OMITTED_SOURCE"
           test "$OMITTED_VIOLATION" = failure
           test -z "$OMITTED_VIOLATION_VALIDATED"
           test -z "$DISABLED"
@@ -257,7 +257,7 @@ jobs:
       - name: Accept captured producer output and quoted examples
         id: clean
         # Local syntax remains required by actionlint; migration is tracked in #1234.
-        uses: ./actions/validate-shell-pipelines # zizmor: ignore[self-repository]
+        uses: $/actions/validate-shell-pipelines
         with:
           paths: .github/fixtures/validate-shell-pipelines/good.sh
       - name: Prepare tracked negative fixtures without executing them
@@ -273,7 +273,7 @@ jobs:
         id: unsafe
         continue-on-error: true
         # Local syntax remains required by actionlint; migration is tracked in #1234.
-        uses: ./actions/validate-shell-pipelines # zizmor: ignore[self-repository]
+        uses: $/actions/validate-shell-pipelines
         with:
           working-directory: ${{ runner.temp }}/shell-pipelines-fixture
           paths: unsafe.sh
@@ -281,7 +281,7 @@ jobs:
         id: malformed
         continue-on-error: true
         # Local syntax remains required by actionlint; migration is tracked in #1234.
-        uses: ./actions/validate-shell-pipelines # zizmor: ignore[self-repository]
+        uses: $/actions/validate-shell-pipelines
         with:
           working-directory: ${{ runner.temp }}/shell-pipelines-fixture
           paths: malformed.sh
@@ -330,7 +330,7 @@ jobs:
         id: invalid
         continue-on-error: true
         # Local syntax remains required by actionlint; migration is tracked in #1234.
-        uses: ./actions/validate-shell-pipelines # zizmor: ignore[self-repository]
+        uses: $/actions/validate-shell-pipelines
         with:
           paths: ../invalid
       - name: Assert an incomplete scan never reports validation
@@ -364,7 +364,7 @@ jobs:
           persist-credentials: false
       - name: Validate manifests with the default configuration path
         id: validate
-        uses: ./actions/validate-naming
+        uses: $/actions/validate-naming
         with:
           working-directory: .github/fixtures/validate-naming
       - name: Assert validation ran
@@ -400,14 +400,14 @@ jobs:
       - name: Reject a resource whose filename does not lead with its kind
         id: violation
         continue-on-error: true
-        uses: ./actions/validate-naming
+        uses: $/actions/validate-naming
         with:
           working-directory: .github/fixtures/validate-naming
           config-file: invalid.yaml
       - name: Reject missing configuration
         id: invalid
         continue-on-error: true
-        uses: ./actions/validate-naming
+        uses: $/actions/validate-naming
         with:
           working-directory: .github/fixtures/validate-naming
           config-file: missing.yaml
@@ -467,7 +467,7 @@ jobs:
           persist-credentials: false
 
       - name: 🧪 Run approve-pr
-        uses: ./actions/approve-pr
+        uses: $/actions/approve-pr
         with:
           pr-number: ${{ github.event.pull_request.number || 0 }}
           dry-run: "true"
@@ -516,7 +516,7 @@ jobs:
       # Dry run against a stable, long-lived package so the test exercises the
       # action's wiring without ever deleting anything.
       - name: 🧪 Run cleanup-ghcr-packages (dry run)
-        uses: ./actions/cleanup-ghcr-packages
+        uses: $/actions/cleanup-ghcr-packages
         with:
           package: pandoc-plus
           dry-run: "true"
@@ -655,7 +655,7 @@ jobs:
         run: bash .github/tests/todo-action-smoke.sh prepare
 
       - name: 🧪 Run actual create-issues-from-todos wrapper offline
-        uses: ./actions/create-issues-from-todos
+        uses: $/actions/create-issues-from-todos
         with:
           ignore: '^\.github/tests/'
           optional-project-auth: 'true'
@@ -690,7 +690,7 @@ jobs:
       # real PR diff without ever failing CI on a finding in this repo's own deps.
       - name: 🧪 Run dependency-review
         id: review
-        uses: ./actions/dependency-review
+        uses: $/actions/dependency-review
 
       - name: ✅ Verify the review ran and produced outputs
         shell: bash
@@ -754,7 +754,7 @@ jobs:
       - name: 🧪 Run dependency review against the stand-in
         id: review
         continue-on-error: true
-        uses: ./actions/dependency-review
+        uses: $/actions/dependency-review
         env:
           NODE_OPTIONS: --require=${{ github.workspace }}/.github/tests/fixtures/offline-github-env.cjs
           OFFLINE_GITHUB_API_URL: ${{ steps.offline.outputs.api-url }}
@@ -809,7 +809,7 @@ jobs:
         run: exit 17
 
       - name: 🧪 Run diagnose-flux against the fake cluster
-        uses: ./actions/diagnose-flux
+        uses: $/actions/diagnose-flux
 
       - name: ✅ Assert crash + Job pods were dumped, healthy was not
         shell: bash
@@ -861,7 +861,7 @@ jobs:
           persist-credentials: false
 
       - name: 🧪 Run enable-auto-merge-on-pr
-        uses: ./actions/enable-auto-merge-on-pr
+        uses: $/actions/enable-auto-merge-on-pr
         with:
           pr-number: ${{ github.event.pull_request.number }}
           dry-run: "true"
@@ -909,7 +909,7 @@ jobs:
 
       - name: 🧪 Run free-disk-space
         id: disk
-        uses: ./actions/free-disk-space
+        uses: $/actions/free-disk-space
 
       - name: ✅ Verify space was reclaimed
         shell: bash
@@ -953,7 +953,7 @@ jobs:
       # error — exercises the "empty path list" branch and the false toggles.
       - name: 🧪 Run free-disk-space with all categories disabled
         id: disk
-        uses: ./actions/free-disk-space
+        uses: $/actions/free-disk-space
         with:
           android: "false"
           dotnet: "false"
@@ -1003,7 +1003,7 @@ jobs:
           persist-credentials: false
 
       - name: 🧪 Run login-to-ghcr
-        uses: ./actions/login-to-ghcr
+        uses: $/actions/login-to-ghcr
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
@@ -1031,7 +1031,7 @@ jobs:
           persist-credentials: false
       - name: Exercise omitted opt-in without API authority
         id: disabled
-        uses: ./actions/check-ci-run-budget
+        uses: $/actions/check-ci-run-budget
       - name: Assert disabled calls publish no validation
         env:
           VALIDATED: ${{ steps.disabled.outputs.validated }}
@@ -1071,7 +1071,7 @@ jobs:
           persist-credentials: false
 
       - name: 🧪 Run aggregate-job-checks with empty job-results (should succeed)
-        uses: ./actions/aggregate-job-checks
+        uses: $/actions/aggregate-job-checks
         with:
           job-results: ""
 
@@ -1094,7 +1094,7 @@ jobs:
           persist-credentials: false
 
       - name: 🧪 Run aggregate-job-checks with all-success results
-        uses: ./actions/aggregate-job-checks
+        uses: $/actions/aggregate-job-checks
         with:
           job-results: "success skipped success"
 
@@ -1119,7 +1119,7 @@ jobs:
       - name: 🧪 Run aggregate-job-checks with a failed job (expected to fail)
         id: check
         continue-on-error: true
-        uses: ./actions/aggregate-job-checks
+        uses: $/actions/aggregate-job-checks
         with:
           job-results: "success failure skipped"
 
@@ -1161,7 +1161,7 @@ jobs:
       - name: 🧪 Run aggregate-job-checks with an unknown result (expected to fail)
         id: check
         continue-on-error: true
-        uses: ./actions/aggregate-job-checks
+        uses: $/actions/aggregate-job-checks
         with:
           job-results: "success unknown-status"
 
@@ -1175,12 +1175,10 @@ jobs:
             exit 1
           fi
 
-      # `$/` would satisfy zizmor's self-repository audit, but actionlint 1.7.12 (MegaLinter's pin)
-      # rejects it, so this keeps the repository's `./` convention; #1234 tracks the migration.
       - name: 🧪 Run aggregate-job-checks with an abandoned job (expected to fail)
         id: abandoned
         continue-on-error: true
-        uses: ./actions/aggregate-job-checks # zizmor: ignore[self-repository]
+        uses: $/actions/aggregate-job-checks
         with:
           job-results: "success abandoned skipped"
 
@@ -1219,7 +1217,7 @@ jobs:
           persist-credentials: false
 
       - name: 🧪 Run run-dotnet-tests
-        uses: ./actions/run-dotnet-tests
+        uses: $/actions/run-dotnet-tests
         with:
           github-token: ${{ github.event_name != 'pull_request' && secrets.GITHUB_TOKEN || '' }}
           working-directory: .github/fixtures/run-dotnet-tests
@@ -1259,7 +1257,7 @@ jobs:
           persist-credentials: false
 
       - name: 🧪 Run run-dotnet-tests with the coverage extension
-        uses: ./actions/run-dotnet-tests
+        uses: $/actions/run-dotnet-tests
         with:
           working-directory: .github/fixtures/run-dotnet-tests-mtp
 
@@ -1275,7 +1273,7 @@ jobs:
           printf 'Coverage report: %s\n' "$reports"
 
       - name: 🧪 Run run-dotnet-tests without the coverage extension
-        uses: ./actions/run-dotnet-tests
+        uses: $/actions/run-dotnet-tests
         with:
           working-directory: .github/fixtures/run-dotnet-tests-mtp-no-coverage
 
@@ -1329,7 +1327,7 @@ jobs:
         shell: bash
 
       - name: 🧪 Restore and test with caller source mapping
-        uses: ./actions/run-dotnet-tests
+        uses: $/actions/run-dotnet-tests
         with:
           # Exercise the credential-bearing branch without exposing a real token to PR-controlled restore code.
           github-token: credential-boundary-sentinel
@@ -1355,7 +1353,7 @@ jobs:
         shell: bash
 
       - name: 🧪 Restore with the canonical caller-owned source
-        uses: ./actions/run-dotnet-tests
+        uses: $/actions/run-dotnet-tests
         with:
           github-token: credential-boundary-sentinel
           working-directory: .github/fixtures/run-dotnet-tests-source-mapping/consumer
@@ -1388,7 +1386,7 @@ jobs:
         shell: bash
 
       - name: 🧪 Restore through a symlinked caller config
-        uses: ./actions/run-dotnet-tests
+        uses: $/actions/run-dotnet-tests
         with:
           github-token: credential-boundary-sentinel
           working-directory: ${{ runner.temp }}/run-dotnet-tests-symlink
@@ -1426,7 +1424,7 @@ jobs:
       - name: 🛡️ Reject the untrusted credential target
         id: untrusted-source
         continue-on-error: true
-        uses: ./actions/run-dotnet-tests
+        uses: $/actions/run-dotnet-tests
         with:
           github-token: credential-boundary-sentinel
           working-directory: .github/fixtures/run-dotnet-tests-source-mapping/consumer
@@ -1464,7 +1462,7 @@ jobs:
 
       - name: 🧪 Run setup-go-toolchain
         id: setup-go
-        uses: ./actions/setup-go-toolchain
+        uses: $/actions/setup-go-toolchain
         with:
           go-version: stable
 
@@ -1502,7 +1500,7 @@ jobs:
           persist-credentials: false
 
       - name: 🧪 Run setup-go-toolchain with private module discovery
-        uses: ./actions/setup-go-toolchain
+        uses: $/actions/setup-go-toolchain
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
@@ -1549,7 +1547,7 @@ jobs:
         run: bash .github/tests/test-setup-ksail-cli.sh
 
       - name: 🧪 Run setup-ksail-cli
-        uses: ./actions/setup-ksail-cli
+        uses: $/actions/setup-ksail-cli
 
       - name: ✅ Verify ksail is installed
         shell: bash
@@ -1678,7 +1676,7 @@ jobs:
       # (fail-on-error: false) because GitHub Code Quality coverage must be enabled in repo settings
       # before reports are accepted — upload errors surface as annotations, not CI failures.
       - name: 🧪 Run upload-coverage
-        uses: ./actions/upload-coverage
+        uses: $/actions/upload-coverage
         with:
           file: .github/fixtures/upload-coverage/coverage.cobertura.xml
           language: Go
@@ -1707,7 +1705,7 @@ jobs:
       - name: 🧪 Run login-to-ghcr with an empty token (expected to fail)
         id: login
         continue-on-error: true
-        uses: ./actions/login-to-ghcr
+        uses: $/actions/login-to-ghcr
         with:
           github-token: ""
 
@@ -1743,7 +1741,7 @@ jobs:
       - name: 🧪 Run setup-go-toolchain with a non-existent version (expected to fail)
         id: setup-go
         continue-on-error: true
-        uses: ./actions/setup-go-toolchain
+        uses: $/actions/setup-go-toolchain
         with:
           go-version: "99.99.99"
 
@@ -1790,7 +1788,7 @@ jobs:
 
       - name: 🧪 Exercise the hosted composite action against the offline CLI
         id: upsert
-        uses: ./actions/upsert-issue
+        uses: $/actions/upsert-issue
         with:
           title: Offline smoke fixture
           body: Offline smoke body
@@ -1828,7 +1826,7 @@ jobs:
       - name: 🧪 Run run-dotnet-tests against a non-existent working-directory (expected to fail)
         id: dotnet
         continue-on-error: true
-        uses: ./actions/run-dotnet-tests
+        uses: $/actions/run-dotnet-tests
         with:
           github-token: ${{ github.event_name != 'pull_request' && secrets.GITHUB_TOKEN || '' }}
           working-directory: does-not-exist
@@ -2056,7 +2054,7 @@ jobs:
 
       - name: 🔎 Validate the repository's real shell scripts
         id: pipelines
-        uses: ./actions/validate-shell-pipelines # zizmor: ignore[self-repository]
+        uses: $/actions/validate-shell-pipelines
         with:
           paths: ${{ env.SCAN_PATHS }}
 
@@ -2491,13 +2489,17 @@ jobs:
         shell: bash
         run: bash .github/tests/test-todo-production-default-fixture.sh
 
+      - name: Check immutable offline TODO action source and refusal controls
+        shell: bash
+        run: bash .github/tests/test-todo-default-action.sh
+
       - name: 📋 Check ci.yaml test wiring is complete
         shell: bash
         run: |
           # Guards the hand-maintained conventions in this file (see AGENTS.md
           # § Test jobs) so they can never silently drift:
           #   (1)  every composite action (actions/*/action.yaml) is exercised by a job
-          #        that does `uses: ./<action>`;
+          #        that does an exact native or classic action step;
           #   (1b) every reusable workflow (workflow_call) is exercised by a job
           #        with an exact classic or native same-repository call; and
           #   (2)  ci-required-checks.needs and its trusted inline JOB_RESULTS
@@ -2512,8 +2514,9 @@ jobs:
           # (1) action -> test job
           for action_yaml in actions/*/action.yaml; do
             a="$(dirname "$action_yaml")"
-            if ! grep -qE "uses:[[:space:]]*\./$a([[:space:]]|\$)" "$ci"; then
-              echo "::error file=$action_yaml::action '$a' has no test job in $ci (expected a job step with 'uses: ./$a')"
+            if ! ACTION_LOCAL="./$a" ACTION_NATIVE="\$/$a" \
+              yq -e '.jobs | to_entries | any_c(.value.steps // [] | any_c(.uses == strenv(ACTION_LOCAL) or .uses == strenv(ACTION_NATIVE)))' "$ci" >/dev/null; then
+              echo "::error file=$action_yaml::action '$a' has no test job in $ci (expected an exact classic or native job step)"
               status=1
             fi
           done
@@ -2535,7 +2538,7 @@ jobs:
                 fi
                 continue
               fi
-              echo "::error file=$wf::reusable workflow '$wname' has no test job in $ci (expected a job step with 'uses: ./.github/workflows/$wname')"
+              echo "::error file=$wf::reusable workflow '$wname' has no test job in $ci (expected a job step with 'uses: $/.github/workflows/$wname')"
               status=1
             fi
           done
@@ -2630,7 +2633,7 @@ jobs:
     # SARIF baseline still refreshes without duplicating the PR advisory scan.
     if: "${{ github.event_name == 'push' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
     name: "[Test] Zizmor - Default Settings"
-    uses: ./.github/workflows/scan-for-workflow-vulnerabilities.yaml
+    uses: $/.github/workflows/scan-for-workflow-vulnerabilities.yaml
     permissions:
       security-events: write
       contents: read
@@ -2639,14 +2642,14 @@ jobs:
   test-dependency-review-workflow:
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
     name: "[Test] Dependency Review - Default Settings"
-    uses: ./.github/workflows/dependency-review.yaml
+    uses: $/.github/workflows/dependency-review.yaml
     permissions:
       contents: read
 
   test-validate-go-project-interface:
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
     name: "[Test] Validate Go Project - Production Interface"
-    uses: ./.github/workflows/validate-go-project.yaml
+    uses: $/.github/workflows/validate-go-project.yaml
     with:
       working-directory: ""
       apply-signed-fixes: false
@@ -2661,7 +2664,7 @@ jobs:
     needs: [select-ci-tests]
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-validate-go-project') }}"
     name: "[Test] Validate Go Project"
-    uses: ./.github/workflows/validate-go-project-readonly.yaml
+    uses: $/.github/workflows/validate-go-project-readonly.yaml
     # Fixture-targeted: validate the known-good Go fixture (this repo is not itself a Go module).
     with:
       go-memory-limit: 4GiB
@@ -2681,7 +2684,7 @@ jobs:
     needs: [select-ci-tests]
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-validate-go-postgresql-fixture') }}"
     name: "[Test] Validate Go Project - Isolated PostgreSQL"
-    uses: ./.github/workflows/validate-go-project-readonly.yaml
+    uses: $/.github/workflows/validate-go-project-readonly.yaml
     with:
       working-directory: .github/tests/go-postgresql-fixture
       enable-postgresql-fixture: true
@@ -2722,7 +2725,7 @@ jobs:
     needs: [select-ci-tests]
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-validate-go-project-manual-fixes') }}"
     name: "[Test] Validate Go Project - Manual Workflow Fixes Opted In"
-    uses: ./.github/workflows/validate-go-project-readonly.yaml
+    uses: $/.github/workflows/validate-go-project-readonly.yaml
     with:
       working-directory: .github/tests/go-valid-fixture
       apply-signed-fixes: false
@@ -2739,7 +2742,7 @@ jobs:
     needs: [select-ci-tests]
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-validate-go-project-apply-signed-fixes') }}"
     name: "[Test] Validate Go Project - Signed Fixes Suppressed"
-    uses: ./.github/workflows/validate-go-project-readonly.yaml
+    uses: $/.github/workflows/validate-go-project-readonly.yaml
     with:
       working-directory: .github/tests/go-valid-fixture
       apply-signed-fixes: true
@@ -2771,7 +2774,7 @@ jobs:
     needs: [select-ci-tests]
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-validate-go-project-test-default-branch') }}"
     name: "[Test] Validate Go Project - Default-Branch Test Opted Out"
-    uses: ./.github/workflows/validate-go-project-readonly.yaml
+    uses: $/.github/workflows/validate-go-project-readonly.yaml
     with:
       working-directory: .github/tests/go-valid-fixture
       test-default-branch: false
@@ -2789,7 +2792,7 @@ jobs:
     needs: [select-ci-tests]
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-validate-go-project-maintenance-default-branch') }}"
     name: "[Test] Validate Go Project - Default-Branch Maintenance Opted Out"
-    uses: ./.github/workflows/validate-go-project-readonly.yaml
+    uses: $/.github/workflows/validate-go-project-readonly.yaml
     with:
       working-directory: .github/tests/go-valid-fixture
       maintenance-default-branch: false
@@ -2875,7 +2878,7 @@ jobs:
   test-enable-auto-merge:
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
     name: "[Test] Enable Auto-Merge"
-    uses: ./.github/workflows/enable-auto-merge.yaml
+    uses: $/.github/workflows/enable-auto-merge.yaml
     # Static caller ceiling for the production callee. Dry-run excludes both
     # write jobs, so executed jobs receive at most contents:read.
     with:
@@ -2890,7 +2893,7 @@ jobs:
   test-enable-auto-merge-actor-trust:
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
     name: "[Test] Enable Auto-Merge - Actor Trust Enabled"
-    uses: ./.github/workflows/enable-auto-merge.yaml
+    uses: $/.github/workflows/enable-auto-merge.yaml
     with:
       concurrency-key: actor-trust-self-test
       dry-run: true
@@ -2904,7 +2907,7 @@ jobs:
   test-enable-auto-merge-queued:
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
     name: "[Test] Enable Auto-Merge - Pending Queue Enabled"
-    uses: ./.github/workflows/enable-auto-merge.yaml
+    uses: $/.github/workflows/enable-auto-merge.yaml
     with:
       concurrency-key: queued-self-test
       dry-run: true
@@ -3012,7 +3015,7 @@ jobs:
   test-create-release:
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
     name: "[Test] Create Release - Dry Run"
-    uses: ./.github/workflows/create-release.yaml
+    uses: $/.github/workflows/create-release.yaml
     permissions: {}
     with:
       dry-run: true
@@ -3021,7 +3024,7 @@ jobs:
   test-create-release-no-issue-side-effects:
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
     name: "[Test] Create Release - No Issue Side Effects"
-    uses: ./.github/workflows/create-release.yaml
+    uses: $/.github/workflows/create-release.yaml
     permissions: {}
     with:
       disable-issue-side-effects: true
@@ -3131,7 +3134,7 @@ jobs:
   test-publish-app:
     if: "${{ github.event_name == 'push' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
     name: "[Test] Publish App - Dry Run"
-    uses: ./.github/workflows/publish-app.yaml
+    uses: $/.github/workflows/publish-app.yaml
     # PUSH-ONLY — the callee's static write grant cannot just be
     # dropped. The signing step lives in publish-app.yaml's publish job.
     permissions:
@@ -3147,7 +3150,7 @@ jobs:
   test-publish-app-caller-pin:
     if: "${{ github.event_name == 'push' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
     name: "[Test] Publish App - Dry Run (caller-pin enabled)"
-    uses: ./.github/workflows/publish-app.yaml
+    uses: $/.github/workflows/publish-app.yaml
     # PUSH-ONLY — candidate reusable code must not receive write authority. The
     # guard it covers runs in the skipped publish job.
     permissions:
@@ -3243,7 +3246,7 @@ jobs:
   test-publish-manifests:
     if: "${{ github.event_name == 'push' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
     name: "[Test] Publish Manifests - Dry Run"
-    uses: ./.github/workflows/publish-manifests.yaml
+    uses: $/.github/workflows/publish-manifests.yaml
     # PUSH-ONLY — the callee's static write grant cannot just be
     # dropped. The signing step lives in publish-manifests.yaml's publish job.
     permissions:
@@ -3257,7 +3260,7 @@ jobs:
   test-publish-manifests-caller-pin:
     if: "${{ github.event_name == 'push' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
     name: "[Test] Publish Manifests - Dry Run (caller-pin and signed-promotion enabled)"
-    uses: ./.github/workflows/publish-manifests.yaml
+    uses: $/.github/workflows/publish-manifests.yaml
     # PUSH-ONLY — candidate reusable code must not receive write authority. The
     # guard it covers runs in the skipped publish job.
     permissions:
@@ -3275,7 +3278,7 @@ jobs:
   test-scan-for-todo-comments:
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
     name: "[Test] Scan for TODO Comments - Dry Run (vendor exclusion)"
-    uses: ./.github/workflows/scan-for-todo-comments-readonly.yaml
+    uses: $/.github/workflows/scan-for-todo-comments-readonly.yaml
     permissions:
       contents: read
     with:
@@ -3285,7 +3288,7 @@ jobs:
   test-scan-for-todo-comments-no-project:
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
     name: "[Test] Scan for TODO Comments - Production Steps Without a Project"
-    uses: ./.github/workflows/scan-for-todo-comments-readonly.yaml
+    uses: $/.github/workflows/scan-for-todo-comments-readonly.yaml
     permissions:
       contents: read
     with:
@@ -3298,14 +3301,14 @@ jobs:
   test-scan-for-todo-comments-default:
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
     name: "[Test] Scan for TODO Comments - Production Compatibility Defaults"
-    uses: ./.github/workflows/scan-for-todo-comments-default-fixture.yaml
+    uses: $/.github/workflows/scan-for-todo-comments-default-fixture.yaml
     permissions:
       contents: read
 
   test-scan-for-todo-comments-default-control:
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
     name: "[Test] Scan for TODO Comments - Reject Missing Project Token"
-    uses: ./.github/workflows/scan-for-todo-comments-default-fixture.yaml
+    uses: $/.github/workflows/scan-for-todo-comments-default-fixture.yaml
     permissions:
       contents: read
     with:
@@ -3314,7 +3317,7 @@ jobs:
   test-scan-for-todo-comments-ignore:
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
     name: "[Test] Scan for TODO Comments - Dry Run (ignore configured)"
-    uses: ./.github/workflows/scan-for-todo-comments-readonly.yaml
+    uses: $/.github/workflows/scan-for-todo-comments-readonly.yaml
     permissions:
       contents: read
     with:
@@ -3324,7 +3327,7 @@ jobs:
   test-template-sync:
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
     name: "[Test] Template Sync - Dry Run"
-    uses: ./.github/workflows/template-sync.yaml
+    uses: $/.github/workflows/template-sync.yaml
     permissions:
       contents: write
       pull-requests: write
@@ -3338,7 +3341,7 @@ jobs:
   test-template-sync-merge-ignore:
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
     name: "[Test] Template Sync - Dry Run (Merge Ignore Entries)"
-    uses: ./.github/workflows/template-sync.yaml
+    uses: $/.github/workflows/template-sync.yaml
     permissions:
       contents: write
       pull-requests: write
@@ -3393,8 +3396,7 @@ jobs:
       # .govulncheck-allow.txt the scan MUST pass. Keep this `uses:` in lockstep
       # with validate-go-project.yaml — enforced by test-govulncheck-action-lockstep.
       - name: 🛡️ Scan fixture with allowlist (must pass)
-        # Keep local syntax until the supported actionlint accepts $/ (#1234).
-        uses: ./.github/actions/govulncheck # zizmor: ignore[self-repository]
+        uses: $/.github/actions/govulncheck
         with:
           work-dir: .github/tests/${{ matrix.fixture }}
           go-version-file: .github/tests/${{ matrix.fixture }}/go.mod
@@ -3446,8 +3448,7 @@ jobs:
       - name: 🛡️ Scan fixture without allowlist (expected to fail)
         id: scan
         continue-on-error: true
-        # Keep local syntax until the supported actionlint accepts $/ (#1234).
-        uses: ./.github/actions/govulncheck # zizmor: ignore[self-repository]
+        uses: $/.github/actions/govulncheck
         with:
           work-dir: .github/tests/${{ matrix.fixture }}
           go-version-file: .github/tests/${{ matrix.fixture }}/go.mod
@@ -3826,8 +3827,7 @@ jobs:
   # deliberately outlives a 1-minute deadline, runs the gate's OWN classifier (extracted from
   # validate-go-project.yaml) against it, checks that it stops the leftover scanner before
   # retrying, and checks that a failure before the deadline — a finding — is not retried (#1097).
-  # The stand-in keeps the `./` form with
-  # zizmor's self-repository audit suppressed: actionlint 1.7.12 rejects `$/` (#1234).
+  # The stand-in resolves from the same immutable source as this workflow.
   test-govulncheck-timeout-retry-live:
     needs: [select-ci-tests]
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-govulncheck-timeout-retry-live') }}"
@@ -3867,7 +3867,7 @@ jobs:
         id: slow
         continue-on-error: true
         timeout-minutes: 1
-        uses: ./.github/fixtures/govulncheck-timeout-retry # zizmor: ignore[self-repository]
+        uses: $/.github/fixtures/govulncheck-timeout-retry
         with:
           seconds: "150"
 
@@ -3927,7 +3927,7 @@ jobs:
         id: fast
         continue-on-error: true
         timeout-minutes: 1
-        uses: ./.github/fixtures/govulncheck-timeout-retry # zizmor: ignore[self-repository]
+        uses: $/.github/fixtures/govulncheck-timeout-retry
         with:
           seconds: "1"
           exit-code: "3"
@@ -4710,12 +4710,13 @@ jobs:
         working-directory: ${{ github.workspace }}
         run: |
           cp .devantler-tech-actions/.github/tests/fixtures/prepare-fixes-runner.sh "$RUNNER_TEMP/prepare-fixes-runner.sh"
+          rm -rf -- .devantler-tech-actions
           bash "$RUNNER_TEMP/prepare-fixes-runner.sh" setup
 
       - name: 📤 Prepare and transfer the real patch
         id: fixes
         continue-on-error: ${{ matrix.scenario == 'export-failure' }}
-        uses: ./.devantler-tech-actions/.github/actions/prepare-fixes
+        uses: $/.github/actions/prepare-fixes
         with:
           artifact-name: ${{ env.ARTIFACT }}
           upload-enabled: ${{ matrix.upload }}
@@ -4884,7 +4885,7 @@ jobs:
     name: "[Test] Apply Signed Fixes - Refuses A Dependency-Bot Branch"
     permissions:
       contents: read
-    uses: ./.github/workflows/apply-signed-fixes.yaml
+    uses: $/.github/workflows/apply-signed-fixes.yaml
     with:
       pr-owner: "dependabot[bot]"
       commit-message: "chore: apply-signed-fixes self-test sentinel, never commit this"
@@ -4908,7 +4909,7 @@ jobs:
     name: "[Test] Apply Signed Fixes - Verifies The Tip With No Patch"
     permissions:
       contents: read
-    uses: ./.github/workflows/apply-signed-fixes.yaml
+    uses: $/.github/workflows/apply-signed-fixes.yaml
     with:
       fixes-created: false
       commit-message: "chore: apply-signed-fixes fixes-created=false sentinel, never commit this"

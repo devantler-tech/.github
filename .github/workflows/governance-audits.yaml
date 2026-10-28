@@ -85,17 +85,13 @@ jobs:
       contents: read
       issues: write
     steps:
-      - name: Checkout reporter from the workflow source
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Harden runner
+        uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2.22.2
         with:
-          repository: ${{ github.repository }}
-          ref: ${{ github.workflow_sha }}
-          path: .devantler-tech-actions
-          persist-credentials: false
-      # This action is inside the explicit checkout; $/ would resolve a source-tree path.
+          egress-policy: audit
       - name: Report incomplete or noncompliant audit
         if: needs.admit.result != 'success' || needs.audit.result != 'success'
-        uses: ./.devantler-tech-actions/actions/upsert-issue # zizmor: ignore[self-repository]
+        uses: $/actions/upsert-issue
         with:
           repository: devantler-tech/.github
           title: "Scheduled governance audits need attention"
@@ -112,7 +108,7 @@ jobs:
             Audit: ${{ needs.audit.result }}
       - name: Close only after a complete successful audit
         if: needs.admit.result == 'success' && needs.audit.result == 'success'
-        uses: ./.devantler-tech-actions/actions/upsert-issue # zizmor: ignore[self-repository]
+        uses: $/actions/upsert-issue
         with:
           repository: devantler-tech/.github
           title: "Scheduled governance audits need attention"

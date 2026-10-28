@@ -31,7 +31,7 @@ input_default="$(yq -r '.on.workflow_call.inputs.ignore.default // ""' "$workflo
 
 forwarded="$(yq -r \
   '.jobs.todos.steps[]
-   | select(.uses == "./.devantler-tech-actions/actions/create-issues-from-todos")
+   | select(.uses == "$/actions/create-issues-from-todos")
    | .with.ignore // ""' "$workflow")"
 # shellcheck disable=SC2016 # GitHub expression compared literally.
 [[ "$forwarded" == '${{ inputs.ignore }}' ]] ||
@@ -44,7 +44,7 @@ default_has_ignore="$(yq -r \
 
 opt_in_uses="$(yq -r \
   '.jobs["test-scan-for-todo-comments-ignore"].uses // ""' .github/workflows/ci.yaml)"
-[[ "$opt_in_uses" == "./.github/workflows/scan-for-todo-comments-readonly.yaml" ]] ||
+[[ "$opt_in_uses" == "$/.github/workflows/scan-for-todo-comments-readonly.yaml" ]] ||
   fail "the opt-in workflow_call test must invoke the complete read-only TODO projection"
 
 ci_pattern="$(yq -r '.jobs["test-scan-for-todo-comments-ignore"].with.ignore // ""' \

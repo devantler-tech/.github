@@ -25,7 +25,9 @@ jq '
         TODO_EXPECTED_PROJECT_SECRET:"offline-project-token",
         TODO_FIXTURE_SKIP_TOKEN:"${{ inputs.fixture-skip-app-token }}"},
         run:"bash .devantler-tech-actions/.github/tests/todo-production-default-fixture.sh prepare"},
-      (.id = "fixture-scan" | .["continue-on-error"] = true)
+      (.id = "fixture-scan" | .["continue-on-error"] = true |
+        .uses = "$/.github/actions/test-todo-default-fixture" |
+        .with["fixture-skip-app-token"] = "${{ inputs.fixture-skip-app-token }}")
     else . end) |
   .jobs.todos.steps += [{name:"Verify native default-path replay", if:"${{ always() }}", shell:"bash",
     env:{TODO_FIXTURE_OUTCOME:"${{ steps.fixture-scan.outcome }}",

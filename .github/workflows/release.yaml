@@ -10,7 +10,7 @@ permissions: {}
 jobs:
   release:
     # The catalogue's own release workflow, from this commit (#235).
-    uses: ./.github/workflows/create-release.yaml
+    uses: $/.github/workflows/create-release.yaml
     with:
       disable-issue-side-effects: true
       warn-missing-breaking-bang: true

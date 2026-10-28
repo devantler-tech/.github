@@ -8,27 +8,8 @@ case "${1:-}" in
   prepare)
     bash "$root/.github/tests/todo-action-smoke.sh" prepare
     rm -f "$fixture/app-token.json"
-    action="$root/actions/create-issues-from-todos/action.yaml"
-    yq -o=json '.' "$action" >"$fixture/production-action.json"
-    jq -e '
-      [.runs.steps[] | select(.id == "app-token")] | length == 1 and
-      all(.uses | startswith("actions/create-github-app-token@"))
-    ' "$fixture/production-action.json" >/dev/null || fail 'missing source App-token dependency'
-    jq --arg skip "${TODO_FIXTURE_SKIP_TOKEN:?}" '
-      .runs.steps |= map(
-        if .id == "app-token" then
-          .env = {CLIENT_ID:.with["client-id"], APP_ID:.with["app-id"],
-            APP_PRIVATE_KEY:.with["private-key"], PROJECT_PERMISSION:.with["permission-organization-projects"],
-            OPTIONAL_PROJECT_AUTH:"${{ inputs.optional-project-auth }}", PROJECT:"${{ inputs.project }}"} |
-          del(.uses, .with) | .shell = "bash" |
-          .run = "bash \"${GITHUB_ACTION_PATH}/../../.github/tests/todo-production-default-fixture.sh\" app-token" |
-          if $skip == "true" then .if = "false" else . end
-        elif (.uses // "" | startswith("actions/checkout@")) then
-          del(.uses, .with) | .shell = "bash" |
-          .run = "echo Offline checkout dependency: no workspace changes"
-        else . end)
-    ' "$fixture/production-action.json" >"$fixture/offline-action.json"
-    yq -P '.' "$fixture/offline-action.json" >"$action"
+    # The reviewed generated composite contains the offline dependencies.
+    # Never rewrite a production action in a runner cache or workspace.
     ;;
   app-token)
     [[ "${OPTIONAL_PROJECT_AUTH:-}" == false && "${PROJECT:-}" == organization/devantler-tech/5 ]] ||

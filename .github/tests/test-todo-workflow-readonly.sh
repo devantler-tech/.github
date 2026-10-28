@@ -34,8 +34,8 @@ jq -e '
   exit 1
 }
 jq -e '
-  [.jobs | to_entries[] | select(.value.uses == "./.github/workflows/scan-for-todo-comments.yaml" or
-    .value.uses == "./.github/workflows/scan-for-todo-comments-readonly.yaml") | .key] |
+  [.jobs | to_entries[] | select(.value.uses == "$/.github/workflows/scan-for-todo-comments.yaml" or
+    .value.uses == "$/.github/workflows/scan-for-todo-comments-readonly.yaml") | .key] |
   sort == ["test-scan-for-todo-comments", "test-scan-for-todo-comments-ignore", "test-scan-for-todo-comments-no-project"]
 ' "$work/ci.json" >/dev/null || {
   echo 'FAIL: unexpected TODO workflow caller' >&2
@@ -44,7 +44,7 @@ jq -e '
 jq -e '
   ["test-scan-for-todo-comments", "test-scan-for-todo-comments-ignore"] as $ids |
   . as $ci | all($ids[]; . as $id | $ci.jobs[$id] |
-    .uses == "./.github/workflows/scan-for-todo-comments-readonly.yaml" and
+    .uses == "$/.github/workflows/scan-for-todo-comments-readonly.yaml" and
     .secrets == null and .env == null and .with["dry-run"] == true) and
   $ci.jobs["test-scan-for-todo-comments"].with == {"dry-run":true,"exclude-vendored":true} and
   $ci.jobs["test-scan-for-todo-comments-ignore"].with == {"dry-run":true, ignore:"^\\.github/tests/"}
@@ -57,7 +57,7 @@ jq -e '
 guard_no_project() {
   jq -e '
     .jobs["test-scan-for-todo-comments-no-project"] as $job |
-    $job.uses == "./.github/workflows/scan-for-todo-comments-readonly.yaml" and
+    $job.uses == "$/.github/workflows/scan-for-todo-comments-readonly.yaml" and
     $job.permissions == {contents:"read"} and $job.secrets == null and $job.env == null and
     $job.with == {"dry-run":false,"optional-project-auth":true,project:"",ignore:".*"} and
     $job.if == "${{ github.event_name != '\''merge_group'\'' && !startsWith(github.event.head_commit.message, '\''chore(main): release '\'') }}" and

@@ -34,7 +34,7 @@ guard() {
     then error("dry-run stays default-off and its unused secret must be optional")
     elif $wf.permissions != {} or $wf.jobs.todos.if != "${{ !inputs.dry-run }}" or
       $wf.jobs.todos.permissions != {contents:"read",issues:"write"} or
-      ([$wf.jobs.todos.steps[] | select(.uses == "./.devantler-tech-actions/actions/create-issues-from-todos") | .with] !=
+      ([$wf.jobs.todos.steps[] | select(.uses == "$/actions/create-issues-from-todos") | .with] !=
         [{"client-id":"${{ vars.APP_CLIENT_ID }}","app-private-key":"${{ secrets.APP_PRIVATE_KEY }}",
           project:"${{ inputs.project }}",ignore:"${{ inputs.ignore }}",
           "exclude-vendored":"${{ inputs.exclude-vendored }}",
@@ -54,7 +54,7 @@ guard() {
       length != 2 or any(.with.repository != "${{ job.workflow_repository }}" or
         .with.ref != "${{ job.workflow_sha }}"))
     then error("action and fixture must resolve at this workflow commit")
-    elif ([$job.steps[]|select(.uses == "./.devantler-tech-actions/actions/create-issues-from-todos")] |
+    elif ([$job.steps[]|select(.uses == "$/actions/create-issues-from-todos")] |
       length != 1 or any((runnable|not) or
         .with != {ignore:"${{ inputs.ignore }}","exclude-vendored":"${{ inputs.exclude-vendored }}","optional-project-auth":"true"}))
     then error("actual offline action must execute with unchanged ignore and no project")
@@ -72,14 +72,14 @@ guard() {
     then error("fixture expectations must bind independently to caller inputs")
     elif ($job.steps|to_entries|map(select(.value.with.path == ".devantler-tech-actions"))|.[0].key) as $checkout |
       ($job.steps|to_entries|map(select((.value|command)|endswith("todo-action-smoke.sh prepare")))|.[0].key) as $prepare |
-      ($job.steps|to_entries|map(select(.value.uses == "./.devantler-tech-actions/actions/create-issues-from-todos"))|.[0].key) as $action |
+      ($job.steps|to_entries|map(select(.value.uses == "$/actions/create-issues-from-todos"))|.[0].key) as $action |
       ($job.steps|to_entries|map(select(.value.with.path == ".devantler-tech-actions"))|.[1]) as $restore |
       ($job.steps|to_entries|map(select((.value|command)|endswith("todo-action-smoke.sh verify-once")))|.[0].key) as $verify |
       ($checkout < $prepare and $prepare < $action and $action < $restore.key and
         $restore.key < $verify and $restore.value.if == "${{ always() }}") | not
     then error("restore the cleaned action checkout before verification and post-cleanup")
     elif (["test-scan-for-todo-comments","test-scan-for-todo-comments-ignore"] | all(. as $name |
-      $ci.jobs[$name].uses == "./.github/workflows/scan-for-todo-comments-readonly.yaml" and
+      $ci.jobs[$name].uses == "$/.github/workflows/scan-for-todo-comments-readonly.yaml" and
       $ci.jobs[$name].permissions == {contents:"read"} and
       $ci.jobs[$name].with["dry-run"] == true and $ci.jobs[$name].secrets == null and
       $ci.jobs[$name].if == $condition and
@@ -131,12 +131,12 @@ job App key	.workflow.jobs["dry-run"].env.EXTRA="${{ secrets.APP_PRIVATE_KEY }}"
 workflow credential	.workflow.env.GH_TOKEN="live-token"	production credentials
 persisted checkout	.workflow.jobs["dry-run"].steps |= map(if .with["persist-credentials"] == false then .with["persist-credentials"]=true else . end)	persisted credentials
 mutable fixture ref	.workflow.jobs["dry-run"].steps |= map(if .with.path then .with.ref="main" else . end)	workflow commit
-missing action	.workflow.jobs["dry-run"].steps |= map(select(.uses != "./.devantler-tech-actions/actions/create-issues-from-todos"))	actual offline action
-skipped action	.workflow.jobs["dry-run"].steps |= map(if .uses == "./.devantler-tech-actions/actions/create-issues-from-todos" then .if="false" else . end)	actual offline action
-ignored action failure	.workflow.jobs["dry-run"].steps |= map(if .uses == "./.devantler-tech-actions/actions/create-issues-from-todos" then .["continue-on-error"]=true else . end)	actual offline action
-lost ignore forwarding	.workflow.jobs["dry-run"].steps |= map(if .uses == "./.devantler-tech-actions/actions/create-issues-from-todos" then .with.ignore="" else . end)	actual offline action
-lost optional auth	.workflow.jobs["dry-run"].steps |= map(if .uses == "./.devantler-tech-actions/actions/create-issues-from-todos" then del(.with["optional-project-auth"]) else . end)	actual offline action
-live project	.workflow.jobs["dry-run"].steps |= map(if .uses == "./.devantler-tech-actions/actions/create-issues-from-todos" then .with.project="organization/devantler-tech/5" else . end)	actual offline action
+missing action	.workflow.jobs["dry-run"].steps |= map(select(.uses != "$/actions/create-issues-from-todos"))	actual offline action
+skipped action	.workflow.jobs["dry-run"].steps |= map(if .uses == "$/actions/create-issues-from-todos" then .if="false" else . end)	actual offline action
+ignored action failure	.workflow.jobs["dry-run"].steps |= map(if .uses == "$/actions/create-issues-from-todos" then .["continue-on-error"]=true else . end)	actual offline action
+lost ignore forwarding	.workflow.jobs["dry-run"].steps |= map(if .uses == "$/actions/create-issues-from-todos" then .with.ignore="" else . end)	actual offline action
+lost optional auth	.workflow.jobs["dry-run"].steps |= map(if .uses == "$/actions/create-issues-from-todos" then del(.with["optional-project-auth"]) else . end)	actual offline action
+live project	.workflow.jobs["dry-run"].steps |= map(if .uses == "$/actions/create-issues-from-todos" then .with.project="organization/devantler-tech/5" else . end)	actual offline action
 skipped prepare	.workflow.jobs["dry-run"].steps |= map(if (.run // "" | endswith(" prepare")) then .if="false" else . end)	exact-one verification
 printed verdict	.workflow.jobs["dry-run"].steps |= map(if (.run // "" | endswith(" verify-once")) then .run="echo verified" else . end)	exact-one verification
 ignored verifier failure	.workflow.jobs["dry-run"].steps |= map(if (.run // "" | endswith(" verify-once")) then .["continue-on-error"]=true else . end)	exact-one verification

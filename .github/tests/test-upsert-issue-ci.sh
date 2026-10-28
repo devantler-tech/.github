@@ -42,7 +42,7 @@ guard() {
         .if == null and (."continue-on-error" // false) == false))) | not
     then error("offline behavior and boundary checks must run and propagate failures")
     elif any(.jobs["test-upsert-issue"].steps[];
-      .uses == "./actions/upsert-issue" and .if == null and
+      .uses == "$/actions/upsert-issue" and .if == null and
       (."continue-on-error" // false) == false) | not
     then error("hosted offline composite-action smoke test must run")
     elif (.jobs["ci-required-checks"].needs | index("test-upsert-issue")) == null
@@ -85,11 +85,11 @@ unguarded merge-group execution	.jobs["test-upsert-issue"].if=null	job must run
 unsafe merge-group disjunction	.jobs["test-upsert-issue"].if="${{ true || github.event_name != 'merge_group' }}"	job must run
 missing required dependency	.jobs["ci-required-checks"].needs |= map(select(. != "test-upsert-issue"))	gate required CI
 missing required verdict	.jobs["ci-required-checks"].steps |= map(if .env.JOB_RESULTS then .env.JOB_RESULTS |= gsub("needs.test-upsert-issue.result"; "needs.other.result") else . end)	evaluate the offline issue result
-live action elsewhere	.jobs.unexpected={steps:[{uses:"./actions/upsert-issue"}]}	live upsert-issue invocation
-live action with trailing slash	.jobs.unexpected={steps:[{uses:"./actions/upsert-issue/"}]}	live upsert-issue invocation
-live action with dot segments	.jobs.unexpected={steps:[{uses:"./actions/other/../upsert-issue/."}]}	live upsert-issue invocation
-live smoke token	.jobs["test-upsert-issue"].steps |= map(if .uses == "./actions/upsert-issue" then .with["github-token"]="live-token" else . end)	live upsert-issue invocation
-live smoke repository	.jobs["test-upsert-issue"].steps |= map(if .uses == "./actions/upsert-issue" then .with.repository="devantler-tech/.github" else . end)	live upsert-issue invocation
-missing hosted smoke	.jobs["test-upsert-issue"].steps |= map(select(.uses != "./actions/upsert-issue"))	hosted offline composite-action
+live action elsewhere	.jobs.unexpected={steps:[{uses:"$/actions/upsert-issue"}]}	live upsert-issue invocation
+live action with trailing slash	.jobs.unexpected={steps:[{uses:"$/actions/upsert-issue/"}]}	live upsert-issue invocation
+live action with dot segments	.jobs.unexpected={steps:[{uses:"$/actions/other/../upsert-issue/."}]}	live upsert-issue invocation
+live smoke token	.jobs["test-upsert-issue"].steps |= map(if .uses == "$/actions/upsert-issue" then .with["github-token"]="live-token" else . end)	live upsert-issue invocation
+live smoke repository	.jobs["test-upsert-issue"].steps |= map(if .uses == "$/actions/upsert-issue" then .with.repository="devantler-tech/.github" else . end)	live upsert-issue invocation
+missing hosted smoke	.jobs["test-upsert-issue"].steps |= map(select(.uses != "$/actions/upsert-issue"))	hosted offline composite-action
 CASES
 echo "PASS: upsert-issue CI is offline, read-only and required"

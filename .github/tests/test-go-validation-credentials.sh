@@ -17,13 +17,13 @@ const dir = process.argv[2];
 const w = JSON.parse(fs.readFileSync(`${dir}/workflow.json`));
 const ci = JSON.parse(fs.readFileSync(`${dir}/ci.json`));
 const production = JSON.parse(fs.readFileSync(`${dir}/production.json`));
-const interfaces = Object.values(ci.jobs).filter(j => j.uses === './.github/workflows/validate-go-project.yaml');
+const interfaces = Object.values(ci.jobs).filter(j => j.uses === '$/.github/workflows/validate-go-project.yaml');
 assert.equal(interfaces.length, 1, 'production workflow must have only its non-executing interface call');
 assert.deepEqual(interfaces[0].with, {'working-directory': '', 'apply-signed-fixes': false}, 'production interface selected executable validation');
 assert.equal(interfaces[0].secrets, undefined, 'production interface forwarded credentials');
 assert.deepEqual(production.jobs.lint.needs, ['changes'], 'production reporter lost its skipped prerequisite');
 assert.doesNotMatch(production.jobs.lint.if, /\b(always|success|failure|cancelled)\s*\(/i, 'production reporter overrides skipped prerequisite');
-const callers = Object.values(ci.jobs).filter(j => j.uses === './.github/workflows/validate-go-project-readonly.yaml');
+const callers = Object.values(ci.jobs).filter(j => j.uses === '$/.github/workflows/validate-go-project-readonly.yaml');
 assert.equal(callers.length, 6, 'all six Go fixture callers must remain');
 assert.equal(ci.jobs['test-validate-go-postgresql-fixture'].with['enable-postgresql-fixture'], true, 'native database caller lost explicit admission');
 for (const j of callers) {
