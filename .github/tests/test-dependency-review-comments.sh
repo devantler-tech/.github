@@ -27,7 +27,7 @@ check_workflow() {
     (.jobs["dependency-review"].steps as $steps |
       [$steps[] | select(.id == "cfg")] as $cfg |
       [$steps[] | select(.id == "comment-token")] as $guard |
-      [$steps[] | select(.uses == "./.devantler-tech-actions/actions/dependency-review")] as $review |
+      [$steps[] | select(.uses == "$/actions/dependency-review")] as $review |
       ($cfg | length) == 1 and ($guard | length) == 1 and ($review | length) == 1 and
       $cfg[0].env.IN_COMMENT_SUMMARY == "${{ inputs.comment-summary-in-pr }}" and
       $cfg[0].env.IN_WARN_ONLY == "${{ inputs.warn-only }}" and
@@ -40,10 +40,8 @@ check_workflow() {
       ([range(0; $steps | length) | select($steps[.].id == "cfg")][0] <
        [range(0; $steps | length) | select($steps[.].id == "comment-token")][0]) and
       ([range(0; $steps | length) | select($steps[.].id == "comment-token")][0] <
-       [range(0; $steps | length) | select($steps[.].uses == "./.devantler-tech-actions/actions/dependency-review")][0]) and
-      ([$steps[] | select(.with.path == ".devantler-tech-actions") |
-        .with.repository == "${{ job.workflow_repository }}" and
-        .with.ref == "${{ job.workflow_sha }}" and .with["persist-credentials"] == false] == [true]))
+       [range(0; $steps | length) | select($steps[.].uses == "$/actions/dependency-review")][0]) and
+      ([$steps[] | select(.with.path == ".devantler-tech-actions")] == []))
   ' "$tmp/workflow.json" >/dev/null || return 1
   cfg="$(jq -r '.jobs["dependency-review"].steps[] | select(.id == "cfg") | .run' "$tmp/workflow.json")"
   guard="$(jq -r '.jobs["dependency-review"].steps[] | select(.id == "comment-token") | .run' "$tmp/workflow.json")"
@@ -305,10 +303,13 @@ mutations=(
   '(.jobs["dependency-review"].steps[] | select(.id == "comment-token")).env.REVIEW_TOKEN = "${{ github.token }}"'
   '(.jobs["dependency-review"].steps[] | select(.id == "comment-token")).run = "echo fixture-comment-token"'
   '(.jobs["dependency-review"].steps[] | select(.id == "cfg")).run = "true"'
-  '(.jobs["dependency-review"].steps[] | select(.uses == "./.devantler-tech-actions/actions/dependency-review")).with["repo-token"] = "${{ github.token }}"'
-  '(.jobs["dependency-review"].steps[] | select(.uses == "./.devantler-tech-actions/actions/dependency-review")).with["repo-token"] = "${{ secrets.repo-token || github.token }}"'
-  '(.jobs["dependency-review"].steps[] | select(.uses == "./.devantler-tech-actions/actions/dependency-review")).with["comment-summary-in-pr"] = "${{ inputs.comment-summary-in-pr }}"'
-  '(.jobs["dependency-review"].steps[] | select(.with.path == ".devantler-tech-actions")).with.ref = "main"'
+  '(.jobs["dependency-review"].steps[] | select(.uses == "$/actions/dependency-review")).with["repo-token"] = "${{ github.token }}"'
+  '(.jobs["dependency-review"].steps[] | select(.uses == "$/actions/dependency-review")).with["repo-token"] = "${{ secrets.repo-token || github.token }}"'
+  '(.jobs["dependency-review"].steps[] | select(.uses == "$/actions/dependency-review")).with["comment-summary-in-pr"] = "${{ inputs.comment-summary-in-pr }}"'
+  '(.jobs["dependency-review"].steps[] | select(.uses == "$/actions/dependency-review")).uses = "$/actions/dependency-review@main"'
+  '.jobs["dependency-review"].steps += [{"uses":"actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1","with":{"path":".devantler-tech-actions"}}]'
+  '(.jobs["dependency-review"].steps[] | select(.uses == "$/actions/dependency-review")).uses = "./.devantler-tech-actions/actions/dependency-review"'
+  '(.jobs["dependency-review"].steps[] | select(.uses == "$/actions/dependency-review")).uses = "$/actions/another-action"'
   '.jobs["dependency-review"].steps |= reverse'
 )
 for mutation in "${mutations[@]}"; do

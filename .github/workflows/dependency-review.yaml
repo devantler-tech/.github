@@ -158,20 +158,10 @@ jobs:
               ;;
           esac
 
-      # Self-reference: check out THIS workflow's own repo at the exact commit it is running
-      # from (job.workflow_repository / job.workflow_sha), then call the sibling action by
-      # local path. Same-commit resolution — no release lag, no tag refs; consumer SHA-pinning
-      # policies see only the pinned actions/checkout plus a local `./` path.
-      - name: 📥 Checkout devantler-tech/.github (this workflow's commit)
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          repository: ${{ job.workflow_repository }}
-          ref: ${{ job.workflow_sha }}
-          path: .devantler-tech-actions
-          persist-credentials: false
-
+      # Resolve this sibling action from the defining workflow's exact source,
+      # independently of the consumer workspace; no helper checkout is needed.
       - name: 🛡️ Dependency Review
-        uses: ./.devantler-tech-actions/actions/dependency-review
+        uses: $/actions/dependency-review
         with:
           fail-on-severity: ${{ steps.cfg.outputs.fail-on-severity }}
           fail-on-scopes: ${{ steps.cfg.outputs.fail-on-scopes }}
