@@ -1176,7 +1176,8 @@ no successful diagnosis. No tags, release records, channel notes or aliases are 
 publishes this catalogue's missing GitHub release for one stable tag whose original release run
 pushed the tag but failed before publishing. It is a repository-owned manual workflow, disabled by
 default, not a reusable consumer interface. It shares this repository's normal release queue.
-No production consumer adopted the former export; internal validation does not justify one.
+Production consumers own their manual workflow; internal validation does not justify a reusable
+consumer interface.
 
 `enable-recovery` is a temporary rollout flag. `confirm-publication` is the operator's explicit
 consent, and it stays when the flag is retired. Both must be true, and the event must be
@@ -1186,9 +1187,14 @@ The job builds the inspector and publisher from this catalogue's immutable sourc
 credential exists. It then admits the incident with a read-only token for that one repository. If a
 matching release is already published, it stops there as a verified no-op and never requests a
 writer token. Only for a missing release does it request a token with Contents write and Actions
-read for that one repository, and run the publisher once. The publisher proves push access, takes
-two complete release inventories, re-admits the incident and sends at most one create-release
-request with `make_latest` set to `"false"`; it never retries a write. Its JSON result is printed.
+read for that one repository, and run the publisher once. The publisher proves that token has
+Contents write using GitHub's [non-persisting release-notes preview](https://docs.github.com/en/rest/releases/releases#generate-release-notes-content-for-a-release).
+The preview uses a separate probe tag at the admitted default branch; it saves no release or tag,
+and its content is discarded. Repository role metadata alone does not prove a token's permissions.
+The publisher then takes two complete release inventories, re-admits the incident and sends at
+most one create-release request with `make_latest` set to `"false"`; it never retries a write.
+Its JSON result is printed.
+The published body is the deterministic recovery receipt, never the preview or reconstructed notes.
 An unknown outcome fails; dispatch again to reconcile through fresh reads.
 
 1. Diagnose the incident with [Inspect release recovery](#inspect-a-stranded-github-release), saving the
@@ -1221,7 +1227,7 @@ Run `bash .github/tests/test-publish-release-recovery.sh` after changing the wor
 consent, scope, immutable-source and read-before-write boundaries with negative controls, verifies
 the complete internal offline projection, and runs the shipped steps without credentials. It does
 not prove a real publication: protected consumer
-rollout, the App's observed push permission and the flag decision remain tracked in
+rollout, the App's observed writer capability and the flag decision remain tracked in
 [#603](https://github.com/devantler-tech/.github/issues/603).
 
 </details>

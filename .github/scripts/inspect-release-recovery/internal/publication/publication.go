@@ -3,8 +3,8 @@
 // It re-admits the incident through the inspector's GET-only admission, proves the writer
 // credential can push, takes a complete release inventory twice, re-admits immediately
 // before writing, then sends at most one create-release request and reads the result back
-// independently. It never creates or moves a tag, uploads assets, generates notes, or
-// changes which release is latest. It never retries the write: an unknown outcome fails,
+// independently. It never creates or moves a tag, uploads assets, publishes generated notes,
+// or changes which release is latest. It never retries the write: an unknown outcome fails,
 // and a later explicit run reconciles through fresh reads.
 package publication
 
@@ -70,17 +70,52 @@ type inventory struct {
 	Latest   string // the latest release's id, or "" when the repository has none
 }
 
-// capability proves, with the writer credential, that it can push to the exact repository.
-// Draft releases are visible only with push access, so the inventory depends on this proof.
-// Missing permission metadata fails closed.
+// capability proves Contents write with GitHub's permission-gated, non-persisting preview.
+// Repository permissions describe a role and cannot establish a granular token's authority.
+// Draft visibility depends on this proof. The preview targets a separate probe tag at the
+// admitted default branch; its content is discarded, never used to reconstruct release notes.
 func (p *publisher) capability(ctx context.Context, a *inspection.Admission, token string) error {
 	value, _, err := p.reader.Get(ctx, "/repos/"+a.Repository, token, false)
 	if err != nil {
 		return fmt.Errorf("writer repository read: %w", err)
 	}
 	repo := object(value)
-	if repo["full_name"] != a.Repository || object(repo["permissions"])["push"] != true {
-		return errors.New("writer credential has no proven push access to the repository")
+	if repo["full_name"] != a.Repository || repo["default_branch"] != a.DefaultBranch ||
+		repo["visibility"] != "public" || repo["private"] != false || repo["archived"] != false || repo["disabled"] != false {
+		return errors.New("writer repository no longer matches the admitted public repository")
+	}
+	// GitHub documents generate-notes as requiring Contents write and saving no content:
+	// https://docs.github.com/en/rest/releases/releases#generate-release-notes-content-for-a-release
+	payload, err := json.Marshal(map[string]string{
+		"tag_name": "release-recovery-capability-probe", "target_commitish": a.DefaultBranch,
+	})
+	if err != nil {
+		return errors.New("could not encode the writer capability request")
+	}
+	request, err := http.NewRequestWithContext(ctx, http.MethodPost, p.base+"/repos/"+a.Repository+"/releases/generate-notes", bytes.NewReader(payload))
+	if err != nil {
+		return errors.New("invalid fixed writer capability request")
+	}
+	request.Header.Set("Authorization", "Bearer "+token)
+	request.Header.Set("Accept", "application/vnd.github+json")
+	request.Header.Set("X-GitHub-Api-Version", "2022-11-28")
+	request.Header.Set("Content-Type", "application/json")
+	response, err := p.client.Do(request)
+	if err != nil {
+		return errors.New("writer capability request failed")
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		return fmt.Errorf("writer capability was refused with status %d", response.StatusCode)
+	}
+	value, err = inspection.ReadJSONBody(response)
+	if err != nil {
+		return fmt.Errorf("writer capability response is unreadable: %w", err)
+	}
+	preview := object(value)
+	_, bodyOK := preview["body"].(string)
+	if text(preview["name"]) == "" || !bodyOK {
+		return errors.New("writer capability response is malformed")
 	}
 	return nil
 }
@@ -281,7 +316,7 @@ func report(out io.Writer, a *inspection.Admission, id string, seen *observation
 		"release_id": "", "publication_requests": 0, "release_record": "not-inspected",
 		"latest_release_before": "not-inspected", "latest_release_after": "not-inspected"}
 	if seen != nil {
-		// The verified record carries the receipt body; no notes were generated or reconstructed.
+		// The verified record carries the receipt body, never the discarded capability preview.
 		fields["result"], fields["release_id"], fields["publication_requests"] = "published", id, 1
 		fields["release_record"] = "matches-request"
 		fields["latest_release_before"], fields["latest_release_after"] = seen.LatestBefore, seen.LatestAfter
