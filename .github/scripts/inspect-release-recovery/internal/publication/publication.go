@@ -218,7 +218,9 @@ func matches(release map[string]any, want map[string]any) bool {
 // create sends the single create-release request. It is never retried.
 func (p *publisher) create(ctx context.Context, a *inspection.Admission, token string) (string, error) {
 	fields := requested(a)
-	fields["target_commitish"] = a.SourceSHA
+	// target_commitish selects a new tag's source. Recovery requires and re-admits an
+	// existing tag, so omit this unused input and its separate target authorization.
+	// The tag/source binding remains mandatory before publication and during readback.
 	fields["generate_release_notes"] = false
 	// The endpoint's make_latest is a string enum; anything else defaults to "true".
 	fields["make_latest"] = "false"
