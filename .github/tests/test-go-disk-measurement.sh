@@ -61,6 +61,54 @@ run_case() {
   sed -n 's/^GO_DISK_USAGE //p' "$scratch/result" > "$scratch/receipt.json"
   jq -e 'type == "object"' "$scratch/receipt.json" > /dev/null || fail 'missing measurement receipt'
 }
+# Native logs may be truncated: an opted-in file must preserve the exact receipt,
+# including a failed command, without changing the command's result.
+export GO_DISK_RECEIPT_FILE="$scratch/exported.json"
+run_case 23 test bash -c 'exit 23'
+[[ -f "$GO_DISK_RECEIPT_FILE" ]] || fail 'opted-in receipt was not retained outside the log'
+cmp "$scratch/receipt.json" "$GO_DISK_RECEIPT_FILE" || fail 'retained receipt differs from the observed command'
+[[ "$(find "$scratch" -name exported.json -perm 600 | wc -l | tr -d ' ')" == 1 ]] || fail 'retained receipt is not private'
+GO_DISK_RECEIPT_FILE="$scratch/missing/receipt.json" run_case 23 test bash -c 'exit 23'
+[[ -s "$scratch/stderr" ]] || fail 'receipt storage failure was silent'
+unset GO_DISK_RECEIPT_FILE
+# Execute native evidence admission: a successful Go command must not turn an
+# unknown, mismatched or missing observation into a successful capacity trial.
+yq -r '.jobs.measure.steps[] | select(.name == "Require complete observations") | .run' "$root/.github/workflows/measure-go-disk.yaml" > "$scratch/admit"
+[[ -s "$scratch/admit" ]] || fail 'native trial has no complete-evidence admission'
+mkdir -p "$scratch/native/go-disk-receipts"
+native="$scratch/native/go-disk-receipts"
+cat > "$scratch/usage.json" <<'JSON'
+{"status":"measured","command_exit":0,"run_id":"123","attempt":"1","head":"catalogue-head","workflow_sha":"catalogue-head","phase":"build","samples":3,"initial_available_kib":94371840,"final_available_kib":73400320,"minimum_available_kib":73400320,"maximum_used_kib":52428800}
+JSON
+cat > "$scratch/identity.json" <<'JSON'
+{"source":"catalogue-head","run":"123","attempt":"1","consumer":"3115397431e2bdf31d911930908a9002a93a4340","phase":"build","policy":"capacity","budget_gib":64,"image":"ubuntu24","image_version":"20261026.1","cache":false}
+JSON
+for scenario in complete unknown missing-capacity wrong-phase wrong-head wrong-source wrong-image wrong-budget wrong-decision malformed missing; do
+  cp "$scratch/usage.json" "$native/command.json"
+  jq '.phase = "cleanup-build"' "$scratch/usage.json" > "$native/cleanup.json"
+  cp "$scratch/identity.json" "$native/identity.json"
+  printf '%s\n' '{"status":"measured","decision":"retain","minimum_free_gib":64,"before_available_kib":94371840,"after_available_kib":94371840}' > "$native/decision.json"
+  printf '%s\n' go1.26.3 > "$native/toolchain.txt"
+  case "$scenario" in
+    unknown) jq '.status = "unknown"' "$scratch/usage.json" > "$native/command.json" ;;
+    missing-capacity) jq 'del(.minimum_available_kib)' "$scratch/usage.json" > "$native/command.json" ;;
+    wrong-phase) jq '.phase = "coverage"' "$scratch/usage.json" > "$native/command.json" ;;
+    wrong-head) jq '.head = "other-head"' "$scratch/usage.json" > "$native/command.json" ;;
+    wrong-source) jq '.source = "other-source"' "$scratch/identity.json" > "$native/identity.json" ;;
+    wrong-image) jq 'del(.image_version)' "$scratch/identity.json" > "$native/identity.json" ;;
+    wrong-budget) jq '.budget_gib = 0' "$scratch/identity.json" > "$native/identity.json" ;;
+    wrong-decision) printf '%s\n' '{"status":"measured","decision":"retain","minimum_free_gib":64,"before_available_kib":1,"after_available_kib":1}' > "$native/decision.json" ;;
+    malformed) printf '%s\n' '{}' '{}' >> "$native/command.json" ;;
+    missing) rm "$native/cleanup.json" ;;
+  esac
+  rc=0
+  RUNNER_TEMP="$scratch/native" GITHUB_RUN_ID=123 GITHUB_RUN_ATTEMPT=1 GITHUB_SHA=catalogue-head PHASE=build POLICY=capacity BUDGET=64 bash -euo pipefail "$scratch/admit" > "$scratch/admit-result" 2>&1 || rc=$?
+  if [[ "$scenario" == complete ]]; then
+    [[ "$rc" == 0 ]] || fail 'complete native capacity evidence was refused'
+  else
+    [[ "$rc" != 0 ]] || fail "native capacity trial accepted $scenario evidence"
+  fi
+done
 # A transient allocation must remain visible after the command removes it.
 run_case 0 build bash -c "touch \"\$DISK_FIXTURE/allocated\"; sleep 2; rm \"\$DISK_FIXTURE/allocated\""
 jq -e '.status == "measured" and .initial_available_kib == 8000 and .minimum_available_kib == 3000 and .maximum_used_kib == 7000 and .final_available_kib == 8000 and .samples >= 3 and .interval_seconds == 1 and .command_exit == 0' "$scratch/receipt.json" >/dev/null || fail 'transient disk pressure was lost'

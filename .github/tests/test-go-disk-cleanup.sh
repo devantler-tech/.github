@@ -43,6 +43,7 @@ export PATH="$scratch/bin:$PATH"
 fail() { echo "FAIL: $*" >&2; exit 1; }
 cp "$root/.github/scripts/measure-go-disk.sh" "$scratch/measure-go-disk.sh"
 export RUNNER_TEMP="$scratch"
+export GO_DISK_CLEANUP_RECEIPT_FILE="$scratch/retained-cleanup.json"
 for enabled in false true; do
  export MEASURE_DISK_USAGE="$enabled"
  for job in build test coverage; do
@@ -56,17 +57,19 @@ for enabled in false true; do
   : > "$scratch/deletions"
   MINIMUM_FREE_DISK_GIB="$direct_budget" DISK_CASE=high bash -euo pipefail "$scratch/step" > "$scratch/result" || fail "$job rejects absent direct-run budget"
   [[ "$(wc -l < "$scratch/deletions" | tr -d ' ')" == 1 ]] || fail "$job absent budget does not retain unconditional cleanup"
-  for budget in 32 0; do
+  for budget in 32 64 0; do
     for scenario in high boundary low empty partial malformed extra inconsistent; do
       : > "$scratch/deletions"
       MINIMUM_FREE_DISK_GIB="$budget" DISK_CASE="$scenario" bash -euo pipefail "$scratch/step" > "$scratch/result"
-      if [[ "$budget" == 32 && ( "$scenario" == high || "$scenario" == boundary ) ]]; then
+      if [[ ( "$budget" == 32 && ( "$scenario" == high || "$scenario" == boundary ) ) || ( "$budget" == 64 && "$scenario" == high ) ]]; then
         [[ ! -s "$scratch/deletions" ]] || fail "$job reclaims despite sufficient measured capacity ($scenario)"
       else
         [[ "$(wc -l < "$scratch/deletions" | tr -d ' ')" == 1 ]] || fail "$job does not retain cleanup ($budget $scenario)"
         [[ "$(cat "$scratch/deletions")" == *"/usr/local/lib/android"*"/usr/share/miniconda"* ]] || fail 'cleanup targets changed'
       fi
       sed -n 's/^GO_DISK_CLEANUP //p' "$scratch/result" > "$scratch/receipt"
+      [[ -f "$GO_DISK_CLEANUP_RECEIPT_FILE" ]] || fail 'cleanup decision was not retained outside the log'
+      cmp "$scratch/receipt" "$GO_DISK_CLEANUP_RECEIPT_FILE" || fail 'retained cleanup decision differs from the actual decision'
       jq -e --argjson budget "$budget" '.minimum_free_gib == $budget and (.decision == "retain" or .decision == "reclaim")' "$scratch/receipt" >/dev/null || fail 'missing attributable cleanup receipt'
       if [[ "$scenario" == empty || "$scenario" == partial || "$scenario" == malformed || "$scenario" == extra || "$scenario" == inconsistent ]]; then
         jq -e '.status == "unknown" and .decision == "reclaim" and .before_available_kib == null' "$scratch/receipt" >/dev/null || fail 'unreadable capacity authorized bypass'
@@ -90,6 +93,8 @@ for enabled in false true; do
     [[ "$rc" == 2 && ! -s "$scratch/deletions" ]] || fail "$job accepted invalid input '$budget'"
   done
   MINIMUM_FREE_DISK_GIB=0 DELETE_EXIT=1 bash -euo pipefail "$scratch/step" > /dev/null || fail 'cleanup stopped being best-effort'
+  GO_DISK_CLEANUP_RECEIPT_FILE="$scratch/missing/receipt.json" MINIMUM_FREE_DISK_GIB=0 bash -euo pipefail "$scratch/step" > "$scratch/result" 2> "$scratch/storage-error" || fail 'receipt storage replaced cleanup result'
+  [[ -s "$scratch/storage-error" ]] || fail 'cleanup receipt storage failure was silent'
  done
 done
 # Native large-consumer observations must run from reviewed main without write authority.
@@ -99,6 +104,16 @@ yq -o=json '.' "$trial" | jq -e '
   .jobs.measure.if == "${{ github.ref == '\''refs/heads/main'\'' && inputs.enabled == true }}" and
   .permissions == {} and .jobs.measure.permissions == {contents:"read"} and
   .jobs.measure.strategy.matrix.phase == ["build","coverage"] and
+  .jobs.measure.strategy.matrix.policy == [{name:"reclaim",budget:0},{name:"capacity",budget:64}] and
+  ([.jobs.measure.steps[]|select(.name == "🧹 Free disk space")|.env.MINIMUM_FREE_DISK_GIB] == ["${{ matrix.policy.budget }}"]) and
+  ([.jobs.measure.steps[]|select(.name == "🧹 Free disk space")|.env.GO_DISK_CLEANUP_RECEIPT_FILE] == ["${{ runner.temp }}/go-disk-receipts/decision.json"]) and
+  ([.jobs.measure.steps[]|select(.name == "🧹 Free disk space")|.env.GO_DISK_RECEIPT_FILE] == ["${{ runner.temp }}/go-disk-receipts/cleanup.json"]) and
+  ([.jobs.measure.steps[]|select(.name == "Measure the actual consumer command")|.env.GO_DISK_RECEIPT_FILE] == ["${{ runner.temp }}/go-disk-receipts/command.json"]) and
+  ([.jobs.measure.steps[]|select((.uses//"")|startswith("actions/upload-artifact@"))] |
+    length == 1 and .[0].if == "${{ !cancelled() }}" and
+    .[0].with.path == "${{ runner.temp }}/go-disk-receipts/" and
+    .[0].with.name == "go-disk-${{ matrix.phase }}-${{ matrix.policy.name }}" and
+    .[0].with."if-no-files-found" == "error") and
   ([.jobs.measure.steps[]|select((.uses//"")|startswith("actions/checkout@"))|.with."persist-credentials"] == [false,false]) and
   ([.jobs.measure.steps[]|select(.with.repository == "devantler-tech/ksail")|.with.ref]|length) == 1' >/dev/null || fail 'unsafe large-consumer measurement boundary'
 for job in build test coverage; do
