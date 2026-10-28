@@ -39,7 +39,12 @@ The same Go module holds a separate `cmd/publish-release-recovery` command. Only
 repository-owned manual `publish-release-recovery.yaml` calls it, after a confirmed dispatch, a read-only
 admission and only then a writer token; run `bash .github/tests/test-publish-release-recovery.sh`
 after changing it. It re-runs the inspector's admission with its writer credential, so the inspection command
-stays read-only. It refuses to publish unless that credential can push, two complete release
+stays read-only. It proves the writer token's Contents write permission with GitHub's non-persisting
+`releases/generate-notes` preview, using a separate fixed probe tag at the admitted default branch.
+Repository role metadata is not token authority. Discard the bounded preview response; never use it
+to reconstruct the original notes or include it in logs or the published receipt. A denied,
+unavailable or malformed proof stops before draft inventory and publication.
+It refuses to publish unless that capability is proven, two complete release
 inventories agree, no draft names the tag (or no tag), and a second admission matches the first. It
 then sends exactly one create-release request: the existing tag, the honest recovery receipt, no
 generated notes or assets, and `make_latest` as the JSON string `"false"`. Afterwards it reads back
@@ -49,8 +54,9 @@ that claims nothing it did not check. It never retries a write. A server
 error, a lost connection or a failed readback is reported as an unknown outcome, naming any release
 it created, and a later run reconciles it through fresh reads.
 
-No production consumer adopted this recovery workflow. It is not a public reusable interface:
-other products own their recovery workflow until real repeated use justifies extraction.
+This recovery workflow is not a public reusable interface: other products own their recovery
+workflow until real repeated use justifies extraction. Their protected adoption and real
+publication evidence remain required; source-level tests alone do not prove recovery.
 `release-recovery-offline-fixture.yaml` is an internal generated projection containing only the
 complete credential-free offline job, with no publisher job or secret interface. Regenerate it
 with `bash .github/scripts/generate-release-recovery-fixture.sh`; the independent production

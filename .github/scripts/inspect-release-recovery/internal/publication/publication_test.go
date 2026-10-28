@@ -40,15 +40,19 @@ func release(id int, tag string) map[string]any {
 // github is a stateful stand-in for the GitHub REST API: a POST really creates the release
 // that later reads observe, so readback and rerun reconciliation are exercised end to end.
 type github struct {
-	mu         sync.Mutex
-	releases   []map[string]any // newest first, as the API lists them
-	latest     int              // id of the latest release, 0 for none
-	posts      []map[string]any
-	requests   []string
-	counts     map[string]int
-	edit       func(r *http.Request, count int, status *int, body *string) // adjust a GET response
-	onPost     func(w http.ResponseWriter, created map[string]any) bool    // true when it wrote the response
-	unexpected []string
+	mu            sync.Mutex
+	releases      []map[string]any // newest first, as the API lists them
+	latest        int              // id of the latest release, 0 for none
+	posts         []map[string]any
+	previews      []map[string]any // capability checks do not persist a release or tag
+	previewStatus int
+	previewBody   string
+	previewType   string
+	requests      []string
+	counts        map[string]int
+	edit          func(r *http.Request, count int, status *int, body *string) // adjust a GET response
+	onPost        func(w http.ResponseWriter, created map[string]any) bool    // true when it wrote the response
+	unexpected    []string
 }
 
 func newGitHub() *github {
@@ -143,6 +147,11 @@ func (g *github) serve(t *testing.T) *httptest.Server {
 				g.unexpected = append(g.unexpected, "malformed publication payload")
 			}
 			g.posts = append(g.posts, payload)
+			if g.previewStatus == http.StatusForbidden {
+				w.WriteHeader(http.StatusForbidden)
+				_, _ = io.WriteString(w, `{"message":"Resource not accessible with this credential"}`)
+				return
+			}
 			created := release(18, text(payload["tag_name"]))
 			created["target_commitish"] = payload["target_commitish"]
 			created["body"] = payload["body"]
@@ -153,12 +162,151 @@ func (g *github) serve(t *testing.T) *httptest.Server {
 			g.releases = append([]map[string]any{created}, g.releases...)
 			w.WriteHeader(http.StatusCreated)
 			_, _ = io.WriteString(w, encode(created))
+		case r.Method == http.MethodPost && r.URL.Path == repo+"/releases/generate-notes":
+			raw, _ := io.ReadAll(r.Body)
+			var payload map[string]any
+			if err := json.Unmarshal(raw, &payload); err != nil || len(payload) != 2 ||
+				text(payload["tag_name"]) == "" || payload["tag_name"] == "v1.222.1" || payload["target_commitish"] != "main" {
+				g.unexpected = append(g.unexpected, "capability preview did not use a separate tag at the admitted default branch")
+			}
+			g.previews = append(g.previews, payload)
+			if r.Header.Get("Content-Type") != "application/json" || r.Header.Get("Accept") != "application/vnd.github+json" ||
+				r.Header.Get("X-GitHub-Api-Version") != "2022-11-28" {
+				g.unexpected = append(g.unexpected, "capability preview omitted the fixed API headers")
+			}
+			status := g.previewStatus
+			if status == 0 {
+				status = http.StatusOK
+			}
+			body := g.previewBody
+			if body == "" {
+				body = `{"name":"Capability preview","body":""}`
+			}
+			if g.previewType != "" {
+				w.Header().Set("Content-Type", g.previewType)
+			}
+			w.WriteHeader(status)
+			_, _ = io.WriteString(w, body)
 		default:
 			g.unexpected = append(g.unexpected, "unreviewed "+r.Method+" "+r.URL.Path)
 			w.WriteHeader(http.StatusInternalServerError)
 			_, _ = io.WriteString(w, `{"message":"unreviewed request"}`)
 		}
 	}))
+}
+
+// Installation-token authority comes from its granted capability, not user-role metadata.
+// A read-only token can still describe a user/repository with push=true, so that field cannot
+// establish that the credential may inspect drafts or publish.
+func TestWriterCapabilityUsesServerPermissionProof(t *testing.T) {
+	t.Run("installation-metadata-omits-user-permissions", func(t *testing.T) {
+		g := newGitHub()
+		g.edit = func(r *http.Request, _ int, _ *int, body *string) {
+			if r.URL.Path == repo {
+				*body = strings.Replace(*body, `,"permissions":{"admin":false,"push":true,"pull":true}`, "", 1)
+			}
+		}
+		result, err := g.exercise(t)
+		if err != nil || result["result"] != "published" || len(g.previews) != 1 || len(g.posts) != 1 {
+			t.Fatalf("supported installation writer refused: result=%v err=%v previews=%d writes=%d", result, err, len(g.previews), len(g.posts))
+		}
+	})
+	t.Run("user-role-false-does-not-deny-granted-capability", func(t *testing.T) {
+		g := newGitHub()
+		g.edit = func(r *http.Request, _ int, _ *int, body *string) {
+			if r.URL.Path == repo {
+				*body = strings.Replace(*body, `"push":true`, `"push":false`, 1)
+			}
+		}
+		result, err := g.exercise(t)
+		if err != nil || result["result"] != "published" || len(g.previews) != 1 || len(g.posts) != 1 {
+			t.Fatalf("role metadata overrode granted capability: result=%v err=%v previews=%d writes=%d", result, err, len(g.previews), len(g.posts))
+		}
+	})
+	t.Run("user-metadata-cannot-authorize-read-only-token", func(t *testing.T) {
+		g := newGitHub()
+		g.previewStatus = http.StatusForbidden
+		_, err := g.exercise(t)
+		if err == nil || len(g.previews) != 1 || len(g.posts) != 0 {
+			t.Fatalf("read-only credential reached publication: err=%v previews=%d writes=%d", err, len(g.previews), len(g.posts))
+		}
+		for _, request := range g.requests {
+			if strings.HasPrefix(request, "GET "+repo+"/releases?") {
+				t.Fatalf("denied capability was treated as complete draft visibility: %s", request)
+			}
+		}
+	})
+}
+
+// A denied, unavailable or unreadable proof never permits a draft inventory or publication.
+func TestUnprovenWriterCapabilityStopsBeforeInventory(t *testing.T) {
+	cases := map[string]func(*github){
+		"unauthorized": func(g *github) { g.previewStatus = 401 },
+		"denied":       func(g *github) { g.previewStatus = 403 },
+		"not-found":    func(g *github) { g.previewStatus = 404 },
+		"rate-limited": func(g *github) { g.previewStatus = 429 },
+		"unavailable":  func(g *github) { g.previewStatus = 502 },
+		"redirect":     func(g *github) { g.previewStatus = 307 },
+		"malformed":    func(g *github) { g.previewBody = "not json" },
+		"duplicate":    func(g *github) { g.previewBody = `{"name":"a","name":"b","body":""}` },
+		"empty":        func(g *github) { g.previewBody = " " },
+		"wrong-type":   func(g *github) { g.previewBody = `[]` },
+		"missing-name": func(g *github) { g.previewBody = `{"body":""}` },
+		"missing-body": func(g *github) { g.previewBody = `{"name":"probe"}` },
+		"body-type":    func(g *github) { g.previewBody = `{"name":"probe","body":false}` },
+		"non-json":     func(g *github) { g.previewType = "text/html" },
+		"oversized":    func(g *github) { g.previewBody = strings.Repeat("x", 1024*1024+1) },
+		"sensitive-error-body": func(g *github) {
+			g.previewStatus, g.previewBody = 403, encode(map[string]string{"message": token})
+		},
+	}
+	for name, setup := range cases {
+		t.Run(name, func(t *testing.T) {
+			g := newGitHub()
+			setup(g)
+			if _, err := g.exercise(t); err == nil || !strings.Contains(err.Error(), "writer capability") {
+				t.Fatalf("unproven capability was not refused at the permission boundary: %v", err)
+			}
+			if len(g.previews) != 1 || len(g.posts) != 0 || g.counts["GET "+repo+"/releases"] != 0 || len(g.releases) != 1 {
+				t.Fatalf("unproven capability reached inventory or persisted state: previews=%d posts=%d", len(g.previews), len(g.posts))
+			}
+		})
+	}
+}
+
+// The writer must still address the same active public repository and default branch.
+func TestWriterRepositoryRecheckPrecedesCapability(t *testing.T) {
+	for name, change := range map[string]func(map[string]any){
+		"wrong-repository": func(r map[string]any) { r["full_name"] = "devantler-tech/other" },
+		"changed-branch":   func(r map[string]any) { r["default_branch"] = "other" },
+		"private":          func(r map[string]any) { r["private"] = true },
+		"visibility":       func(r map[string]any) { r["visibility"] = "private" },
+		"archived":         func(r map[string]any) { r["archived"] = true },
+		"disabled":         func(r map[string]any) { r["disabled"] = true },
+	} {
+		t.Run(name, func(t *testing.T) {
+			g := newGitHub()
+			g.edit = func(r *http.Request, count int, _ *int, body *string) {
+				// The first two reads admitted the original repository; change only the
+				// separate writer recheck, so a later unchanged read cannot hide this one.
+				if r.URL.Path == repo && count == 3 {
+					var value map[string]any
+					if err := json.Unmarshal([]byte(*body), &value); err != nil {
+						g.unexpected = append(g.unexpected, "malformed repository fixture")
+						return
+					}
+					change(value)
+					*body = encode(value)
+				}
+			}
+			if _, err := g.exercise(t); err == nil || !strings.Contains(err.Error(), "no longer matches") {
+				t.Fatalf("changed writer repository was not refused: %v", err)
+			}
+			if len(g.previews) != 0 || len(g.posts) != 0 || g.counts["GET "+repo+"/releases"] != 0 {
+				t.Fatal("changed repository reached capability, inventory or publication")
+			}
+		})
+	}
 }
 
 func (g *github) exercise(t *testing.T) (map[string]any, error) {
@@ -196,6 +344,7 @@ func admission() *inspection.Admission {
 // One request publishes the existing tag with the honest receipt and without touching latest.
 func TestPublishesOnceAndReadsBack(t *testing.T) {
 	g := newGitHub()
+	g.previewBody = encode(map[string]string{"name": "Discarded preview", "body": token})
 	result, err := g.exercise(t)
 	if err != nil {
 		t.Fatal(err)
@@ -205,6 +354,9 @@ func TestPublishesOnceAndReadsBack(t *testing.T) {
 	}
 	if len(g.posts) != 1 {
 		t.Fatalf("expected exactly one publication request, got %d", len(g.posts))
+	}
+	if len(g.previews) != 1 || g.previews[0]["tag_name"] != "release-recovery-capability-probe" {
+		t.Fatalf("publication omitted the non-persisting capability proof: %v", g.previews)
 	}
 	want := map[string]any{"tag_name": "v1.222.1", "target_commitish": source, "name": "v1.222.1", "body": Receipt(admission()),
 		"draft": false, "prerelease": false, "generate_release_notes": false, "make_latest": "false"}
@@ -239,7 +391,7 @@ func TestMatchingPublicationIsNoOp(t *testing.T) {
 		g := newGitHub()
 		g.releases = append([]map[string]any{release(17, "v1.222.1")}, g.releases...)
 		result, err := g.exercise(t)
-		if err != nil || result["result"] != "already-published" || len(g.posts) != 0 {
+		if err != nil || result["result"] != "already-published" || len(g.posts) != 0 || len(g.previews) != 0 {
 			t.Fatalf("expected a no-op, got %v %v posts=%d", result, err, len(g.posts))
 		}
 		if g.counts["GET "+repo+"/releases"] != 0 {
@@ -281,6 +433,7 @@ func TestRefusalsBeforeWriteSendNothing(t *testing.T) {
 			}
 		},
 		"missing-push-metadata": func(g *github) {
+			g.previewStatus = http.StatusForbidden
 			g.edit = func(r *http.Request, count int, _ *int, body *string) {
 				if r.URL.Path == repo {
 					*body = strings.Replace(*body, `,"permissions":{"admin":false,"push":true,"pull":true}`, "", 1)
@@ -288,6 +441,7 @@ func TestRefusalsBeforeWriteSendNothing(t *testing.T) {
 			}
 		},
 		"push-false": func(g *github) {
+			g.previewStatus = http.StatusForbidden
 			g.edit = func(r *http.Request, _ int, _ *int, body *string) {
 				if r.URL.Path == repo {
 					*body = strings.Replace(*body, `"push":true`, `"push":false`, 1)
@@ -346,8 +500,8 @@ func TestRefusalsBeforeWriteSendNothing(t *testing.T) {
 	}
 	reasons := map[string]string{
 		"wrong-identity":                 "tag does not resolve directly to the captured source",
-		"missing-push-metadata":          "no proven push access",
-		"push-false":                     "no proven push access",
+		"missing-push-metadata":          "writer capability was refused with status 403",
+		"push-false":                     "writer capability was refused with status 403",
 		"draft-on-later-page":            "a draft release for this tag",
 		"conflicting-record":             "a release record for this tag exists",
 		"inventory-beyond-bound":         "exceeds the supported bound",
