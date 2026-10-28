@@ -152,6 +152,14 @@ isolation test deliberately places complete catalogue source, including unrelate
 and coverage, in a separate action cache and proves an in-workspace copy still fails.
 Keep the credential, source-state, three-OS and selector refusal controls when changing it.
 
+Native action source directories are runner cache paths, separate from the workspace.
+Consumer assertions must compare implementation content with platform line-ending handling,
+not require the same filesystem path. Native patch exporters need no source checkout; remove
+workflow-created helper checkouts before Git captures consumer changes. Keep compatibility
+coverage for explicitly workspace-bound helpers without broadening their cleanup authority.
+A fixture that substitutes dependencies is its own generated, reviewed component rather than a
+runtime edit of the production source.
+
 Everything is SHA-pinned by convention and gated by `zizmor` (`unpinned-uses` policy `"*": hash-pin` — no by-owner allowances) and CodeQL's `actions/unpinned-tag`.
 
 ### Releases

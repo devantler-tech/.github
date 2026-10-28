@@ -83,7 +83,7 @@ fixes_run="$(
   yq -r '.jobs.lint.steps[] | select(.id == "fixes") | .run // ""' "$caller_workflow"
 )"
 exporter=""
-if [[ "$(yq -r '.jobs.lint.steps[] | select(.id == "fixes") | .uses // ""' "$caller_workflow")" == './.devantler-tech-actions/.github/actions/prepare-fixes' ]]; then
+if [[ "$(yq -r '.jobs.lint.steps[] | select(.id == "fixes") | .uses // ""' "$caller_workflow")" == '$/.github/actions/prepare-fixes' ]]; then
   exporter='.github/actions/prepare-fixes/action.yaml'
   fixes_run="$(yq -r '.runs.steps[] | select(.id == "prepare") | .run' "$exporter")"
 fi

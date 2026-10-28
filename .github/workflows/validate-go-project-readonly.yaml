@@ -355,14 +355,6 @@ jobs:
         run: go mod tidy
       # Anchored at the repository ROOT: `git add .` is cwd-scoped and this job's
       # defaults.run.working-directory can be a nested module.
-      - name: "\U0001F4E5 Checkout fix exporter"
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          repository: ${{ job.workflow_repository }}
-          ref: ${{ job.workflow_sha }}
-          path: .devantler-tech-actions
-          persist-credentials: false
-          sparse-checkout: .github/actions/prepare-fixes
       - name: "\U0001F4E6 Prepare and upload applied fixes"
         id: fixes
         uses: $/.github/actions/prepare-fixes
@@ -448,14 +440,6 @@ jobs:
           verify: false
       # Anchored at the repository ROOT: `git add .` is cwd-scoped and this job's
       # defaults.run.working-directory can be a nested module.
-      - name: "\U0001F4E5 Checkout fix exporter"
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          repository: ${{ job.workflow_repository }}
-          ref: ${{ job.workflow_sha }}
-          path: .devantler-tech-actions
-          persist-credentials: false
-          sparse-checkout: .github/actions/prepare-fixes
       - name: "\U0001F4E6 Prepare and upload applied fixes"
         id: fixes
         uses: $/.github/actions/prepare-fixes
@@ -843,18 +827,8 @@ jobs:
       # defaults.run.working-directory can be a nested module, which would silently drop any
       # untracked fix outside it. `git diff` emits root-relative paths regardless, which is what
       # apply-signed-fixes.yaml applies against.
-      - name: "\U0001F4E5 Checkout fix exporter"
-        if: ${{ !cancelled() && (success() || inputs.manual-workflow-fixes == true || inputs.manual-workflow-fixes == 'true') }}
-        id: fix-exporter
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          repository: ${{ job.workflow_repository }}
-          ref: ${{ job.workflow_sha }}
-          path: .devantler-tech-actions
-          persist-credentials: false
-          sparse-checkout: .github/actions/prepare-fixes
       - name: "\U0001F4E6 Prepare and upload applied fixes"
-        if: ${{ steps.fix-exporter.outcome == 'success' && !cancelled() && (success() || inputs.manual-workflow-fixes == true || inputs.manual-workflow-fixes == 'true') }}
+        if: ${{ !cancelled() && (success() || inputs.manual-workflow-fixes == true || inputs.manual-workflow-fixes == 'true') }}
         id: fixes
         uses: $/.github/actions/prepare-fixes
         with:

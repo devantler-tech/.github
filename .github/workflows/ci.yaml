@@ -149,7 +149,7 @@ jobs:
           test -z "$MISSING_VALIDATED"
           test -z "$MISSING_SOURCE"
           test -n "$SOURCE"
-          test "$(cd "$SOURCE" && pwd -P)" = "$(cd actions/validate-retired-repo-links && pwd -P)"
+          git diff --no-index --quiet --no-ext-diff --no-textconv --ignore-cr-at-eol -- actions/validate-retired-repo-links "$SOURCE"
       - name: Test consumer behavior and verify the negative fixture finding
         shell: bash
         env:
@@ -225,7 +225,7 @@ jobs:
         run: |
           test "$OMITTED" = true
           test -n "$OMITTED_SOURCE"
-          test "$(cd "$OMITTED_SOURCE" && pwd -P)" = "$(cd actions/validate-retired-repo-links && pwd -P)"
+          git diff --no-index --quiet --no-ext-diff --no-textconv --ignore-cr-at-eol -- actions/validate-retired-repo-links "$OMITTED_SOURCE"
           test "$OMITTED_VIOLATION" = failure
           test -z "$OMITTED_VIOLATION_VALIDATED"
           test -z "$DISABLED"
@@ -2489,6 +2489,10 @@ jobs:
         shell: bash
         run: bash .github/tests/test-todo-production-default-fixture.sh
 
+      - name: Check immutable offline TODO action source and refusal controls
+        shell: bash
+        run: bash .github/tests/test-todo-default-action.sh
+
       - name: 📋 Check ci.yaml test wiring is complete
         shell: bash
         run: |
@@ -4706,6 +4710,7 @@ jobs:
         working-directory: ${{ github.workspace }}
         run: |
           cp .devantler-tech-actions/.github/tests/fixtures/prepare-fixes-runner.sh "$RUNNER_TEMP/prepare-fixes-runner.sh"
+          rm -rf -- .devantler-tech-actions
           bash "$RUNNER_TEMP/prepare-fixes-runner.sh" setup
 
       - name: 📤 Prepare and transfer the real patch

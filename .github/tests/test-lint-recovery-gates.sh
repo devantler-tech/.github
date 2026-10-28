@@ -159,8 +159,8 @@ function verify(name, prepareGate, uploadGate, composite) {
     assert.equal(prepare, expectedPrepare, `${name}/prepare: ${JSON.stringify(fixture)}`);
     if (composite) {
       for (const outcome of ['failure', 'cancelled', 'skipped']) {
-        assert.equal(evaluate(prepareGate, {...values, 'steps.fix-exporter.outcome': outcome}, status), false,
-          `${name}/prepare requires successful helper checkout: ${outcome}`);
+        assert.equal(evaluate(prepareGate, {...values, 'steps.fix-exporter.outcome': outcome}, status), expectedPrepare,
+          `${name}/native preparation must not depend on obsolete checkout state: ${outcome}`);
       }
     }
     // Check the upload boundary independently: an exporter can emit changed=true
@@ -239,21 +239,13 @@ for (const lane of ['tidy', 'golangci-lint', 'lint']) {
   const steps = go.jobs[lane].steps;
   const index = steps.findIndex(step => step.id === 'fixes');
   const call = steps[index];
-  const checkout = steps[index - 1];
   const readOnly = steps.find(step => (step.name || '').includes('(read-only mode)'));
   assert.equal(call.uses, '$/.github/actions/prepare-fixes');
   assert.equal(call.with['artifact-name'], (lane === 'lint' ? 'megalinter' : lane) + '-fixes-${{ job.check_run_id }}');
-  assert.ok((checkout.uses || '').startsWith('actions/checkout@'));
-  assert.deepEqual(checkout.with, {
-    repository: '${{ job.workflow_repository }}', ref: '${{ job.workflow_sha }}',
-    path: '.devantler-tech-actions', 'persist-credentials': false,
-    'sparse-checkout': '.github/actions/prepare-fixes',
-  }, `${lane}: exporter must come from the workflow's exact commit without credentials`);
-  if (lane === 'lint') {
-    assert.equal(checkout.id, 'fix-exporter', 'lint: helper checkout requires an outcome identity');
-    assert.equal(normalizePredicate(call.if), `steps.fix-exporter.outcome == 'success' && ${normalizePredicate(checkout.if)}`,
-      'lint: exporter requires successful exact-source installation before recovery');
-  } else assert.equal(checkout.if, call.if, `${lane}: checkout and exporter admission differ`);
+  assert.equal(steps.filter(step => step.with?.['sparse-checkout'] === '.github/actions/prepare-fixes').length, 0,
+    lane + ': a redundant exporter checkout can pollute the consumer patch');
+  assert.equal(steps.filter(step => step.id === 'fix-exporter').length, 0,
+    lane + ': native exporter must not depend on a removed checkout identity');
   assert.equal(call.with.mode ?? exporter.inputs.mode.default, lane === 'lint' ? 'workflow' : 'ordinary');
   assert.equal(steps.filter(step => (step.uses || '').startsWith('actions/upload-artifact@')).length, 0,
     `${lane}: duplicate patch uploader`);

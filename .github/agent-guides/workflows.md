@@ -86,6 +86,14 @@ each must fail for its own reason, paired with healthy executions. Supervisor ra
 concurrent authorization and lost mutation responses. Workflow authentication and consumer
 rollout coverage remain in #340.
 
+**Immutable TODO default replay:** The compatibility workflow calls the private generated
+`test-todo-default-fixture` action through native defining-source binding. Regenerate its action
+with `bash .github/scripts/generate-todo-default-action.sh` and its workflow with
+`bash .github/scripts/generate-todo-default-fixture.sh`. Only token acquisition and checkout are
+replaced by offline dependencies; the complete production logic and helper paths have independent
+parity, refusal and actual execution tests. Do not rewrite production actions at runtime. The
+positive and missing-token native controls remain required and read-only.
+
 **Dependency-review comment coverage:** `test-dependency-review-comments` runs the pinned
 review action through the composite against `.github/tests/fixtures/offline-github-api/main.go`, a
 loopback stand-in that serves one scenario's reviewed responses, records every request and

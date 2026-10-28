@@ -19,7 +19,7 @@ for workflow in validate-go-project:tidy validate-go-project:golangci-lint valid
   composite="$(jq -r '.uses // ""' <<< "$prepare")"
   mode=ordinary
   if [[ -n "$composite" ]]; then
-    [[ "$composite" == './.devantler-tech-actions/.github/actions/prepare-fixes' ]] || fail 'unknown exporter'
+    [[ "$composite" == '$/.github/actions/prepare-fixes' ]] || fail 'unknown exporter'
     action="$root/.github/actions/prepare-fixes/action.yaml"
     yq -er '.runs.steps[] | select(.id == "prepare") | .run' "$action" >"$work/export.sh"
     mode="$(jq -r '.with.mode // "ordinary"' <<< "$prepare")"
@@ -208,3 +208,45 @@ rc=0
 [[ -s "$work/hosted-patch" ]] || fail 'hosted wrapper refused raw patch export'
 
 echo 'PASS: workflow fixes stay complete, recoverable, and out of automatic commits'
+
+# Exercise the actual hosted setup with a native exporter outside the consumer.
+# Removing only cleanup must reproduce a false dirty result and a helper gitlink.
+yq -r '.jobs.test-prepare-fixes.steps[] | select(.name == "📦 Create disposable consumer") | .run' \
+  "$root/.github/workflows/ci.yaml" >"$work/native-hosted-setup.sh"
+yq -r '.runs.steps[] | select(.id == "prepare") | .run' "$action" >"$work/native-hosted-export.sh"
+for ablated in false true; do
+  native_case="$work/native-hosted-$ablated"
+  consumer="$native_case/consumer"
+  helper="$consumer/.devantler-tech-actions"
+  mkdir -p "$helper/.github/tests/fixtures" "$native_case/runner"
+  cp "$root/.github/tests/fixtures/prepare-fixes-runner.sh" "$helper/.github/tests/fixtures/prepare-fixes-runner.sh"
+  git -C "$helper" init -q
+  git -C "$helper" config user.name 'Native exporter fixture'
+  git -C "$helper" config user.email 'fixture@example.invalid'
+  git -C "$helper" config commit.gpgsign false
+  git -C "$helper" add -- .github/tests/fixtures/prepare-fixes-runner.sh
+  git -C "$helper" commit -qm 'fixture source'
+  cp "$work/native-hosted-setup.sh" "$native_case/setup.sh"
+  if [[ "$ablated" == true ]]; then
+    sed '/rm -rf -- .devantler-tech-actions/d' "$native_case/setup.sh" >"$native_case/without-cleanup.sh"
+    cmp -s "$native_case/setup.sh" "$native_case/without-cleanup.sh" && fail 'hosted cleanup ablation changed nothing'
+    cp "$native_case/without-cleanup.sh" "$native_case/setup.sh"
+  fi
+  (
+    cd "$consumer"
+    env RUNNER_TEMP="$native_case/runner" SCENARIO=clean MANUAL=false bash "$native_case/setup.sh"
+    env RUNNER_TEMP="$native_case/runner" ACTION_PATH="$root/.github/actions/prepare-fixes" \
+      GITHUB_WORKSPACE="$consumer" FIXES_ARTIFACT=native-fixes PREPARE_MODE=ordinary \
+      MANUAL_WORKFLOW_FIXES=false GITHUB_OUTPUT="$native_case/outputs" \
+      bash -euo pipefail "$work/native-hosted-export.sh"
+  ) >"$native_case/log" 2>&1 || fail 'native hosted setup/export failed'
+  if [[ "$ablated" == true ]]; then
+    grep -Fxq 'changed=true' "$native_case/outputs" || fail 'missing cleanup did not reproduce a false dirty result'
+    grep -Fq '.devantler-tech-actions' "$native_case/runner/native-fixes.patch" || fail 'missing cleanup did not expose the helper in the patch'
+  else
+    [[ ! -e "$helper" ]] || fail 'hosted setup retained its helper checkout'
+    grep -Fxq 'changed=false' "$native_case/outputs" || fail 'native exporter reports a clean consumer as changed'
+    [[ ! -s "$native_case/runner/native-fixes.patch" ]] || fail 'clean native exporter produced a patch'
+  fi
+  echo "PASS: native hosted exporter; cleanup ablated=$ablated"
+done
