@@ -30,7 +30,7 @@ checkout_persistence="$(
 action_inputs="$(
   yq -o=json -I=0 '
     .jobs."test-enable-auto-merge-on-pr".steps[]
-    | select(.uses == "./actions/enable-auto-merge-on-pr")
+    | select(.uses == "$/actions/enable-auto-merge-on-pr")
     | .with
   ' "$ci_workflow"
 )"

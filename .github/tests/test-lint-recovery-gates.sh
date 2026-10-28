@@ -241,7 +241,7 @@ for (const lane of ['tidy', 'golangci-lint', 'lint']) {
   const call = steps[index];
   const checkout = steps[index - 1];
   const readOnly = steps.find(step => (step.name || '').includes('(read-only mode)'));
-  assert.equal(call.uses, './.devantler-tech-actions/.github/actions/prepare-fixes');
+  assert.equal(call.uses, '$/.github/actions/prepare-fixes');
   assert.equal(call.with['artifact-name'], (lane === 'lint' ? 'megalinter' : lane) + '-fixes-${{ job.check_run_id }}');
   assert.ok((checkout.uses || '').startsWith('actions/checkout@'));
   assert.deepEqual(checkout.with, {
@@ -309,7 +309,7 @@ for (const name of ['validate-go-project', 'validate-go-project-readonly']) {
   assert.equal(linter['continue-on-error'] ?? false, false, 'lint errors must remain fatal');
   assert.equal(job['continue-on-error'] ?? false, false, 'job failure must remain fatal');
   const callerName = name === 'validate-go-project' ? 'validate-go-project-readonly' : name;
-  const callers = Object.values(ci.jobs).filter(job => job.uses === `./.github/workflows/${callerName}.yaml`);
+  const callers = Object.values(ci.jobs).filter(job => job.uses === `$/.github/workflows/${callerName}.yaml`);
   assert.ok(callers.some(job => job.with?.[flag] === true), `${name}: missing opt-in caller`);
   assert.ok(callers.some(job => job.with?.[flag] === undefined || job.with[flag] === false), `${name}: missing default-off caller`);
   console.log(`PASS: ${name}, ${fixtures.length} recovery/status/authority cases`);

@@ -394,7 +394,7 @@ jobs:
 
       - name: 📦 Prepare and upload applied fixes
         id: fixes
-        uses: ./.devantler-tech-actions/.github/actions/prepare-fixes
+        uses: $/.github/actions/prepare-fixes
         with:
           artifact-name: tidy-fixes-${{ job.check_run_id }}
           upload-enabled: ${{ needs.changes.outputs.signed-fixes == 'true' && github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork != true && !contains(fromJSON('["dependabot[bot]","dependabot","renovate[bot]","renovatebot","renovate"]'), github.event.pull_request.user.login) && !contains(fromJSON('["dependabot[bot]","dependabot","renovate[bot]","renovatebot","renovate"]'), inputs.pr-owner) }}
@@ -496,7 +496,7 @@ jobs:
 
       - name: 📦 Prepare and upload applied fixes
         id: fixes
-        uses: ./.devantler-tech-actions/.github/actions/prepare-fixes
+        uses: $/.github/actions/prepare-fixes
         with:
           artifact-name: golangci-lint-fixes-${{ job.check_run_id }}
           upload-enabled: ${{ needs.changes.outputs.signed-fixes == 'true' && github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork != true && !contains(fromJSON('["dependabot[bot]","dependabot","renovate[bot]","renovatebot","renovate"]'), github.event.pull_request.user.login) && !contains(fromJSON('["dependabot[bot]","dependabot","renovate[bot]","renovatebot","renovate"]'), inputs.pr-owner) }}
@@ -759,7 +759,7 @@ jobs:
         continue-on-error: true
         timeout-minutes: 24
         # Keep exact-commit checkout until actionlint supports $/ (#1234).
-        uses: ./.devantler-tech-actions/.github/actions/govulncheck # zizmor: ignore[self-repository]
+        uses: $/.github/actions/govulncheck # zizmor: ignore[self-repository]
         with:
           work-dir: ${{ needs.changes.outputs.module-directory }}
           # No stable-channel override: scan using the version the caller ships.
@@ -815,7 +815,7 @@ jobs:
         if: ${{ steps.scan-timeout.outputs.retry == 'true' }}
         timeout-minutes: 24
         # Keep exact-commit checkout until actionlint supports $/ (#1234).
-        uses: ./.devantler-tech-actions/.github/actions/govulncheck # zizmor: ignore[self-repository]
+        uses: $/.github/actions/govulncheck # zizmor: ignore[self-repository]
         with:
           work-dir: ${{ needs.changes.outputs.module-directory }}
           go-version-file: ${{ needs.changes.outputs.module-directory }}/go.mod
@@ -928,7 +928,7 @@ jobs:
       - name: 📦 Prepare and upload applied fixes
         if: ${{ steps.fix-exporter.outcome == 'success' && !cancelled() && (success() || inputs.manual-workflow-fixes == true || inputs.manual-workflow-fixes == 'true') }}
         id: fixes
-        uses: ./.devantler-tech-actions/.github/actions/prepare-fixes
+        uses: $/.github/actions/prepare-fixes
         with:
           artifact-name: megalinter-fixes-${{ job.check_run_id }}
           upload-enabled: ${{ needs.changes.outputs.signed-fixes == 'true' && github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork != true && !contains(fromJSON('["dependabot[bot]","dependabot","renovate[bot]","renovatebot","renovate"]'), github.event.pull_request.user.login) && !contains(fromJSON('["dependabot[bot]","dependabot","renovate[bot]","renovatebot","renovate"]'), inputs.pr-owner) }}
@@ -1777,7 +1777,7 @@ jobs:
       - name: 📊 Upload coverage
         if: ${{ steps.coverage-helper.outcome == 'success' }}
         continue-on-error: true
-        uses: ./.devantler-tech-actions/actions/upload-coverage
+        uses: $/actions/upload-coverage
         with:
           file: ${{ needs.changes.outputs.module-directory }}/coverage.cobertura.xml
           language: Go

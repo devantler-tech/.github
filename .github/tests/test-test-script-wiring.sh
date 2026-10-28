@@ -39,6 +39,26 @@ blocked() {
 }
 
 run_guard || fail 'empty test directory should be accepted'
+
+# Action coverage must be an exact step call in either supported source form.
+# Comments and metadata cannot substitute for actual action execution.
+for reference in './actions/fixture-action' '$/actions/fixture-action'; do
+  REFERENCE="$reference" yq '.jobs.tests.steps[0].uses = strenv(REFERENCE)' "$work/base.yaml" >"$ci"
+  run_guard || fail "same-repository action call was not covered: $reference"
+done
+for mutation in \
+  '.jobs.tests.steps[0].uses += ".extra"' \
+  '.jobs.tests.steps[0].name = .jobs.tests.steps[0].uses | del(.jobs.tests.steps[0].uses)' \
+  '.jobs.tests.uses = .jobs.tests.steps[0].uses | del(.jobs.tests.steps[0].uses)'; do
+  yq "$mutation" "$ci" >"$work/bad-action.yaml"
+  cp "$work/bad-action.yaml" "$ci"
+  printf '# uses: ./actions/fixture-action\n# uses: $/actions/fixture-action\n' >>"$ci"
+  if run_guard; then fail 'non-step or inexact action reference counted as coverage'; fi
+  grep -Fq "action 'actions/fixture-action' has no test job" "$work/result" || fail 'missing action diagnostic'
+  REFERENCE='$/actions/fixture-action' yq '.jobs.tests.steps[0].uses = strenv(REFERENCE)' "$work/base.yaml" >"$ci"
+done
+cp "$work/base.yaml" "$ci"
+echo 'PASS: exact step-level classic/native action calls and three non-call controls'
 # Coverage must recognize real job-level calls in both same-repository forms,
 # without treating a comment, step call or similarly named workflow as execution.
 printf 'on:\n  workflow_call: {}\njobs: {}\n' >"$work/repo/.github/workflows/native-fixture.yaml"

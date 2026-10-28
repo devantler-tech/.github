@@ -32,7 +32,7 @@ func dotnetSelectionFixture(t *testing.T) (inventory, workflow) {
 		w.Jobs[id] = j
 	}
 	i.Jobs["test-validate-go-postgresql-fixture"] = []string{"actions/upload-coverage/"}
-	w.Jobs["test-validate-go-postgresql-fixture"] = job{If: selectionGuard("test-validate-go-postgresql-fixture"), Needs: []any{"select-ci-tests"}, Uses: "./.github/workflows/validate-go-project-readonly.yaml"}
+	w.Jobs["test-validate-go-postgresql-fixture"] = job{If: selectionGuard("test-validate-go-postgresql-fixture"), Needs: []any{"select-ci-tests"}, Uses: "$/.github/workflows/validate-go-project-readonly.yaml"}
 	i.Jobs["test-go-cache-native-observer"] = []string{"actions/upload-coverage/"}
 	w.Jobs["test-go-cache-native-observer"] = job{If: selectionGuard("test-go-cache-native-observer"), Needs: []any{"select-ci-tests", "test-validate-go-postgresql-fixture"}}
 	return i, w

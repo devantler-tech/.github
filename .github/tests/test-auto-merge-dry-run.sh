@@ -50,7 +50,7 @@ guard() {
       $job.defaults.run != {shell:"bash", "working-directory":".devantler-tech-actions"}
     then error("actual offline decision suites must execute")
     elif (["test-enable-auto-merge","test-enable-auto-merge-actor-trust","test-enable-auto-merge-queued"] |
-      all(. as $name | $ci.jobs[$name].uses == "./.github/workflows/enable-auto-merge.yaml" and
+      all(. as $name | $ci.jobs[$name].uses == "$/.github/workflows/enable-auto-merge.yaml" and
         $ci.jobs[$name].with["dry-run"] == true and $ci.jobs[$name].secrets == null and
         $ci.jobs[$name].if == $condition and $ci.jobs[$name].needs == null and
         ($ci.jobs[$name]["continue-on-error"] // false) == false and

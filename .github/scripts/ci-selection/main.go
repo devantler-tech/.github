@@ -144,7 +144,7 @@ func validateGoCacheOwners(i inventory, w workflow) error {
 				return fmt.Errorf("native Go cache owner must remain required: %s", id)
 			}
 		}
-		if id == goCacheFixture && j.Uses != "./.github/workflows/validate-go-project-readonly.yaml" || id == goCacheObserver && j.Uses != "" {
+		if id == goCacheFixture && j.Uses != "$/.github/workflows/validate-go-project-readonly.yaml" || id == goCacheObserver && j.Uses != "" {
 			return fmt.Errorf("unbound native Go cache owner %s", id)
 		}
 	}

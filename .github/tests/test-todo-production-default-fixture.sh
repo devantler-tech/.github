@@ -21,7 +21,7 @@ guard() {
     .on.workflow_call.inputs.project.default == "organization/devantler-tech/5" and
     .on.workflow_call.inputs["fixture-skip-app-token"].default == false and
     ([.jobs.todos.steps[] | select(.id == "fixture-scan")] | length == 1 and all(
-      .uses == "./.devantler-tech-actions/actions/create-issues-from-todos" and
+      .uses == "$/actions/create-issues-from-todos" and
       .with.project == "${{ inputs.project }}" and
       .with["optional-project-auth"] == "${{ inputs.optional-project-auth }}" and
       .["continue-on-error"] == true)) and
@@ -43,7 +43,7 @@ guard() {
   ' "$1" >/dev/null || return 1
   jq -e '
     . as $ci | ["test-scan-for-todo-comments-default", "test-scan-for-todo-comments-default-control"] | all(. as $id |
-      $ci.jobs[$id].uses == "./.github/workflows/scan-for-todo-comments-default-fixture.yaml" and
+      $ci.jobs[$id].uses == "$/.github/workflows/scan-for-todo-comments-default-fixture.yaml" and
       $ci.jobs[$id].permissions == {contents:"read"} and
       $ci.jobs[$id].secrets == null and $ci.jobs[$id].env == null and
       $ci.jobs[$id].needs == null and

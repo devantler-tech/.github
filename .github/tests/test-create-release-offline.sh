@@ -84,7 +84,7 @@ guard() {
           and .env.WARN_MISSING_BREAKING_BANG == "${{ inputs.warn-missing-breaking-bang }}")] | length) != 1
     then error("offline release decisions must execute with the caller hook setting")
     elif (["test-create-release","test-create-release-no-issue-side-effects"] | all(. as $name |
-      $c.jobs[$name].uses == "./.github/workflows/create-release.yaml" and
+      $c.jobs[$name].uses == "$/.github/workflows/create-release.yaml" and
       $c.jobs[$name].with["offline-test"] == true and $c.jobs[$name].with["dry-run"] == true and
       $c.jobs[$name].secrets == null and $c.jobs[$name].permissions == {} and
       $c.jobs[$name].if == $condition and $c.jobs[$name].needs == null and

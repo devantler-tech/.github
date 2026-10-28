@@ -18,6 +18,8 @@ export CATALOGUE_CREDENTIALS_OFFLINE=1
 "$tmp/guard" "$tmp/catalogue"
 controls=0
 # Each expected diagnostic is an authority class; no credential value is printed.
+# Workspace-checkout refusal cases deliberately use workspace-relative calls.
+# Native calls bind to their defining source and do not trust checkout destinations.
 # Restoring a writer behind a skipped dependency also requires a status function.
 while IFS=$'\t' read -r label path mutation expected_status diagnostic; do
   [[ -n "$label" ]] || continue
@@ -51,6 +53,8 @@ missing authority	.github/workflows/ci.yaml	del(.permissions)|.jobs.new={steps:[
 bulk secret forwarding	.github/workflows/ci.yaml	.jobs["test-template-sync"].secrets="inherit"	1	external secret
 mutable callee	.github/workflows/ci.yaml	.jobs["test-template-sync"].uses="devantler-tech/.github/.github/workflows/template-sync.yaml@main"	2	UNKNOWN
 missing callee	.github/workflows/ci.yaml	.jobs["test-template-sync"].uses="./.github/workflows/missing.yaml"	2	UNKNOWN
+missing native callee	.github/workflows/ci.yaml	.jobs["test-template-sync"].uses="$/.github/workflows/missing.yaml"	2	UNKNOWN
+mutable native callee	.github/workflows/ci.yaml	.jobs["test-template-sync"].uses="$/.github/workflows/template-sync.yaml@main"	2	UNKNOWN
 removed template dry run	.github/workflows/ci.yaml	del(.jobs["test-template-sync"].with["dry-run"])	1	write authority
 restored template writer	.github/workflows/template-sync.yaml	del(.jobs["template-sync"].if)	1	write authority
 restored auto merge	.github/workflows/enable-auto-merge.yaml	.jobs["disarm-untrusted-update"].if="${{ always() }}"	1	write authority
@@ -63,7 +67,7 @@ mixed bulk secret	.github/workflows/ci.yaml	.jobs.new={permissions:{contents:"re
 new CI trigger	.github/workflows/ci.yaml	.on.pull_request_target={}|.jobs.new={"if":"${{ github.event_name == 'pull_request_target' }}",permissions:{contents:"write"},steps:[{run:"echo fixture"}]}	1	write authority
 environment secret override	.github/workflows/ci.yaml	.jobs.new={permissions:{contents:"read"},environment:"fixture",steps:[{run:"echo fixture"}]}	2	UNKNOWN environment-secret
 opaque token comparison	.github/workflows/ci.yaml	.jobs.new={"if":"${{ github.token != 'github-token' }}",permissions:{contents:"write"},steps:[{run:"echo fixture"}]}	1	write authority
-unmeasured checkout destination	.github/workflows/ci.yaml	(.jobs["test-validate-retired-repo-links"].steps[]|select((.uses // "")|startswith("actions/checkout@"))).with.path="${{ vars.DESTINATION }}"	2	UNKNOWN local action checkout
+unmeasured checkout destination	.github/workflows/ci.yaml	(.jobs["test-validate-retired-repo-links"].steps[]|select((.uses // "")|startswith("actions/checkout@"))).with.path="${{ vars.DESTINATION }}" | (.jobs["test-validate-retired-repo-links"].steps[]|select(.id == "valid")).uses="./actions/validate-retired-repo-links"	2	UNKNOWN local action checkout
 missing guard entrypoint	.github/workflows/ci.yaml	.jobs["lint-ci-coverage-parity"].steps |= map(select(.run != "bash .github/tests/test-catalogue-credentials.sh"))	1	required guard wiring
 conditional guard entrypoint	.github/workflows/ci.yaml	(.jobs["lint-ci-coverage-parity"].steps[]|select(.run == "bash .github/tests/test-catalogue-credentials.sh")).if="false"	1	required guard wiring
 ignored guard failure	.github/workflows/ci.yaml	(.jobs["lint-ci-coverage-parity"].steps[]|select(.run == "bash .github/tests/test-catalogue-credentials-controls.sh"))["continue-on-error"]=true	1	required guard wiring
@@ -81,8 +85,8 @@ unreviewed appended summary	.github/workflows/ci.yaml	(.jobs["ci-required-checks
 branch repetition pattern	.github/workflows/ci.yaml	.on.push.branches=["main+"]|.jobs.new={"if":"${{ github.ref != 'refs/heads/main+' }}",permissions:{contents:"write"},steps:[{run:"echo fixture"}]}	1	write authority
 negative zero identity	.github/workflows/ci.yaml	.jobs.new={"if":"${{ fromJSON('-0') == 0 }}",permissions:{contents:"write"},steps:[{run:"echo fixture"}]}	1	write authority
 format replacement identity	.github/workflows/ci.yaml	.jobs.new={"if":"${{ format('{0}{1}', '{1}', 'x') != 'xx' }}",permissions:{contents:"write"},steps:[{run:"echo fixture"}]}	1	write authority
-unverified recovery helper	.github/workflows/validate-go-project-readonly.yaml	(.jobs.lint.steps[]|select(.id == "fixes")).if |= sub("steps.fix-exporter.outcome == 'success' && ";"")	2	UNKNOWN successful local action checkout
-unverified best-effort helper	.github/workflows/validate-go-project-readonly.yaml	del(.jobs.coverage.steps[]|select((.uses // "")|endswith("/actions/upload-coverage"))|.if)	2	UNKNOWN successful local action checkout
+unverified recovery helper	.github/workflows/validate-go-project-readonly.yaml	(.jobs.lint.steps[]|select(.id == "fixes")).uses="./.devantler-tech-actions/.github/actions/prepare-fixes" | (.jobs.lint.steps[]|select(.id == "fixes")).if |= sub("steps.fix-exporter.outcome == 'success' && ";"")	2	UNKNOWN successful local action checkout
+unverified best-effort helper	.github/workflows/validate-go-project-readonly.yaml	(.jobs.coverage.steps[]|select((.uses // "")|endswith("/actions/upload-coverage"))).uses="./.devantler-tech-actions/actions/upload-coverage" | del(.jobs.coverage.steps[]|select((.uses // "")|endswith("/actions/upload-coverage"))|.if)	2	UNKNOWN successful local action checkout
 CASES
-[[ "$controls" == 41 ]] || { echo 'FAIL: incomplete control set' >&2; exit 1; }
+[[ "$controls" == 43 ]] || { echo 'FAIL: incomplete control set' >&2; exit 1; }
 echo "PASS: complete source graph rejects $controls real-source credential regressions"

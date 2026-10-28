@@ -156,7 +156,7 @@ check_ci() { # <ci.json> [reviewed-scenarios.json]
       has("if") or (.["continue-on-error"] // false) != false)
     then error("the stand-in must start for the matrix scenario")
     elif ($job.steps[] | select(.id == "review") |
-      .uses != "./actions/dependency-review" or has("if") or
+      .uses != "$/actions/dependency-review" or has("if") or
       .with != {
         "comment-summary-in-pr": "${{ steps.offline.outputs.comment-summary-in-pr }}",
         "warn-only": "${{ steps.offline.outputs.warn-only }}",

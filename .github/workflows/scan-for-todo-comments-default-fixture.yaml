@@ -100,7 +100,7 @@
         },
         {
           "name": "📝 Create issues from TODOs",
-          "uses": "./.devantler-tech-actions/actions/create-issues-from-todos",
+          "uses": "$/actions/create-issues-from-todos",
           "with": {
             "client-id": "${{ vars.APP_CLIENT_ID }}",
             "app-private-key": "${{ secrets.APP_PRIVATE_KEY }}",
