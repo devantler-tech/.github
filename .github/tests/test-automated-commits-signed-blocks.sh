@@ -1,9 +1,8 @@
 #!/usr/bin/env bash
 # Fixture counterpart to test-automated-commits-signed.sh.
 #
-# That guard runs against `.github/workflows`, where both create-pull-request steps are
-# correctly configured — so it reports PASS whatever its internals do. A parser regression
-# would therefore ship green, and the two production workflows would keep vouching for it.
+# The catalogue now delegates commits to its signing API workflow. Legacy
+# create-pull-request fixtures still guard against unsafe reintroduction.
 # This test drives the same guard over inputs it must ACCEPT and inputs it must REJECT, so
 # each half is proven independently of the repository's current contents.
 #
@@ -20,6 +19,8 @@ fixture_root="${2:-.github/tests/automated-commits-signed-fixtures}"
 
 [[ -f "$guard" ]] || { echo "::error::guard $guard is missing"; exit 1; }
 [[ -d "$fixture_root" ]] || { echo "::error::fixture root $fixture_root is missing"; exit 1; }
+guard="$(cd "$(dirname "$guard")" && pwd)/$(basename "$guard")"
+repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
 status=0
 accepted=0
@@ -76,9 +77,56 @@ expect reject-impostor-app-step    reject
 expect reject-unsigned             reject
 expect reject-no-producer          reject
 
+# Exercise the retained production mechanism without a legacy action present.
+# Dropping its API mutation or signature proof must still be rejected.
+api_root="$(mktemp -d)"
+trap 'rm -rf "$api_root"' EXIT
+mkdir -p "$api_root/.github/workflows" "$api_root/.github/actions/prepare-fixes"
+cp "$repo_root/.github/actions/prepare-fixes/action.yaml" "$api_root/.github/actions/prepare-fixes/action.yaml"
+api_fixture() {
+  cp "$repo_root/.github/workflows/validate-go-project.yaml" "$api_root/.github/workflows/validate-go-project.yaml"
+  cp "$repo_root/.github/workflows/apply-signed-fixes.yaml" "$api_root/.github/workflows/apply-signed-fixes.yaml"
+}
+api_expect() {
+  local label="$1" want="$2" diagnostic="${3:-}" out rc=0
+  out="$(cd "$api_root" && bash "$guard" 2>&1)" || rc=$?
+  if [[ "$want" == accept ]]; then
+    accepted=$((accepted + 1))
+    if ((rc != 0)); then
+      printf '::error::%s must accept the retained signing API producer: %s\n' "$label" "$out"
+      exit 1
+    fi
+  else
+    rejected=$((rejected + 1))
+    if ((rc == 0)) || ! grep -Fq "$diagnostic" <<<"$out"; then
+      printf '::error::%s must reject for %s; got: %s\n' "$label" "$diagnostic" "$out"
+      exit 1
+    fi
+  fi
+}
+api_fixture
+api_expect api-only accept
+api_fixture
+yq -i '(.jobs.apply-fixes.steps[] | select(.name == "📤 Commit the applied fixes").run) |= sub("createCommitOnBranch\\(input:"; "unsignedCommit(input:")' "$api_root/.github/workflows/apply-signed-fixes.yaml"
+api_expect missing-api-mutation reject 'must create its commit with the createCommitOnBranch API'
+api_fixture
+yq -i '(.jobs.apply-fixes.steps[] | select(has("run")).run) |= sub("commit.verification.verified"; "commit.verification.assumed")' "$api_root/.github/workflows/apply-signed-fixes.yaml"
+api_expect missing-signature-proof reject 'must verify the created commit reports verified=true'
+api_fixture
+yq -i '.jobs.unsigned.steps = [{"run": "git commit -m unsigned"}]' "$api_root/.github/workflows/validate-go-project.yaml"
+api_expect local-unsigned-commit reject "must not run 'git commit' or 'git push'"
+api_fixture
+cat > "$api_root/.github/workflows/unsigned.yaml" <<'YAML'
+jobs:
+  unsigned:
+    steps:
+      - uses: stefanzweifel/git-auto-commit-action@aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+YAML
+api_expect unsigned-action-in-another-workflow reject 'git-auto-commit-action cannot produce a signed commit'
+
 # Guard the guard: a miscounted table silently shrinks coverage.
-if ((accepted < 3 || rejected < 10)); then
-  echo "::error::coverage shrank — expected at least 3 accept and 10 reject cases, ran $accepted and $rejected"
+if ((accepted < 4 || rejected < 14)); then
+  echo "::error::coverage shrank — expected at least 4 accept and 14 reject cases, ran $accepted and $rejected"
   status=1
 fi
 

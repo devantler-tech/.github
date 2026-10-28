@@ -79,8 +79,8 @@ touch "$work/output"
 EVENT_NAME=push RUN_CATALOGUE=true CATALOGUE_SCOPE=true GITHUB_OUTPUT="$work/output" \
   go -C "$root/.github/scripts/ci-selection" run . "$root" "$root/.github/scripts/ci-selection/inventory.json" "$work/workflow.json"
 selected="$(sed -n 's/^selected=//p' "$work/output")"
-# The two retired Lint export-only callers are absent; all surviving executions remain selected.
-jq -e 'length == 78 and index("test-lint-workflow") == null and
+# The skill action executions moved with their standalone repositories; all remaining executions stay selected.
+jq -e 'length == 65 and index("test-lint-workflow") == null and
   index("test-lint-workflow-manual-fixes") == null' <<< "$selected" >/dev/null
 jq -e 'index("test-validate-go-postgresql-fixture") != null' <<<"$selected" >/dev/null
 jq -e 'index("test-go-cache-native-observer") != null' <<<"$selected" >/dev/null
@@ -88,7 +88,7 @@ jq -e 'index("test-go-cache-native-observer") != null' <<<"$selected" >/dev/null
 # intentionally excluded (dry-run, repository exclusion, or dependency-bot
 # suppression). They still exercise interfaces and retain original admission;
 # selection must not promise an executed test where no job can run.
-interface_callers='["test-apply-signed-fixes-suppresses-bots","test-template-sync","test-template-sync-merge-ignore","test-update-agent-skills","test-update-agent-skills-per-skill","test-validate-go-project-interface"]'
+interface_callers='["test-apply-signed-fixes-suppresses-bots","test-template-sync","test-template-sync-merge-ignore","test-validate-go-project-interface"]'
 needs="$(jq -cn --argjson skipped "$interface_callers" --slurpfile workflow "$work/workflow.json" '
   reduce ($workflow[0].jobs | keys[]) as $id ({};
     .[$id] = {result: (if ($skipped | index($id)) != null then "skipped" else "success" end)})

@@ -287,7 +287,7 @@ Full detail in [actions/CONTRIBUTING.md](actions/CONTRIBUTING.md). Key rules:
 - **Action type:** Prefer **composite** over JavaScript/Docker
 - **External action pinning:** Pin third-party actions (non-`actions/*`, non-`github/*`, non-`devantler-tech/*`) to commit SHAs with a `# v<version>` comment — enforced by `zizmor.yml`. For a main-tracked dep with no releases, use `# <branch> (no upstream releases)`.
 - **`action.yaml`:** Always set `author: devantler-tech`
-- **Distribution / Marketplace:** Keep this portfolio-first catalogue directly reusable but intentionally unlisted in GitHub Marketplace while it contains multiple subdirectory actions and reusable workflows. Marketplace does not automatically list nested action metadata, so do not add `branding:` blocks as a proxy for publication.
+- **Distribution / Marketplace:** The remaining portfolio-first catalogue is directly reusable and unlisted while it contains multiple subdirectory actions and reusable workflows. Skill maintenance actions live in the standalone `setup-agent-skills-action`, `update-agent-skills-action`, and `guard-installed-skill-edits-action` repositories. Marketplace does not automatically list nested action metadata, so do not add `branding:` blocks here as a proxy for publication.
 
 #### Test jobs
 

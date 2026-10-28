@@ -70,7 +70,7 @@ listed. Do not add `branding:` to nested action metadata as a proxy for
 publication.
 
 If an action develops enough independent demand to justify its own repository,
-extract it deliberately and give that single-action repository its own branding,
+extract it deliberately into an `<action-name>-action` repository with its own branding,
 release lifecycle, and Marketplace listing.
 
 ## Testing
@@ -129,11 +129,10 @@ retry brew install <formula>
 `RETRY_MAX_ATTEMPTS`, `RETRY_BASE_DELAY`, `RETRY_MAX_DELAY`) and exits non-zero
 with the command's last status once attempts are exhausted, so a genuine failure
 still reds the check. Only wrap the **network** commands — leave local operations
-unwrapped. It is used by `setup-ksail-cli` (`brew tap` / `brew install`), by the
-shared `.scripts/ensure-gh-skill.sh` (the `gh` release download), and by
-`setup-agent-skills` / `update-agent-skills` (`gh skill install` / `gh skill
-update` registry pulls) — covering every shell-based network pull in the suite as
-part of the reliability pillar
+unwrapped. It is used by `setup-ksail-cli` (`brew tap` / `brew install`).
+The standalone [setup](https://github.com/devantler-tech/setup-agent-skills-action)
+and [update](https://github.com/devantler-tech/update-agent-skills-action) actions
+own their installer and registry retry helpers as part of the reliability pillar
 ([devantler-tech/actions#247](https://github.com/devantler-tech/actions/issues/247)).
 
 ## Commits

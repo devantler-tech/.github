@@ -223,7 +223,6 @@ expected_selected='[
   "test-enable-auto-merge-author-gate",
   "test-enable-auto-merge-on-pr-credential-boundary",
   "test-enable-auto-merge-pentad-gate",
-  "test-ensure-gh-skill-script",
   "test-go-cache-native-observer",
   "test-go-filter-nested-modules",
   "test-go-filter-nested-modules-blocks",
@@ -238,7 +237,6 @@ expected_selected='[
   "test-setup-ksail-cli",
   "test-suite-default-branch-coverage",
   "test-suite-default-branch-coverage-blocks",
-  "test-update-agent-skills-mark-internal",
   "test-validate-go-gate-lockstep",
   "test-validate-go-lint-blocks",
   "test-validate-go-postgresql-fixture",
@@ -253,7 +251,7 @@ jq -en --argjson actual "$selected" --argjson expected "$expected_selected" '$ac
 jq -e 'index("test-validate-go-postgresql-fixture") != null' <<<"${selected}" >/dev/null || fail 'native PostgreSQL caller left the independent coverage floor'
 jq -e 'index("test-go-cache-native-observer") != null' <<<"${selected}" >/dev/null || fail 'native Go cache observer left the independent coverage floor'
 jq -en --argjson selected "${selected}" --slurpfile inventory "${repo_root}/.github/scripts/ci-selection/inventory.json" '
-  ($inventory[0].catalogue_optional | length == 48) and
+  ($inventory[0].catalogue_optional | length == 37) and
   all($selected[]; . as $id | ($inventory[0].catalogue_optional | index($id)) == null) and
   ($selected | index("test-approve-pr-credential-boundary") != null) and
   ($selected | index("test-validate-go-project-apply-signed-fixes") != null)

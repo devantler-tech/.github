@@ -8,7 +8,12 @@
 # be refused by it, so the strongest form of that control stays permanently out of reach
 # (devantler-tech/.github#142).
 #
-# Two mechanisms produce commits here, and they are checked differently:
+# The current signing API producer and legacy action mechanisms are checked differently:
+#
+#   * `apply-signed-fixes.yaml` creates a commit through GitHub's API and verifies its
+#     signature before promotion. When the last create-pull-request action is retired,
+#     its existing caller/callee signing guard supplies the positive producer control.
+#     Legacy action checks below still reject unsafe reintroduction.
 #
 #   * `peter-evans/create-pull-request` commits locally by default. Its `sign-commits: true`
 #     option makes it commit through the GitHub API instead, and GitHub signs a commit an
@@ -46,6 +51,7 @@ cpr_unsigned=()
 cpr_signed=0
 cpr_bad_token=()
 auto_commit=()
+api_signed=0
 
 # NOTE: a `while read` loop in a pipeline runs in a subshell under some shells, losing every
 # variable it sets — collect the file list first and feed it in on stdin instead.
@@ -140,12 +146,20 @@ for wf in "${workflows[@]}"; do
   [[ "$gac" == "0" ]] || auto_commit+=("$wf ($gac step(s))")
 done
 
-# Positive control. Without it, renaming or dropping the action makes the signing assertion
-# above match nothing and pass vacuously — an empty filtered read is a claim about the
-# filter, not about the repository. If create-pull-request is deliberately retired, update
-# this test to cover whatever replaced it rather than deleting the control.
-((cpr_total > 0)) ||
-  fail "no peter-evans/create-pull-request steps found under '$workflow_dir' — the signing assertion would pass vacuously; update this test to match the mechanism now in use"
+# A real producer must be examined even after all legacy action calls leave the
+# catalogue. Reuse the current caller/callee guard: it requires actual delegation,
+# the signing API mutation, runtime signature verification and the audited execution
+# boundary. A missing producer or a diagnostics-only mutation still fails closed.
+if ((cpr_total == 0)); then
+  workflow_dir_abs="$(cd "$workflow_dir" && pwd)"
+  api_root="$(cd "$workflow_dir_abs/../.." && pwd)"
+  [[ "$workflow_dir_abs" == "$api_root/.github/workflows" ]] ||
+    fail "no recognized signing producer under '$workflow_dir'"
+  here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  (cd "$api_root" && bash "$here/test-lint-signed-commit.sh") ||
+    fail 'the retained signing API producer did not pass its caller/callee guard'
+  api_signed=1
+fi
 
 if ((${#cpr_unsigned[@]} > 0)); then
   printf 'FAIL: these create-pull-request steps commit locally and produce UNSIGNED commits.\n' >&2
@@ -158,7 +172,7 @@ fi
 # cover it: every step could carry sign-commits: false, in which case the token check silently
 # examines nothing. It sits AFTER the unsigned check so a workflow that simply forgot the option
 # gets that check's actionable message rather than this one.
-((cpr_signed > 0)) ||
+((cpr_total == 0 || cpr_signed > 0)) ||
   fail "no create-pull-request step under '$workflow_dir' sets sign-commits: true — the token-source assertion would pass vacuously"
 
 if ((${#cpr_bad_token[@]} > 0)); then
@@ -176,4 +190,4 @@ if ((${#auto_commit[@]} > 0)); then
   exit 1
 fi
 
-echo "PASS: all $cpr_total create-pull-request step(s) sign their commits ($cpr_signed via a signing-capable token), and no workflow commits with git-auto-commit-action"
+echo "PASS: $api_signed signing API producer(s) verified; all $cpr_total create-pull-request step(s) sign their commits ($cpr_signed via a signing-capable token), and no workflow commits with git-auto-commit-action"

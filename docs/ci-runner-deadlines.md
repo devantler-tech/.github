@@ -4,7 +4,7 @@
 
 This is the direct-runner slice of [#749](https://github.com/devantler-tech/.github/issues/749), delivered through [#758](https://github.com/devantler-tech/.github/issues/758). It bounds stalled runner setup; it does not establish a whole-PR feedback budget or reduce queue wait.
 
-The complete job graphs of three successful native CI attempts supplied execution observations for all 88 directly declared runner jobs. Durations below are the largest completed-at minus started-at interval across each job’s successful matrix legs; queue wait before runner allocation is excluded. These are a small recent sample, not percentile or cold-cache guarantees.
+The complete job graphs of three successful native CI attempts supplied execution observations for all 88 directly declared runner jobs at that revision. Durations below are the largest completed-at minus started-at interval across each job’s successful matrix legs; queue wait before runner allocation is excluded. These are a small recent sample, not percentile or cold-cache guarantees. The skill-action rows below are historical: their jobs and limits now live in the standalone [setup](https://github.com/devantler-tech/setup-agent-skills-action), [update](https://github.com/devantler-tech/update-agent-skills-action), and [edit guard](https://github.com/devantler-tech/guard-installed-skill-edits-action) repositories.
 
 - [Run 40187013932, attempt 1](https://github.com/devantler-tech/.github/actions/runs/40187013932) at `ffeaa63025977646c256f7b956af6dd913f8b7ea`.
 - [Run 40194487344, attempt 1](https://github.com/devantler-tech/.github/actions/runs/40194487344) at `5c32ee64719c107a99f35580d60a34839850e2b8`.
@@ -33,7 +33,6 @@ The following limits replace the six-hour default. Existing deadcode (15 minutes
 | `scan-for-todo-comments` | dry-run: 5; todos: 60 | Generated offline fixture maxima 38–46 seconds; authenticated scanning and issue publication remain unmeasured. |
 | `scan-for-workflow-vulnerabilities` | eligibility: 5; zizmor: 15 | Native fixture maxima 16 and 32 seconds respectively. |
 | `template-sync` | template-sync: 60 | Conservative initial bound; repository count and authenticated updates were not measured. |
-| `update-agent-skills` | update-agent-skills: 60; open-skill-pull-requests: 15 | Conservative initial bounds; authenticated update/publication paths were not measured. |
 | `validate-go-project` | changes: 5; tidy: 10; golangci-lint: 15; lint: 15; build: 20; test: 30; coverage: 40 | Real consumer observations below exceed the small offline fixture durations. |
 
 Two dedicated steps in the existing required catalogue guard job run the direct-job and local-callee checks. Its refusal controls retain the fifteen-minute direct-job ceiling, accept a valid sixty-minute callee, reject unsupported caller-level limits, and detect a newly added unbounded callable workflow. No validation commands, permissions, selection, retries or scenario counts are removed by these deadlines.
