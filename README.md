@@ -114,9 +114,9 @@ commits in their public repositories.
 
 | Action | Purpose | Catalogue source |
 | --- | --- | --- |
-| [setup-agent-skills-action](https://github.com/devantler-tech/setup-agent-skills-action) | Install skills for one or more coding agents | [actions/setup-agent-skills](actions/setup-agent-skills) |
-| [update-agent-skills-action](https://github.com/devantler-tech/update-agent-skills-action) | Update installed skills and open reviewable update PRs | [actions/update-agent-skills](actions/update-agent-skills) |
-| [guard-installed-skill-edits-action](https://github.com/devantler-tech/guard-installed-skill-edits-action) | Refuse edits that bypass a skill's upstream source | [actions/guard-installed-skill-edits](actions/guard-installed-skill-edits) |
+| [setup-agent-skills-action](https://github.com/devantler-tech/setup-agent-skills-action) | Install skills for one or more coding agents | [actions/setup-agent-skills](https://github.com/devantler-tech/setup-agent-skills-action/blob/aaf3bf62f137e3157e38fa8c44bb0fe6427a74ff/action.yml) |
+| [update-agent-skills-action](https://github.com/devantler-tech/update-agent-skills-action) | Update installed skills and open reviewable update PRs | [actions/update-agent-skills](https://github.com/devantler-tech/update-agent-skills-action/blob/0e1d6010a3d8b04a59b64892a5879cd2b45c7432/action.yml) |
+| [guard-installed-skill-edits-action](https://github.com/devantler-tech/guard-installed-skill-edits-action) | Refuse edits that bypass a skill's upstream source | [actions/guard-installed-skill-edits](https://github.com/devantler-tech/guard-installed-skill-edits-action/blob/6c90d44fdc57eaf9d7c17eb9060cf1cd56885d72/action.yml) |
 
 Use the public repository and a full release commit pin in workflows. The submodules retain the
 usual catalogue locations for source navigation. The update repository also owns the reusable
