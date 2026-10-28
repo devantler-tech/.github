@@ -8,9 +8,11 @@ Existing production callers retain unconditional cleanup. The small CI fixtures 
 `Measure Go disk capacity` is a manual, default-off evaluation on reviewed `main`.
 Enable its existing `enabled` input only after its source has passed normal review and CI.
 It runs the same pinned KSail revision in four isolated Ubuntu jobs: build and race
-coverage, each with unconditional cleanup and a 64 GiB capacity policy. Go caches are
-disabled. Each job has a 60-minute ceiling; the historical baseline suggests roughly
-60–70 aggregate runner minutes for one four-job cohort. Inspect one complete cohort
+coverage, each with unconditional cleanup and a 64 GiB capacity policy. Go cache
+restoration is disabled. The commands still populate module and build caches, whose
+disk use is included in the measurements; the identity receipt's `cache: false`
+records the restoration setting. Each job has a 60-minute ceiling; the historical baseline
+suggests roughly 60–70 aggregate runner minutes for one four-job cohort. Inspect one complete cohort
 before deciding whether a specific unresolved question warrants another.
 
 The experimental threshold comes from [run 37734975025, attempt 1](https://github.com/devantler-tech/.github/actions/runs/37734975025):
