@@ -153,7 +153,9 @@ func (g *github) serve(t *testing.T) *httptest.Server {
 				return
 			}
 			created := release(18, text(payload["tag_name"]))
-			created["target_commitish"] = payload["target_commitish"]
+			if target, present := payload["target_commitish"]; present {
+				created["target_commitish"] = target
+			}
 			created["body"] = payload["body"]
 			created["name"] = payload["name"]
 			if g.onPost != nil && g.onPost(w, created) {
@@ -358,7 +360,7 @@ func TestPublishesOnceAndReadsBack(t *testing.T) {
 	if len(g.previews) != 1 || g.previews[0]["tag_name"] != "release-recovery-capability-probe" {
 		t.Fatalf("publication omitted the non-persisting capability proof: %v", g.previews)
 	}
-	want := map[string]any{"tag_name": "v1.222.1", "target_commitish": source, "name": "v1.222.1", "body": Receipt(admission()),
+	want := map[string]any{"tag_name": "v1.222.1", "name": "v1.222.1", "body": Receipt(admission()),
 		"draft": false, "prerelease": false, "generate_release_notes": false, "make_latest": "false"}
 	if encode(g.posts[0]) != encode(want) {
 		t.Fatalf("publication payload %s, want %s", encode(g.posts[0]), encode(want))
@@ -368,6 +370,30 @@ func TestPublishesOnceAndReadsBack(t *testing.T) {
 	}
 	if result["release_record"] != "matches-request" || result["latest_release_before"] != "9" || result["latest_release_after"] != "9" {
 		t.Fatalf("result does not report what verification observed: %v", result)
+	}
+}
+
+// Recovery publishes an admitted existing tag, so it must not ask the API to resolve a
+// separate tag-creation target. GitHub applies extra workflow authorization to some targets.
+func TestExistingTagDoesNotSpecifyCreationTarget(t *testing.T) {
+	g := newGitHub()
+	g.onPost = func(w http.ResponseWriter, _ map[string]any) bool {
+		if _, present := g.posts[len(g.posts)-1]["target_commitish"]; present {
+			w.WriteHeader(http.StatusForbidden)
+			_, _ = io.WriteString(w, `{"message":"Resource not accessible by integration"}`)
+			return true
+		}
+		return false
+	}
+	result, err := g.exercise(t)
+	if err != nil || result["result"] != "published" || len(g.posts) != 1 {
+		t.Fatalf("existing-tag publication requested a separate creation target: result=%v err=%v posts=%d", result, err, len(g.posts))
+	}
+	if _, present := g.posts[0]["target_commitish"]; present {
+		t.Fatal("existing-tag request included target_commitish")
+	}
+	if g.latest != 9 || result["source_sha"] != source {
+		t.Fatalf("existing-tag recovery lost its source or changed latest: %v", result)
 	}
 }
 
