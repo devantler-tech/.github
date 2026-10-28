@@ -7,9 +7,19 @@ Existing production callers retain unconditional cleanup. The small CI fixtures 
 
 `Measure Go disk capacity` is a manual, default-off evaluation on reviewed `main`.
 Enable its existing `enabled` input only after its source has passed normal review and CI.
-It runs the same pinned KSail revision in four isolated Ubuntu jobs: build and race
-coverage, each with unconditional cleanup and a 64 GiB capacity policy. Go cache
-restoration is disabled. The commands still populate module and build caches, whose
+All four isolated Ubuntu jobs use the same pinned KSail revision. Each phase runs
+in two separate policy jobs:
+
+| Phase         | Policy     | Budget |
+| ------------- | ---------- | ------ |
+| Build         | `reclaim`  | 0 GiB  |
+| Build         | `capacity` | 64 GiB |
+| Race coverage | `reclaim`  | 0 GiB  |
+| Race coverage | `capacity` | 64 GiB |
+
+The zero-budget jobs always reclaim space. The 64 GiB jobs reclaim when measured
+available space is below that budget or capacity cannot be measured.
+Go cache restoration is disabled. The commands still populate module and build caches, whose
 disk use is included in the measurements; the identity receipt's `cache: false`
 records the restoration setting. Each job has a 60-minute ceiling; the historical baseline
 suggests roughly 60–70 aggregate runner minutes for one four-job cohort. Inspect one complete cohort
