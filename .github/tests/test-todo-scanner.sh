@@ -36,7 +36,7 @@ jq -e '
     (if has("Project") then .Project|type == "string" else true end) and
     (if has("StopAfterInitialFailure") then .StopAfterInitialFailure|type == "boolean" else true end) and
     (if has("DiffReads") then .DiffReads|type == "array" and length > 0 and all(valid_exchange and .Method == "GET") else true end) and
-    (if has("ExcludeVendored") then .ExcludeVendored|IN("true","false") else true end) and
+    (has("ExcludeVendored") | not) and
     (if has("WantFailure") then .WantFailure|type == "boolean" else true end) and
     (if has("ForbiddenOutput") then .ForbiddenOutput|type == "array" and all(type == "string" and length > 0) else true end) and
     (if has("InitialReads") then .InitialReads|type == "array" and length > 0 and all(valid_exchange and .Method == "GET") else true end))

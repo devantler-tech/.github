@@ -39,8 +39,8 @@ swallowed terminal error	.runs.steps |= map(if .name == "📝 Create issues from
 missing preserved helper	.runs.steps |= map(if .name == "🧰 Preserve retry helper" then .run=":" else . end)	supervisor was not preserved
 mutable image tag	.runs.steps |= map(if .name == "📝 Create issues from TODOs" then .env.TODO_TO_ISSUE_IMAGE |= split("@")[0] else . end)	project authentication must be optional
 lower image floor	.runs.steps |= map(if .name == "📝 Create issues from TODOs" then .env.TODO_TO_ISSUE_IMAGE |= sub("v5.1.15"; "v5.0.0") else . end)	project authentication must be optional
-default-off vendor filtering	.inputs["exclude-vendored"].default="false"	vendor filtering must be guarded and default on
-unguarded vendor filtering	.runs.steps |= map(if .id == "vendored-ignore" then .if=null else . end)	vendor filtering must be guarded and default on
+retired vendor input restored	.inputs["exclude-vendored"]={default:"true",required:false}	vendor filtering must be permanent and guarded by an empty ignore
+unguarded vendor filtering	.runs.steps |= map(if .id == "vendored-ignore" then .if=null else . end)	vendor filtering must be permanent and guarded by an empty ignore
 vendor filter omits sources	.runs.steps |= map(if .id == "vendored-ignore" then .run="printf \u0027ignore=\\n\u0027 >>\"$GITHUB_OUTPUT\"\n" else . end)	Vendor output must remain a fixed literal
 vendor filter skips all sources	.runs.steps |= map(if .id == "vendored-ignore" then .run="printf \u0027ignore=.*\\n\u0027 >>\"$GITHUB_OUTPUT\"\n" else . end)	Vendor output must remain a fixed literal
 scanner replay	.runs.steps |= map(if .name == "📝 Create issues from TODOs" then .run |= sub("docker run --rm"; "retry docker run --rm") else . end)	scanner-fails-once: exact Docker projection or retry count changed

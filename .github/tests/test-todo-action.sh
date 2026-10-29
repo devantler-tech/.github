@@ -30,11 +30,11 @@ jq -e --arg condition "$condition" --arg validation "$validation_condition" '
       [.major,.minor,.patch] | map(tonumber) >= [5,1,15])))' \
   "$work/action.json" >/dev/null || fail 'project authentication must be optional, conditional and validated first'
 jq -e '
-  .inputs["exclude-vendored"].default == "true" and
+  (.inputs | has("exclude-vendored") | not) and
   ([.runs.steps[] | select(.id == "vendored-ignore")] | length == 1 and
-    all(.if == "${{ inputs.exclude-vendored == '\''true'\'' && inputs.ignore == '\'''\'' }}" and
+    all(.if == "${{ inputs.ignore == '\'''\'' }}" and
       .shell == "bash"))
-' "$work/action.json" >/dev/null || fail 'vendor filtering must be guarded and default on'
+' "$work/action.json" >/dev/null || fail 'vendor filtering must be permanent and guarded by an empty ignore'
 
 for step in 'Validate project authentication' '🧰 Preserve retry helper' '📝 Create issues from TODOs'; do
   jq -er --arg step "$step" '.runs.steps[] | select(.name == $step) | .run | select(length > 0)' \
@@ -69,12 +69,10 @@ run_case() (
   if [[ "$opt_in" != true || -n "$project" ]]; then app_token=offline-project-token; fi
   local ignore=$'^ignored/|path with spaces/\\nquoted"pattern'
   if (( $# >= 10 )); then ignore="${10}"; fi
-  local vendor="${12:-default}" expected_ignore="$ignore" resolved_ignore
-  if [[ "$vendor" == default && -z "$ignore" ]]; then expected_ignore='^(vendor|third_party)/'; fi
-  if (( $# >= 13 )); then expected_ignore="${13}"; fi
-  jq -n --arg ignore "$ignore" --arg vendor "$vendor" '
-    {Ignore:$ignore} + (if $vendor == "default" then {} else {ExcludeVendored:$vendor} end)
-  ' >"$work/ignore-input.json"
+  local expected_ignore="$ignore" resolved_ignore
+  if [[ -z "$ignore" ]]; then expected_ignore='^(vendor|third_party)/'; fi
+  if (( $# >= 12 )); then expected_ignore="${12}"; fi
+  jq -n --arg ignore "$ignore" '{Ignore:$ignore}' >"$work/ignore-input.json"
   resolved_ignore="$(bash "$root/.github/tests/todo-ignore-resolution.sh" "$work/action.json" "$work/ignore-input.json")"
   export RUNNER_TEMP="$work/$label/temp" GITHUB_WORKSPACE="$work/$label/workspace with spaces"
   export GITHUB_ACTION_PATH="$work/$label/catalogue/actions/create-issues-from-todos"
@@ -142,8 +140,8 @@ run_case preserved-helper-after-checkout '' '' '' '' 2 3 0 true
 run_case default-auth-client '' offline-key offline-client '' 0 1 0 false '' default
 run_case default-auth-legacy-app '' offline-key '' 12345 0 1 0 false '' default
 run_case default-auth-project organization/offline/1 offline-key offline-client '' 0 1 0 false '' false
-run_case vendor-filter-on '' '' '' '' 0 1 0 false '' true true '^(vendor|third_party)/'
-run_case vendor-filter-off '' '' '' '' 0 1 0 false '' true false ''
-run_case vendor-filter-custom '' '' '' '' 0 1 0 false '^generated/' true true '^generated/'
+run_case vendor-filter-default '' '' '' '' 0 1 0 false '' true '^(vendor|third_party)/'
+run_case vendor-filter-explicit-none '' '' '' '' 0 1 0 false '^$' true '^$'
+run_case vendor-filter-custom '' '' '' '' 0 1 0 false '^generated/' true '^generated/'
 TODO_RUN_FAILURES=1 run_case scanner-fails-once '' '' '' '' 0 1 73 false ''
 echo 'PASS: 17 offline to-do wrapper scenarios preserve flag states, overrides, credentials and failures'

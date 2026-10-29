@@ -3282,7 +3282,6 @@ jobs:
       contents: read
     with:
       dry-run: true
-      exclude-vendored: true
 
   test-scan-for-todo-comments-no-project:
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
