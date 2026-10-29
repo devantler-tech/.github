@@ -1261,50 +1261,6 @@ Regenerate it after changing the source; the independent parity and mutation che
 
 </details>
 
-## Live admin-team audit
-
-The manual `Repository admin-team audit` workflow checks every active repository
-visible to an all-repository App installation, including repositories outside
-`deploy/`. It reads effective team permissions and requires exactly one admin
-team with the `admins` slug. Archived repositories are excluded. The Admins team
-must be secret, matching its declaration and excluding inherited child-team access
-beneath it. API failures,
-partial pagination, unknown permissions and inventory changes produce an unknown
-result rather than a policy pass. Logs contain aggregate counts only.
-
-Known built-in roles use GitHub's documented `permission` field when effective
-Boolean metadata is absent. Typed `permissions.admin` metadata supports custom
-roles when returned by the API. Unknown custom rights, malformed metadata and
-conflicting built-in rights remain UNKNOWN. Both forms use the same canonical
-permission join for policy evaluation and repeated-read stability checks.
-
-The input-free manual workflow runs only from reviewed `main`. Its App token requests repository
-Metadata and Administration read permissions; missing grants fail token creation.
-A short-lived App JWT separately reads the authenticated installation's identity,
-all-repository selection and suspension state, binds it to that token's installation
-ID, and rechecks it after the audit. The JWT goes only to a fixed GitHub GET endpoint;
-the key and request configuration use private temporary files and are removed.
-GitHub's [installation read](https://docs.github.com/en/rest/apps/apps#get-an-installation-for-the-authenticated-app)
-provides this proof; its [repository-list response](https://docs.github.com/en/rest/apps/installations#list-repositories-accessible-to-the-app-installation)
-provides the independent pagination totals. Installation mode requires this reviewed
-main workflow context and its unrestricted token mint.
-A skipped run is not evidence of compliance. The routine combined workflow also runs
-daily and reports only complete outcomes. Legacy maintenance retirement is complete under #84.
-
-An operator with organization-admin visibility can evaluate the shared checker
-with `bash scripts/check-repository-admin-teams.sh --organization-admin`.
-That explicit mode binds active admin membership to the organization identity
-and checks the complete census against independently returned public and private
-repository counts. It never substitutes for a failed App read or proves the App's
-selection or grants. Every mode repeats the complete team join and inventory read;
-changed repository or team identity, visibility or admin permission reports UNKNOWN.
-
-## Contributing
-
-Start with [Contributing](CONTRIBUTING.md) for a safe first change; see
-[catalogue conventions](actions/CONTRIBUTING.md) when changing an action or reusable workflow.
-
-
 <a name="workflow-triage-stale-issues"></a>
 
 ### 🗂️ Triage Stale Issues
@@ -1316,7 +1272,7 @@ Start with [Contributing](CONTRIBUTING.md) for a safe first change; see
 provides repeated repository-local issue triage with the
 [shared policy and exemptions](actions/triage-stale-issues/README.md).
 The caller supplies its daily schedule and repository-scoped token ceiling.
-The workflow serializes previews and live passes, uses no checkout or App key,
+The workflow serializes live passes while previews run independently, uses no checkout or App key,
 and leaves pull requests alone. The temporary rollout gate defaults off.
 
 #### Inputs
@@ -1364,3 +1320,46 @@ tracking before activation. Pilot execution and complete portfolio adoption are
 tracked in [#806](https://github.com/devantler-tech/.github/issues/806).
 
 </details>
+
+## Live admin-team audit
+
+The manual `Repository admin-team audit` workflow checks every active repository
+visible to an all-repository App installation, including repositories outside
+`deploy/`. It reads effective team permissions and requires exactly one admin
+team with the `admins` slug. Archived repositories are excluded. The Admins team
+must be secret, matching its declaration and excluding inherited child-team access
+beneath it. API failures,
+partial pagination, unknown permissions and inventory changes produce an unknown
+result rather than a policy pass. Logs contain aggregate counts only.
+
+Known built-in roles use GitHub's documented `permission` field when effective
+Boolean metadata is absent. Typed `permissions.admin` metadata supports custom
+roles when returned by the API. Unknown custom rights, malformed metadata and
+conflicting built-in rights remain UNKNOWN. Both forms use the same canonical
+permission join for policy evaluation and repeated-read stability checks.
+
+The input-free manual workflow runs only from reviewed `main`. Its App token requests repository
+Metadata and Administration read permissions; missing grants fail token creation.
+A short-lived App JWT separately reads the authenticated installation's identity,
+all-repository selection and suspension state, binds it to that token's installation
+ID, and rechecks it after the audit. The JWT goes only to a fixed GitHub GET endpoint;
+the key and request configuration use private temporary files and are removed.
+GitHub's [installation read](https://docs.github.com/en/rest/apps/apps#get-an-installation-for-the-authenticated-app)
+provides this proof; its [repository-list response](https://docs.github.com/en/rest/apps/installations#list-repositories-accessible-to-the-app-installation)
+provides the independent pagination totals. Installation mode requires this reviewed
+main workflow context and its unrestricted token mint.
+A skipped run is not evidence of compliance. The routine combined workflow also runs
+daily and reports only complete outcomes. Legacy maintenance retirement is complete under #84.
+
+An operator with organization-admin visibility can evaluate the shared checker
+with `bash scripts/check-repository-admin-teams.sh --organization-admin`.
+That explicit mode binds active admin membership to the organization identity
+and checks the complete census against independently returned public and private
+repository counts. It never substitutes for a failed App read or proves the App's
+selection or grants. Every mode repeats the complete team join and inventory read;
+changed repository or team identity, visibility or admin permission reports UNKNOWN.
+
+## Contributing
+
+Start with [Contributing](CONTRIBUTING.md) for a safe first change; see
+[catalogue conventions](actions/CONTRIBUTING.md) when changing an action or reusable workflow.

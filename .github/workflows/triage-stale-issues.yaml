@@ -16,13 +16,6 @@ on:
 
 permissions: {}
 
-# Serialize manual previews and scheduled writes for this repository. A preview
-# cannot race a live pass or cancel its saved progress. Callers have their own
-# workflow-level group so queued daily runs also remain bounded.
-concurrency:
-  group: stale-issues-${{ github.repository }}
-  cancel-in-progress: false
-
 jobs:
   preview:
     if: ${{ inputs.enabled && inputs.dry-run }}
@@ -43,6 +36,10 @@ jobs:
           dry-run: "true"
 
   triage:
+    # Only live writes share the repository progress cursor.
+    concurrency:
+      group: stale-issues-${{ github.repository }}
+      cancel-in-progress: false
     if: ${{ inputs.enabled && !inputs.dry-run }}
     runs-on: ubuntu-latest
     timeout-minutes: 10

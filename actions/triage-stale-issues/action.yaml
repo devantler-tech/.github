@@ -30,11 +30,16 @@ runs:
         set -euo pipefail
         for name in stale keep-open; do
           case "$name" in stale) color=ededed ;; keep-open) color=0e8a16 ;; esac
-          label=$(gh api "repos/$REPOSITORY/labels/$name")
-          jq -e --arg name "$name" --arg color "$color" '
-            type == "object" and .name == $name and
-            (.color | ascii_downcase) == $color
-          ' <<<"$label" >/dev/null
+          {
+            label=$(gh api "repos/$REPOSITORY/labels/$name") &&
+            jq -e --arg name "$name" --arg color "$color" '
+              type == "object" and .name == $name and
+              (.color | ascii_downcase) == $color
+            ' <<<"$label" >/dev/null
+          } || {
+            echo "::error::Managed label '$name' (color $color) is not deployed; no stale triage performed."
+            exit 1
+          }
         done
     - name: Protect automation-owned issue lifecycles
       id: automation-owned
