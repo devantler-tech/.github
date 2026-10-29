@@ -30,11 +30,11 @@ jq -e --arg condition "$condition" --arg validation "$validation_condition" '
       [.major,.minor,.patch] | map(tonumber) >= [5,1,15])))' \
   "$work/action.json" >/dev/null || fail 'project authentication must be optional, conditional and validated first'
 jq -e '
-  .inputs["exclude-vendored"].default == "false" and
+  .inputs["exclude-vendored"].default == "true" and
   ([.runs.steps[] | select(.id == "vendored-ignore")] | length == 1 and
     all(.if == "${{ inputs.exclude-vendored == '\''true'\'' && inputs.ignore == '\'''\'' }}" and
       .shell == "bash"))
-' "$work/action.json" >/dev/null || fail 'vendor filtering must be guarded and default off'
+' "$work/action.json" >/dev/null || fail 'vendor filtering must be guarded and default on'
 
 for step in 'Validate project authentication' '🧰 Preserve retry helper' '📝 Create issues from TODOs'; do
   jq -er --arg step "$step" '.runs.steps[] | select(.name == $step) | .run | select(length > 0)' \
@@ -70,6 +70,7 @@ run_case() (
   local ignore=$'^ignored/|path with spaces/\\nquoted"pattern'
   if (( $# >= 10 )); then ignore="${10}"; fi
   local vendor="${12:-default}" expected_ignore="$ignore" resolved_ignore
+  if [[ "$vendor" == default && -z "$ignore" ]]; then expected_ignore='^(vendor|third_party)/'; fi
   if (( $# >= 13 )); then expected_ignore="${13}"; fi
   jq -n --arg ignore "$ignore" --arg vendor "$vendor" '
     {Ignore:$ignore} + (if $vendor == "default" then {} else {ExcludeVendored:$vendor} end)

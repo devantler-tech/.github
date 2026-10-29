@@ -17,9 +17,9 @@
           "type": "string"
         },
         "exclude-vendored": {
-          "description": "Opt in to excluding root vendor/ and third_party/ when ignore is empty; rollout retirement is tracked in #394",
+          "description": "Exclude root vendor/ and third_party/ by default when ignore is empty; temporary opt-out retires in #394",
           "required": false,
-          "default": false,
+          "default": true,
           "type": "boolean"
         },
         "optional-project-auth": {
@@ -91,7 +91,7 @@
             "TODO_EXPECTED_BEFORE": "${{ github.event.before || github.base_ref }}",
             "TODO_EXPECTED_COMMITS": "${{ toJSON(github.event.commits) }}",
             "TODO_EXPECTED_DIFF": "${{ github.event.pull_request.diff_url }}",
-            "TODO_EXPECTED_IGNORE": "${{ inputs.ignore }}",
+            "TODO_EXPECTED_IGNORE": "${{ inputs.ignore || ((inputs.exclude-vendored == true || inputs.exclude-vendored == 'true') && '^(vendor|third_party)/') || '' }}",
             "TODO_EXPECTED_PROJECT": "organization/devantler-tech/5",
             "TODO_EXPECTED_PROJECT_SECRET": "offline-project-token",
             "TODO_FIXTURE_SKIP_TOKEN": "${{ inputs.fixture-skip-app-token }}"
