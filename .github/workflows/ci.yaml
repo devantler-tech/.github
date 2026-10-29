@@ -1755,6 +1755,77 @@ jobs:
             exit 1
           fi
 
+  # ── stale issues (real upstream action, loopback mutations only) ──
+  test-triage-stale-issues:
+    timeout-minutes: 5
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    name: "[Test] Stale Issues - Offline Lifecycle"
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: 🔒 Harden Runner
+        uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2.22.2
+        with:
+          egress-policy: audit
+      - name: 📑 Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Verify live triage requires proven managed labels
+        run: bash .github/tests/test-triage-stale-issues.sh labels
+      - name: Prepare the loopback issue lifecycle fixture
+        id: stale-fixture
+        run: bash .github/tests/test-triage-stale-issues.sh prepare
+      - name: Verify the omitted rollout opt-in performs no triage
+        uses: $/actions/triage-stale-issues
+        with:
+          github-token: offline-fixture-token
+        env:
+          NODE_OPTIONS: --require=${{ github.workspace }}/.github/tests/fixtures/offline-github-env.cjs
+          OFFLINE_GITHUB_API_URL: ${{ steps.stale-fixture.outputs.api-url }}
+          OFFLINE_GITHUB_REPOSITORY: offline/fixture
+          OFFLINE_GITHUB_EVENT_NAME: schedule
+          OFFLINE_GITHUB_EVENT_PATH: ${{ steps.stale-fixture.outputs.event-path }}
+          OFFLINE_BLOCKED_HOSTS_FILE: ${{ steps.stale-fixture.outputs.blocked-hosts-file }}
+          OFFLINE_ACTION_LOG_FILE: ${{ steps.stale-fixture.outputs.action-log-file }}
+      - name: Exercise the actual shared action with synthetic authority
+        uses: $/actions/triage-stale-issues
+        with:
+          enabled: "true"
+          github-token: offline-fixture-token
+        env:
+          NODE_OPTIONS: --require=${{ github.workspace }}/.github/tests/fixtures/offline-github-env.cjs
+          OFFLINE_GITHUB_API_URL: ${{ steps.stale-fixture.outputs.api-url }}
+          OFFLINE_GITHUB_REPOSITORY: offline/fixture
+          OFFLINE_GITHUB_EVENT_NAME: schedule
+          OFFLINE_GITHUB_EVENT_PATH: ${{ steps.stale-fixture.outputs.event-path }}
+          OFFLINE_BLOCKED_HOSTS_FILE: ${{ steps.stale-fixture.outputs.blocked-hosts-file }}
+          OFFLINE_ACTION_LOG_FILE: ${{ steps.stale-fixture.outputs.action-log-file }}
+      - name: Verify reminders, delayed closure, recovery and exemptions
+        run: bash .github/tests/test-triage-stale-issues.sh verify
+
+  test-triage-stale-issues-workflow:
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    name: "[Test] Stale Issues - Read-Only Workflow"
+    uses: $/.github/workflows/triage-stale-issues.yaml
+    with:
+      enabled: true
+      dry-run: true
+    # Static ceiling for the callee; dry-run executes only its read-only job.
+    permissions:
+      issues: write
+      actions: write
+
+  test-triage-stale-issues-disabled:
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
+    name: "[Test] Stale Issues - Default Off"
+    uses: $/.github/workflows/triage-stale-issues.yaml
+    # Omitted enabled input leaves both callee jobs skipped, with no authority used.
+    permissions:
+      issues: write
+      actions: write
+
   # ── upsert-issue (offline issue lifecycle) ─────────────────
   test-upsert-issue:
     timeout-minutes: 5
@@ -5154,6 +5225,9 @@ jobs:
       - test-login-to-ghcr-empty-token
       - test-setup-go-toolchain-invalid-version
       - test-upsert-issue
+      - test-triage-stale-issues
+      - test-triage-stale-issues-workflow
+      - test-triage-stale-issues-disabled
       - test-run-dotnet-tests-missing-working-directory
       - lint-readme-parity
       - lint-shell-pipelines
@@ -5275,6 +5349,9 @@ jobs:
             ${{ needs.test-login-to-ghcr-empty-token.result }}
             ${{ needs.test-setup-go-toolchain-invalid-version.result }}
             ${{ needs.test-upsert-issue.result }}
+            ${{ needs.test-triage-stale-issues.result }}
+            ${{ needs.test-triage-stale-issues-workflow.result }}
+            ${{ needs.test-triage-stale-issues-disabled.result }}
             ${{ needs.test-run-dotnet-tests-missing-working-directory.result }}
             ${{ needs.lint-readme-parity.result }}
             ${{ needs.lint-shell-pipelines.result }}

@@ -100,6 +100,7 @@ declaration. These are steps inside a caller-owned job, not required workflows.
 | [setup-ksail-cli](actions/setup-ksail-cli/README.md) | Install KSail CLI via Homebrew | [action.yaml](actions/setup-ksail-cli/action.yaml) |
 | [upload-coverage](actions/upload-coverage/README.md) | Upload a Cobertura coverage report to GitHub Code Quality | [action.yaml](actions/upload-coverage/action.yaml) |
 | [upsert-issue](actions/upsert-issue/README.md) | Create, update, reopen, or close a GitHub issue by title | [action.yaml](actions/upsert-issue/action.yaml) |
+| [triage-stale-issues](actions/triage-stale-issues/README.md) | Remind inactive issues, then close after a further grace period | [action.yaml](actions/triage-stale-issues/action.yaml) |
 | [validate-naming](actions/validate-naming/README.md) | Validate Kubernetes manifest and machine patch names | [action.yaml](actions/validate-naming/action.yaml) |
 | [validate-retired-repo-links](actions/validate-retired-repo-links/README.md) | Catch links to retired repositories with documented historical exceptions | [action.yaml](actions/validate-retired-repo-links/action.yaml) |
 | [validate-shell-pipelines](actions/validate-shell-pipelines/README.md) | Detect early-exit assertions that can invert results under pipefail | [action.yaml](actions/validate-shell-pipelines/action.yaml) |
@@ -140,6 +141,7 @@ interface is not a reason to centralize a single-product pipeline.
 | [Publish manifests](#workflow-publish-manifests) | Build, sign and publish a manifest bundle | [publish-manifests.yaml](.github/workflows/publish-manifests.yaml) |
 | [Scan TODO comments](#workflow-scan-todos) | Turn actionable TODOs into tracked work | [scan-for-todo-comments.yaml](.github/workflows/scan-for-todo-comments.yaml) |
 | [Template sync](#workflow-template-sync) | Open updates from an upstream template | [template-sync.yaml](.github/workflows/template-sync.yaml) |
+| [Triage stale issues](#workflow-triage-stale-issues) | Apply the shared 90-day reminder and 30-day closure policy | [triage-stale-issues.yaml](.github/workflows/triage-stale-issues.yaml) |
 | [Validate Go project](#workflow-validate-go) | Validate Go modules; also an organization PR gate | [validate-go-project.yaml](.github/workflows/validate-go-project.yaml) |
 
 </details>
@@ -152,6 +154,7 @@ These operate this catalogue itself; they are not reusable consumer interfaces.
 |---|---|---|
 | [Inspect release recovery](#workflow-inspect-recovery) | Diagnose a stranded stable release without publication authority | [inspect-release-recovery.yaml](.github/workflows/inspect-release-recovery.yaml) |
 | [Publish release recovery](#workflow-publish-recovery) | Recover this catalogue's stranded stable release; default-off and confirmation-gated | [publish-release-recovery.yaml](.github/workflows/publish-release-recovery.yaml) |
+| [Stale issue pilot](#workflow-triage-stale-issues) | Daily triage and manual read-only preview using this repository's reviewed shared policy | [stale-issues.yaml](.github/workflows/stale-issues.yaml) |
 
 ## Organization-required workflow sources
 
@@ -1300,3 +1303,64 @@ changed repository or team identity, visibility or admin permission reports UNKN
 
 Start with [Contributing](CONTRIBUTING.md) for a safe first change; see
 [catalogue conventions](actions/CONTRIBUTING.md) when changing an action or reusable workflow.
+
+
+<a name="workflow-triage-stale-issues"></a>
+
+### 🗂️ Triage Stale Issues
+
+<details>
+<summary>Purpose, interface and usage</summary>
+
+[.github/workflows/triage-stale-issues.yaml](.github/workflows/triage-stale-issues.yaml)
+provides repeated repository-local issue triage with the
+[shared policy and exemptions](actions/triage-stale-issues/README.md).
+The caller supplies its daily schedule and repository-scoped token ceiling.
+The workflow serializes previews and live passes, uses no checkout or App key,
+and leaves pull requests alone. The temporary rollout gate defaults off.
+
+#### Inputs
+
+| Key | Type | Default | Required | Description |
+| --- | --- | --- | --- | --- |
+| `enabled` | Input (boolean) | `false` | No | Explicit rollout opt-in; omitted or false performs no triage |
+| `dry-run` | Input (boolean) | `false` | No | Preview with read-only permissions and no issue or cursor mutation |
+
+There are no secrets to forward. The live job uses `issues: write` and
+`actions: write` for upstream progress-cache replacement; preview executes
+only its issues/actions read job. It requests no contents or PR write authority.
+
+#### Usage
+
+```yaml
+name: Triage stale issues
+on:
+  schedule:
+    - cron: "23 4 * * *"
+  workflow_dispatch:
+    inputs:
+      dry-run:
+        type: boolean
+        default: true
+permissions: {}
+concurrency:
+  group: stale-issues-caller
+  cancel-in-progress: false
+jobs:
+  triage:
+    uses: devantler-tech/.github/.github/workflows/triage-stale-issues.yaml@<full-commit-sha> # vX.Y.Z
+    permissions:
+      issues: write
+      actions: write
+    with:
+      enabled: true
+      dry-run: ${{ github.event_name == 'workflow_dispatch' && inputs.dry-run }}
+```
+
+Replace the example pin with the reviewed published release commit. Manual runs
+default to preview; scheduled runs apply the approved policy after caller activation.
+Declare and verify `stale`/`keep-open` labels first, and protect intentionally deferred
+tracking before activation. Pilot execution and complete portfolio adoption are
+tracked in [#806](https://github.com/devantler-tech/.github/issues/806).
+
+</details>
