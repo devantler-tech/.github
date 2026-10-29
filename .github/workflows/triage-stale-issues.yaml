@@ -1,0 +1,58 @@
+name: 🗂️ Triage Stale Issues
+
+on:
+  workflow_call:
+    inputs:
+      enabled:
+        description: Temporary rollout opt-in; omitted or false performs no triage.
+        type: boolean
+        required: false
+        default: false
+      dry-run:
+        description: Read-only preview; no issue changes or saved progress.
+        type: boolean
+        required: false
+        default: false
+
+permissions: {}
+
+jobs:
+  preview:
+    if: ${{ inputs.enabled && inputs.dry-run }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      issues: read
+      actions: read
+    steps:
+      - name: 🛡️ Harden runner
+        uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2.22.2
+        with:
+          egress-policy: audit
+      - name: Preview stale-issue triage
+        uses: $/actions/triage-stale-issues
+        with:
+          enabled: "true"
+          dry-run: "true"
+
+  triage:
+    # Only live writes share the repository progress cursor.
+    concurrency:
+      group: stale-issues-${{ github.repository }}
+      cancel-in-progress: false
+    if: ${{ inputs.enabled && !inputs.dry-run }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      issues: write
+      # actions/stale saves a resumable cursor and removes its old cache entry.
+      actions: write
+    steps:
+      - name: 🛡️ Harden runner
+        uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2.22.2
+        with:
+          egress-policy: audit
+      - name: Triage stale issues
+        uses: $/actions/triage-stale-issues
+        with:
+          enabled: "true"

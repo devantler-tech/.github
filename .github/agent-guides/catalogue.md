@@ -237,3 +237,4 @@ pass; the generic budget bound is not permission to omit tests or declare that o
 | `repository-drift-check.yaml` | This repository |
 | `repository-pr-admission.yaml` | Shared read-only organization admission plumbing; product validators remain local |
 | `stale-repository-identifier.yaml` | This repository |
+| `stale-issues.yaml` | This repository; scheduled/manual pilot of the shared inactive-issue policy |

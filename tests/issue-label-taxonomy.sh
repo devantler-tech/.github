@@ -6,7 +6,7 @@ repo_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 
-required='{"blocked":"d93f0b","released":"ededed","next":"5d3fd3","help wanted":"008672","good first issue":"7057ff","question":"d876e3","duplicate":"cfd3d7","wontfix":"ffffff","spam":"e4e669","off topic":"e4e669","needs triage":"fbca04","needs investigation":"fbca04","breaking change":"b60205","automation":"bfdadc","repo-assist":"bfdadc"}'
+required='{"blocked":"d93f0b","released":"ededed","next":"5d3fd3","help wanted":"008672","good first issue":"7057ff","question":"d876e3","duplicate":"cfd3d7","wontfix":"ffffff","spam":"e4e669","off topic":"e4e669","needs triage":"fbca04","needs investigation":"fbca04","breaking change":"b60205","automation":"bfdadc","repo-assist":"bfdadc","stale":"ededed","keep-open":"0e8a16"}'
 retired='["roadmap","bug","enhancement","documentation","performance","security","refactor"]'
 
 check_taxonomy() {
@@ -65,6 +65,10 @@ expect_refusal '.[0].spec.forProvider.label += [{name:"bug",color:"d73a4a"}]' \
   'duplicate issue-type labels remain in rendered set'
 expect_refusal '.[0].spec.forProvider.label |= map(select(.name != "blocked"))' \
   'cross-cutting label or its color was lost'
+expect_refusal '.[0].spec.forProvider.label |= map(select(.name != "stale"))' \
+  'cross-cutting label or its color was lost'
+expect_refusal '.[0].spec.forProvider.label |= map(select(.name != "keep-open"))' \
+  'cross-cutting label or its color was lost'
 expect_refusal '.[0].spec.forProvider.label |= map(if .name == "automation" then .color = "000000" else . end)' \
   'cross-cutting label or its color was lost'
 expect_refusal '.[0].spec.forProvider.label += [.[0].spec.forProvider.label[0]]' \
@@ -73,5 +77,5 @@ expect_refusal '.[0].spec.forProvider.label = null' \
   'incomplete or ambiguous rendered label inventory'
 expect_refusal '[]' 'incomplete or ambiguous rendered label inventory'
 
-printf 'issue label taxonomy: PASS (%s rendered repositories; six mutation controls)\n' \
+printf 'issue label taxonomy: PASS (%s rendered repositories; eight mutation controls)\n' \
   "$(jq length "$work/labels.json")"

@@ -10,7 +10,7 @@
 # including dependency/ecosystem labels (`dependencies`, `go`, `docker`, …) and
 # lifecycle labels whose presence carries automation state. Declaring them keeps
 # the authoritative set from deleting state that those automations require. The
-# shared patch below appends the CANONICAL org taxonomy (15 independent lifecycle
+# shared patch below appends the CANONICAL org taxonomy (17 independent lifecycle
 # and cross-cutting labels) to every IssueLabels. Native issue types own issue
 # classification; the seven duplicate type-labels are retired (#747). This patch is
 # the single source of truth for the taxonomy. Mirrors the org-wide settings
@@ -105,3 +105,11 @@ patches:
       - op: add
         path: /spec/forProvider/label/-
         value: {name: repo-assist, color: "bfdadc"}
+      # actions/stale owns label assignments; Crossplane owns their definitions.
+      # Retain stale progress and the explicit long-lived-work exemption.
+      - op: add
+        path: /spec/forProvider/label/-
+        value: {name: stale, color: "ededed"}
+      - op: add
+        path: /spec/forProvider/label/-
+        value: {name: keep-open, color: "0e8a16"}
