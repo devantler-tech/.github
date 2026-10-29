@@ -3,11 +3,6 @@ name: 🗂️ Triage Stale Issues
 on:
   workflow_call:
     inputs:
-      enabled:
-        description: Temporary rollout gate; defaults on, explicit false performs no triage.
-        type: boolean
-        required: false
-        default: true
       dry-run:
         description: Read-only preview; no issue changes or saved progress.
         type: boolean
@@ -18,7 +13,7 @@ permissions: {}
 
 jobs:
   preview:
-    if: ${{ inputs.enabled && inputs.dry-run }}
+    if: ${{ inputs.dry-run }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -32,7 +27,6 @@ jobs:
       - name: Preview stale-issue triage
         uses: $/actions/triage-stale-issues
         with:
-          enabled: "true"
           dry-run: "true"
 
   triage:
@@ -40,7 +34,7 @@ jobs:
     concurrency:
       group: stale-issues-${{ github.repository }}
       cancel-in-progress: false
-    if: ${{ inputs.enabled && !inputs.dry-run }}
+    if: ${{ !inputs.dry-run }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -54,5 +48,3 @@ jobs:
           egress-policy: audit
       - name: Triage stale issues
         uses: $/actions/triage-stale-issues
-        with:
-          enabled: "true"

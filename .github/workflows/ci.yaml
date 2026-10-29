@@ -1779,23 +1779,6 @@ jobs:
       - name: Prepare the loopback issue lifecycle fixture
         id: stale-fixture
         run: bash .github/tests/test-triage-stale-issues.sh prepare
-      - name: Verify explicit rollout opt-out performs no triage
-        uses: $/actions/triage-stale-issues
-        with:
-          enabled: "false"
-          github-token: offline-fixture-token
-        env:
-          PATH: ${{ steps.stale-fixture.outputs.fixture-path }}
-          STALE_OFFLINE_SCENARIO: ${{ steps.stale-fixture.outputs.scenario-file }}
-          NODE_OPTIONS: --require=${{ github.workspace }}/.github/tests/fixtures/offline-github-env.cjs
-          OFFLINE_GITHUB_API_URL: ${{ steps.stale-fixture.outputs.api-url }}
-          OFFLINE_GITHUB_REPOSITORY: offline/fixture
-          OFFLINE_GITHUB_EVENT_NAME: schedule
-          OFFLINE_GITHUB_EVENT_PATH: ${{ steps.stale-fixture.outputs.event-path }}
-          OFFLINE_BLOCKED_HOSTS_FILE: ${{ steps.stale-fixture.outputs.blocked-hosts-file }}
-          OFFLINE_ACTION_LOG_FILE: ${{ steps.stale-fixture.outputs.action-log-file }}
-      - name: Verify the explicit opt-out used no authority
-        run: bash .github/tests/test-triage-stale-issues.sh verify-opt-out
       - name: Exercise the actual shared action with synthetic authority
         uses: $/actions/triage-stale-issues
         with:
@@ -1820,17 +1803,6 @@ jobs:
     with:
       dry-run: true
     # Static ceiling for the callee; dry-run executes only its read-only job.
-    permissions:
-      issues: write
-      actions: write
-
-  test-triage-stale-issues-disabled:
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
-    name: "[Test] Stale Issues - Explicit Opt Out"
-    uses: $/.github/workflows/triage-stale-issues.yaml
-    # Explicit opt-out leaves both callee jobs skipped, with no authority used.
-    with:
-      enabled: false
     permissions:
       issues: write
       actions: write
@@ -5236,7 +5208,6 @@ jobs:
       - test-upsert-issue
       - test-triage-stale-issues
       - test-triage-stale-issues-workflow
-      - test-triage-stale-issues-disabled
       - test-run-dotnet-tests-missing-working-directory
       - lint-readme-parity
       - lint-shell-pipelines
@@ -5360,7 +5331,6 @@ jobs:
             ${{ needs.test-upsert-issue.result }}
             ${{ needs.test-triage-stale-issues.result }}
             ${{ needs.test-triage-stale-issues-workflow.result }}
-            ${{ needs.test-triage-stale-issues-disabled.result }}
             ${{ needs.test-run-dotnet-tests-missing-working-directory.result }}
             ${{ needs.lint-readme-parity.result }}
             ${{ needs.lint-shell-pipelines.result }}

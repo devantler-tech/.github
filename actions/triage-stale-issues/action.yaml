@@ -3,10 +3,6 @@ description: Remind after 90 inactive days, then close after 30 more days withou
 author: devantler-tech
 
 inputs:
-  enabled:
-    description: Temporary rollout gate. Defaults on; explicit false performs no triage.
-    required: false
-    default: "true"
   dry-run:
     description: Report proposed changes without changing issues or saved progress.
     required: false
@@ -21,7 +17,7 @@ runs:
   steps:
     - name: Require deployed lifecycle label definitions
       id: labels-ready
-      if: ${{ inputs.enabled == 'true' && inputs.dry-run != 'true' }}
+      if: ${{ inputs.dry-run != 'true' }}
       shell: bash
       env:
         GH_TOKEN: ${{ inputs.github-token }}
@@ -43,7 +39,7 @@ runs:
         done
     - name: Protect automation-owned issue lifecycles
       id: automation-owned
-      if: ${{ inputs.enabled == 'true' && inputs.dry-run != 'true' }}
+      if: ${{ inputs.dry-run != 'true' }}
       shell: bash
       env:
         GH_TOKEN: ${{ inputs.github-token }}
@@ -76,7 +72,6 @@ runs:
           exit 1
         }
     - name: Triage inactive issues
-      if: ${{ inputs.enabled == 'true' }}
       uses: actions/stale@4391f3da665fdf50b6810c1a66712fb9ba21aa93 # v11.0.0
       with:
         repo-token: ${{ inputs.github-token }}

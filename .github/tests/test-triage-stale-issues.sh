@@ -171,17 +171,6 @@ BASH
   fi
   echo 'stale-issues test: loopback fixture prepared (13 independent issue/PR cases)'
   ;;
-verify-opt-out)
-  [[ -f "$work/cli-requests" && -s "$work/scenario.json" && -s "$work/pid" ]] || fail 'opt-out fixture was not prepared'
-  pid="$(cat "$work/pid")"
-  if [[ ! "$pid" =~ ^[1-9][0-9]*$ ]] || ! kill -0 "$pid" 2>/dev/null; then
-    fail 'opt-out fixture is not running'
-  fi
-  for trace in cli-requests requests.jsonl blocked-hosts; do
-    [[ ! -s "$work/$trace" ]] || fail 'explicit opt-out used authority'
-  done
-  echo 'stale-issues test: explicit opt-out performed no API or CLI requests'
-  ;;
 verify)
   pid="$(cat "$work/pid")"
   [[ "$pid" =~ ^[0-9]+$ ]] || fail 'invalid fixture process'
@@ -193,7 +182,7 @@ verify)
   done
   [[ -s "$work/completed.json" ]] || fail 'API fixture has no clean completion receipt'
   [[ ! -s "$work/blocked-hosts" ]] || fail 'action attempted external network access'
-  [[ "$(wc -l <"$work/cli-requests" | tr -d ' ')" == 3 ]] || fail 'live preflights were skipped or explicit opt-out performed a read'
+  [[ "$(wc -l <"$work/cli-requests" | tr -d ' ')" == 3 ]] || fail 'live preflights were skipped or duplicated'
   for request in \
     "api repos/$GITHUB_REPOSITORY/labels/stale" \
     "api repos/$GITHUB_REPOSITORY/labels/keep-open" \

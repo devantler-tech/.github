@@ -1273,18 +1273,17 @@ provides repeated repository-local issue triage with the
 [shared policy and exemptions](actions/triage-stale-issues/README.md).
 The caller supplies its daily schedule and repository-scoped token ceiling.
 The workflow serializes live passes while previews run independently, uses no checkout or App key,
-and leaves pull requests alone. The temporary rollout gate now defaults on; explicit false still opts out.
+and leaves pull requests alone.
 
-This is a breaking change for omitted activation settings: integrations upgrading
-from the default-off interface must explicitly pass `enabled: false` to retain no-op
-behavior. The permanent read-only `dry-run` option is unchanged. The temporary input
-will be removed after the completed rollout, as tracked in [#808](https://github.com/devantler-tech/.github/issues/808).
+The temporary `enabled` input has been removed. When upgrading from a rollout
+version, update the immutable source pin and remove that argument together. If an
+integration previously used `enabled: false`, disable its caller or choose read-only
+preview before upgrading. The permanent `dry-run` option is unchanged.
 
 #### Inputs
 
 | Key | Type | Default | Required | Description |
 | --- | --- | --- | --- | --- |
-| `enabled` | Input (boolean) | `true` | No | Temporary rollout gate; explicit false performs no triage |
 | `dry-run` | Input (boolean) | `false` | No | Preview with read-only permissions and no issue or cursor mutation |
 
 There are no secrets to forward. The live job uses `issues: write` and
@@ -1320,8 +1319,8 @@ jobs:
 Replace the example pin with the reviewed published release commit. Manual runs
 default to preview; scheduled runs apply the approved policy after caller activation.
 Declare and verify `stale`/`keep-open` labels first, and protect intentionally deferred
-tracking before activation. Pilot execution and complete portfolio adoption are
-tracked in [#806](https://github.com/devantler-tech/.github/issues/806).
+tracking before activation. Rollout and interface retirement are tracked in
+[#806](https://github.com/devantler-tech/.github/issues/806) and [#808](https://github.com/devantler-tech/.github/issues/808).
 
 </details>
 
