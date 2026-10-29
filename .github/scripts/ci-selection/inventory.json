@@ -19,7 +19,6 @@
   "preserved": {
     "test-triage-stale-issues": {"if": "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"},
     "test-triage-stale-issues-workflow": {"if": "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"},
-    "test-triage-stale-issues-disabled": {"if": "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"},
     "test-check-ci-run-budget": {"if": "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"},
     "test-apply-signed-fixes-verifies-without-a-patch": {"if": "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"},
     "test-dependency-review-workflow": {"if": "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"},
@@ -56,7 +55,6 @@
   "jobs": {
     "test-triage-stale-issues": ["actions/triage-stale-issues/"],
     "test-triage-stale-issues-workflow": ["actions/triage-stale-issues/"],
-    "test-triage-stale-issues-disabled": ["actions/triage-stale-issues/"],
     "test-validate-retired-repo-links": ["actions/validate-retired-repo-links/"],
     "test-validate-retired-repo-links-disabled": ["actions/validate-retired-repo-links/"],
     "test-validate-shell-pipelines": ["actions/validate-shell-pipelines/"],

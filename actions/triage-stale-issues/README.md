@@ -34,17 +34,14 @@ daily runs. `actions: write` permits replacing that progress cache; `issues: wri
 permits labels, reminders and closure. No contents or pull-request write permission
 is needed. A dry-run uses only issues/actions read and never persists its cursor.
 
-The temporary rollout gate defaults on after validation. This changes omitted-input
-behavior from no-op to live triage when upgrading from the default-off interface.
-Pass `enabled: "false"` explicitly to preserve opt-out behavior during this bridge
-release. The permanent `dry-run` preview option is unchanged. Removal is tracked in
-[#808](https://github.com/devantler-tech/.github/issues/808).
+The temporary `enabled` input has been removed. Update the immutable source pin
+and remove the argument together. Integrations previously using `enabled: "false"`
+must disable their caller or choose the permanent read-only preview before upgrading.
 
 ## Inputs
 
 | Name | Description | Required | Default |
 | --- | --- | --- | --- |
-| `enabled` | Temporary rollout gate; explicit false runs no triage | No | `true` |
 | `dry-run` | Preview proposed actions without issue or cursor changes | No | `false` |
 | `github-token` | Repository-scoped token; read-only for preview, issues/actions write for live triage | No | `github.token` |
 
