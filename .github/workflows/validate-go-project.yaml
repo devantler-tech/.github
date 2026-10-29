@@ -1080,8 +1080,10 @@ jobs:
               exit 2
             fi
             read_capacity() {
-              local frame fields total used available
-              if ! frame="$(timeout --kill-after=1s 5s env LC_ALL=C df -Pk / 2>/dev/null)" ||
+              local frame fields total used available timeout_command=timeout
+              # Ubuntu 26 supplies GNU timeout under this explicit name.
+              if command -v gnutimeout >/dev/null 2>&1; then timeout_command=gnutimeout; fi
+              if ! frame="$("$timeout_command" --kill-after=1s 5s env LC_ALL=C df -Pk / 2>/dev/null)" ||
                  ! fields="$(awk 'NR == 2 {print $2, $3, $4} END {if (NR != 2) exit 1}' <<< "$frame")" ||
                  [[ ! "$fields" =~ ^([0-9]{1,12})[[:space:]]([0-9]{1,12})[[:space:]]([0-9]{1,12})$ ]]; then
                 return 1
@@ -1279,8 +1281,10 @@ jobs:
               exit 2
             fi
             read_capacity() {
-              local frame fields total used available
-              if ! frame="$(timeout --kill-after=1s 5s env LC_ALL=C df -Pk / 2>/dev/null)" ||
+              local frame fields total used available timeout_command=timeout
+              # Ubuntu 26 supplies GNU timeout under this explicit name.
+              if command -v gnutimeout >/dev/null 2>&1; then timeout_command=gnutimeout; fi
+              if ! frame="$("$timeout_command" --kill-after=1s 5s env LC_ALL=C df -Pk / 2>/dev/null)" ||
                  ! fields="$(awk 'NR == 2 {print $2, $3, $4} END {if (NR != 2) exit 1}' <<< "$frame")" ||
                  [[ ! "$fields" =~ ^([0-9]{1,12})[[:space:]]([0-9]{1,12})[[:space:]]([0-9]{1,12})$ ]]; then
                 return 1
@@ -1554,8 +1558,10 @@ jobs:
               exit 2
             fi
             read_capacity() {
-              local frame fields total used available
-              if ! frame="$(timeout --kill-after=1s 5s env LC_ALL=C df -Pk / 2>/dev/null)" ||
+              local frame fields total used available timeout_command=timeout
+              # Ubuntu 26 supplies GNU timeout under this explicit name.
+              if command -v gnutimeout >/dev/null 2>&1; then timeout_command=gnutimeout; fi
+              if ! frame="$("$timeout_command" --kill-after=1s 5s env LC_ALL=C df -Pk / 2>/dev/null)" ||
                  ! fields="$(awk 'NR == 2 {print $2, $3, $4} END {if (NR != 2) exit 1}' <<< "$frame")" ||
                  [[ ! "$fields" =~ ^([0-9]{1,12})[[:space:]]([0-9]{1,12})[[:space:]]([0-9]{1,12})$ ]]; then
                 return 1

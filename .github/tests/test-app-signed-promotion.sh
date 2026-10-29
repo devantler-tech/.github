@@ -13,8 +13,8 @@ fail() {
 # shellcheck disable=SC2016 # Literal workflow expression, not a Bash expansion.
 expected_tags='${{ steps.staging.outputs.tag }}'
 yq -o=json '.' "$workflow" | jq -e --arg tags "$expected_tags" '
-  .on.workflow_call.inputs["enable-signed-promotion"].default == false and
   .jobs.publish.steps as $steps |
+  .on.workflow_call.inputs["enable-signed-promotion"].default == false and
   ([$steps[] | select(.id == "build") | .with.tags] == [$tags]) and
   ([$steps[] | select(.id == "staging") | .if] == ["${{ !inputs.enable-signed-recovery }}"]) and
   ($steps | map(select(.id == "staging"))[0].env |
