@@ -1273,13 +1273,18 @@ provides repeated repository-local issue triage with the
 [shared policy and exemptions](actions/triage-stale-issues/README.md).
 The caller supplies its daily schedule and repository-scoped token ceiling.
 The workflow serializes live passes while previews run independently, uses no checkout or App key,
-and leaves pull requests alone. The temporary rollout gate defaults off.
+and leaves pull requests alone. The temporary rollout gate now defaults on; explicit false still opts out.
+
+This is a breaking change for omitted activation settings: integrations upgrading
+from the default-off interface must explicitly pass `enabled: false` to retain no-op
+behavior. The permanent read-only `dry-run` option is unchanged. The temporary input
+will be removed after the completed rollout, as tracked in [#808](https://github.com/devantler-tech/.github/issues/808).
 
 #### Inputs
 
 | Key | Type | Default | Required | Description |
 | --- | --- | --- | --- | --- |
-| `enabled` | Input (boolean) | `false` | No | Explicit rollout opt-in; omitted or false performs no triage |
+| `enabled` | Input (boolean) | `true` | No | Temporary rollout gate; explicit false performs no triage |
 | `dry-run` | Input (boolean) | `false` | No | Preview with read-only permissions and no issue or cursor mutation |
 
 There are no secrets to forward. The live job uses `issues: write` and
@@ -1309,7 +1314,6 @@ jobs:
       issues: write
       actions: write
     with:
-      enabled: true
       dry-run: ${{ github.event_name == 'workflow_dispatch' && inputs.dry-run }}
 ```
 
