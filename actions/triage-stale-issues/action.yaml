@@ -19,6 +19,57 @@ inputs:
 runs:
   using: composite
   steps:
+    - name: Require deployed lifecycle label definitions
+      id: labels-ready
+      if: ${{ inputs.enabled == 'true' && inputs.dry-run != 'true' }}
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github-token }}
+        REPOSITORY: ${{ github.repository }}
+      run: |
+        set -euo pipefail
+        for name in stale keep-open; do
+          case "$name" in stale) color=ededed ;; keep-open) color=0e8a16 ;; esac
+          label=$(gh api "repos/$REPOSITORY/labels/$name")
+          jq -e --arg name "$name" --arg color "$color" '
+            type == "object" and .name == $name and
+            (.color | ascii_downcase) == $color
+          ' <<<"$label" >/dev/null
+        done
+    - name: Protect automation-owned issue lifecycles
+      id: automation-owned
+      if: ${{ inputs.enabled == 'true' && inputs.dry-run != 'true' }}
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github-token }}
+        REPOSITORY: ${{ github.repository }}
+      run: |
+        set -euo pipefail
+        # v11 has no author exemption. Refuse the pass before any issue write
+        # if an unexempted bot-owned issue could be changed. The one-day margin
+        # prevents an issue crossing the 90-day boundary during the run.
+        pages=$(gh api --paginate --slurp "repos/$REPOSITORY/issues?state=open&per_page=100")
+        jq -e '
+          type == "array" and length > 0 and all(.[]; type == "array") and
+          (add |
+            ([.[].number] | length == (unique | length)) and
+            all(.[];
+              .state == "open" and (.number | type == "number" and . > 0 and . == floor) and
+              (.user.login | type == "string" and length > 0) and
+              (.updated_at | type == "string") and
+              (.labels | type == "array" and all(.[]; .name | type == "string")) and
+              (.type == null or (.type.name | type == "string"))) and
+            ([.[] | select(has("pull_request") | not) |
+              select(.user.login | IN("renovate[bot]", "dependabot[bot]")) |
+              select([.labels[].name | ascii_downcase] |
+                any(. == "blocked" or . == "keep-open" or . == "maintainer-ask" or . == "maintainer-ask-urgent") | not) |
+              select(any(.labels[]; (.name | ascii_downcase) == "stale") or
+                (((.type.name // "") | length) > 0 and
+                  (.updated_at | fromdateiso8601) < (now - 89 * 86400)))] | length == 0))
+        ' <<<"$pages" >/dev/null || {
+          echo '::error::Automation-owned issue safety or complete census could not be proven; no stale triage performed.'
+          exit 1
+        }
     - name: Triage inactive issues
       if: ${{ inputs.enabled == 'true' }}
       uses: actions/stale@4391f3da665fdf50b6810c1a66712fb9ba21aa93 # v11.0.0

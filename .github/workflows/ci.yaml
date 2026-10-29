@@ -1774,6 +1774,8 @@ jobs:
           persist-credentials: false
       - name: Verify live triage requires proven managed labels
         run: bash .github/tests/test-triage-stale-issues.sh labels
+      - name: Verify automation-owned issues and incomplete reads block mutation
+        run: bash .github/tests/test-triage-stale-issues.sh automation
       - name: Prepare the loopback issue lifecycle fixture
         id: stale-fixture
         run: bash .github/tests/test-triage-stale-issues.sh prepare
@@ -1782,6 +1784,8 @@ jobs:
         with:
           github-token: offline-fixture-token
         env:
+          PATH: ${{ steps.stale-fixture.outputs.fixture-path }}
+          STALE_OFFLINE_SCENARIO: ${{ steps.stale-fixture.outputs.scenario-file }}
           NODE_OPTIONS: --require=${{ github.workspace }}/.github/tests/fixtures/offline-github-env.cjs
           OFFLINE_GITHUB_API_URL: ${{ steps.stale-fixture.outputs.api-url }}
           OFFLINE_GITHUB_REPOSITORY: offline/fixture
@@ -1795,6 +1799,8 @@ jobs:
           enabled: "true"
           github-token: offline-fixture-token
         env:
+          PATH: ${{ steps.stale-fixture.outputs.fixture-path }}
+          STALE_OFFLINE_SCENARIO: ${{ steps.stale-fixture.outputs.scenario-file }}
           NODE_OPTIONS: --require=${{ github.workspace }}/.github/tests/fixtures/offline-github-env.cjs
           OFFLINE_GITHUB_API_URL: ${{ steps.stale-fixture.outputs.api-url }}
           OFFLINE_GITHUB_REPOSITORY: offline/fixture

@@ -17,12 +17,18 @@ unknown types require explicit triage instead of automatic closure. Assigned iss
 and milestones follow the same inactivity clock unless explicitly exempted.
 
 Declare `stale` and `keep-open` through the Git-owned label configuration before
-activation. The reusable workflow refuses live triage until both exact label
+activation. The shared action refuses live triage until both exact label
 definitions are readable. Do not create their definitions imperatively. Apply `keep-open` to
 deliberately deferred external-availability tracking such as
 [#805](https://github.com/devantler-tech/.github/issues/805) before rollout.
 
-Each run permits 100 API operations and processes oldest updates first. The
+Renovate and Dependabot-owned issues retain their own lifecycle. Before a live
+pass, the action reads the complete repository issue census and refuses to run
+if an unexempted automation-owned issue could enter triage. It does not edit bot
+issues to manufacture an exemption. Failed, incomplete or ambiguous reads also
+refuse the pass. A one-day margin protects the boundary while the action runs.
+
+Each run budgets 100 upstream issue-processing operations and processes oldest updates first. The
 upstream cache resumes unfinished scans, so large repositories may require several
 daily runs. `actions: write` permits replacing that progress cache; `issues: write`
 permits labels, reminders and closure. No contents or pull-request write permission

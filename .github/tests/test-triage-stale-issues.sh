@@ -7,11 +7,52 @@ work="${RUNNER_TEMP:?}/stale-issues-offline"
 fail() { echo "stale-issues test: $*" >&2; exit 1; }
 
 case "${1:-}" in
+automation)
+  automation_work="$(mktemp -d)"
+  trap 'rm -rf "$automation_work"' EXIT
+  yq -r '.runs.steps[] | select(.id == "automation-owned") | .run' \
+    "$root/actions/triage-stale-issues/action.yaml" >"$automation_work/guard"
+  [[ -s "$automation_work/guard" ]] || fail 'automation-owned issue guard is missing'
+  mkdir "$automation_work/bin"
+  cat >"$automation_work/bin/gh" <<'BASH'
+#!/usr/bin/env bash
+set -euo pipefail
+[[ "$*" == 'api --paginate --slurp repos/offline/fixture/issues?state=open&per_page=100' ]] || exit 99
+[[ "$AUTOMATION_FIXTURE" != api-error ]] || exit 1
+jq -n --arg fixture "$AUTOMATION_FIXTURE" '
+  {number:1,state:"open",user:{login:"renovate[bot]"},type:{name:"Chore"},
+   labels:[],updated_at:(now-100*86400|todateiso8601)} as $issue |
+  if $fixture=="empty" then [[]]
+  elif $fixture=="human" then [[$issue|.user.login="fixture-maintainer"]]
+  elif $fixture=="fresh" then [[$issue|.updated_at=(now-86400|todateiso8601)]]
+  elif $fixture=="untyped" then [[$issue|del(.type)]]
+  elif $fixture=="blocked" then [[$issue|.labels=[{name:"blocked"}]]]
+  elif $fixture=="keep-open" then [[$issue|.labels=[{name:"keep-open"}]]]
+  elif $fixture=="dependabot" then [[$issue|.user.login="dependabot[bot]"]]
+  elif $fixture=="stale" then [[$issue|.labels=[{name:"stale"}]|del(.type)]]
+  elif $fixture=="partial" then [{}]
+  elif $fixture=="duplicate" then [[$issue,$issue]]
+  elif $fixture=="missing-author" then [[$issue|del(.user)]]
+  else [[$issue]] end'
+BASH
+  chmod +x "$automation_work/bin/gh"
+  for fixture in empty human fresh untyped blocked keep-open renovate dependabot stale partial duplicate missing-author api-error; do
+    rc=0
+    PATH="$automation_work/bin:$PATH" REPOSITORY=offline/fixture GH_TOKEN=offline-fixture \
+      AUTOMATION_FIXTURE="$fixture" bash "$automation_work/guard" >"$automation_work/result" 2>&1 || rc=$?
+    case "$fixture" in
+      empty|human|fresh|untyped|blocked|keep-open)
+        [[ "$rc" == 0 ]] || { cat "$automation_work/result" >&2; fail "safe census refused: $fixture"; } ;;
+      *) [[ "$rc" != 0 ]] || fail "unsafe automation-owned census accepted: $fixture" ;;
+    esac
+  done
+  echo 'PASS: automation-owned issues and incomplete census cannot enter live stale triage'
+  ;;
 labels)
   label_work="$(mktemp -d)"
   trap 'rm -rf "$label_work"' EXIT
-  yq -r '.jobs.triage.steps[] | select(.id == "labels-ready") | .run' \
-    "$root/.github/workflows/triage-stale-issues.yaml" >"$label_work/guard"
+  yq -r '.runs.steps[] | select(.id == "labels-ready") | .run' \
+    "$root/actions/triage-stale-issues/action.yaml" >"$label_work/guard"
   [[ -s "$label_work/guard" ]] || fail 'live label-readiness guard is missing'
   mkdir "$label_work/bin"
   cat >"$label_work/bin/gh" <<'BASH'
@@ -89,6 +130,22 @@ prepare)
   : >"$work/blocked-hosts"
   : >"$work/action.log"
   : >"$work/action-output"
+  : >"$work/cli-requests"
+  mkdir "$work/bin"
+  cat >"$work/bin/gh" <<'BASH'
+#!/usr/bin/env bash
+set -euo pipefail
+[[ "${GH_TOKEN:-}" == offline-fixture-token ]] || exit 97
+printf '%s\n' "$*" >>"${STALE_OFFLINE_SCENARIO%/*}/cli-requests"
+case "$*" in
+  "api repos/$GITHUB_REPOSITORY/labels/stale") printf '%s\n' '{"name":"stale","color":"ededed"}' ;;
+  "api repos/$GITHUB_REPOSITORY/labels/keep-open") printf '%s\n' '{"name":"keep-open","color":"0e8a16"}' ;;
+  "api --paginate --slurp repos/$GITHUB_REPOSITORY/issues?state=open&per_page=100")
+    jq '[.routes[] | select(.method=="GET" and .path=="/repos/offline/fixture/issues" and .query.page=="1") | .body]' "$STALE_OFFLINE_SCENARIO" ;;
+  *) exit 99 ;;
+esac
+BASH
+  chmod +x "$work/bin/gh"
   nonce="stale-$$-$(date +%s)"
   printf '%s' "$nonce" >"$work/nonce"
   go build -o "$work/api" "$root/.github/tests/fixtures/offline-github-api/main.go"
@@ -108,6 +165,8 @@ prepare)
       printf 'event-path=%s/event.json\n' "$work"
       printf 'blocked-hosts-file=%s/blocked-hosts\n' "$work"
       printf 'action-log-file=%s/action.log\n' "$work"
+      printf 'fixture-path=%s/bin:%s\n' "$work" "$PATH"
+      printf 'scenario-file=%s/scenario.json\n' "$work"
     } >>"$GITHUB_OUTPUT"
   fi
   echo 'stale-issues test: loopback fixture prepared (13 independent issue/PR cases)'
@@ -123,6 +182,13 @@ verify)
   done
   [[ -s "$work/completed.json" ]] || fail 'API fixture has no clean completion receipt'
   [[ ! -s "$work/blocked-hosts" ]] || fail 'action attempted external network access'
+  [[ "$(wc -l <"$work/cli-requests" | tr -d ' ')" == 3 ]] || fail 'live preflights were skipped or default-off performed a read'
+  for request in \
+    "api repos/$GITHUB_REPOSITORY/labels/stale" \
+    "api repos/$GITHUB_REPOSITORY/labels/keep-open" \
+    "api --paginate --slurp repos/$GITHUB_REPOSITORY/issues?state=open&per_page=100"; do
+    [[ "$(grep -Fxc "$request" "$work/cli-requests")" == 1 ]] || fail 'preflight source or read target changed'
+  done
   if grep -q '^::error' "$work/action.log"; then
     cat "$work/action.log" >&2
     fail 'action emitted an error'
@@ -154,5 +220,5 @@ verify)
   }
   echo 'PASS: 90/30 triage, delayed closure, activity recovery, protected types/labels and PR exclusion'
   ;;
-*) fail 'usage: test-triage-stale-issues.sh labels|prepare|verify' ;;
+*) fail 'usage: test-triage-stale-issues.sh automation|labels|prepare|verify' ;;
 esac
