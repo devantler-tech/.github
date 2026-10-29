@@ -31,6 +31,7 @@ guard() {
       .env.TODO_EXPECTED_PROJECT == "organization/devantler-tech/5" and
       .env.TODO_EXPECTED_PROJECT_SECRET == "offline-project-token" and
       .env.TODO_EXPECTED_TOKEN == "${{ github.token }}" and
+      .env.TODO_EXPECTED_IGNORE == "${{ inputs.ignore || ((inputs.exclude-vendored == true || inputs.exclude-vendored == \u0027true\u0027) && \u0027^(vendor|third_party)/\u0027) || \u0027\u0027 }}" and
       .env.TODO_FIXTURE_SKIP_TOKEN == "${{ inputs.fixture-skip-app-token }}" and
       (.env | keys) == ["TODO_EXPECTED_BEFORE","TODO_EXPECTED_COMMITS","TODO_EXPECTED_DIFF","TODO_EXPECTED_IGNORE","TODO_EXPECTED_PROJECT","TODO_EXPECTED_PROJECT_SECRET","TODO_EXPECTED_TOKEN","TODO_FIXTURE_SKIP_TOKEN"] and
       .shell == "bash" and .if == null and (.["continue-on-error"] // false) == false and
@@ -78,6 +79,7 @@ for mutation in \
   '.jobs.todos.steps |= map(if .name=="Verify native default-path replay" then .["continue-on-error"]=true else . end)' \
   '.jobs.todos.steps |= map(if .name=="Verify native default-path replay" then .if="false" else . end)' \
   '.jobs.todos.steps |= map(if .name=="Prepare default-path offline dependencies" then .env.EXTRA="\u0024{{ secrets.APP_PRIVATE_KEY }}" else . end)' \
+  '.jobs.todos.steps |= map(if .name=="Prepare default-path offline dependencies" then .env.TODO_EXPECTED_IGNORE="" else . end)' \
   '.jobs.todos.steps |= map(if .name=="Verify native default-path replay" then .env.TODO_FIXTURE_OUTCOME="success" else . end)'; do
   jq "$mutation" "$work/fixture.json" >"$work/bad.json"
   if guard "$work/bad.json" "$work/ci.json"; then fail 'unsafe fixture mutation accepted'; fi
@@ -124,4 +126,4 @@ printf 'other-failure\n' >"$runtime/credential-mismatch"
 if TODO_FIXTURE_SKIP_TOKEN=true TODO_FIXTURE_OUTCOME=failure bash "$root/.github/tests/todo-production-default-fixture.sh" verify >"$work/result" 2>&1; then fail 'unrelated failure accepted as routing control'; fi
 printf 'empty-project-secret\n' >"$runtime/credential-mismatch"
 if TODO_FIXTURE_SKIP_TOKEN=true TODO_FIXTURE_OUTCOME=success bash "$root/.github/tests/todo-production-default-fixture.sh" verify >"$work/result" 2>&1; then fail 'successful wrapper accepted as failed control'; fi
-echo 'PASS: source-derived native default-off replay, 15 boundaries and five runtime controls'
+echo 'PASS: source-derived native default-path replay, 16 boundaries and five runtime controls'

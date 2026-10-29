@@ -385,7 +385,7 @@
     ]
   },
   {
-    "Name": "omitted vendor flag preserves conventional directories",
+    "Name": "omitted vendor flag excludes root directories only",
     "Files": {
       "src/task.sh": {
         "Before": "",
@@ -441,19 +441,6 @@
       },
       {
         "Method": "GET",
-        "Path": "/search/issues?q=repo%3Aoffline%2Ffixture+is%3Aissue+in%3Atitle+Third+work&per_page=30",
-        "Status": 200,
-        "Response": "{\"total_count\":0,\"incomplete_results\":false,\"items\":[]}"
-      },
-      {
-        "Method": "POST",
-        "Path": "/repos/offline/fixture/issues",
-        "Body": "{\"title\":\"Third work\",\"body\":\"https://example.invalid/offline/fixture/blob/1111111111111111111111111111111111111111/third_party/task.sh#L1\\n\\n```sh\\n\\n# TODO: Third work\\n\\n```\",\"labels\":[],\"assignees\":[\"offline-actor\"]}",
-        "Status": 201,
-        "Response": "{\"number\":22}"
-      },
-      {
-        "Method": "GET",
         "Path": "/search/issues?q=repo%3Aoffline%2Ffixture+is%3Aissue+in%3Atitle+Nearby+third+work&per_page=30",
         "Status": 200,
         "Response": "{\"total_count\":0,\"incomplete_results\":false,\"items\":[]}"
@@ -463,7 +450,7 @@
         "Path": "/repos/offline/fixture/issues",
         "Body": "{\"title\":\"Nearby third work\",\"body\":\"https://example.invalid/offline/fixture/blob/1111111111111111111111111111111111111111/third_party_backup/task.sh#L1\\n\\n```sh\\n\\n# TODO: Nearby third work\\n\\n```\",\"labels\":[],\"assignees\":[\"offline-actor\"]}",
         "Status": 201,
-        "Response": "{\"number\":23}"
+        "Response": "{\"number\":22}"
       },
       {
         "Method": "GET",
@@ -476,29 +463,14 @@
         "Path": "/repos/offline/fixture/issues",
         "Body": "{\"title\":\"Nearby vendor work\",\"body\":\"https://example.invalid/offline/fixture/blob/1111111111111111111111111111111111111111/vendor-near/task.sh#L1\\n\\n```sh\\n\\n# TODO: Nearby vendor work\\n\\n```\",\"labels\":[],\"assignees\":[\"offline-actor\"]}",
         "Status": 201,
-        "Response": "{\"number\":24}"
-      },
-      {
-        "Method": "GET",
-        "Path": "/search/issues?q=repo%3Aoffline%2Ffixture+is%3Aissue+in%3Atitle+Vendor+work&per_page=30",
-        "Status": 200,
-        "Response": "{\"total_count\":0,\"incomplete_results\":false,\"items\":[]}"
-      },
-      {
-        "Method": "POST",
-        "Path": "/repos/offline/fixture/issues",
-        "Body": "{\"title\":\"Vendor work\",\"body\":\"https://example.invalid/offline/fixture/blob/1111111111111111111111111111111111111111/vendor/task.sh#L1\\n\\n```sh\\n\\n# TODO: Vendor work\\n\\n```\",\"labels\":[],\"assignees\":[\"offline-actor\"]}",
-        "Status": 201,
-        "Response": "{\"number\":25}"
+        "Response": "{\"number\":23}"
       }
     ],
     "Output": [
       "Issue created: #20",
       "Issue created: #21",
       "Issue created: #22",
-      "Issue created: #23",
-      "Issue created: #24",
-      "Issue created: #25"
+      "Issue created: #23"
     ]
   },
   {
@@ -742,7 +714,6 @@
         "After": "# TODO: Generated work\n"
       }
     },
-    "ExcludeVendored": "true",
     "Ignore": "^generated/",
     "Operations": [
       {

@@ -14,9 +14,9 @@ on:
         default: ""
         type: string
       exclude-vendored:
-        description: "Opt in to excluding root vendor/ and third_party/ when ignore is empty; rollout retirement is tracked in #394"
+        description: "Exclude root vendor/ and third_party/ by default when ignore is empty; temporary opt-out retires in #394"
         required: false
-        default: false
+        default: true
         type: boolean
       optional-project-auth:
         description: "Opt in to optional project integration; existing callers keep their behavior"
