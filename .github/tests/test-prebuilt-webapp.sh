@@ -46,7 +46,7 @@ identity=https://github.com/devantler-tech/app/.github/workflows/ci.yaml@refs/he
 jq -n --arg sha "$source_sha" '{
   id:123,run_attempt:2,status:"completed",conclusion:"success",event:"push",
   head_sha:$sha,head_branch:"main",path:".github/workflows/ci.yaml",
-  repository:{full_name:"devantler-tech/app"},head_repository:{full_name:"devantler-tech/app"}
+  repository:{full_name:"devantler-tech/app",private:false},head_repository:{full_name:"devantler-tech/app",private:false}
 }' > "$work/run.json"
 jq -n --arg digest "$image_digest" --arg sha "$source_sha" --arg public "$public_digest" '[{
   critical:{identity:{"docker-reference":("ghcr.io/devantler-tech/app@"+$digest)},image:{"docker-manifest-digest":$digest}},
@@ -69,20 +69,32 @@ cat > "$work/bin/curl" << 'CURL'
 #!/usr/bin/env bash
 set -euo pipefail
 [[ "$*" != *Authorization* ]] || exit 81
+[[ "${EXPECT_AUTH:-false}" != true || "$*" != *"$FIXTURE_TOKEN"* ]] || exit 100
 case "${*: -1}" in
   https://api.github.com/repos/devantler-tech/app/actions/runs/123|https://api.github.com/repos/devantler-tech/app/actions/runs/123/attempts/2) ;;
   *) exit 82 ;;
 esac
 printf 'read\n' >> "$FIXTURE/reads"
-output='' headers='' write_status=false
+output='' headers='' config='' write_status=false
+[[ "$*" != *--location* && "$*" != *' -L '* && "$*" == *'--proto =https'* ]] || exit 95
 while [[ $# -gt 0 ]]; do
   case "$1" in
+    --config) config="$2"; shift 2 ;;
     --output) output="$2"; shift 2 ;;
     --dump-header) headers="$2"; shift 2 ;;
     --write-out) [[ "$2" == '%{http_code}' ]] || exit 92; write_status=true; shift 2 ;;
     *) shift ;;
   esac
 done
+if [[ "${EXPECT_AUTH:-false}" == true ]]; then
+  [[ -n "$config" && -z "${PREBUILT_CI_READ_TOKEN:-}" && -z "${ci_read_token:-}" ]] || exit 96
+  [[ "$(ls -l "$config" | awk '{print substr($1,2,9)}')" == rw------- ]] || exit 97
+  [[ "$(ls -ld "$(dirname "$config")" | awk '{print substr($1,2,9)}')" == rwx------ ]] || exit 101
+  grep -Fxq "header = \"Authorization: Bearer $FIXTURE_TOKEN\"" "$config" || exit 98
+  printf '%s\n' "$config" >> "$FIXTURE/auth-files"
+else
+  [[ -z "$config" ]] || exit 99
+fi
 status=200
 response_headers='HTTP/2 200'
 read_count="$(grep -c '^read$' "$FIXTURE/reads")"
@@ -109,6 +121,7 @@ case "$FAULT" in
   primary-long-reset) status=403; response_headers=$'HTTP/2 403\r\nX-RateLimit-Remaining: 0\r\nX-RateLimit-Reset: 1000003600' ;;
   rate-persistent) status=429; response_headers=$'HTTP/2 429\r\nRetry-After: 1' ;;
   forbidden) status=403; response_headers=$'HTTP/2 403\r\nX-RateLimit-Remaining: 42' ;;
+  redirect) status=302; response_headers='HTTP/2 302' ;;
   long-rate-limit) status=403; response_headers=$'HTTP/2 403\r\nRetry-After: 3600' ;;
 esac
 [[ -z "$headers" ]] || printf '%s\r\n\r\n' "$response_headers" > "$headers"
@@ -117,6 +130,11 @@ if [[ -n "$output" ]]; then
 else
   cat "$FIXTURE/current-run.json"
 fi
+case "$FAULT:$read_count" in
+  private-run:1) jq '.repository.private=true' "$output" > "$output.next"; mv "$output.next" "$output" ;;
+  private-attempt:2) jq '.head_repository.private=true' "$output" > "$output.next"; mv "$output.next" "$output" ;;
+  private-final:3) jq '.repository.private=true' "$output" > "$output.next"; mv "$output.next" "$output" ;;
+esac
 if [[ "$FAULT" == attempt-changed && "$(grep -c '^read$' "$FIXTURE/reads")" == 3 ]]; then
   if [[ -n "$output" ]]; then printf '{"run_attempt":3}\n' >> "$output"; else printf '{"run_attempt":3}\n'; fi
 fi
@@ -142,6 +160,8 @@ set -euo pipefail
 [[ "$*" == *'--certificate-identity https://github.com/devantler-tech/app/.github/workflows/ci.yaml@refs/heads/main'* ]] || exit 84
 [[ "$*" == *'--certificate-oidc-issuer https://token.actions.githubusercontent.com'* ]] || exit 85
 [[ "${*: -1}" == "$IMAGE_REF" ]] || exit 86
+[[ -z "${PREBUILT_CI_READ_TOKEN:-}" && -z "${ci_read_token:-}" ]] || exit 96
+[[ -z "${FIXTURE_TOKEN:-}" || "$*" != *"$FIXTURE_TOKEN"* ]] || exit 100
 printf '%s\n' "$1" >> "$FIXTURE/reads"
 case "$1" in
   verify)
@@ -172,16 +192,19 @@ reset_fixture() {
   : > "$work/output"
   : > "$work/reads"
   : > "$work/waits"
+  : > "$work/auth-files"
 }
 # Run the actual verifier with only its external observations replaced by fixtures.
 invoke() {
   local fault="$1"
   shift
-  (cd "$work" && env PATH="$work/bin:$PATH" FIXTURE="$work" FAULT="$fault" \
+  (cd "$work" && env -u PREBUILT_CI_AUTH_MODE -u PREBUILT_CI_READ_TOKEN \
+    PATH="$work/bin:$PATH" FIXTURE="$work" FAULT="$fault" \
     REPOSITORY=devantler-tech/app SOURCE_SHA="$source_sha" APP_NAME=app DEPLOY_PATH=./deploy \
     PREBUILT_IMAGE_DIGEST="$image_digest" PREBUILT_PUBLIC_DIGEST="$public_digest" \
     PREBUILT_CI_RUN_ID=123 PREBUILT_CI_RUN_ATTEMPT=2 IMAGE_REF="ghcr.io/devantler-tech/app@$image_digest" \
-    GITHUB_OUTPUT="$work/output" "$@" bash "$root/.github/scripts/prepare-prebuilt-webapp.sh")
+    EXPECT_AUTH=false \
+    GITHUB_OUTPUT="$work/output" "$@" bash -x "$root/.github/scripts/prepare-prebuilt-webapp.sh")
 }
 reset_fixture
 invoke none > "$work/log" 2>&1 || fail "healthy source-bound WebApp refused: $(cat "$work/log")"
@@ -193,6 +216,53 @@ yq -o=json -I=0 '.' "$work/deploy/webapp.yaml" | jq -s -e --arg image "ghcr.io/d
   ]' > /dev/null || fail 'did not pin only the selected image and preserve other documents'
 grep -qx "digest=$image_digest" "$work/output" || fail 'missing verified image output'
 grep -qx "public-digest=$public_digest" "$work/output" || fail 'missing verified public digest output'
+
+# A real long stateless-shaped credential remains opaque and private throughout
+# all three reads, bounded retries, signature checks and final failure cleanup.
+fixture_token="ghs_123456_$(printf '%0600d' 0).opaque-fixture.signature-fixture"
+for fault in none rate-transient rate-attempt-read rate-final-read forbidden redirect private-run private-attempt private-final attempt-changed partial-signature partial-attestation; do
+  reset_fixture
+  if invoke "$fault" PREBUILT_CI_AUTH_MODE=job-token PREBUILT_CI_READ_TOKEN="$fixture_token" \
+    EXPECT_AUTH=true FIXTURE_TOKEN="$fixture_token" ci_read_token=ambient_export_attribute \
+    GITHUB_ACTIONS=true RUNNER_ENVIRONMENT=github-hosted \
+    > "$work/log" 2>&1; then verdict=accepted; else verdict=rejected; fi
+  if grep -Fq "$fixture_token" "$work/log"; then fail 'credential reached traced output'; fi
+  while IFS= read -r auth_file; do
+    [[ ! -e "$auth_file" ]] || fail 'credential file survived verifier completion'
+  done < "$work/auth-files"
+  case "$fault" in
+    none|rate-transient|rate-attempt-read|rate-final-read)
+      [[ "$verdict" == accepted && -s "$work/output" ]] || fail "authenticated public verification refused $fault"
+      [[ "$(wc -l < "$work/auth-files" | tr -d ' ')" == "$([[ "$fault" == none ]] && echo 3 || echo 4)" ]] || fail 'authenticated reads fell back or skipped a recheck' ;;
+    *)
+      [[ "$verdict" == rejected && ! -s "$work/output" ]] || fail "authenticated verifier accepted $fault"
+      if [[ "$fault" == forbidden || "$fault" == redirect ]]; then
+        [[ "$(wc -l < "$work/reads" | tr -d ' ')" == 1 ]] || fail 'authentication refusal fell back or retried'
+      fi
+      cmp -s "$work/before.yaml" "$work/deploy/webapp.yaml" || fail "authenticated $fault changed manifests" ;;
+  esac
+done
+reset_fixture
+invoke none GH_TOKEN=ambient_fixture_must_not_be_used GITHUB_TOKEN=ambient_fixture_must_not_be_used \
+  > "$work/log" 2>&1 || fail 'ambient credentials changed the anonymous default'
+[[ ! -s "$work/auth-files" ]] || fail 'default mode used ambient authentication'
+for setting in 'PREBUILT_CI_AUTH_MODE=unknown' 'PREBUILT_CI_AUTH_MODE=job-token' "PREBUILT_CI_READ_TOKEN=$fixture_token"; do
+  reset_fixture
+  if invoke none "$setting" > "$work/log" 2>&1; then fail 'accepted incomplete or unknown authentication opt-in'; fi
+  [[ ! -s "$work/output" && ! -s "$work/reads" ]] || fail 'invalid authentication opt-in reached external verification'
+done
+for task_token in '' $'bad\r\nheader = injection' 'opaque"header' 'opaque\header'; do
+  reset_fixture
+  if invoke none PREBUILT_CI_AUTH_MODE=job-token PREBUILT_CI_READ_TOKEN="$task_token" \
+    GITHUB_ACTIONS=true RUNNER_ENVIRONMENT=github-hosted > "$work/log" 2>&1; then fail 'accepted unsafe credential transport'; fi
+  [[ ! -s "$work/output" && ! -s "$work/reads" ]] || fail 'unsafe credential reached external verification'
+done
+for task_context in 'GITHUB_ACTIONS=false' 'RUNNER_ENVIRONMENT=self-hosted'; do
+  reset_fixture
+  if invoke none PREBUILT_CI_AUTH_MODE=job-token PREBUILT_CI_READ_TOKEN="$fixture_token" \
+    GITHUB_ACTIONS=true RUNNER_ENVIRONMENT=github-hosted "$task_context" > "$work/log" 2>&1; then fail 'accepted unsupported authentication context'; fi
+  [[ ! -s "$work/output" && ! -s "$work/reads" ]] || fail 'unsupported context reached external verification'
+done
 
 # Removing recovery must reject a valid source after a transient quota refusal.
 for fault in rate-transient rate-attempt-read rate-final-read rate-primary rate-both-delays rate-secondary; do
@@ -251,7 +321,7 @@ for setting in 'REPOSITORY=../app' 'SOURCE_SHA=main' 'APP_NAME=../app' 'DEPLOY_P
   if invoke none "$setting" > "$work/log" 2>&1; then fail "accepted unsafe input: $setting"; fi
   [[ ! -s "$work/output" && ! -s "$work/reads" ]] || fail 'invalid input reached an external observation'
 done
-for expression in '.head_sha="wrong"' '.run_attempt=1' '.conclusion="failure"' '.status="in_progress"' '.event="pull_request"' '.head_branch="feature"' '.path=".github/workflows/other.yaml"' '.head_repository.full_name="other/app"' '.repository.full_name="other/app"' '.id=124'; do
+for expression in '.head_sha="wrong"' '.run_attempt=1' '.conclusion="failure"' '.status="in_progress"' '.event="pull_request"' '.head_branch="feature"' '.path=".github/workflows/other.yaml"' '.head_repository.full_name="other/app"' '.repository.full_name="other/app"' '.id=124' '.repository.private=true' '.head_repository.private=true' 'del(.repository.private)' 'del(.head_repository.private)' '.repository.private="false"' '.head_repository.private=null'; do
   reset_fixture
   jq "$expression" "$work/run.json" > "$work/current-run.json"
   if invoke none > "$work/log" 2>&1; then fail "accepted conflicting CI evidence: $expression"; fi
