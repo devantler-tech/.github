@@ -407,7 +407,10 @@ jobs:
 
   golangci-lint:
     name: 🧹 Lint - golangci-lint
-    timeout-minutes: 15
+    # KSail's clean analysis took 835 seconds before setup and post-job cleanup
+    # exhausted the former 15-minute job budget. Keep finite headroom for both
+    # around the unchanged lint command (devantler-tech/.github#793).
+    timeout-minutes: 20
     runs-on: ubuntu-latest
     needs: [changes]
     defaults:
