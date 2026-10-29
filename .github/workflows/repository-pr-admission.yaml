@@ -54,7 +54,9 @@ jobs:
     name: "${{ needs.resolve.outputs.run == 'true' && 'Run reviewed product admission' || 'Admission not selected' }}"
     needs: resolve
     if: needs.resolve.outputs.run == 'true'
-    runs-on: ubuntu-latest
+    # Keep the reviewed evaluator on its qualified GNU-based host while
+    # ubuntu-latest migrates to the Rust-coreutils defaults in Ubuntu 26.04.
+    runs-on: ubuntu-24.04
     timeout-minutes: ${{ fromJSON(needs.resolve.outputs.timeout-minutes) }}
     permissions:
       contents: read
