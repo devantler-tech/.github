@@ -31,7 +31,7 @@ guard() {
       .env.TODO_EXPECTED_PROJECT == "organization/devantler-tech/5" and
       .env.TODO_EXPECTED_PROJECT_SECRET == "offline-project-token" and
       .env.TODO_EXPECTED_TOKEN == "${{ github.token }}" and
-      .env.TODO_EXPECTED_IGNORE == "${{ inputs.ignore || ((inputs.exclude-vendored == true || inputs.exclude-vendored == \u0027true\u0027) && \u0027^(vendor|third_party)/\u0027) || \u0027\u0027 }}" and
+      .env.TODO_EXPECTED_IGNORE == "${{ inputs.ignore || \u0027^(vendor|third_party)/\u0027 }}" and
       .env.TODO_FIXTURE_SKIP_TOKEN == "${{ inputs.fixture-skip-app-token }}" and
       (.env | keys) == ["TODO_EXPECTED_BEFORE","TODO_EXPECTED_COMMITS","TODO_EXPECTED_DIFF","TODO_EXPECTED_IGNORE","TODO_EXPECTED_PROJECT","TODO_EXPECTED_PROJECT_SECRET","TODO_EXPECTED_TOKEN","TODO_FIXTURE_SKIP_TOKEN"] and
       .shell == "bash" and .if == null and (.["continue-on-error"] // false) == false and

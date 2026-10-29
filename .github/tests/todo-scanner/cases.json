@@ -501,7 +501,6 @@
         "After": "# TODO: Vendor work\n"
       }
     },
-    "ExcludeVendored": "true",
     "Operations": [
       {
         "Method": "GET",
@@ -591,8 +590,7 @@
         "After": "# TODO: Vendor work\n"
       }
     },
-    "ExcludeVendored": "false",
-    "Ignore": "",
+    "Ignore": "^$",
     "Operations": [
       {
         "Method": "GET",

@@ -22,10 +22,6 @@ inputs:
     description: Regular expression matching repository-relative paths to ignore
     required: false
     default: ""
-  exclude-vendored:
-    description: Exclude root vendor/ and third_party/ by default when ignore is empty; temporary opt-out retires in devantler-tech/.github#394
-    required: false
-    default: 'true'
 runs:
   using: composite
   steps:
@@ -85,7 +81,7 @@ runs:
     # language-rule reads before mutations and never replays the scanner.
     - name: Select conventional vendor exclusion
       id: vendored-ignore
-      if: ${{ inputs.exclude-vendored == 'true' && inputs.ignore == '' }}
+      if: ${{ inputs.ignore == '' }}
       shell: bash
       run: |
         printf 'ignore=^(vendor|third_party)/\n' >>"$GITHUB_OUTPUT"
