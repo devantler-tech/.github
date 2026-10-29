@@ -4,9 +4,9 @@ author: devantler-tech
 
 inputs:
   enabled:
-    description: Temporary rollout opt-in. Omitted or false performs no triage.
+    description: Temporary rollout gate. Defaults on; explicit false performs no triage.
     required: false
-    default: "false"
+    default: "true"
   dry-run:
     description: Report proposed changes without changing issues or saved progress.
     required: false

@@ -1779,9 +1779,10 @@ jobs:
       - name: Prepare the loopback issue lifecycle fixture
         id: stale-fixture
         run: bash .github/tests/test-triage-stale-issues.sh prepare
-      - name: Verify the omitted rollout opt-in performs no triage
+      - name: Verify explicit rollout opt-out performs no triage
         uses: $/actions/triage-stale-issues
         with:
+          enabled: "false"
           github-token: offline-fixture-token
         env:
           PATH: ${{ steps.stale-fixture.outputs.fixture-path }}
@@ -1793,10 +1794,11 @@ jobs:
           OFFLINE_GITHUB_EVENT_PATH: ${{ steps.stale-fixture.outputs.event-path }}
           OFFLINE_BLOCKED_HOSTS_FILE: ${{ steps.stale-fixture.outputs.blocked-hosts-file }}
           OFFLINE_ACTION_LOG_FILE: ${{ steps.stale-fixture.outputs.action-log-file }}
+      - name: Verify the explicit opt-out used no authority
+        run: bash .github/tests/test-triage-stale-issues.sh verify-opt-out
       - name: Exercise the actual shared action with synthetic authority
         uses: $/actions/triage-stale-issues
         with:
-          enabled: "true"
           github-token: offline-fixture-token
         env:
           PATH: ${{ steps.stale-fixture.outputs.fixture-path }}
@@ -1816,7 +1818,6 @@ jobs:
     name: "[Test] Stale Issues - Read-Only Workflow"
     uses: $/.github/workflows/triage-stale-issues.yaml
     with:
-      enabled: true
       dry-run: true
     # Static ceiling for the callee; dry-run executes only its read-only job.
     permissions:
@@ -1825,9 +1826,11 @@ jobs:
 
   test-triage-stale-issues-disabled:
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
-    name: "[Test] Stale Issues - Default Off"
+    name: "[Test] Stale Issues - Explicit Opt Out"
     uses: $/.github/workflows/triage-stale-issues.yaml
-    # Omitted enabled input leaves both callee jobs skipped, with no authority used.
+    # Explicit opt-out leaves both callee jobs skipped, with no authority used.
+    with:
+      enabled: false
     permissions:
       issues: write
       actions: write
