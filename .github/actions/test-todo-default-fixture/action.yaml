@@ -31,9 +31,9 @@
       "default": ""
     },
     "exclude-vendored": {
-      "description": "Opt in to excluding root vendor/ and third_party/ paths when no explicit ignore is configured; rollout retirement is tracked in devantler-tech/.github#394",
+      "description": "Exclude root vendor/ and third_party/ by default when ignore is empty; temporary opt-out retires in devantler-tech/.github#394",
       "required": false,
-      "default": "false"
+      "default": "true"
     },
     "fixture-skip-app-token": {
       "description": "Deliberately skip the offline token dependency for the refusal control",

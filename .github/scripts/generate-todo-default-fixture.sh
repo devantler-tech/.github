@@ -20,7 +20,7 @@ jq '
         TODO_EXPECTED_BEFORE:"${{ github.event.before || github.base_ref }}",
         TODO_EXPECTED_COMMITS:"${{ toJSON(github.event.commits) }}",
         TODO_EXPECTED_DIFF:"${{ github.event.pull_request.diff_url }}",
-        TODO_EXPECTED_IGNORE:"${{ inputs.ignore }}",
+        TODO_EXPECTED_IGNORE:"${{ inputs.ignore || ((inputs.exclude-vendored == true || inputs.exclude-vendored == \u0027true\u0027) && \u0027^(vendor|third_party)/\u0027) || \u0027\u0027 }}",
         TODO_EXPECTED_PROJECT:"organization/devantler-tech/5",
         TODO_EXPECTED_PROJECT_SECRET:"offline-project-token",
         TODO_FIXTURE_SKIP_TOKEN:"${{ inputs.fixture-skip-app-token }}"},

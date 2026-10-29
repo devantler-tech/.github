@@ -5,7 +5,7 @@ set -euo pipefail
 action="${1:?action JSON required}"
 fixture="${2:?fixture JSON required}"
 jq -e '
-  .inputs["exclude-vendored"].default == "false" and
+  .inputs["exclude-vendored"].default == "true" and
   ([.runs.steps[] | select(.id == "vendored-ignore")] | length == 1 and
     all(.if == "${{ inputs.exclude-vendored == '\''true'\'' && inputs.ignore == '\'''\'' }}" and .shell == "bash")) and
   ([.runs.steps[] | select(.name == "📝 Create issues from TODOs")] | length == 1 and

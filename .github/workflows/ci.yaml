@@ -3038,7 +3038,6 @@ jobs:
     uses: $/.github/workflows/release-recovery-offline-fixture.yaml
     permissions: {}
     with:
-      enable-recovery: true
       offline-test: true
 
   test-publish-release-recovery-disabled:
