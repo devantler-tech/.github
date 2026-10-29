@@ -166,6 +166,7 @@ check_workflow() {
       "trusted-sha":"${{ steps.resolve.outputs.trusted-sha }}",
       "timeout-minutes":"${{ steps.resolve.outputs.timeout-minutes }}"
     } and
+    .jobs.admission["runs-on"] == "ubuntu-24.04" and
     .jobs.admission.needs == "resolve" and
     .jobs.admission.name == "${{ needs.resolve.outputs.run == \u0027true\u0027 && \u0027Run reviewed product admission\u0027 || \u0027Admission not selected\u0027 }}" and
     .jobs.admission.if == "needs.resolve.outputs.run == \u0027true\u0027" and
@@ -192,6 +193,9 @@ for job in resolve admission; do
 done
 # shellcheck disable=SC2016 # GitHub expressions remain literal mutation data.
 for mutation in \
+  '.jobs.admission["runs-on"] = "ubuntu-latest"' \
+  '.jobs.admission["runs-on"] = "ubuntu-26.04"' \
+  '.jobs.admission["runs-on"] = "self-hosted"' \
   '.jobs.resolve.steps[0].uses = "step-security/harden-runner@v2"' \
   '.jobs.admission.steps[0].uses = "step-security/harden-runner@0123456"' \
   '.jobs.admission.steps[0].uses = "other/harden-runner@0123456789abcdef0123456789abcdef01234567"' \
