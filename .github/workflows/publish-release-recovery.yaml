@@ -3,16 +3,12 @@ name: 🩹 Publish Release Recovery
 # Default-off recovery of one GitHub release whose stable tag was pushed but never published (#602).
 # Repository-owned manual operation; no production reusable consumer exists (#722).
 # Other products must own their recovery workflow until real repeated use justifies extraction.
-# `enable-recovery` is the temporary rollout flag (#603); `confirm-publication` is the permanent
-# operator consent and stays when the flag is retired. Guarded by
+# The temporary rollout flag is retired after protected publication and no-write proof (#603).
+# `confirm-publication` remains permanent, default-false operator consent. Guarded by
 # .github/tests/test-publish-release-recovery.sh.
 on:
   workflow_dispatch:
     inputs:
-      enable-recovery:
-        description: "Temporary rollout flag; recovery is skipped unless true"
-        type: boolean
-        default: false
       confirm-publication:
         description: "Explicit operator consent to publish the missing release; required on every run"
         type: boolean
@@ -46,7 +42,7 @@ permissions: {}
 
 jobs:
   recover:
-    if: inputs.enable-recovery && !inputs.offline-test
+    if: inputs.confirm-publication && !inputs.offline-test
     name: Publish the missing release
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -197,7 +193,7 @@ jobs:
           cat "$RUNNER_TEMP/release-publication.json"
 
   offline-test:
-    if: inputs.enable-recovery && inputs.offline-test
+    if: inputs.offline-test
     name: Offline recovery build and credential refusal
     runs-on: ubuntu-latest
     timeout-minutes: 10

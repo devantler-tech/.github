@@ -37,7 +37,9 @@ or write authorization; #587 owns publication, legacy compatibility and protecte
 
 The same Go module holds a separate `cmd/publish-release-recovery` command. Only the default-off
 repository-owned manual `publish-release-recovery.yaml` calls it, after a confirmed dispatch, a read-only
-admission and only then a writer token; run `bash .github/tests/test-publish-release-recovery.sh`
+admission and only then a writer token. Permanent `confirm-publication` consent defaults to false;
+`offline-test` selects only credential-free validation. The temporary rollout switch was retired
+after protected recovery and no-write proof (#603). Run `bash .github/tests/test-publish-release-recovery.sh`
 after changing it. It re-runs the inspector's admission with its writer credential, so the inspection command
 stays read-only. It proves the writer token's Contents write permission with GitHub's non-persisting
 `releases/generate-notes` preview, using a separate fixed probe tag at the admitted default branch.

@@ -1186,9 +1186,11 @@ default, not a reusable consumer interface. It shares this repository's normal r
 Production consumers own their manual workflow; internal validation does not justify a reusable
 consumer interface.
 
-`enable-recovery` is a temporary rollout flag. `confirm-publication` is the operator's explicit
-consent, and it stays when the flag is retired. Both must be true, and the event must be
-`workflow_dispatch`. Production publication is never automatic.
+`confirm-publication` is the operator's permanent explicit consent and defaults to false.
+Only a confirmed manual dispatch can enter publication. `offline-test: true` selects only
+the credential-free build/refusal, even when confirmation is also true. With both inputs
+false, neither job runs. The temporary rollout flag was retired after protected recovery proof
+under [#603](https://github.com/devantler-tech/.github/issues/603).
 
 The job builds the inspector and publisher from this catalogue's immutable source before any
 credential exists. It then admits the incident with a read-only token for that one repository. If a
@@ -1208,8 +1210,8 @@ An unknown outcome fails; dispatch again to reconcile through fresh reads.
    exact stable tag, full original source SHA, failed run ID/attempt and immutable producer ref.
 2. Open this repository's **Actions → Publish Release Recovery → Run workflow**, selecting `main`.
    Enter those original incident values, not the current main SHA or a replacement tag.
-3. Leave `offline-test` false. Enable `enable-recovery` and `confirm-publication` only when you intend
-   to publish. The existing repository App secret is read by the workflow; never paste it into inputs.
+3. Leave `offline-test` false. Enable `confirm-publication` only when you intend to publish.
+   The existing repository App secret is read by the workflow; never paste it into inputs.
 4. Verify the run's publication readback. A retry uses the same original values; a matching published
    release is a verified no-op, not a second publication.
 
@@ -1220,7 +1222,6 @@ Any future extraction requires real repeated production use and protected rollou
 
 | Key | Type | Default | Required | Description |
 | --- | --- | --- | --- | --- |
-| `enable-recovery` | Input (boolean) | `false` | No | Temporary rollout flag; recovery is skipped unless true |
 | `confirm-publication` | Input (boolean) | `false` | No | Explicit operator consent; required on every run |
 | `offline-test` | Input (boolean) | `false` | No | Build the publisher and check its credential refusal without credentials |
 | `tag` | Input (string) | — | Yes | Existing stable tag, such as `v1.2.3` |
@@ -1234,7 +1235,7 @@ Run `bash .github/tests/test-publish-release-recovery.sh` after changing the wor
 consent, scope, immutable-source and read-before-write boundaries with negative controls, verifies
 the complete internal offline projection, and runs the shipped steps without credentials. It does
 not prove a real publication: protected consumer
-rollout, the App's observed writer capability and the flag decision remain tracked in
+rollout, the App's observed writer capability and the completed flag decision are recorded in
 [#603](https://github.com/devantler-tech/.github/issues/603).
 
 </details>
@@ -1256,7 +1257,6 @@ Regenerate it after changing the source; the independent parity and mutation che
 
 | Key | Type | Default | Required | Description |
 | --- | --- | --- | --- | --- |
-| `enable-recovery` | Input (boolean) | `false` | No | Select the offline fixture; never grants publication authority |
 | `offline-test` | Input (boolean) | `false` | No | Run the real build and credential-refusal control without credentials |
 
 </details>
