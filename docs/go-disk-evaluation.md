@@ -3,6 +3,11 @@
 Existing production callers retain unconditional cleanup. The small CI fixtures use a
 32 GiB budget; that is not a budget for a large application.
 
+Capacity reads retain a five-second timeout and one-second forced-stop allowance.
+On Ubuntu 26, they select the supplied `gnutimeout` command so a hung observer's
+children cannot keep its captured output open past that deadline. Older runners
+continue using their existing `timeout` command. Unknown capacity still retains cleanup.
+
 ## Large-consumer experiment
 
 `Measure Go disk capacity` is a manual, default-off evaluation on reviewed `main`.

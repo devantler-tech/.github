@@ -33,11 +33,13 @@ The following limits replace the six-hour default. Existing deadcode (15 minutes
 | `scan-for-todo-comments` | dry-run: 5; todos: 60 | Generated offline fixture maxima 38–46 seconds; authenticated scanning and issue publication remain unmeasured. |
 | `scan-for-workflow-vulnerabilities` | eligibility: 5; zizmor: 15 | Native fixture maxima 16 and 32 seconds respectively. |
 | `template-sync` | template-sync: 60 | Conservative initial bound; repository count and authenticated updates were not measured. |
-| `validate-go-project` | changes: 5; tidy: 10; golangci-lint: 15; lint: 15; build: 20; test: 30; coverage: 40 | Real consumer observations below exceed the small offline fixture durations. |
+| `validate-go-project` | changes: 5; tidy: 10; golangci-lint: 20; lint: 15; build: 20; test: 30; coverage: 40 | Real consumer observations below exceed the small offline fixture durations. |
 
 Two dedicated steps in the existing required catalogue guard job run the direct-job and local-callee checks. Its refusal controls retain the fifteen-minute direct-job ceiling, accept a valid sixty-minute callee, reject unsupported caller-level limits, and detect a newly added unbounded callable workflow. No validation commands, permissions, selection, retries or scenario counts are removed by these deadlines.
 
 ### Real Go consumer baseline
+
+[KSail run 40771882877, attempt 1](https://github.com/devantler-tech/ksail/actions/runs/40771882877), at `4f121c41ed28c160a53ede1ecd1542900d0e9694`, completed lint analysis with zero findings in 835.031 seconds. The [lint job](https://github.com/devantler-tech/ksail/actions/runs/40771882877/job/123111310520) then exceeded its 15-minute execution limit during final processing. Its limit is now 20 minutes to cover setup, analysis and cleanup. This single observation motivates bounded headroom; it does not establish a cold-cache guarantee or a speed improvement. Shared-source validation, immutable consumer adoption and a successful consumer job remain separate evidence under [#793](https://github.com/devantler-tech/.github/issues/793).
 
 [KSail run 40244883356, attempt 1](https://github.com/devantler-tech/ksail/actions/runs/40244883356), at `f6c1f9b84ba198f59c4eac8972f01f0cce473bc8`, completed all twelve jobs successfully in 1,525 seconds. The test job executed for 1,062 seconds and coverage for 1,505 seconds; their main test commands consumed 848 and 1,337 seconds respectively. Queue delays for those jobs were small. Fifteen-minute runner limits would terminate work that previously succeeded, so this boundedness change retains enough execution time while the separate performance work addresses the measured compute bottleneck.
 
