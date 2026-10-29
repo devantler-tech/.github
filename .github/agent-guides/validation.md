@@ -54,7 +54,21 @@ required CI. Legacy recovery must refuse prebuilt-marked evidence even when the
 new mode input is omitted. Caller/verifier adoption remains separate; #684 owns
 the finite rollout gate review and retirement.
 
-Public CI evidence reads remain credential-free. Retry only HTTP 429 or a 403
+Normal publication's public CI evidence reads remain credential-free. The standalone
+verifier additionally supports explicit `PREBUILT_CI_AUTH_MODE=job-token` for
+isolated GitHub-hosted CI, with an explicitly supplied `PREBUILT_CI_READ_TOKEN`.
+Omitted mode remains anonymous; an unexpected credential, unknown mode or missing
+hosted context fails before observations. Never fall back to an ambient credential
+or another identity. Treat the token as opaque transport data, keep it in a private
+temporary curl config, remove it from child environments, and clean it on exit.
+Use it only on the fixed HTTPS GitHub API host without redirects. Both repository
+identities must explicitly be public at every run, exact-attempt and final read;
+authentication never authorizes private evidence. Keep default publication's
+credential-free forwarding and all original signature/provenance gates unchanged.
+Native caller identity and immutable consumer adoption remain separate delivery
+gates under #797 and platform#5334.
+
+Retry only HTTP 429 or a 403
 with an explicit rate-limit header, at most three reads per observation and 120
 seconds of waiting across the complete verification. Respect Retry-After or the
 primary reset time; unadvertised 429 delays use increasing one-minute backoff.

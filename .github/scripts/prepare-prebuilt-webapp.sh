@@ -1,12 +1,31 @@
 #!/usr/bin/env bash
 # Verify the public main-CI image contract before changing a source-owned WebApp.
 # This helper makes no registry writes and never executes the candidate image.
+set +x
 set -euo pipefail
+umask 077
 export LC_ALL=C
 fail() {
   echo "::error::prebuilt WebApp verification failed: $1" >&2
   exit 1
 }
+ci_auth_mode="${PREBUILT_CI_AUTH_MODE:-anonymous}"
+# Discard an inherited export attribute before holding any credential locally.
+unset ci_read_token
+ci_read_token="${PREBUILT_CI_READ_TOKEN:-}"
+unset PREBUILT_CI_READ_TOKEN
+case "$ci_auth_mode" in
+  anonymous) [[ -z "$ci_read_token" ]] || fail 'a CI read credential requires explicit job-token mode' ;;
+  job-token)
+    [[ "${GITHUB_ACTIONS:-}" == true && "${RUNNER_ENVIRONMENT:-}" == github-hosted ]] ||
+      fail 'job-token mode requires an isolated GitHub-hosted CI job'
+    # Opaque transport data, including stateless installation tokens. Exclude
+    # whitespace, controls and curl-config quoting without parsing token identity.
+    [[ -n "$ci_read_token" && "$ci_read_token" != *[!A-Za-z0-9._~+/=-]* ]] ||
+      fail 'missing or unsafe explicit CI read credential'
+    ;;
+  *) fail 'unsupported public CI authentication mode' ;;
+esac
 [[ "${REPOSITORY:-}" =~ ^[A-Za-z0-9]([A-Za-z0-9-]{0,37}[A-Za-z0-9])?/[A-Za-z0-9_.-]{1,100}$ ]] || fail 'invalid caller repository'
 [[ "${REPOSITORY#*/}" != . && "${REPOSITORY#*/}" != .. ]] || fail 'invalid caller repository'
 [[ "${SOURCE_SHA:-}" =~ ^[0-9a-f]{40}$ ]] || fail 'require the caller source commit'
@@ -30,6 +49,10 @@ unsafe="$(find "$cursor" ! -type f ! -type d -print -quit)" || fail 'cannot insp
 [[ -z "$unsafe" ]] || fail 'deployment artifacts cannot contain linked or special files'
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
+if [[ "$ci_auth_mode" == job-token ]]; then
+  printf 'header = "Authorization: Bearer %s"\n' "$ci_read_token" > "$work/auth.curlrc"
+fi
+unset ci_read_token
 # A complete parse precedes all observations and mutations. Keep unrelated documents.
 yq -o=json -I=0 '.' "$file" > "$work/documents.json" || fail 'manifest cannot be parsed'
 jq -se --arg name "$APP_NAME" '
@@ -56,15 +79,19 @@ response_header() {
 }
 # Recover bounded quota refusals, then validate the complete original CI identity.
 read_run() {
-  # Deliberately credential-free. Private or inaccessible source CI is unsupported.
+  # Default publication remains credential-free. Explicit CI authentication never
+  # falls back to anonymous or ambient credentials; private evidence is refused.
   local attempt http_code curl_status retry_after remaining reset wait_seconds reset_wait now
+  local curl_args
+  curl_args=(-q --fail --silent --show-error --connect-timeout 10 --max-time 20 --max-filesize 1048576 --proto '=https'
+    --dump-header "$work/run.headers" --output "$work/run.json" --write-out '%{http_code}'
+    -H 'Accept: application/vnd.github+json')
+  if [[ "$ci_auth_mode" == job-token ]]; then curl_args+=(--config "$work/auth.curlrc"); fi
   for attempt in 1 2 3; do
     : > "$work/run.json"
     : > "$work/run.headers"
     curl_status=0
-    http_code="$(curl -q --fail --silent --show-error --connect-timeout 10 --max-time 20 --max-filesize 1048576 --proto '=https' \
-      --dump-header "$work/run.headers" --output "$work/run.json" --write-out '%{http_code}' \
-      -H 'Accept: application/vnd.github+json' "$1")" || curl_status=$?
+    http_code="$(curl "${curl_args[@]}" "$1")" || curl_status=$?
     if [[ "$curl_status" == 0 && "$http_code" == 200 ]]; then break; fi
     [[ "$curl_status" == 22 && ( "$http_code" == 403 || "$http_code" == 429 ) ]] ||
       fail 'cannot read complete public CI evidence'
@@ -96,7 +123,8 @@ read_run() {
   jq -se --arg repo "$REPOSITORY" --arg sha "$SOURCE_SHA" --arg run "$PREBUILT_CI_RUN_ID" --arg attempt "$PREBUILT_CI_RUN_ATTEMPT" '
     length == 1 and (.[0] |
     .id == ($run | tonumber) and .run_attempt == ($attempt | tonumber) and
-    .repository.full_name == $repo and .head_repository.full_name == $repo and
+    .repository.full_name == $repo and .repository.private == false and
+    .head_repository.full_name == $repo and .head_repository.private == false and
     .head_sha == $sha and .head_branch == "main" and .path == ".github/workflows/ci.yaml" and
     .event == "push" and .status == "completed" and .conclusion == "success")
   ' "$work/run.json" > /dev/null || fail 'original CI source, attempt or success does not match'
