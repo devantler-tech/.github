@@ -30,11 +30,6 @@
       "required": false,
       "default": ""
     },
-    "exclude-vendored": {
-      "description": "Exclude root vendor/ and third_party/ by default when ignore is empty; temporary opt-out retires in devantler-tech/.github#394",
-      "required": false,
-      "default": "true"
-    },
     "fixture-skip-app-token": {
       "description": "Deliberately skip the offline token dependency for the refusal control",
       "required": false,
@@ -92,7 +87,7 @@
       {
         "name": "Select conventional vendor exclusion",
         "id": "vendored-ignore",
-        "if": "${{ inputs.exclude-vendored == 'true' && inputs.ignore == '' }}",
+        "if": "${{ inputs.ignore == '' }}",
         "shell": "bash",
         "run": "printf 'ignore=^(vendor|third_party)/\\n' >>\"$GITHUB_OUTPUT\"\n"
       },

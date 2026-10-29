@@ -12,7 +12,6 @@ Scan code for TODO comments and automatically create corresponding GitHub issues
 | `optional-project-auth` | Opt in to generating an App token only when a project is configured                   | ❌       | `"false"` |
 | `project`               | GitHub Project to add issues to                                                       | ❌       | -         |
 | `ignore`                | Regular expression matching repository-relative paths to ignore                       | ❌       | `""`      |
-| `exclude-vendored`      | Exclude root `vendor/` and `third_party/` when `ignore` is empty                        | ❌       | `"true"` |
 
 ¹ By default, provide `app-private-key` and one of `client-id` or `app-id`, preserving existing callers' App authentication. Prefer `client-id`; `app-id` is deprecated. With `optional-project-auth: 'true'`, App authentication is only needed for a configured project; invalid project credentials fail before checkout or scanning. Without a project, this opt-in skips App-token generation and needs no App inputs.
 
@@ -24,9 +23,9 @@ only describes TODOs, hyphenate the word (`to-do`), or exclude the file with `ig
 
 With an empty `ignore`, the scanner excludes root `vendor/` and `third_party/`
 directories by default. Nested directories and similarly named paths remain
-eligible. A nonempty custom `ignore` takes precedence unchanged. The temporary
-`exclude-vendored: "false"` opt-out remains until flag retirement in
-[#394](https://github.com/devantler-tech/.github/issues/394).
+eligible. A nonempty custom `ignore` takes precedence unchanged. To scan all paths,
+set `ignore: '^$'`, an expression that matches no repository-relative file path.
+The temporary vendor-filter input has been removed after its completed rollout.
 
 ## Usage
 
