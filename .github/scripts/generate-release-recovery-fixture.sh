@@ -10,7 +10,7 @@ trap 'rm -f "$work"' EXIT
 yq '
   .name = "Internal release-recovery offline fixture" |
   .on = {"workflow_call": {"inputs": (.on.workflow_dispatch.inputs |
-    with_entries(select(.key == "enable-recovery" or .key == "offline-test")))}} |
+    with_entries(select(.key == "offline-test")))}} |
   .jobs = {"offline-test": .jobs.offline-test}
 ' "$source" > "$work"
 {

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Guard the default-off release-recovery workflow: consent, scope, immutable source, read token
-# before writer token, and required CI coverage of both flag states. Executes the shipped steps.
+# before writer token, and required CI coverage of both offline states. Executes shipped steps.
 set -euo pipefail
 root="$(git rev-parse --show-toplevel)"
 workflow="${1:-$root/.github/workflows/publish-release-recovery.yaml}"
@@ -30,13 +30,13 @@ cat > "$work/guard.jq" <<'JQ'
   def incident: {REPOSITORY:"${{ github.repository }}",TAG:"${{ inputs.tag }}",SOURCE_SHA:"${{ inputs.source-sha }}",RUN_ID:"${{ inputs.run-id }}",RUN_ATTEMPT:"${{ inputs.run-attempt }}",PRODUCER_REF:"${{ inputs.producer-ref }}"};
   def token($contents): {"client-id":"${{ vars.APP_CLIENT_ID }}","private-key":"${{ secrets.APP_PRIVATE_KEY }}",owner:"devantler-tech",repositories:"${{ steps.admit.outputs.name }}","permission-contents":$contents,"permission-actions":"read"};
   ($w.on | keys) == ["workflow_dispatch"] and $w.permissions == {} and
-  $w.on.workflow_dispatch.inputs["enable-recovery"] == {description:$w.on.workflow_dispatch.inputs["enable-recovery"].description,type:"boolean",default:false} and
+  ($w.on.workflow_dispatch.inputs | has("enable-recovery") | not) and
   $w.on.workflow_dispatch.inputs["confirm-publication"].type == "boolean" and $w.on.workflow_dispatch.inputs["confirm-publication"].default == false and
-  $w.on.workflow_dispatch.inputs["offline-test"].default == false and
+  $w.on.workflow_dispatch.inputs["offline-test"].type == "boolean" and $w.on.workflow_dispatch.inputs["offline-test"].default == false and
   ($w.on.workflow_dispatch.inputs | has("repository") | not) and
   $w.on.workflow_dispatch.secrets == null and
   ($w.jobs | keys) == ["offline-test","recover"] and
-  $j.if == "inputs.enable-recovery && !inputs.offline-test" and $j.permissions == {} and $j.needs == null and
+  $j.if == "inputs.confirm-publication && !inputs.offline-test" and $j.permissions == {} and $j.needs == null and
   $j.concurrency == {group:"create-release-${{ github.repository }}-${{ github.ref }}","cancel-in-progress":false,queue:"max"} and
   ($s | length == 9) and ($s[0:7] | all(ordinary)) and ($s[7:9] | all(writer)) and
   ($s[0].uses | test("^step-security/harden-runner@[a-f0-9]{40}$")) and $s[0].with["egress-policy"] == "audit" and
@@ -52,19 +52,19 @@ cat > "$work/guard.jq" <<'JQ'
   $s[8].id == "publish" and $s[8].env == ({GH_TOKEN:"${{ steps.write-token.outputs.token }}"} + incident) and
   ($s[8].run | contains("\"$RUNNER_TEMP/publish-release-recovery\"")) and
   ([$s[] | select(.env.GH_TOKEN != null) | .id] == ["read-admission","publish"]) and
-  $o.if == "inputs.enable-recovery && inputs.offline-test" and $o.permissions == {} and
+  $o.if == "inputs.offline-test" and $o.permissions == {} and
   ($o.steps | length == 5 and all(ordinary)) and
   ($o.steps[0].uses | test("^step-security/harden-runner@[a-f0-9]{40}$")) and
   ($o.steps[1] | source) and ($o.steps[3] | build) and
   ([$o.steps[] | tostring | select(test("secrets\\.|outputs\\.token|github\\.token"))] | length == 0) and ([$o.steps[] | select(.env.GH_TOKEN != null)] | length == 0) and
   ($o.steps[4].run | contains("unset GH_TOKEN GITHUB_TOKEN")) and
   .f == {name:"Internal release-recovery offline fixture",permissions:{},
-    on:{workflow_call:{inputs:($w.on.workflow_dispatch.inputs|with_entries(select(.key=="enable-recovery" or .key=="offline-test")))}},
+    on:{workflow_call:{inputs:($w.on.workflow_dispatch.inputs|with_entries(select(.key=="offline-test")))}},
     jobs:{"offline-test":$o}} and
   ($c.jobs["test-publish-release-recovery"] | .uses == "$/.github/workflows/release-recovery-offline-fixture.yaml" and .permissions == {} and .secrets == null and
-    .with["enable-recovery"] == true and .with["offline-test"] == true and .with["confirm-publication"] == null) and
+    .with == {"offline-test":true}) and
   ($c.jobs["test-publish-release-recovery-disabled"] | .uses == "$/.github/workflows/release-recovery-offline-fixture.yaml" and .permissions == {} and .secrets == null and
-    .with["enable-recovery"] == null and .with["offline-test"] == null) and
+    .with == null) and
   (["test-publish-release-recovery","test-publish-release-recovery-disabled"] | all(. as $job |
     ($c.jobs["ci-required-checks"].needs | index($job) != null) and
     ($c.jobs["ci-required-checks"].steps | any((.env.JOB_RESULTS // "") | contains("needs." + $job + ".result"))))) and
@@ -79,10 +79,12 @@ cmp -s "$work/regenerated.json" "$work/checked.json" || fail 'internal recovery 
 # shellcheck disable=SC2016 # Keep GitHub expressions literal in refusal controls.
 for mutation in \
   '.w.on.workflow_call={}' \
-  '.w.on.workflow_dispatch.inputs["enable-recovery"].default=true' \
+  '.w.on.workflow_dispatch.inputs["enable-recovery"]={type:"boolean",default:false}' \
   '.w.on.workflow_dispatch.inputs["confirm-publication"].default=true' \
   '.w.on.workflow_dispatch.inputs.repository={type:"string"}' \
-  '.w.jobs.recover.if="inputs.enable-recovery"' \
+  '.w.on.workflow_dispatch.inputs["offline-test"].default=true' \
+  '.w.jobs.recover.if="inputs.confirm-publication"' \
+  '.w.jobs.recover.if="!inputs.offline-test"' \
   '.w.jobs.recover.permissions.contents="write"' \
   '.w.jobs.recover.concurrency["cancel-in-progress"]=true' \
   '.w.jobs.recover.concurrency.group="recovery-${{ github.repository }}"' \
@@ -101,11 +103,11 @@ for mutation in \
   '.w.jobs.recover.steps[7].with.repositories=null' \
   '.w.jobs.recover.steps[8].env.GH_TOKEN="${{ github.token }}"' \
   '.w.jobs.recover.steps[8].env.REPOSITORY="${{ inputs.tag }}"' \
-  '.w.jobs["offline-test"].if="inputs.offline-test"' \
+  '.w.jobs["offline-test"].if="inputs.offline-test || inputs.confirm-publication"' \
   '.w.jobs["offline-test"].steps[4].env={GH_TOKEN:"${{ secrets.APP_PRIVATE_KEY }}"}' \
   '.c.jobs["test-publish-release-recovery"].secrets="inherit"' \
   '.c.jobs["test-publish-release-recovery"].with["offline-test"]=false' \
-  '.c.jobs["test-publish-release-recovery-disabled"].with["enable-recovery"]=true' \
+  '.c.jobs["test-publish-release-recovery-disabled"].with={"offline-test":true}' \
   '.c.jobs["ci-required-checks"].needs |= map(select(. != "test-publish-release-recovery"))' \
   '.c.jobs["ci-required-checks"].steps |= map(if .env.JOB_RESULTS then .env.JOB_RESULTS |= sub("needs.test-publish-release-recovery-disabled.result"; "") else . end)' \
   '.c.jobs["test-create-release-config"].steps |= map(select(.run != "bash .github/tests/test-publish-release-recovery.sh"))' \
@@ -120,6 +122,23 @@ for mutation in \
   jq "$mutation" "$work/bundle.json" > "$work/mutated.json"
   if jq -e -f "$work/guard.jq" "$work/mutated.json" >/dev/null; then fail "accepted mutation: $mutation"; fi
 done
+# The exact predicates above admit only this closed boolean routing table. The
+# offline request always wins; confirmation alone never starts both jobs.
+while read -r confirmation offline expected; do
+  selected=none
+  if [[ "$confirmation" == true && "$offline" == false ]]; then selected=recover; fi
+  if [[ "$offline" == true ]]; then
+    [[ "$selected" == none ]] || fail 'offline and publication selected together'
+    selected=offline
+  fi
+  [[ "$selected" == "$expected" ]] || fail 'confirmation/offline routing changed'
+  printf 'PASS: confirmation=%s offline=%s selects %s\n' "$confirmation" "$offline" "$selected"
+done <<'ROUTING'
+false false none
+false true offline
+true false recover
+true true offline
+ROUTING
 # Run the shipped admission block: only a confirmed manual dispatch on the default branch of one
 # public portfolio repository may continue.
 yq -r '.jobs.recover.steps[1].run' "$workflow" > "$work/admit.sh"
