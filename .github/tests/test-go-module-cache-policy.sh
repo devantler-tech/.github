@@ -42,6 +42,13 @@ cat > "$work/policy.jq" <<'JQ'
   ($go_jobs == ["build","coverage","deadcode","golangci-lint","lint","test","tidy"]) and
   all($go_jobs[]; . as $id | restores($workflow[0].jobs[$id].steps; "needs.changes.outputs.module-directory")) and
   restores($action[0].runs.steps; "inputs.work-dir") and
+  # MegaLinter runs in a container: the restored modules must reach it through the temp mount.
+  ($workflow[0].jobs.lint.steps | map(.id // .name)) as $lint_order |
+  ($workflow[0].jobs.lint.steps[] | select(.name == "Share Go module cache with MegaLinter")) as $share |
+  ($share.env.GO_MOD_CACHE_PATH == "${{ steps.go-mod-cache-path.outputs.path }}") and
+  ($share.run | contains("mv \"$GO_MOD_CACHE_PATH\" \"$RUNNER_TEMP/go-mod-cache\"")) and
+  (($workflow[0].jobs.lint.steps[] | select(.id == "ml") | .env.GOMODCACHE) == "/github/runner_temp/go-mod-cache") and
+  ($lint_order | (index("go-mod-cache") < index("Share Go module cache with MegaLinter")) and (index("Share Go module cache with MegaLinter") < index("ml"))) and
   # The scanner is the eighth Go setup: it must stay behind the composite action checked above.
   ([ $workflow[0].jobs.govulncheck.steps[] | select((.uses // "") | endswith("/.github/actions/govulncheck")) ] | length >= 1) and
   # No combined cache action anywhere near a Go cache: it would save from every ref.
@@ -105,4 +112,10 @@ reject workflow '.jobs.test.steps |= map(select(.name != "Save Go module cache")
 reject workflow '(.jobs.test.steps[] | select(.name == "Save Go module cache") | .if) = "false"'
 reject workflow '(.jobs.test.steps[] | select(.name == "Save Go module cache") | .with.path) = "~/go"'
 reject workflow '.jobs.test.if = "needs.changes.outputs.go == 'true' && github.event_name == 'pull_request'"'
+# MegaLinter's own go list must see the restored modules, not download them again.
+reject workflow '.jobs.lint.steps |= map(select(.name != "Share Go module cache with MegaLinter"))'
+reject workflow '(.jobs.lint.steps[] | select(.id == "ml") | .env) |= del(.GOMODCACHE)'
+reject workflow '(.jobs.lint.steps[] | select(.id == "ml") | .env.GOMODCACHE) = "/root/go/pkg/mod"'
+reject workflow '(.jobs.lint.steps[] | select(.name == "Share Go module cache with MegaLinter") | .run) = "true"'
+reject workflow '.jobs.lint.steps |= (map(select(.name == "Share Go module cache with MegaLinter")) + map(select(.name != "Share Go module cache with MegaLinter")))'
 printf 'PASS: Go module cache is restored everywhere and written once, on the default branch only\n'
