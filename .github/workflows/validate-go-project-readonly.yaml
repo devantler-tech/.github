@@ -807,8 +807,14 @@ jobs:
           GO_MOD_CACHE_PATH: ${{ steps.go-mod-cache-path.outputs.path }}
         run: |
           set -euo pipefail
+          # A rename only: copying across filesystems cannot remove Go's read-only module
+          # directories. Without the rename the scan downloads modules, as it did before.
           if [[ -d "$GO_MOD_CACHE_PATH" ]]; then
-            mv "$GO_MOD_CACHE_PATH" "$RUNNER_TEMP/go-mod-cache"
+            if [[ "$(stat -c %d "$GO_MOD_CACHE_PATH")" == "$(stat -c %d "$RUNNER_TEMP")" ]]; then
+              mv "$GO_MOD_CACHE_PATH" "$RUNNER_TEMP/go-mod-cache"
+            else
+              echo "::notice::Go module cache is on another filesystem; MegaLinter will download modules"
+            fi
           fi
       # Keep this pin aligned with the generated read-only projection and all five
       # native scanner cases (test-catalogue-tool-pin-parity.sh).
