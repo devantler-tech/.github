@@ -42,6 +42,13 @@ YAML
   grep -Fq 'retired catalogue is still managed' "$work/err" ||
     fail "$kind was refused for the wrong reason"
 done
+# The consolidated skill source must also stay outside managed configuration.
+for kind in Repository IssueLabels TeamRepository RepositoryPermissions RepositoryCustomProperty; do
+  sed 's/repository: .github/repository: agent-skills/' "$work/clean.yaml" > "$work/skills.yaml"
+  check 1 "$work/skills.yaml"
+  sed "s/kind: RepositoryPermissions/kind: $kind/" "$work/skills.yaml" > "$work/skills-kind.yaml"
+  check 1 "$work/skills-kind.yaml"
+done
 # GitHub repository identifiers are case-insensitive in both provider phases.
 for field in forProvider.name initProvider.name forProvider.repository initProvider.repository; do
   FIELD="$field" yq '.kind = "Repository" | .spec |= setpath(strenv(FIELD) | split("."); "AcTiOnS")' \

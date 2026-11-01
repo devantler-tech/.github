@@ -26,7 +26,7 @@ fi
 # The pinned provider imports repository-owned resources by repository name and
 # team grants by team ID/slug:repository; Observe-only imports may omit spec IDs.
 if ! jq -s '
-    def retired: if type == "string" then ascii_downcase == "actions" else false end;
+    def retired: if type == "string" then (ascii_downcase == "actions" or ascii_downcase == "agent-skills") else false end;
     def retired_team_repository:
       if type == "string" then split(":") as $identity |
         ($identity | length == 2) and ($identity[1] | retired)

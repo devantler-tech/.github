@@ -28,7 +28,6 @@ resources:
   - grant-maintainers-on-kyverno-policies.yaml
   - grant-maintainers-on-world-at-ruin.yaml
   - grant-maintainers-on-agent-plugins.yaml
-  - grant-maintainers-on-agent-skills.yaml
   - grant-maintainers-on-dot-github.yaml
   - grant-maintainers-on-ascoachingogvaner.yaml
   - grant-maintainers-on-wedding-app.yaml
@@ -39,7 +38,6 @@ resources:
   # Active Admins policy (one admin grant per active repository).
   - grant-admins-on-dot-github.yaml
   - grant-admins-on-agent-plugins.yaml
-  - grant-admins-on-agent-skills.yaml
   - grant-admins-on-ascoachingogvaner.yaml
   - grant-admins-on-aws.yaml
   - grant-admins-on-dotnet-template.yaml

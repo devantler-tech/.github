@@ -94,51 +94,6 @@ spec:
 apiVersion: repo.github.m.upbound.io/v1alpha1
 kind: RepositoryCustomProperty
 metadata:
-  name: agent-skills-type
-spec:
-  managementPolicies: [Observe, Create, Update]
-  forProvider:
-    repository: "agent-skills"
-    propertyName: Type
-    propertyType: single_select
-    propertyValue: ["Library"]
-  providerConfigRef:
-    kind: ProviderConfig
-    name: default
----
-apiVersion: repo.github.m.upbound.io/v1alpha1
-kind: RepositoryCustomProperty
-metadata:
-  name: agent-skills-enableautomerge
-spec:
-  managementPolicies: [Observe, Create, Update]
-  forProvider:
-    repository: "agent-skills"
-    propertyName: EnableAutoMerge
-    propertyType: true_false
-    propertyValue: ["true"]
-  providerConfigRef:
-    kind: ProviderConfig
-    name: default
----
-apiVersion: repo.github.m.upbound.io/v1alpha1
-kind: RepositoryCustomProperty
-metadata:
-  name: agent-skills-scangithubactions
-spec:
-  managementPolicies: [Observe, Create, Update]
-  forProvider:
-    repository: "agent-skills"
-    propertyName: ScanGitHubActions
-    propertyType: true_false
-    propertyValue: ["true"]
-  providerConfigRef:
-    kind: ProviderConfig
-    name: default
----
-apiVersion: repo.github.m.upbound.io/v1alpha1
-kind: RepositoryCustomProperty
-metadata:
   name: ascoachingogvaner-type
 spec:
   managementPolicies: [Observe, Create, Update]

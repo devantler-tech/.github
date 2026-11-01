@@ -54,6 +54,15 @@ out-of-band changes made in the GitHub UI.
   self-repository `$/` references stay allowed; reusable workflows can still be
   referenced by tag.
 
+## Skills source retirement
+
+The maintained skills move to `agent-plugins` under monorepo#4742. All eight managed
+identities for the former `agent-skills` repository are withdrawn without `Delete`
+authority. The native repository and its history stay intact. After signed publication
+and observed GitOps withdrawal, the maintainer-authorized archival retains the old
+releases and links; archival is separate from this configuration change. The retirement
+guard prevents restored management from fighting the archived historical source.
+
 ## Legacy Actions retirement
 
 The legacy `actions` repository has no managed Repository, labels, permissions or
