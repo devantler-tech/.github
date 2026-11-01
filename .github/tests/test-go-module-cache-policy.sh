@@ -40,6 +40,7 @@ cat > "$work/policy.jq" <<'JQ'
     ($share[0].if == null) and (($share[0]."continue-on-error" // false) == false) and
     ($share[0].env.GO_MOD_CACHE_PATH == "${{ steps.go-mod-cache-path.outputs.path }}") and
     ($share[0].run | contains("mv \"$GO_MOD_CACHE_PATH\" \"$RUNNER_TEMP/go-mod-cache\"")) and
+    ($share[0].run | contains("stat -c %d")) and
     (($steps[] | select(.id == "ml") | .env.GOMODCACHE) == "/github/runner_temp/go-mod-cache") and
     (($order | index("go-mod-cache")) < ($order | index("Share Go module cache with MegaLinter"))) and
     (($order | index("Share Go module cache with MegaLinter")) < ($order | index("ml")));
@@ -124,5 +125,6 @@ reject workflow '(.jobs.lint.steps[] | select(.name == "Share Go module cache wi
 reject workflow '(.jobs.lint.steps[] | select(.id == "ml") | .env) |= del(.GOMODCACHE)'
 reject workflow '(.jobs.lint.steps[] | select(.id == "ml") | .env.GOMODCACHE) = "/root/go/pkg/mod"'
 reject workflow '(.jobs.lint.steps[] | select(.name == "Share Go module cache with MegaLinter") | .run) = "true"'
+reject workflow '(.jobs.lint.steps[] | select(.name == "Share Go module cache with MegaLinter") | .run) |= sub("stat -c %d"; "true")'
 reject workflow '.jobs.lint.steps |= (map(select(.name == "Share Go module cache with MegaLinter")) + map(select(.name != "Share Go module cache with MegaLinter")))'
 printf 'PASS: Go module cache is restored everywhere and written once, on the default branch only\n'
