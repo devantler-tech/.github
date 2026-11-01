@@ -799,6 +799,23 @@ jobs:
           path: ${{ steps.go-mod-cache-path.outputs.path }}
           key: go-mod-v1-${{ runner.os }}-${{ runner.arch }}-${{ needs.changes.outputs.module-directory }}-${{ hashFiles(format('{0}/go.sum', needs.changes.outputs.module-directory)) }}
           restore-keys: ${{ github.ref != format('refs/heads/{0}', github.event.repository.default_branch) && format('go-mod-v1-{0}-{1}-{2}-', runner.os, runner.arch, needs.changes.outputs.module-directory) || '' }}
+      # MegaLinter's container mounts the workspace and the runner temp directory, not the
+      # restored path, so Syft's go list would download every module again (devantler-tech/ksail#8078).
+      - name: Share Go module cache with MegaLinter
+        shell: bash
+        env:
+          GO_MOD_CACHE_PATH: ${{ steps.go-mod-cache-path.outputs.path }}
+        run: |
+          set -euo pipefail
+          # A rename only: copying across filesystems cannot remove Go's read-only module
+          # directories. Without the rename the scan downloads modules, as it did before.
+          if [[ -d "$GO_MOD_CACHE_PATH" ]]; then
+            if [[ "$(stat -c %d "$GO_MOD_CACHE_PATH")" == "$(stat -c %d "$RUNNER_TEMP")" ]]; then
+              mv "$GO_MOD_CACHE_PATH" "$RUNNER_TEMP/go-mod-cache"
+            else
+              echo "::notice::Go module cache is on another filesystem; MegaLinter will download modules"
+            fi
+          fi
       # Keep this pin aligned with the generated read-only projection and all five
       # native scanner cases (test-catalogue-tool-pin-parity.sh).
       - name: "\U0001F9F9 Lint"
@@ -807,6 +824,7 @@ jobs:
         env:
           DEFAULT_WORKSPACE: ${{ needs.changes.outputs.module-directory }}
           GOTOOLCHAIN: go${{ steps.setup-go.outputs.go-version }}
+          GOMODCACHE: /github/runner_temp/go-mod-cache
           MEGALINTER_CONFIG: ${{ github.workspace }}/.mega-linter.yml
           VALIDATE_ALL_CODEBASE: true
           APPLY_FIXES: all

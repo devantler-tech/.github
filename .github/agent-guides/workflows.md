@@ -164,6 +164,9 @@ directory and that module's `go.sum`; the default branch's Test job is its only 
 A pull request falls back to the default branch's newest archive and never writes one.
 The default branch restores an exact match only, so its archive cannot accumulate retired
 module versions. A new job that sets up Go needs the same two restore steps and no save.
+MegaLinter runs in a container that cannot see the restored path, so its job moves the
+archive under the runner temp directory and points `GOMODCACHE` at the container's mount of
+it; otherwise Syft's `go list` downloads every module again (devantler-tech/ksail#8078).
 Keep `test-go-module-cache-policy.sh` passing (#565).
 
 Required catalogue CI also observes the dependency-bearing PostgreSQL caller's
