@@ -19,7 +19,7 @@ action="$root/actions/aggregate-job-checks/action.yaml"
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
 
-yq -r '.runs.steps[] | select(.run != null) | .run' "$action" >"$work/aggregate.sh"
+yq -r '.runs.steps[] | select(.name == "📊 Summarize workflow result") | .run' "$action" >"$work/aggregate.sh"
 [[ -s "$work/aggregate.sh" ]] || {
   echo "FAIL: no run block extracted from $action" >&2
   exit 1

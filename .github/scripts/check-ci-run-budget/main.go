@@ -247,6 +247,10 @@ func (a commandAPI) read(ctx context.Context, path string) ([]byte, error) {
 
 // execute validates CLI arguments and writes one sanitized single-run receipt.
 func execute(args []string, out io.Writer, api reader, now time.Time) int {
+	if len(args) > 0 && args[0] == "startup" {
+		return executeStartup(args[1:], out, api)
+	}
+
 	flags := flag.NewFlagSet("check-ci-run-budget", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 	var o options
