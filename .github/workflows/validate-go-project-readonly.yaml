@@ -359,6 +359,7 @@ jobs:
           primary-key: ${{ steps.go-mod-cache.outputs.cache-primary-key }}
           matched-key: ${{ steps.go-mod-cache.outputs.cache-matched-key }}
           namespace-prefix: ${{ format('go-mod-v1-{0}-{1}-{2}-', runner.os, runner.arch, needs.changes.outputs.module-directory) }}
+          fallback-prefix: ${{ github.ref != format('refs/heads/{0}', github.event.repository.default_branch) && format('go-mod-v1-{0}-{1}-{2}-', runner.os, runner.arch, needs.changes.outputs.module-directory) || '' }}
       - name: "\U0001F9F9 go mod tidy"
         run: go mod tidy
       # Anchored at the repository ROOT: `git add .` is cwd-scoped and this job's
@@ -447,6 +448,7 @@ jobs:
           primary-key: ${{ steps.go-mod-cache.outputs.cache-primary-key }}
           matched-key: ${{ steps.go-mod-cache.outputs.cache-matched-key }}
           namespace-prefix: ${{ format('go-mod-v1-{0}-{1}-{2}-', runner.os, runner.arch, needs.changes.outputs.module-directory) }}
+          fallback-prefix: ${{ format('go-mod-v1-{0}-{1}-{2}-', runner.os, runner.arch, needs.changes.outputs.module-directory) }}
       - name: "\U0001F9F9 Run golangci-lint"
         id: golangci-lint
         uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
@@ -572,6 +574,7 @@ jobs:
           primary-key: ${{ steps.go-mod-cache.outputs.cache-primary-key }}
           matched-key: ${{ steps.go-mod-cache.outputs.cache-matched-key }}
           namespace-prefix: ${{ format('go-mod-v1-{0}-{1}-{2}-', runner.os, runner.arch, needs.changes.outputs.module-directory) }}
+          fallback-prefix: ${{ github.ref != format('refs/heads/{0}', github.event.repository.default_branch) && format('go-mod-v1-{0}-{1}-{2}-', runner.os, runner.arch, needs.changes.outputs.module-directory) || '' }}
       - name: "\U0001F4E5 Install deadcode"
         # Bounded retry so a transient module-proxy 5xx / network blip on this
         # required-check path can't red the gate (reliability invariant — #305).
@@ -833,6 +836,7 @@ jobs:
           primary-key: ${{ steps.go-mod-cache.outputs.cache-primary-key }}
           matched-key: ${{ steps.go-mod-cache.outputs.cache-matched-key }}
           namespace-prefix: ${{ format('go-mod-v1-{0}-{1}-{2}-', runner.os, runner.arch, needs.changes.outputs.module-directory) }}
+          fallback-prefix: ${{ github.ref != format('refs/heads/{0}', github.event.repository.default_branch) && format('go-mod-v1-{0}-{1}-{2}-', runner.os, runner.arch, needs.changes.outputs.module-directory) || '' }}
       # MegaLinter's container mounts the workspace and the runner temp directory, not the
       # restored path, so Syft's go list would download every module again (devantler-tech/ksail#8078).
       - name: Share Go module cache with MegaLinter
@@ -1053,6 +1057,7 @@ jobs:
           primary-key: ${{ steps.go-mod-cache.outputs.cache-primary-key }}
           matched-key: ${{ steps.go-mod-cache.outputs.cache-matched-key }}
           namespace-prefix: ${{ format('go-mod-v1-{0}-{1}-{2}-', runner.os, runner.arch, needs.changes.outputs.module-directory) }}
+          fallback-prefix: ${{ github.ref != format('refs/heads/{0}', github.event.repository.default_branch) && format('go-mod-v1-{0}-{1}-{2}-', runner.os, runner.arch, needs.changes.outputs.module-directory) || '' }}
       - name: "\U0001F6E0️ Build"
         env:
           MEASURE_DISK_USAGE: ${{ inputs.measure-disk-usage }}
@@ -1249,6 +1254,7 @@ jobs:
           primary-key: ${{ steps.go-mod-cache.outputs.cache-primary-key }}
           matched-key: ${{ steps.go-mod-cache.outputs.cache-matched-key }}
           namespace-prefix: ${{ format('go-mod-v1-{0}-{1}-{2}-', runner.os, runner.arch, needs.changes.outputs.module-directory) }}
+          fallback-prefix: ${{ github.ref != format('refs/heads/{0}', github.event.repository.default_branch) && format('go-mod-v1-{0}-{1}-{2}-', runner.os, runner.arch, needs.changes.outputs.module-directory) || '' }}
       # One shared archive cannot retain both ordinary and race builds.
       # Keep each test mode's compilation outputs separately; Go still validates inputs.
       - name: Identify Go compilation cache
@@ -1511,6 +1517,7 @@ jobs:
           primary-key: ${{ steps.go-mod-cache.outputs.cache-primary-key }}
           matched-key: ${{ steps.go-mod-cache.outputs.cache-matched-key }}
           namespace-prefix: ${{ format('go-mod-v1-{0}-{1}-{2}-', runner.os, runner.arch, needs.changes.outputs.module-directory) }}
+          fallback-prefix: ${{ github.ref != format('refs/heads/{0}', github.event.repository.default_branch) && format('go-mod-v1-{0}-{1}-{2}-', runner.os, runner.arch, needs.changes.outputs.module-directory) || '' }}
       # One shared archive cannot retain both ordinary and race builds.
       # Keep each test mode's compilation outputs separately; Go still validates inputs.
       - name: Identify Go compilation cache

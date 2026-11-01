@@ -40,6 +40,7 @@ cat >"$work/policy.jq" <<'JQ'
     ($guard[0].with["primary-key"] == "${{ steps.go-mod-cache.outputs.cache-primary-key }}") and
     ($guard[0].with["matched-key"] == "${{ steps.go-mod-cache.outputs.cache-matched-key }}") and
     ($guard[0].with["namespace-prefix"] == compatible_reader($dir)) and
+    ($guard[0].with["fallback-prefix"] == $restore[0].with["restore-keys"]) and
     ([$setup[0],$path[0],$restore[0],$guard[0]] | all(."continue-on-error" == null or ."continue-on-error" == false)) and
     (($order|index("go-mod-cache-path")) < ($order|index("go-mod-cache"))) and
     (($order|index("validate-go-mod-cache")) == ($order|index("go-mod-cache")) + 1);
@@ -130,6 +131,7 @@ reject action '(.runs.steps[] | select(.id == "go-mod-cache") | .with.key) |= su
 reject workflow '.jobs.build.steps |= map(select(.id != "validate-go-mod-cache"))'
 reject workflow '(.jobs["golangci-lint"].steps[] | select(.id == "validate-go-mod-cache") | .with["matched-key"]) = "${{ steps.go-mod-cache.outputs.cache-primary-key }}"'
 reject workflow '(.jobs.test.steps[] | select(.id == "validate-go-mod-cache") | ."continue-on-error") = true'
+reject workflow '(.jobs.test.steps[] | select(.id == "validate-go-mod-cache") | .with["fallback-prefix"]) = (.jobs["golangci-lint"].steps[] | select(.id == "validate-go-mod-cache") | .with["fallback-prefix"])'
 reject workflow '.jobs.tidy.steps |= (map(select(.id == "validate-go-mod-cache")) + map(select(.id != "validate-go-mod-cache")))'
 reject action '.runs.steps |= map(select(.id != "validate-go-mod-cache"))'
 # The default branch must write a clean archive and keep its one writer.
@@ -159,7 +161,8 @@ jq -e '
     GO_MOD_CACHE_PATH:"${{ inputs.path }}",
     CACHE_PRIMARY_KEY:"${{ inputs.primary-key }}",
     CACHE_MATCHED_KEY:"${{ inputs.matched-key }}",
-    CACHE_PREFIX:"${{ inputs.namespace-prefix }}"
+    CACHE_PREFIX:"${{ inputs.namespace-prefix }}",
+    CACHE_FALLBACK_PREFIX:"${{ inputs.fallback-prefix }}"
   } and (.runs.steps[0].run | contains("${{") | not)
 ' "$work/guard.json" >/dev/null
 yq -r '.runs.steps[0].run' "$root/.github/actions/guard-go-module-cache/action.yaml" >"$work/guard.sh"
@@ -176,8 +179,8 @@ SH
 chmod +x "$work/bin/go"
 cache_prefix='go-mod-v1-Linux-X64-foo-'
 cache_primary="${cache_prefix}$(printf '%064d' 1)"
-exercise_restore() { # matched-key primary-key preserve|discard
-  local path="$work/restored" rc=0
+exercise_restore() { # matched-key primary-key preserve|discard [readonly] [fallback-prefix]
+  local path="$work/restored" rc=0 fallback="${5-$cache_prefix}"
   mkdir -p "$path"
   printf 'restored content\n' >"$path/marker"
   if [[ "${4:-}" == readonly ]]; then
@@ -187,7 +190,7 @@ exercise_restore() { # matched-key primary-key preserve|discard
   fi
   : >"$work/clean-calls"
   PATH="$work/bin:$PATH" CACHE_GUARD_CLEAN_CALLS="$work/clean-calls" CACHE_GUARD_OWNED_PATH="$path" CACHE_GUARD_GO_COMMAND="$test_go_command" \
-    GO_MOD_CACHE_PATH="$path" CACHE_MATCHED_KEY="$1" CACHE_PRIMARY_KEY="$2" CACHE_PREFIX="$cache_prefix" \
+    GO_MOD_CACHE_PATH="$path" CACHE_MATCHED_KEY="$1" CACHE_PRIMARY_KEY="$2" CACHE_PREFIX="$cache_prefix" CACHE_FALLBACK_PREFIX="$fallback" \
     bash "$work/guard.sh" >"$work/guard-output" 2>&1 || rc=$?
   if [[ "$rc" != 0 ]]; then
     echo "FAIL: module-cache guard failed for $3 case (exit $rc)" >&2
@@ -219,12 +222,15 @@ exercise_restore "${cache_prefix}$(printf '%065d' 2)" "$cache_primary" discard
 exercise_restore "${cache_prefix}$(printf 'A%.0s' {1..64})" "$cache_primary" discard
 exercise_restore "${cache_primary}-other" "$cache_primary" discard
 exercise_restore "go-mod-v1-Linux-X64-foo-bar-$(printf '%064d' 2)" "$cache_primary" discard readonly
+# With no go.sum the primary key itself is a prefix. The main Test writer
+# must discard a non-exact archive even if its hash belongs to this module.
+exercise_restore "${cache_prefix}$(printf '%064d' 2)" "$cache_prefix" discard '' ''
 
 # The safety control replaces Go with the confined shim: even a broken guard
 # cannot remove anything outside this test's owned cache directory.
 : >"$work/clean-calls"
 if PATH="$work/bin:$PATH" CACHE_GUARD_CLEAN_CALLS="$work/clean-calls" CACHE_GUARD_OWNED_PATH="$work/restored" CACHE_GUARD_GO_COMMAND="$test_go_command" \
-  GO_MOD_CACHE_PATH=/ CACHE_MATCHED_KEY=foreign CACHE_PRIMARY_KEY="$cache_primary" CACHE_PREFIX="$cache_prefix" \
+  GO_MOD_CACHE_PATH=/ CACHE_MATCHED_KEY=foreign CACHE_PRIMARY_KEY="$cache_primary" CACHE_PREFIX="$cache_prefix" CACHE_FALLBACK_PREFIX="$cache_prefix" \
   bash "$work/guard.sh" >"$work/guard-output" 2>&1; then
   echo 'FAIL: module-cache guard accepted an unsafe cache path' >&2
   exit 1

@@ -14,6 +14,10 @@ inputs:
   namespace-prefix:
     description: Requested OS, architecture and module prefix, including its trailing separator.
     required: true
+  fallback-prefix:
+    description: The restore step's allowed fallback prefix; empty retains exact-only restore policy.
+    required: false
+    default: ""
 runs:
   using: composite
   steps:
@@ -23,6 +27,7 @@ runs:
         CACHE_PRIMARY_KEY: ${{ inputs.primary-key }}
         CACHE_MATCHED_KEY: ${{ inputs.matched-key }}
         CACHE_PREFIX: ${{ inputs.namespace-prefix }}
+        CACHE_FALLBACK_PREFIX: ${{ inputs.fallback-prefix }}
       run: |
         set -euo pipefail
         [[ -n "$CACHE_MATCHED_KEY" ]] || exit 0
@@ -30,7 +35,7 @@ runs:
         # Keep exact hits even when hashFiles is empty because go.sum is absent.
         [[ "$CACHE_MATCHED_KEY" != "$CACHE_PRIMARY_KEY" ]] || exit 0
         suffix="${CACHE_MATCHED_KEY#"$CACHE_PREFIX"}"
-        if [[ "$CACHE_MATCHED_KEY" == "$CACHE_PREFIX"* && "$suffix" =~ ^[a-f0-9]{64}$ ]]; then
+        if [[ "$CACHE_FALLBACK_PREFIX" == "$CACHE_PREFIX" && "$CACHE_MATCHED_KEY" == "$CACHE_PREFIX"* && "$suffix" =~ ^[a-f0-9]{64}$ ]]; then
           exit 0
         fi
         # The restore service uses prefix matching: foo- also matches foo-bar-.
