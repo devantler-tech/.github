@@ -1140,6 +1140,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+      actions: read
     steps:
       - name: 🔒 Harden Runner
         uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2.22.2
@@ -1151,12 +1152,23 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Verify native workflow startup snapshot
+        uses: $/actions/aggregate-job-checks
+        with:
+          job-results: "success skipped"
+          check-name: Native startup snapshot fixture
+          check-workflow-startup: "true"
+
       # Exit status alone cannot tell a failed job, a GitHub-abandoned job and a malformed input
       # apart, so this runs the action's own run block against each class and asserts the
       # message too (#1098).
       - name: 🧪 Verify every job-result class fails or passes with its own message
         shell: bash
         run: bash .github/tests/test-aggregate-job-checks.sh
+
+      - name: Verify shipped startup evidence boundaries
+        shell: bash
+        run: bash .github/tests/test-workflow-startup.sh
 
       - name: 🧪 Run aggregate-job-checks with an unknown result (expected to fail)
         id: check

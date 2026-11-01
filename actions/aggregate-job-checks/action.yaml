@@ -4,6 +4,8 @@ description: |
   Fails if any job failed, was cancelled, or was abandoned. Skipped jobs are
   treated as acceptable (non-failure). Useful for branch protection rules that
   need a single, stable check name.
+  An explicit opt-in also inspects same-head native workflow startup failures
+  through read-only API metadata.
 author: devantler-tech
 
 inputs:
@@ -21,6 +23,21 @@ inputs:
       Display name used in success/failure messages.
     required: false
     default: "CI - Required Checks"
+  check-workflow-startup:
+    description: Explicit opt-in to check this native head for observed workflow startup failures
+    required: false
+    default: "false"
+  github-token:
+    description: Token with Actions read access when the startup check is enabled
+    required: false
+
+outputs:
+  startup-clear:
+    description: True only for a complete clear startup snapshot; unset when disabled or unsuccessful
+    value: ${{ steps.startup.outputs.clear }}
+  startup-receipt:
+    description: Sanitized native-head startup evidence; not an all-checks-green or feedback-budget verdict
+    value: ${{ steps.startup.outputs.receipt }}
 
 runs:
   using: composite
@@ -75,3 +92,69 @@ runs:
         fi
 
         printf '%s\n' "✅ $CHECK_NAME — all jobs succeeded or were skipped."
+
+    - name: Admit workflow startup check
+      id: startup-admit
+      shell: bash
+      env:
+        ENABLED: ${{ inputs.check-workflow-startup }}
+      run: |
+        set -euo pipefail
+        case "$ENABLED" in
+          ''|false) printf 'enabled=false\n' >> "$GITHUB_OUTPUT" ;;
+          true) printf 'enabled=true\n' >> "$GITHUB_OUTPUT" ;;
+          *) echo '::error::check-workflow-startup must be true or false' >&2; exit 2 ;;
+        esac
+
+    - name: Set up read-only inspector toolchain
+      if: steps.startup-admit.outputs.enabled == 'true'
+      uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      with:
+        go-version-file: ${{ github.action_path }}/../../.github/scripts/check-ci-run-budget/go.mod
+        cache: false
+
+    - name: Build read-only CI inspector
+      if: steps.startup-admit.outputs.enabled == 'true'
+      id: startup-build
+      shell: bash
+      env:
+        GOWORK: "off"
+        GOFLAGS: ""
+        GOTOOLCHAIN: local
+        CGO_ENABLED: "0"
+      run: |
+        set -euo pipefail
+        scratch="$(mktemp -d "$RUNNER_TEMP/workflow-startup.XXXXXX")"
+        trap 'rm -rf "$scratch"' EXIT
+        go -C "$GITHUB_ACTION_PATH/../../.github/scripts/check-ci-run-budget" build -trimpath -o "$scratch/inspector" .
+        printf 'binary=%s/inspector\n' "$scratch" >> "$GITHUB_OUTPUT"
+        trap - EXIT
+
+    - name: Inspect workflow startup failures
+      if: steps.startup-admit.outputs.enabled == 'true'
+      id: startup
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github-token || github.token }}
+        REPOSITORY: ${{ github.repository }}
+        HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        RUN_ID: ${{ github.run_id }}
+        RUN_ATTEMPT: ${{ github.run_attempt }}
+        EVENT_NAME: ${{ github.event_name }}
+        BINARY: ${{ steps.startup-build.outputs.binary }}
+      run: |
+        set -euo pipefail
+        [[ "$BINARY" == "$RUNNER_TEMP"/workflow-startup.*/inspector && -f "$BINARY" ]]
+        scratch="${BINARY%/*}"
+        trap 'rm -rf "$scratch"' EXIT
+        status=0
+        "$BINARY" startup --repository "$REPOSITORY" --head-sha "$HEAD_SHA" \
+          --run-id "$RUN_ID" --attempt "$RUN_ATTEMPT" --event "$EVENT_NAME" \
+          > "$scratch/receipt.json" || status=$?
+        cat "$scratch/receipt.json"
+        if [[ "$status" != 0 ]]; then exit "$status"; fi
+        clear="$(jq -ce '.schema == 1 and .scope == "head_workflow_startup_snapshot" and .state == "clear"' "$scratch/receipt.json")"
+        [[ "$clear" == true ]]
+        receipt="$(jq -c . "$scratch/receipt.json")"
+        [[ -n "$receipt" ]]
+        printf 'receipt=%s\nclear=true\n' "$receipt" >> "$GITHUB_OUTPUT"

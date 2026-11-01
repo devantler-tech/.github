@@ -12,6 +12,19 @@ no validation output. Keep the Linux/macOS shipped-step and native-command
 controls in required CI. This is a single-run primitive, not whole-PR enforcement;
 consumer adoption, aggregation and flag retirement remain under #654.
 
+**Workflow startup evidence:** the shared aggregate action's default-off
+`check-workflow-startup` input runs the metadata inspector's separate `startup`
+subcommand. It binds complete observations to the native caller and head,
+preserves adverse workflow/event/branch/PR history until proven recovery, and
+refuses incomplete or changed evidence. Its receipt is a startup snapshot,
+not an all-checks-green or feedback-budget verdict. Existing job aggregation and
+the budget subcommand keep their contracts. The catalogue's workspace-independent
+inline required reducer retains no token permissions or checked-out action.
+Keep the enabled native call, shipped-step refusal controls and both inspector
+modes covered in the existing aggregate test job. Parent #814 owns immutable
+consumer adoption, the temporary opt-in's retirement decision and later-event
+coverage; the library slice alone does not prove portfolio enforcement.
+
 **Production to-do input forwarding:** the reusable scanner exposes the composite's
 optional-project integration choices while retaining its existing defaults.
 The generated read-only workflow runs the exact production steps with an empty
