@@ -5,7 +5,10 @@ root="$(cd "$(dirname "$0")/../.." && pwd)"
 helper="$root/.github/scripts/observe-go-cache.sh"
 scratch="$(mktemp -d)"
 trap 'rm -rf "$scratch"' EXIT
-fail() { printf 'FAIL: %s\n' "$*" >&2; exit 1; }
+fail() {
+  printf 'FAIL: %s\n' "$*" >&2
+  exit 1
+}
 prefix='[Test] Validate Go Project - Isolated PostgreSQL / '
 head=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 key="go-mod-v1-Linux-X64-.github/tests/go-postgresql-fixture-$(printf '%064d' 1)"
@@ -173,6 +176,33 @@ cp "$scratch/good-caches.json" "$scratch/caches.json"
 cp "$scratch/good-jobs.json" "$scratch/jobs.json"
 printf '##[group]Run actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9\n  key: %s\n##[endgroup]\nCache restored from key: %s\n' "$key" "$key" >"$scratch/logs/105.log"
 check main >"$scratch/out" 2>"$scratch/error" || fail "second main run must reuse the archive without saving: $(cat "$scratch/error")"
+# A read-only lint job may reuse the previous dependency archive on main. The
+# Test writer above still restores its exact key and must not save on an exact hit.
+cp "$scratch/logs/102.log" "$scratch/before-main-lint.log"
+lint_fallback="${key%-*}-$(printf '%064d' 2)"
+printf '##[group]Run actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9\n  key: %s\n  restore-keys: %s\n##[endgroup]\nCache restored from key: %s\n' "$key" "${key%-*}-" "$lint_fallback" >"$scratch/logs/102.log"
+check main >"$scratch/out" 2>"$scratch/error" || fail "main lint reader must accept its compatible fallback: $(cat "$scratch/error")"
+cp "$scratch/logs/102.log" "$scratch/main-lint-fallback.log"
+for invalid in "${lint_fallback/Linux/Windows}" "${lint_fallback/X64/ARM64}" "${lint_fallback/go-postgresql-fixture/other-module}" "${key%-*}-not-a-hash"; do
+  sed '/^Cache /d' "$scratch/main-lint-fallback.log" >"$scratch/logs/102.log"
+  printf 'Cache restored from key: %s\n' "$invalid" >>"$scratch/logs/102.log"
+  if check main >"$scratch/out" 2>"$scratch/error"; then fail 'main lint accepted a foreign archive'; fi
+done
+cp "$scratch/main-lint-fallback.log" "$scratch/logs/102.log"
+printf 'Cache saved with key: %s\n' "$key" >>"$scratch/logs/102.log"
+if check main >"$scratch/out" 2>"$scratch/error"; then fail 'main lint became a cache writer'; fi
+cp "$scratch/main-lint-fallback.log" "$scratch/logs/102.log"
+# Other main readers and the sole module writer retain their original policy.
+for id in 101 105; do
+  cp "$scratch/logs/$id.log" "$scratch/before-non-lint.log"
+  cp "$scratch/main-lint-fallback.log" "$scratch/logs/$id.log"
+  if check main >"$scratch/out" 2>"$scratch/error"; then fail "main job $id accepted lint-only fallback"; fi
+  cp "$scratch/before-non-lint.log" "$scratch/logs/$id.log"
+done
+sed '/^Cache /d' "$scratch/main-lint-fallback.log" >"$scratch/logs/102.log"
+printf 'Cache not found for input keys: %s, %s\n' "$key" "${key%-*}-" >>"$scratch/logs/102.log"
+check main >"$scratch/out" 2>"$scratch/error" || fail "main lint miss with both requested keys was rejected: $(cat "$scratch/error")"
+cp "$scratch/before-main-lint.log" "$scratch/logs/102.log"
 rm "$scratch/logs/103.log"
 if check main >"$scratch/out" 2>"$scratch/error"; then fail 'missing job log was accepted'; fi
 # Exercise the shipped collector too: a successful API call is not a verdict.

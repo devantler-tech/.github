@@ -191,12 +191,16 @@ check() {
     section="$(restore_section "$log" "$restores")" || fail 'missing or ambiguous exact module restore action'
     outcomes="$(grep -E '^Cache (restored from key:|not found for input keys:)' <<<"$section" || true)"
     [[ "$(grep -c . <<<"$outcomes" || true)" == "$restores" ]] || fail 'module restore action has no unique completed outcome'
+    # Main lint is read-only, so a compatible archive cannot accumulate into a
+    # new cache. The main Test writer and all other main jobs remain exact-only.
+    allow_fallback=false
+    if [[ "$mode" == pr || "$name" == "${prefix}🧹 Lint - golangci-lint" ]]; then allow_fallback=true; fi
     while IFS= read -r outcome; do
       if [[ "$outcome" == 'Cache restored from key: '* ]]; then
         restored_key="${outcome#Cache restored from key: }"
-        [[ "$restored_key" == "$key" || ( "$mode" == pr && "$restored_key" == "${key%-*}-"* && "${restored_key#"${key%-*}-"}" =~ ^[a-f0-9]{64}$ ) ]] || fail 'module restore returned a key outside its allowed namespace'
+        [[ "$restored_key" == "$key" || ( "$allow_fallback" == true && "$restored_key" == "${key%-*}-"* && "${restored_key#"${key%-*}-"}" =~ ^[a-f0-9]{64}$ ) ]] || fail 'module restore returned a key outside its allowed namespace'
       else
-        [[ "$outcome" == "Cache not found for input keys: $key" || ( "$mode" == pr && "$outcome" == "Cache not found for input keys: $key, ${key%-*}-" ) ]] || fail 'module miss did not name the requested key'
+        [[ "$outcome" == "Cache not found for input keys: $key" || ( "$allow_fallback" == true && "$outcome" == "Cache not found for input keys: $key, ${key%-*}-" ) ]] || fail 'module miss did not name the requested key'
       fi
     done <<<"$outcomes"
     if [[ "$name" == "${prefix}🧪 Test" ]]; then
