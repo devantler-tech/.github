@@ -228,16 +228,18 @@ exercise_restore "${cache_prefix}$(printf '%064d' 2)" "$cache_prefix" discard ''
 
 # The safety control replaces Go with the confined shim: even a broken guard
 # cannot remove anything outside this test's owned cache directory.
-: >"$work/clean-calls"
-if PATH="$work/bin:$PATH" CACHE_GUARD_CLEAN_CALLS="$work/clean-calls" CACHE_GUARD_OWNED_PATH="$work/restored" CACHE_GUARD_GO_COMMAND="$test_go_command" \
-  GO_MOD_CACHE_PATH=/ CACHE_MATCHED_KEY=foreign CACHE_PRIMARY_KEY="$cache_primary" CACHE_PREFIX="$cache_prefix" CACHE_FALLBACK_PREFIX="$cache_prefix" \
-  bash "$work/guard.sh" >"$work/guard-output" 2>&1; then
-  echo 'FAIL: module-cache guard accepted an unsafe cache path' >&2
-  exit 1
-fi
-[[ ! -s "$work/clean-calls" ]] || {
-  echo 'FAIL: unsafe cache path reached removal' >&2
-  exit 1
-}
+for unsafe_path in / // /.. /tmp/.. /tmp/./.. relative; do
+  : >"$work/clean-calls"
+  if PATH="$work/bin:$PATH" CACHE_GUARD_CLEAN_CALLS="$work/clean-calls" CACHE_GUARD_OWNED_PATH="$work/restored" CACHE_GUARD_GO_COMMAND="$test_go_command" \
+    GO_MOD_CACHE_PATH="$unsafe_path" CACHE_MATCHED_KEY=foreign CACHE_PRIMARY_KEY="$cache_primary" CACHE_PREFIX="$cache_prefix" CACHE_FALLBACK_PREFIX="$cache_prefix" \
+    bash "$work/guard.sh" >"$work/guard-output" 2>&1; then
+    echo 'FAIL: module-cache guard accepted an unsafe cache path' >&2
+    exit 1
+  fi
+  [[ ! -s "$work/clean-calls" ]] || {
+    echo 'FAIL: unsafe cache path reached removal' >&2
+    exit 1
+  }
+done
 
 printf 'PASS: Go module cache is restored everywhere and written once, on the default branch only\n'

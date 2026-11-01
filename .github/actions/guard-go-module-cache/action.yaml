@@ -41,6 +41,9 @@ runs:
         # The restore service uses prefix matching: foo- also matches foo-bar-.
         # Never let foreign restored bytes reach a tool or the default-branch writer.
         [[ "$GO_MOD_CACHE_PATH" == /* && "$GO_MOD_CACHE_PATH" != / && "$GO_MOD_CACHE_PATH" != *$'\n'* ]]
+        case "$GO_MOD_CACHE_PATH/" in
+        //* | */./* | */../*) exit 1 ;;
+        esac
         # Go also removes read-only module directories that ordinary rm cannot.
         GOMODCACHE="$GO_MOD_CACHE_PATH" go clean -modcache
         printf '%s\n' 'Discarded incompatible Go module cache'
