@@ -30,7 +30,6 @@ resources:
   - monorepo.yaml
   - platform.yaml
   - ksail.yaml
-  - agent-skills.yaml
   - agent-plugins.yaml
   - provider-upjet-unifi.yaml
   - unifi.yaml

@@ -19,11 +19,7 @@ spec:
     - Update
   forProvider:
     name: agent-plugins
-    # Fixes a stale repo reference: `devantler-tech/skills` was renamed to
-    # `devantler-tech/agent-skills`, so the old description pointed at a name
-    # that no longer exists. Also names the bundled MCP servers and agents —
-    # the marketplace is deliberately not skills-only.
-    description: "Tool-neutral agent-plugin marketplace — bundles curated skills, MCP servers and agents from devantler-tech/agent-skills into category plugins for VS Code, GitHub Copilot CLI, and Claude Code"
+    description: "Tool-neutral agent-plugin marketplace — maintained and curated skills, MCP servers and agents in category plugins for VS Code, GitHub Copilot CLI, and Claude Code"
     # Discovery surface — the repo carried no topics at all, so it was invisible
     # to every topic-based browse and directory crawl.
     topics: ["agent-plugins", "agent-skills", "ai-agents", "claude-code", "claude-code-marketplace", "claude-code-plugin", "claude-plugin", "github-copilot", "plugin-marketplace", "vscode"]

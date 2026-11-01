@@ -43,7 +43,6 @@
   "repositories": {
     ".github": {"type": "Metadata", "auto_merge": true, "scan_actions": true},
     "agent-plugins": {"type": "Marketplace", "auto_merge": true, "scan_actions": true},
-    "agent-skills": {"type": "Library", "auto_merge": true, "scan_actions": true},
     "ascoachingogvaner": {"type": "Application", "auto_merge": true, "scan_actions": true},
     "aws": {"type": "Infrastructure", "auto_merge": true, "scan_actions": true},
     "business-site": {"type": "Application", "auto_merge": true, "scan_actions": true},

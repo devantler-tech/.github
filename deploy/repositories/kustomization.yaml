@@ -16,7 +16,6 @@ resources:
   # Actively managed (Observe/Create/Update). The shared policy patch below
   # applies to all Repository resources in this kustomization, while each file
   # retains its own lifecycle policy.
-  - agent-skills.yaml
   - agent-plugins.yaml
   - provider-upjet-unifi.yaml
   - unifi.yaml

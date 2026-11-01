@@ -28,7 +28,6 @@ resources:
   - dot-github.yaml
   - platform.yaml
   - ksail.yaml
-  - agent-skills.yaml
   - agent-plugins.yaml
   - unifi.yaml
   - platform-tenant-template.yaml
