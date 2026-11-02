@@ -5070,6 +5070,9 @@ jobs:
       - name: 🔒 Test organization-settings audit boundary
         run: bash tests/organization-settings-boundary.sh
 
+      - name: 🔒 Test parked-merge reconciliation
+        run: bash tests/reconcile-parked-merges.sh
+
       - name: 🧪 Test declarative coverage
         run: bash tests/declarative-coverage.sh
 
