@@ -135,6 +135,10 @@ fail() {
   echo "FAIL: $*" >&2
   exit 1
 }
+# Execute the named extracted workflow step with optional NAME=value overrides.
+# On failure, print its captured log and return nonzero. A successful approval
+# exports its policy output so the following arming step consumes the real
+# decision rather than an independently invented permission to merge.
 run_step() {
   local script="$1"
   shift
