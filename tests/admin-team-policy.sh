@@ -81,7 +81,6 @@ done
 require_count 0 '^    repository: doggy-countdown$' "$policy_source"
 require_count 0 '^    repository: reusable-workflows$' "$policy_source"
 require_count 0 '^    repository: maintenance$' "$policy_source"
-require_count 0 '^    repository: agent-skills$' "$policy_source"
 require_count 0 '^    repository: actions$' "$policy_source"
 
 if grep -Eq '^[[:space:]]*managementPolicies:.*Delete|crossplane.io/external-name' \

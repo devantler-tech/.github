@@ -56,12 +56,11 @@ out-of-band changes made in the GitHub UI.
 
 ## Skills source retirement
 
-The maintained skills move to `agent-plugins` under monorepo#4742. All eight managed
-identities for the former `agent-skills` repository are withdrawn without `Delete`
-authority. The native repository and its history stay intact. After signed publication
-and observed GitOps withdrawal, the maintainer-authorized archival retains the old
-releases and links; archival is separate from this configuration change. The retirement
-guard prevents restored management from fighting the archived historical source.
+The maintained skills belong to `agent-plugins` under monorepo#4742. All eight managed
+identities for the former standalone skills source were withdrawn without `Delete`
+authority. The maintainer subsequently authorized deletion of the native repository.
+The completed migration no longer needs repository-specific retirement cases; normal
+declarative coverage continues to govern the maintained portfolio.
 
 ## Legacy Actions retirement
 
