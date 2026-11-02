@@ -1,0 +1,48 @@
+name: 🅿️ Reconcile parked merges
+
+on:
+  schedule:
+    - cron: "7,22,37,52 * * * *"
+
+permissions: {}
+
+concurrency:
+  group: reconcile-parked-merges
+  cancel-in-progress: false
+
+jobs:
+  reconcile:
+    if: >-
+      github.repository == 'devantler-tech/.github'
+      && github.ref == 'refs/heads/main'
+      && github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - name: Harden runner
+        uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2.22.2
+        with:
+          egress-policy: audit
+      - name: Checkout reviewed workflow source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.workflow_sha }}
+          persist-credentials: false
+      - name: Get organization-wide revocation token
+        id: app-token
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          client-id: ${{ vars.APP_CLIENT_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+          # Every parked pull request in the organization is in scope, and an
+          # explicit metadata read is what lets the token reach repositories.
+          owner: devantler-tech # zizmor: ignore[github-app]
+          permission-metadata: read
+          permission-contents: write
+          permission-pull-requests: write
+      - name: Revoke pending merges on parked pull requests
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: bash scripts/reconcile-parked-merges.sh
