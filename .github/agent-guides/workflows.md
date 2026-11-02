@@ -162,8 +162,14 @@ and release-gate retirement remain #573.
 misses. Each job restores one module archive keyed by runner OS/architecture, working
 directory and that module's `go.sum`; the default branch's Test job is its only writer.
 A pull request falls back to the default branch's newest archive and never writes one.
-The default branch restores an exact match only, so its archive cannot accumulate retired
-module versions. A new job that sets up Go needs the same two restore steps and no save.
+On the default branch, read-only `golangci-lint` may also restore a compatible archive;
+the Test writer and every other main job remain exact-only, so the saved archive cannot
+accumulate retired module versions. Immediately after each restore, the shared
+`guard-go-module-cache` action checks the actual matched key. Exact hits are preserved,
+including an empty checksum suffix. A non-exact match needs an explicitly permitted
+fallback with the same OS, architecture and module prefix plus a 64-character lowercase
+hexadecimal checksum. Other matches are discarded before validation or saving.
+A new job that sets up Go needs the same path, restore and guard steps and no save.
 MegaLinter runs in a container that cannot see the restored path, so its job moves the
 archive under the runner temp directory and points `GOMODCACHE` at the container's mount of
 it; otherwise Syft's `go list` downloads every module again (devantler-tech/ksail#8078).
