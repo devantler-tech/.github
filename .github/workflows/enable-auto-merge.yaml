@@ -660,8 +660,8 @@ jobs:
       # Feature-flag-first rollout: enforcement is DEFAULT-OFF (the
       # enforce-review-gates input for workflow_call callers, or the
       # ENFORCE_MERGE_GATES repository/organization variable for the direct
-      # and required-workflow paths). With enforcement off, the pre-gate
-      # behavior is preserved (allowlisted trusted bots are armed) so
+      # and required-workflow paths). With enforcement off, eligible ordinary
+      # bots can still be armed under the independent current-PR policy, so
       # consumers without CodeRabbit pre-merge summaries or agent-requested
       # reviews do not silently lose bot auto-merge before the flag is
       # flipped per repo/org after validation.
@@ -690,14 +690,14 @@ jobs:
           echo "enforced=$ENFORCE" >> "$GITHUB_OUTPUT"
 
           if [[ "$ENFORCE" != "true" ]]; then
-            # Default-off preserves the PRE-GATE behavior exactly: only the
-            # pull_request events armed before this gate existed, so the new
+            # Default-off retains the lifecycle-only review-gate decision.
+            # The independent current-PR policy still controls mutations. The
             # review/comment retrigger paths must not arm while the flag is
             # off (a changes-requested review or a findings comment must
             # never be what re-arms a PR).
             if [[ "$EVENT_NAME" == "pull_request" ]]; then
               echo "armable=true" >> "$GITHUB_OUTPUT"
-              echo "::notice::Review/pre-merge gate enforcement is off (default) — arming PR #${PR_NUMBER} on the trusted-author allowlist alone. Enable via the enforce-review-gates input or the ENFORCE_MERGE_GATES variable."
+              echo "::notice::Review/pre-merge gate enforcement is off (default) — PR #${PR_NUMBER} remains subject to current PR policy before approval and arming. Enable review gates via the enforce-review-gates input or the ENFORCE_MERGE_GATES variable."
             else
               echo "armable=false" >> "$GITHUB_OUTPUT"
               echo "::notice::Review/pre-merge gate enforcement is off (default) — ${EVENT_NAME} runs do not arm PR #${PR_NUMBER} (pre-gate behavior preserved)."
@@ -823,6 +823,11 @@ jobs:
         run: |
           set -euo pipefail
 
+          policy_allowed=$(bash .devantler-tech-actions/.scripts/auto-merge-policy.sh \
+            "$REPOSITORY" "$PR_NUMBER" "$HEAD_SHA" approve)
+          echo "policy_allowed=$policy_allowed" >> "$GITHUB_OUTPUT"
+          [[ "$policy_allowed" == "true" ]] || exit 0
+
           # Approval can itself satisfy the last protection on an auto-merge
           # request left by an earlier default-off run. Revoke that stale state
           # BEFORE approving so enforced mode cannot merge in the gap between
@@ -865,6 +870,7 @@ jobs:
           HEAD_SHA: ${{ steps.gates.outputs.head_sha }}
           ENFORCED: ${{ steps.gates.outputs.enforced }}
           APPROVE_OUTCOME: ${{ steps.approve.outcome }}
+          POLICY_ALLOWED: ${{ steps.approve.outputs.policy_allowed }}
         run: |
           set -euo pipefail
 
@@ -893,6 +899,13 @@ jobs:
             echo "::error::PR #${PR_NUMBER}: approval failed; auto-merge was not enabled."
             exit 1
           fi
+
+          # A successful no-op approval must not turn a later label removal
+          # into permission to arm. The next evaluation must approve afresh.
+          [[ "$POLICY_ALLOWED" == "true" ]] || exit 0
+          policy_allowed=$(bash .devantler-tech-actions/.scripts/auto-merge-policy.sh \
+            "$REPOSITORY" "$PR_NUMBER" "$HEAD_SHA" arm)
+          [[ "$policy_allowed" == "true" ]] || exit 0
 
           REPO_INFO=$(gh api "repos/$REPOSITORY" --jq '.allow_auto_merge')
           if [[ "$REPO_INFO" != "true" ]]; then

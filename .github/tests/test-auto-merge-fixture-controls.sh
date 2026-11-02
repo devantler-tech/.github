@@ -35,4 +35,38 @@ gate head forwarding lost	.jobs["auto-merge"].steps |= map(if .id == "gates" the
 approval outcome forwarding lost	.jobs["auto-merge"].steps |= map(if .name == "🔀 Enable Auto-Merge" then .env.APPROVE_OUTCOME="success" else . end)	workflow output bindings
 wrong cleanup target	.jobs["auto-merge"].steps |= map(if .id == "approve" then .run |= (split("\"$REPOSITORY\" \"$PR_NUMBER\"") | join("\"fixture/wrong\" \"$PR_NUMBER\"")) else . end)	unexpected offline GitHub command
 CASES
+policy="$root/.scripts/auto-merge-policy.sh"
+for control in blocked revocation renovate actor; do
+  case "$control" in
+  blocked)
+    awk 'index($0,"if jq -e") == 1 {print "if false && " substr($0,4); next} {print}' "$policy" >"$work/policy.sh"
+    diagnostic='blocked PR was approved'
+    ;;
+  revocation)
+    awk '/^[[:space:]]*bash "\$here\/disarm-auto-merge.sh"/ {print "  true"; next} {print}' "$policy" >"$work/policy.sh"
+    diagnostic='blocked PR kept pending merge state'
+    ;;
+  renovate)
+    awk 'index($0,"if [[ $decision == arm && $author ==") == 1 {print "if false; then"; next} {print}' "$policy" >"$work/policy.sh"
+    diagnostic='central workflow changed Renovate native arming'
+    ;;
+  actor)
+    awk 'index($0,".author.__typename == \"Bot\" and") {next} {print}' "$policy" >"$work/policy.sh"
+    diagnostic='bot name on user actor mutated at approve'
+    ;;
+  esac
+  if cmp -s "$policy" "$work/policy.sh"; then
+    echo "FAIL: $control mutation changed nothing" >&2
+    exit 1
+  fi
+  if bash "$root/.github/tests/test-auto-merge-fixture.sh" "$work/workflow.json" "$work/policy.sh" >"$work/result" 2>&1; then
+    echo "FAIL: $control policy regression was accepted" >&2
+    exit 1
+  fi
+  grep -qF "$diagnostic" "$work/result" || {
+    cat "$work/result" >&2
+    exit 1
+  }
+  count=$((count + 1))
+done
 echo "PASS: executed auto-merge fixture rejects $count independent decision regressions"

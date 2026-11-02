@@ -463,8 +463,22 @@ Cursor Automation PRs are eligible by the exact `cursor[bot]` author identity (`
 GitHub UI). This author check reads the pull request author; a `cursor[bot]` Bugbot comment or review
 does not count as trusted review evidence.
 
-**By default** it behaves as it always has: it approves the PR and arms auto-merge, bound to the
-commit it checked.
+Before approval and again before arming, it reads the current author, head, open/draft state and
+complete labels. A `blocked` PR loses both classic auto-merge and any merge-queue entry, regardless
+of review-gate mode. An unreadable policy or failed revocation authorizes no approval or arming.
+A declined approval cannot authorize later arming; a successful no-op is insufficient.
+
+**By default**, eligible ordinary bot PRs are approved and armed at the checked commit. Renovate
+PRs can still receive approval, but this workflow never creates their auto-merge requests: Renovate
+owns its resolved package rules and native arming. In default mode, legitimate existing native
+Renovate requests are retained. Enforced review-gate mode retains its stricter revocation and
+maintenance-agent handoff below.
+
+This decision guard runs when an evaluation reaches the mutation steps. Organization-required
+workflows do not deliver label-change events to consumers; this update alone does not implement
+label-event revocation, serialize independent callers or reconcile every older arming. A head pin
+does not bind labels atomically to GitHub's merge operation. Those native
+consumer and rollout outcomes remain tracked in [#822](https://github.com/devantler-tech/.github/issues/822).
 
 **With actor-trust enforcement turned on** — the `enforce-actor-trust` input, or the
 `ENFORCE_ACTOR_TRUST` repository/organization variable — every privileged pull-request, review,
