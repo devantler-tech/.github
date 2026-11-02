@@ -86,6 +86,7 @@ cat >"$work/policy.jq" <<'JQ'
   ($workflow[0].jobs.test.steps | map(.id // .name) |
     (index("go-mod-cache") < index("🧪 Test")) and (index("🧪 Test") < index("Save Go module cache")))
 JQ
+# check_policy — Validate the supplied workflow and scanner-action snapshots against the shared policy.
 check_policy() {
   jq -en --slurpfile workflow "$1" --slurpfile action "$2" -f "$work/policy.jq" >/dev/null
 }
@@ -93,6 +94,7 @@ if ! check_policy "$work/workflow.json" "$work/action.json"; then
   echo 'FAIL: Go module cache needs restore-only jobs, one default-branch writer and no pull request write' >&2
   exit 1
 fi
+# reject — Require a real fixture mutation and prove the policy rejects its unsafe configuration.
 reject() { # reject <workflow|action> <mutation>
   cp "$work/workflow.json" "$work/unsafe-workflow.json"
   cp "$work/action.json" "$work/unsafe-action.json"
@@ -179,6 +181,7 @@ SH
 chmod +x "$work/bin/go"
 cache_prefix='go-mod-v1-Linux-X64-foo-'
 cache_primary="${cache_prefix}$(printf '%064d' 1)"
+# exercise_restore — Execute the real guard only against this test's owned cache and assert preservation or cleanup.
 exercise_restore() { # matched-key primary-key preserve|discard [readonly] [fallback-prefix]
   local path="$work/restored" rc=0 fallback="${5-$cache_prefix}"
   mkdir -p "$path"

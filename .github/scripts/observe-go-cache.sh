@@ -5,7 +5,9 @@ export LC_ALL=C
 prefix='[Test] Validate Go Project - Isolated PostgreSQL / '
 # The nine fixture jobs the observer requires, shared by the check and its diagnostic.
 fixture_names='["🔍 Detect Changes","🏗️ Build","🧹 Lint - golangci-lint","🔍 Dead Code Analysis","📦 Tidy","🧪 Test","📊 Code Coverage","🧹 Lint - mega-linter","🛡️ Vulnerability Scan"]'
+# fail — Stop without a positive cache verdict when evidence or usage is invalid.
 fail() { printf 'native-go-cache: %s\n' "$*" >&2; exit 2; }
+# diagnose_jobs — Report only sanitized identity, completion and step-count diagnostics for rejected jobs.
 diagnose_jobs() {
   local summary
   summary="$(jq -cse --argjson run "$run" --argjson attempt "$attempt" --arg head "$head" --arg prefix "$prefix" --argjson names "$fixture_names" '
@@ -38,6 +40,7 @@ diagnose_jobs() {
   ' "$jobs" 2>/dev/null)" || summary='{"state":"unreadable"}'
   printf 'native-go-cache: job-evidence-summary=%s\n' "$summary" >&2
 }
+# diagnose_restore — Report allow-listed restore-step states for an already validated fixture identity.
 diagnose_restore() {
   local summary
   # Only the already-validated job identity, a fixed fixture ordinal and
@@ -62,6 +65,7 @@ diagnose_restore() {
 # after Actions has already released this dependent job (#655). With lag set,
 # such a job (no conclusion yet) passes the predicate; every other
 # invariant stays exact.
+# jobs_predicate — Validate complete current-attempt fixture jobs; optionally admit only bounded status lag.
 jobs_predicate() {
   jq -e --argjson lag "$1" --argjson run "$run" --argjson attempt "$attempt" --arg head "$head" --arg prefix "$prefix" --argjson names "$fixture_names" '
     def positive: type == "number" and . > 0 and floor == .;
@@ -81,6 +85,7 @@ jobs_predicate() {
         ([.steps[].name] | length == (unique | length))))
   ' "$jobs" >/dev/null 2>&1
 }
+# validate_jobs — Require final successful fixture jobs and diagnose any strict-validation failure.
 validate_jobs() {
   jobs_predicate false || {
     diagnose_jobs
@@ -90,6 +95,7 @@ validate_jobs() {
 # Eligibility for another read, never a cache verdict. Only absent required rows
 # may hydrate; a present contradictory result still reaches the strict checker
 # immediately. The caller has already bound the complete inventory and every job.
+# restore_metadata_pending — Detect missing eligible restore metadata without accepting contradictory evidence.
 restore_metadata_pending() {
   jq -e --arg prefix "$prefix" --argjson names "$fixture_names" --arg mode "$mode" '
     def scan: "🛡️ Scan for known vulnerabilities";
@@ -121,9 +127,11 @@ restore_metadata_pending() {
     all(.[]; .valid) and any(.[]; .missing)
   ' "$jobs" >/dev/null 2>&1
 }
+# normalize_log — Normalize Actions timestamps and cache-save wording before interpreting native logs.
 normalize_log() {
   sed -E 's/^[0-9]{4}-[0-9T:.+-]+Z //; s/^Cache saved with the key: /Cache saved with key: /' "$1"
 }
+# restore_section — Extract the unique cache-action block for the exact requested key and outcome count.
 restore_section() {
   # Select only the action group with this exact key and its following result.
   # Source echoed inside a shell step cannot impersonate a cache-action result.
@@ -136,6 +144,7 @@ restore_section() {
     END { if (wanted) { printf "%s", block; matches++; } if (matches != expected) exit 1; }
   '
 }
+# check — Join run, jobs, cache inventory and logs into an exact-source restore and save-policy verdict.
 check() {
   [[ "$#" == 9 ]] || fail 'check needs mode, run, attempt, head, key and four evidence paths'
   mode="$1"; run="$2"; attempt="$3"; head="$4"; key="$5"
@@ -241,6 +250,7 @@ check() {
   fi
   printf 'PASS: native Go cache policy (%s, run %s attempt %s): all eight Go restores; expected save policy\n' "$mode" "$run" "$attempt"
 }
+# observe — Collect bounded catalogue-only native evidence, refusing incomplete or stale observations.
 observe() {
   [[ "$#" == 0 ]] || fail 'observe takes only the trusted workflow environment'
   [[ "${GITHUB_REPOSITORY:-}" == devantler-tech/.github ]] || fail 'observer is catalogue-only'

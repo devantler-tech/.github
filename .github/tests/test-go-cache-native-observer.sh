@@ -5,6 +5,7 @@ root="$(cd "$(dirname "$0")/../.." && pwd)"
 helper="$root/.github/scripts/observe-go-cache.sh"
 scratch="$(mktemp -d)"
 trap 'rm -rf "$scratch"' EXIT
+# fail — Stop the regression suite immediately when an expected observer invariant is violated.
 fail() {
   printf 'FAIL: %s\n' "$*" >&2
   exit 1
@@ -31,10 +32,12 @@ printf '[{"total_count":0,"actions_caches":[]}]\n' >"$scratch/caches.json"
 for id in 101 102 103 104 105 106 107 108; do
   printf '##[group]Run actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9\n  key: %s\n##[endgroup]\nCache not found for input keys: %s\n' "$key" "$key" >"$scratch/logs/$id.log"
 done
+# check — Run the production checker against the owned fixture evidence in PR or main mode.
 check() { bash "$helper" check "$1" 23 2 "$head" "$key" "$scratch/run.json" "$scratch/jobs.json" "$scratch/caches.json" "$scratch/logs"; }
 check pr >"$scratch/out" 2>"$scratch/error" || fail "complete PR evidence must pass: $(cat "$scratch/error")"
 grep -q 'PASS: native Go cache policy' "$scratch/out" || fail 'observer did not publish a positive verdict'
 cp "$scratch/jobs.json" "$scratch/good-jobs.json"
+# reject_jobs — Mutate the known-good jobs and require refusal without any positive verdict.
 reject_jobs() {
   jq "$1" "$scratch/good-jobs.json" >"$scratch/jobs.json"
   if check pr >"$scratch/out" 2>"$scratch/error"; then fail "unsafe native evidence accepted: $1"; fi
@@ -50,6 +53,7 @@ reject_jobs '.[1].jobs[0].head_sha = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"'
 reject_jobs '.[1].jobs[0].status = "in_progress"'
 reject_jobs '.[1].jobs[0].name += " unexpected"'
 reject_jobs '.[1].jobs[1].steps |= map(select(.name != "Save Go module cache"))'
+# reject_restore_with_summary — Require a rejected restore to expose only the expected sanitized diagnostic.
 reject_restore_with_summary() {
   reject_jobs "$1"
   local summary
@@ -85,6 +89,7 @@ reject_restore_with_summary '.[1].jobs[4].steps[0].conclusion = "failure"' \
   '.restore_steps == 1 and .states == [{status:"completed",conclusion:"failure"}]' 108 8
 reject_restore_with_summary '.[1].jobs[4].steps[0] |= (.status="private-response-sentinel" | .conclusion="private-response-sentinel")' \
   '.states == [{status:"unrecognized",conclusion:"unrecognized"}]' 108 8
+# reject_jobs_with_summary — Require rejected job evidence to produce the expected sanitized job summary.
 reject_jobs_with_summary() {
   reject_jobs "$1"
   local summary
@@ -262,6 +267,7 @@ if PATH="$scratch/bin:$PATH" FAIL_CACHE_READ=true bash "$helper" observe >"$scra
 if PATH="$scratch/bin:$PATH" GITHUB_REPOSITORY=other/fixture bash "$helper" observe >"$scratch/out" 2>"$scratch/error"; then fail 'collector admitted another repository'; fi
 if PATH="$scratch/bin:$PATH" GITHUB_RUN_ATTEMPT=1 bash "$helper" observe >"$scratch/out" 2>"$scratch/error"; then fail 'collector admitted another attempt'; fi
 # A lagging fixture status is re-read a bounded number of times (#655).
+# count_calls — Count mocked API or wait invocations matching the supplied assertion pattern.
 count_calls() { grep -c "$1" "$scratch/calls" || true; }
 : >"$scratch/calls"
 PATH="$scratch/bin:$PATH" LAG_READS=2 bash "$helper" observe >"$scratch/out" 2>"$scratch/error" || fail "collector rejected a status lag that cleared: $(cat "$scratch/error")"
