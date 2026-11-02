@@ -231,6 +231,7 @@ pass; the generic budget bound is not permission to omit tests or declare that o
 | `organization-settings-audit.yaml` | This repository |
 | `pr-metadata-guards.yaml` | This repository |
 | `publish-release-recovery.yaml` | This repository; default-off confirmed manual recovery, not a reusable consumer interface |
+| `reconcile-parked-merges.yaml` | This repository; scheduled revocation of pending merges on PRs labelled `blocked` |
 | `release.yaml` | This repository |
 | `repository-admin-team-audit.yaml` | This repository |
 | `repository-coverage-check.yaml` | This repository |
