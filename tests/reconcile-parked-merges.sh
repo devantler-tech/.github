@@ -24,7 +24,7 @@ if [[ "$1 $2" == 'pr merge' ]]; then
   exit 0
 fi
 [[ "$1 $2" == 'api graphql' ]] || exit 99
-query="" q="" after="" number="" jq_expression=""
+query="" q="" after="" number="" id="" jq_expression=""
 shift 2
 while (($#)); do
   case "$1" in
@@ -34,6 +34,7 @@ while (($#)); do
         q=*) q="${2#q=}" ;;
         after=*) after="${2#after=}" ;;
         number=*) number="${2#number=}" ;;
+        id=*) id="${2#id=}" ;;
       esac
       shift 2
       ;;
@@ -46,7 +47,7 @@ while (($#)); do
 done
 case "$query" in
   *dequeuePullRequest*)
-    printf 'dequeue\n' >>"$CALLS"
+    printf 'dequeue %s\n' "$id" >>"$CALLS"
     printf '{"data":{}}\n'
     ;;
   *search*)
@@ -60,7 +61,7 @@ case "$query" in
     fi
     ;;
   *labels*)
-    if grep -q "^disable $number \|^dequeue$" "$CALLS" && [[ -e "$FIX/after-$number" ]]; then
+    if grep -q "^disable $number \|^dequeue PR_$number\$" "$CALLS" && [[ -e "$FIX/after-$number" ]]; then
       cat "$FIX/after-$number"
     else
       [[ -e "$FIX/read-$number" ]] || exit 1
@@ -131,7 +132,7 @@ page 1 false null "$(node 8 false true)" >"$FIX/page-first"
 state OPEN false true blocked >"$FIX/read-8"
 state OPEN false false blocked >"$FIX/after-8"
 touch "$FIX/queued-8"
-expect 'a queued parked pull request is dequeued' 0 'dequeue' 'parked=1 revoked=1 failed=0'
+expect 'a queued parked pull request is dequeued' 0 'dequeue PR_8' 'parked=1 revoked=1 failed=0'
 
 fresh
 page 1 false null "$(node 9 false false)" >"$FIX/page-first"
@@ -209,15 +210,15 @@ fresh
 page 1 true null "$(node 7 true false)" >"$FIX/page-first"
 expect 'more results without a cursor is UNKNOWN' 2 '' 'no cursor'
 
-# The workflow stays a scheduled main-only job on its reviewed source, and the
-# token is the only authority it gets. Each mutation proves the check can refuse.
+# The workflow stays a schedule-only main job on its reviewed source, since a
+# dispatch could choose a ref, and the token is the only authority it gets. Each mutation proves the check can refuse.
 verify_workflow() {
   jq -e '
-    (.on | keys == ["schedule","workflow_dispatch"]) and
+    (.on | keys == ["schedule"]) and
     .permissions == {} and
     (.jobs | keys == ["reconcile"]) and
     (.jobs.reconcile.if | gsub("\\s+";" ") | sub(" $";"")) ==
-      "github.repository == '\''devantler-tech/.github'\'' && github.ref == '\''refs/heads/main'\''" and
+      "github.repository == '\''devantler-tech/.github'\'' && github.ref == '\''refs/heads/main'\'' && github.event_name == '\''schedule'\''" and
     .jobs.reconcile.permissions == {contents:"read"} and
     .jobs.reconcile.steps[1].with == {ref:"${{ github.workflow_sha }}","persist-credentials":false} and
     .jobs.reconcile.steps[2].with == {
@@ -226,6 +227,8 @@ verify_workflow() {
       "permission-contents":"write","permission-pull-requests":"write"} and
     .jobs.reconcile.steps[3].env == {GH_TOKEN:"${{ steps.app-token.outputs.token }}"} and
     .jobs.reconcile.steps[3].run == "bash scripts/reconcile-parked-merges.sh" and
+    .jobs.reconcile["continue-on-error"] == null and
+    all(.jobs.reconcile.steps[]; .if == null and .["continue-on-error"] == null) and
     (.jobs.reconcile.steps | length == 4)
   ' "$1" >/dev/null
 }
@@ -240,9 +243,13 @@ while IFS=$'\t' read -r name mutation; do
   echo "PASS: workflow boundary refuses $name"
 done <<'MUTATIONS'
 a pull request trigger	.on.pull_request={}
+a manual trigger	.on.workflow_dispatch={}
 a branch checkout	.jobs.reconcile.steps[1].with.ref="${{ github.head_ref }}"
 persisted credentials	.jobs.reconcile.steps[1].with["persist-credentials"]=true
 wider token scope	.jobs.reconcile.steps[2].with["permission-workflows"]="write"
 job write authority	.jobs.reconcile.permissions.issues="write"
 any branch	.jobs.reconcile.if="github.repository == 'devantler-tech/.github'"
+a skipped reconciliation	.jobs.reconcile.steps[3].if="false"
+an ignored step failure	.jobs.reconcile.steps[3]["continue-on-error"]=true
+an ignored job failure	.jobs.reconcile["continue-on-error"]=true
 MUTATIONS
