@@ -3,22 +3,25 @@
 set -euo pipefail
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 work="$(mktemp -d)"
-trap 'rm -rf "$work"' EXIT
+trap 'chmod -R u+w "$work"; rm -rf "$work"' EXIT
 workflow="${1:-$root/.github/workflows/validate-go-project.yaml}"
 action="${2:-$root/.github/actions/govulncheck/action.yaml}"
-yq -o=json . "$workflow" > "$work/workflow.json"
-yq -o=json . "$action" > "$work/action.json"
-cat > "$work/policy.jq" <<'JQ'
+yq -o=json . "$workflow" >"$work/workflow.json"
+yq -o=json . "$action" >"$work/action.json"
+cat >"$work/policy.jq" <<'JQ'
   def default_branch: "github.ref == format('refs/heads/{0}', github.event.repository.default_branch)";
   def pull_request_only($dir):
     "${{ github.ref != format('refs/heads/{0}', github.event.repository.default_branch) && format('go-mod-v1-{0}-{1}-{2}-', runner.os, runner.arch, " + $dir + ") || '' }}";
+  def compatible_reader($dir):
+    "${{ format('go-mod-v1-{0}-{1}-{2}-', runner.os, runner.arch, " + $dir + ") }}";
   # One restore-only module cache directly behind a setup-go that writes nothing itself.
-  def restores($steps; $dir):
+  def restores($steps; $dir; $main_reader):
     ($steps | map(.id // .name)) as $order |
     ($steps | map(select((.uses // "") | startswith("actions/setup-go@")))) as $setup |
     ($steps | map(select(.id == "go-mod-cache-path"))) as $path |
     ($steps | map(select(.id == "go-mod-cache"))) as $restore |
-    ($setup|length==1) and ($path|length==1) and ($restore|length==1) and
+    ($steps | map(select(.id == "validate-go-mod-cache"))) as $guard |
+    ($setup|length==1) and ($path|length==1) and ($restore|length==1) and ($guard|length==1) and
     ($setup[0].with.cache == false) and ($setup[0].with["cache-dependency-path"] == null) and
     ($path[0].if == null and $restore[0].if == null) and
     ($path[0].shell == "bash") and
@@ -29,9 +32,18 @@ cat > "$work/policy.jq" <<'JQ'
     ($restore[0].with.path == "${{ steps.go-mod-cache-path.outputs.path }}") and
     ($restore[0].with.key ==
       ("go-mod-v1-${{ runner.os }}-${{ runner.arch }}-${{ " + $dir + " }}-${{ hashFiles(format('{0}/go.sum', " + $dir + ")) }}")) and
-    ($restore[0].with["restore-keys"] == pull_request_only($dir)) and
-    ([$setup[0],$path[0],$restore[0]] | all(."continue-on-error" == null or ."continue-on-error" == false)) and
-    (($order|index("go-mod-cache-path")) < ($order|index("go-mod-cache")));
+    ($restore[0].with["restore-keys"] ==
+      (if $main_reader then compatible_reader($dir) else pull_request_only($dir) end)) and
+    ($guard[0].uses == "$/.github/actions/guard-go-module-cache") and
+    ($guard[0].if == null) and
+    ($guard[0].with.path == $restore[0].with.path) and
+    ($guard[0].with["primary-key"] == "${{ steps.go-mod-cache.outputs.cache-primary-key }}") and
+    ($guard[0].with["matched-key"] == "${{ steps.go-mod-cache.outputs.cache-matched-key }}") and
+    ($guard[0].with["namespace-prefix"] == compatible_reader($dir)) and
+    ($guard[0].with["fallback-prefix"] == $restore[0].with["restore-keys"]) and
+    ([$setup[0],$path[0],$restore[0],$guard[0]] | all(."continue-on-error" == null or ."continue-on-error" == false)) and
+    (($order|index("go-mod-cache-path")) < ($order|index("go-mod-cache"))) and
+    (($order|index("validate-go-mod-cache")) == ($order|index("go-mod-cache")) + 1);
   # MegaLinter runs in a container: the restored modules must reach it through the temp mount.
   def shares_with_megalinter($steps):
     ($steps | map(.id // .name)) as $order |
@@ -52,8 +64,8 @@ cat > "$work/policy.jq" <<'JQ'
   ([ $workflow[0].jobs | to_entries[]
      | select(any((.value.steps // [])[];(.uses // "") | startswith("actions/setup-go@"))) | .key ] | sort) as $go_jobs |
   ($go_jobs == ["build","coverage","deadcode","golangci-lint","lint","test","tidy"]) and
-  all($go_jobs[]; . as $id | restores($workflow[0].jobs[$id].steps; "needs.changes.outputs.module-directory")) and
-  restores($action[0].runs.steps; "inputs.work-dir") and
+  all($go_jobs[]; . as $id | restores($workflow[0].jobs[$id].steps; "needs.changes.outputs.module-directory"; $id == "golangci-lint")) and
+  restores($action[0].runs.steps; "inputs.work-dir"; false) and
   shares_with_megalinter($workflow[0].jobs.lint.steps) and
   # The scanner is the eighth Go setup: it must stay behind the composite action checked above.
   ([ $workflow[0].jobs.govulncheck.steps[] | select((.uses // "") | endswith("/.github/actions/govulncheck")) ] | length >= 1) and
@@ -74,22 +86,24 @@ cat > "$work/policy.jq" <<'JQ'
   ($workflow[0].jobs.test.steps | map(.id // .name) |
     (index("go-mod-cache") < index("🧪 Test")) and (index("🧪 Test") < index("Save Go module cache")))
 JQ
+# check_policy — Validate the supplied workflow and scanner-action snapshots against the shared policy.
 check_policy() {
-  jq -en --slurpfile workflow "$1" --slurpfile action "$2" -f "$work/policy.jq" > /dev/null
+  jq -en --slurpfile workflow "$1" --slurpfile action "$2" -f "$work/policy.jq" >/dev/null
 }
 if ! check_policy "$work/workflow.json" "$work/action.json"; then
   echo 'FAIL: Go module cache needs restore-only jobs, one default-branch writer and no pull request write' >&2
   exit 1
 fi
+# reject — Require a real fixture mutation and prove the policy rejects its unsafe configuration.
 reject() { # reject <workflow|action> <mutation>
   cp "$work/workflow.json" "$work/unsafe-workflow.json"
   cp "$work/action.json" "$work/unsafe-action.json"
-  jq "$2" "$work/$1.json" > "$work/unsafe-$1.json"
+  jq "$2" "$work/$1.json" >"$work/unsafe-$1.json"
   if cmp -s "$work/$1.json" "$work/unsafe-$1.json"; then
     echo "FAIL: mutation changed nothing: $2" >&2
     exit 1
   fi
-  if check_policy "$work/unsafe-workflow.json" "$work/unsafe-action.json" > /dev/null 2>&1; then
+  if check_policy "$work/unsafe-workflow.json" "$work/unsafe-action.json" >/dev/null 2>&1; then
     echo "FAIL: unsafe module cache mutation accepted ($1): $2" >&2
     exit 1
   fi
@@ -97,9 +111,9 @@ reject() { # reject <workflow|action> <mutation>
 # A pull request must not write: neither setup-go's own saver nor an ungated or extra save step.
 reject workflow '(.jobs.build.steps[] | select((.uses // "") | startswith("actions/setup-go@")) | .with.cache) = true'
 reject workflow '(.jobs.tidy.steps[] | select((.uses // "") | startswith("actions/setup-go@")) | .with) |= del(.cache)'
-reject workflow '(.jobs.test.steps[] | select(.name == "Save Go module cache") | .if) = "success() && steps.go-mod-cache.outputs.cache-hit != 'true'"'
+reject workflow $'(.jobs.test.steps[] | select(.name == "Save Go module cache") | .if) = "success() && steps.go-mod-cache.outputs.cache-hit != \'true\'"'
 reject workflow '(.jobs.test.steps[] | select(.name == "Save Go module cache") | .if) = "always()"'
-reject workflow '(.jobs.coverage.steps[] | select(.name == "Save Go compilation cache") | .if) = "success() && steps.go-build-cache.outputs.cache-hit != 'true'"'
+reject workflow $'(.jobs.coverage.steps[] | select(.name == "Save Go compilation cache") | .if) = "success() && steps.go-build-cache.outputs.cache-hit != \'true\'"'
 reject workflow '.jobs.build.steps += [{"name": "Save Go module cache", "uses": "actions/cache/save@x", "with": {"path": "${{ steps.go-mod-cache-path.outputs.path }}", "key": "k"}}]'
 reject workflow '(.jobs.lint.steps[] | select(.id == "go-mod-cache") | .uses) |= sub("actions/cache/restore@"; "actions/cache@")'
 reject action '(.runs.steps[] | select((.uses // "") | startswith("actions/setup-go@")) | .with.cache) = true'
@@ -110,14 +124,24 @@ reject workflow '.jobs.deadcode.steps |= map(select(.id != "go-mod-cache"))'
 reject workflow '(.jobs["golangci-lint"].steps[] | select(.id == "go-mod-cache") | .if) = "false"'
 reject workflow '(.jobs.coverage.steps[] | select(.id == "go-mod-cache") | .with.key) |= sub("go.sum"; "go.mod")'
 reject workflow '(.jobs.build.steps[] | select(.id == "go-mod-cache") | .with["restore-keys"]) = ""'
+reject workflow '(.jobs["golangci-lint"].steps[] | select(.id == "go-mod-cache") | .with["restore-keys"]) = ""'
+reject workflow '(.jobs["golangci-lint"].steps[] | select(.id == "go-mod-cache") | .with["restore-keys"]) = "go-mod-v1-"'
+reject workflow '(.jobs.test.steps[] | select(.id == "go-mod-cache") | .with["restore-keys"]) = (.jobs["golangci-lint"].steps[] | select(.id == "go-mod-cache") | .with["restore-keys"])'
 reject action '.runs.steps |= map(select(.id != "go-mod-cache"))'
 reject action '(.runs.steps[] | select(.id == "go-mod-cache") | .with.key) |= sub("go-mod-v1"; "go-mod-v2")'
+# Every consumer rejects incompatible archives before any tool or saver can use them.
+reject workflow '.jobs.build.steps |= map(select(.id != "validate-go-mod-cache"))'
+reject workflow '(.jobs["golangci-lint"].steps[] | select(.id == "validate-go-mod-cache") | .with["matched-key"]) = "${{ steps.go-mod-cache.outputs.cache-primary-key }}"'
+reject workflow '(.jobs.test.steps[] | select(.id == "validate-go-mod-cache") | ."continue-on-error") = true'
+reject workflow '(.jobs.test.steps[] | select(.id == "validate-go-mod-cache") | .with["fallback-prefix"]) = (.jobs["golangci-lint"].steps[] | select(.id == "validate-go-mod-cache") | .with["fallback-prefix"])'
+reject workflow '.jobs.tidy.steps |= (map(select(.id == "validate-go-mod-cache")) + map(select(.id != "validate-go-mod-cache")))'
+reject action '.runs.steps |= map(select(.id != "validate-go-mod-cache"))'
 # The default branch must write a clean archive and keep its one writer.
 reject workflow '(.jobs.test.steps[] | select(.id == "go-mod-cache") | .with["restore-keys"]) = "go-mod-v1-"'
 reject workflow '.jobs.test.steps |= map(select(.name != "Save Go module cache"))'
 reject workflow '(.jobs.test.steps[] | select(.name == "Save Go module cache") | .if) = "false"'
 reject workflow '(.jobs.test.steps[] | select(.name == "Save Go module cache") | .with.path) = "~/go"'
-reject workflow '.jobs.test.if = "needs.changes.outputs.go == 'true' && github.event_name == 'pull_request'"'
+reject workflow $'.jobs.test.if = "needs.changes.outputs.go == \'true\' && github.event_name == \'pull_request\'"'
 # MegaLinter's own go list must see the restored modules, not download them again.
 reject workflow '.jobs.lint.steps |= map(select(.name != "Share Go module cache with MegaLinter"))'
 reject workflow '(.jobs.lint.steps[] | select(.name == "Share Go module cache with MegaLinter") | .if) = "false"'
@@ -129,4 +153,96 @@ reject workflow '(.jobs.lint.steps[] | select(.name == "Share Go module cache wi
 reject workflow '(.jobs.lint.steps[] | select(.name == "Share Go module cache with MegaLinter") | .run) |= sub("(?<m> *)mv "; "\(.m)# mv ")'
 reject workflow '(.jobs.lint.steps[] | select(.name == "Share Go module cache with MegaLinter") | .run) |= sub("if \\[\\[ \"\\$\\(stat"; "# if [[ \"$(stat")'
 reject workflow '.jobs.lint.steps |= (map(select(.name == "Share Go module cache with MegaLinter")) + map(select(.name != "Share Go module cache with MegaLinter")))'
+# Drive the shared post-restore action with the restore action's documented outputs.
+# Cleanup is confined to this test's owned cache, including its unsafe-path control.
+yq -o=json . "$root/.github/actions/guard-go-module-cache/action.yaml" >"$work/guard.json"
+jq -e '
+  .runs.using == "composite" and (.runs.steps | length == 1) and
+  .runs.steps[0].shell == "bash" and
+  .runs.steps[0].env == {
+    GO_MOD_CACHE_PATH:"${{ inputs.path }}",
+    CACHE_PRIMARY_KEY:"${{ inputs.primary-key }}",
+    CACHE_MATCHED_KEY:"${{ inputs.matched-key }}",
+    CACHE_PREFIX:"${{ inputs.namespace-prefix }}",
+    CACHE_FALLBACK_PREFIX:"${{ inputs.fallback-prefix }}"
+  } and (.runs.steps[0].run | contains("${{") | not)
+' "$work/guard.json" >/dev/null
+yq -r '.runs.steps[0].run' "$root/.github/actions/guard-go-module-cache/action.yaml" >"$work/guard.sh"
+mkdir "$work/bin"
+test_go_command="$(go env GOROOT)/bin/go"
+[[ -x "$test_go_command" ]]
+cat >"$work/bin/go" <<'SH'
+#!/usr/bin/env bash
+set -euo pipefail
+printf 'called\n' >> "$CACHE_GUARD_CLEAN_CALLS"
+[[ "$#" == 2 && "$1" == clean && "$2" == -modcache && "$GOMODCACHE" == "$CACHE_GUARD_OWNED_PATH" ]] || exit 86
+exec "$CACHE_GUARD_GO_COMMAND" "$@"
+SH
+chmod +x "$work/bin/go"
+cache_prefix='go-mod-v1-Linux-X64-foo-'
+cache_primary="${cache_prefix}$(printf '%064d' 1)"
+# exercise_restore — Execute the real guard only against this test's owned cache and assert preservation or cleanup.
+exercise_restore() { # matched-key primary-key preserve|discard [readonly] [fallback-prefix]
+  local path="$work/restored" rc=0 fallback="${5-$cache_prefix}"
+  mkdir -p "$path"
+  printf 'restored content\n' >"$path/marker"
+  if [[ "${4:-}" == readonly ]]; then
+    mkdir "$path/readonly"
+    printf 'module content\n' >"$path/readonly/module.go"
+    chmod -R a-w "$path/readonly"
+  fi
+  : >"$work/clean-calls"
+  PATH="$work/bin:$PATH" CACHE_GUARD_CLEAN_CALLS="$work/clean-calls" CACHE_GUARD_OWNED_PATH="$path" CACHE_GUARD_GO_COMMAND="$test_go_command" \
+    GO_MOD_CACHE_PATH="$path" CACHE_MATCHED_KEY="$1" CACHE_PRIMARY_KEY="$2" CACHE_PREFIX="$cache_prefix" CACHE_FALLBACK_PREFIX="$fallback" \
+    bash "$work/guard.sh" >"$work/guard-output" 2>&1 || rc=$?
+  if [[ "$rc" != 0 ]]; then
+    echo "FAIL: module-cache guard failed for $3 case (exit $rc)" >&2
+    cat "$work/guard-output" >&2
+    exit 1
+  fi
+  if [[ "$3" == preserve ]]; then
+    [[ -f "$path/marker" && ! -s "$work/clean-calls" ]] || {
+      echo 'FAIL: module-cache guard discarded an exact, compatible or absent restore' >&2
+      exit 1
+    }
+    /bin/rm -rf -- "$path"
+  else
+    [[ ! -e "$path" && -s "$work/clean-calls" ]] || {
+      echo 'FAIL: module-cache guard retained a foreign or malformed restore' >&2
+      exit 1
+    }
+  fi
+}
+exercise_restore "$cache_primary" "$cache_primary" preserve
+exercise_restore "$cache_prefix" "$cache_prefix" preserve # hashFiles returns empty without go.sum.
+exercise_restore "${cache_prefix}$(printf '%064d' 2)" "$cache_primary" preserve
+exercise_restore '' "$cache_primary" preserve
+exercise_restore "go-mod-v1-Linux-X64-foo-bar-$(printf '%064d' 2)" "$cache_primary" discard
+exercise_restore "go-mod-v1-Linux-ARM64-foo-$(printf '%064d' 2)" "$cache_primary" discard
+exercise_restore "go-mod-v1-macOS-X64-foo-$(printf '%064d' 2)" "$cache_primary" discard
+exercise_restore "${cache_prefix}$(printf '%063d' 2)" "$cache_primary" discard
+exercise_restore "${cache_prefix}$(printf '%065d' 2)" "$cache_primary" discard
+exercise_restore "${cache_prefix}$(printf 'A%.0s' {1..64})" "$cache_primary" discard
+exercise_restore "${cache_primary}-other" "$cache_primary" discard
+exercise_restore "go-mod-v1-Linux-X64-foo-bar-$(printf '%064d' 2)" "$cache_primary" discard readonly
+# With no go.sum the primary key itself is a prefix. The main Test writer
+# must discard a non-exact archive even if its hash belongs to this module.
+exercise_restore "${cache_prefix}$(printf '%064d' 2)" "$cache_prefix" discard '' ''
+
+# The safety control replaces Go with the confined shim: even a broken guard
+# cannot remove anything outside this test's owned cache directory.
+for unsafe_path in / // /.. /tmp/.. /tmp/./.. relative; do
+  : >"$work/clean-calls"
+  if PATH="$work/bin:$PATH" CACHE_GUARD_CLEAN_CALLS="$work/clean-calls" CACHE_GUARD_OWNED_PATH="$work/restored" CACHE_GUARD_GO_COMMAND="$test_go_command" \
+    GO_MOD_CACHE_PATH="$unsafe_path" CACHE_MATCHED_KEY=foreign CACHE_PRIMARY_KEY="$cache_primary" CACHE_PREFIX="$cache_prefix" CACHE_FALLBACK_PREFIX="$cache_prefix" \
+    bash "$work/guard.sh" >"$work/guard-output" 2>&1; then
+    echo 'FAIL: module-cache guard accepted an unsafe cache path' >&2
+    exit 1
+  fi
+  [[ ! -s "$work/clean-calls" ]] || {
+    echo 'FAIL: unsafe cache path reached removal' >&2
+    exit 1
+  }
+done
+
 printf 'PASS: Go module cache is restored everywhere and written once, on the default branch only\n'

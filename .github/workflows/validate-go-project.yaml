@@ -378,6 +378,16 @@ jobs:
           key: go-mod-v1-${{ runner.os }}-${{ runner.arch }}-${{ needs.changes.outputs.module-directory }}-${{ hashFiles(format('{0}/go.sum', needs.changes.outputs.module-directory)) }}
           restore-keys: ${{ github.ref != format('refs/heads/{0}', github.event.repository.default_branch) && format('go-mod-v1-{0}-{1}-{2}-', runner.os, runner.arch, needs.changes.outputs.module-directory) || '' }}
 
+      - name: Validate Go module cache match
+        id: validate-go-mod-cache
+        uses: $/.github/actions/guard-go-module-cache
+        with:
+          path: ${{ steps.go-mod-cache-path.outputs.path }}
+          primary-key: ${{ steps.go-mod-cache.outputs.cache-primary-key }}
+          matched-key: ${{ steps.go-mod-cache.outputs.cache-matched-key }}
+          namespace-prefix: ${{ format('go-mod-v1-{0}-{1}-{2}-', runner.os, runner.arch, needs.changes.outputs.module-directory) }}
+          fallback-prefix: ${{ github.ref != format('refs/heads/{0}', github.event.repository.default_branch) && format('go-mod-v1-{0}-{1}-{2}-', runner.os, runner.arch, needs.changes.outputs.module-directory) || '' }}
+
       - name: 🧹 go mod tidy
         run: go mod tidy
 
@@ -462,7 +472,19 @@ jobs:
         with:
           path: ${{ steps.go-mod-cache-path.outputs.path }}
           key: go-mod-v1-${{ runner.os }}-${{ runner.arch }}-${{ needs.changes.outputs.module-directory }}-${{ hashFiles(format('{0}/go.sum', needs.changes.outputs.module-directory)) }}
-          restore-keys: ${{ github.ref != format('refs/heads/{0}', github.event.repository.default_branch) && format('go-mod-v1-{0}-{1}-{2}-', runner.os, runner.arch, needs.changes.outputs.module-directory) || '' }}
+          # This reader never saves a module archive. Only Test needs an exact-only
+          # main restore to prevent its saved archive accumulating retired modules.
+          restore-keys: ${{ format('go-mod-v1-{0}-{1}-{2}-', runner.os, runner.arch, needs.changes.outputs.module-directory) }}
+
+      - name: Validate Go module cache match
+        id: validate-go-mod-cache
+        uses: $/.github/actions/guard-go-module-cache
+        with:
+          path: ${{ steps.go-mod-cache-path.outputs.path }}
+          primary-key: ${{ steps.go-mod-cache.outputs.cache-primary-key }}
+          matched-key: ${{ steps.go-mod-cache.outputs.cache-matched-key }}
+          namespace-prefix: ${{ format('go-mod-v1-{0}-{1}-{2}-', runner.os, runner.arch, needs.changes.outputs.module-directory) }}
+          fallback-prefix: ${{ format('go-mod-v1-{0}-{1}-{2}-', runner.os, runner.arch, needs.changes.outputs.module-directory) }}
 
       - name: 🧹 Run golangci-lint
         id: golangci-lint
@@ -590,6 +612,16 @@ jobs:
           path: ${{ steps.go-mod-cache-path.outputs.path }}
           key: go-mod-v1-${{ runner.os }}-${{ runner.arch }}-${{ needs.changes.outputs.module-directory }}-${{ hashFiles(format('{0}/go.sum', needs.changes.outputs.module-directory)) }}
           restore-keys: ${{ github.ref != format('refs/heads/{0}', github.event.repository.default_branch) && format('go-mod-v1-{0}-{1}-{2}-', runner.os, runner.arch, needs.changes.outputs.module-directory) || '' }}
+
+      - name: Validate Go module cache match
+        id: validate-go-mod-cache
+        uses: $/.github/actions/guard-go-module-cache
+        with:
+          path: ${{ steps.go-mod-cache-path.outputs.path }}
+          primary-key: ${{ steps.go-mod-cache.outputs.cache-primary-key }}
+          matched-key: ${{ steps.go-mod-cache.outputs.cache-matched-key }}
+          namespace-prefix: ${{ format('go-mod-v1-{0}-{1}-{2}-', runner.os, runner.arch, needs.changes.outputs.module-directory) }}
+          fallback-prefix: ${{ github.ref != format('refs/heads/{0}', github.event.repository.default_branch) && format('go-mod-v1-{0}-{1}-{2}-', runner.os, runner.arch, needs.changes.outputs.module-directory) || '' }}
 
       - name: 📥 Install deadcode
         # Bounded retry so a transient module-proxy 5xx / network blip on this
@@ -865,6 +897,16 @@ jobs:
           path: ${{ steps.go-mod-cache-path.outputs.path }}
           key: go-mod-v1-${{ runner.os }}-${{ runner.arch }}-${{ needs.changes.outputs.module-directory }}-${{ hashFiles(format('{0}/go.sum', needs.changes.outputs.module-directory)) }}
           restore-keys: ${{ github.ref != format('refs/heads/{0}', github.event.repository.default_branch) && format('go-mod-v1-{0}-{1}-{2}-', runner.os, runner.arch, needs.changes.outputs.module-directory) || '' }}
+
+      - name: Validate Go module cache match
+        id: validate-go-mod-cache
+        uses: $/.github/actions/guard-go-module-cache
+        with:
+          path: ${{ steps.go-mod-cache-path.outputs.path }}
+          primary-key: ${{ steps.go-mod-cache.outputs.cache-primary-key }}
+          matched-key: ${{ steps.go-mod-cache.outputs.cache-matched-key }}
+          namespace-prefix: ${{ format('go-mod-v1-{0}-{1}-{2}-', runner.os, runner.arch, needs.changes.outputs.module-directory) }}
+          fallback-prefix: ${{ github.ref != format('refs/heads/{0}', github.event.repository.default_branch) && format('go-mod-v1-{0}-{1}-{2}-', runner.os, runner.arch, needs.changes.outputs.module-directory) || '' }}
 
       # MegaLinter's container mounts the workspace and the runner temp directory, not the
       # restored path, so Syft's go list would download every module again (devantler-tech/ksail#8078).
@@ -1173,6 +1215,16 @@ jobs:
           key: go-mod-v1-${{ runner.os }}-${{ runner.arch }}-${{ needs.changes.outputs.module-directory }}-${{ hashFiles(format('{0}/go.sum', needs.changes.outputs.module-directory)) }}
           restore-keys: ${{ github.ref != format('refs/heads/{0}', github.event.repository.default_branch) && format('go-mod-v1-{0}-{1}-{2}-', runner.os, runner.arch, needs.changes.outputs.module-directory) || '' }}
 
+      - name: Validate Go module cache match
+        id: validate-go-mod-cache
+        uses: $/.github/actions/guard-go-module-cache
+        with:
+          path: ${{ steps.go-mod-cache-path.outputs.path }}
+          primary-key: ${{ steps.go-mod-cache.outputs.cache-primary-key }}
+          matched-key: ${{ steps.go-mod-cache.outputs.cache-matched-key }}
+          namespace-prefix: ${{ format('go-mod-v1-{0}-{1}-{2}-', runner.os, runner.arch, needs.changes.outputs.module-directory) }}
+          fallback-prefix: ${{ github.ref != format('refs/heads/{0}', github.event.repository.default_branch) && format('go-mod-v1-{0}-{1}-{2}-', runner.os, runner.arch, needs.changes.outputs.module-directory) || '' }}
+
       - name: 🛠️ Build
         env:
           MEASURE_DISK_USAGE: ${{ inputs.measure-disk-usage }}
@@ -1374,6 +1426,16 @@ jobs:
           path: ${{ steps.go-mod-cache-path.outputs.path }}
           key: go-mod-v1-${{ runner.os }}-${{ runner.arch }}-${{ needs.changes.outputs.module-directory }}-${{ hashFiles(format('{0}/go.sum', needs.changes.outputs.module-directory)) }}
           restore-keys: ${{ github.ref != format('refs/heads/{0}', github.event.repository.default_branch) && format('go-mod-v1-{0}-{1}-{2}-', runner.os, runner.arch, needs.changes.outputs.module-directory) || '' }}
+
+      - name: Validate Go module cache match
+        id: validate-go-mod-cache
+        uses: $/.github/actions/guard-go-module-cache
+        with:
+          path: ${{ steps.go-mod-cache-path.outputs.path }}
+          primary-key: ${{ steps.go-mod-cache.outputs.cache-primary-key }}
+          matched-key: ${{ steps.go-mod-cache.outputs.cache-matched-key }}
+          namespace-prefix: ${{ format('go-mod-v1-{0}-{1}-{2}-', runner.os, runner.arch, needs.changes.outputs.module-directory) }}
+          fallback-prefix: ${{ github.ref != format('refs/heads/{0}', github.event.repository.default_branch) && format('go-mod-v1-{0}-{1}-{2}-', runner.os, runner.arch, needs.changes.outputs.module-directory) || '' }}
 
       # One shared archive cannot retain both ordinary and race builds.
       # Keep each test mode's compilation outputs separately; Go still validates inputs.
@@ -1651,6 +1713,16 @@ jobs:
           path: ${{ steps.go-mod-cache-path.outputs.path }}
           key: go-mod-v1-${{ runner.os }}-${{ runner.arch }}-${{ needs.changes.outputs.module-directory }}-${{ hashFiles(format('{0}/go.sum', needs.changes.outputs.module-directory)) }}
           restore-keys: ${{ github.ref != format('refs/heads/{0}', github.event.repository.default_branch) && format('go-mod-v1-{0}-{1}-{2}-', runner.os, runner.arch, needs.changes.outputs.module-directory) || '' }}
+
+      - name: Validate Go module cache match
+        id: validate-go-mod-cache
+        uses: $/.github/actions/guard-go-module-cache
+        with:
+          path: ${{ steps.go-mod-cache-path.outputs.path }}
+          primary-key: ${{ steps.go-mod-cache.outputs.cache-primary-key }}
+          matched-key: ${{ steps.go-mod-cache.outputs.cache-matched-key }}
+          namespace-prefix: ${{ format('go-mod-v1-{0}-{1}-{2}-', runner.os, runner.arch, needs.changes.outputs.module-directory) }}
+          fallback-prefix: ${{ github.ref != format('refs/heads/{0}', github.event.repository.default_branch) && format('go-mod-v1-{0}-{1}-{2}-', runner.os, runner.arch, needs.changes.outputs.module-directory) || '' }}
 
       # One shared archive cannot retain both ordinary and race builds.
       # Keep each test mode's compilation outputs separately; Go still validates inputs.

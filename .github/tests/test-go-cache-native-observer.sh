@@ -5,7 +5,11 @@ root="$(cd "$(dirname "$0")/../.." && pwd)"
 helper="$root/.github/scripts/observe-go-cache.sh"
 scratch="$(mktemp -d)"
 trap 'rm -rf "$scratch"' EXIT
-fail() { printf 'FAIL: %s\n' "$*" >&2; exit 1; }
+# fail — Stop the regression suite immediately when an expected observer invariant is violated.
+fail() {
+  printf 'FAIL: %s\n' "$*" >&2
+  exit 1
+}
 prefix='[Test] Validate Go Project - Isolated PostgreSQL / '
 head=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 key="go-mod-v1-Linux-X64-.github/tests/go-postgresql-fixture-$(printf '%064d' 1)"
@@ -28,10 +32,12 @@ printf '[{"total_count":0,"actions_caches":[]}]\n' >"$scratch/caches.json"
 for id in 101 102 103 104 105 106 107 108; do
   printf '##[group]Run actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9\n  key: %s\n##[endgroup]\nCache not found for input keys: %s\n' "$key" "$key" >"$scratch/logs/$id.log"
 done
+# check — Run the production checker against the owned fixture evidence in PR or main mode.
 check() { bash "$helper" check "$1" 23 2 "$head" "$key" "$scratch/run.json" "$scratch/jobs.json" "$scratch/caches.json" "$scratch/logs"; }
 check pr >"$scratch/out" 2>"$scratch/error" || fail "complete PR evidence must pass: $(cat "$scratch/error")"
 grep -q 'PASS: native Go cache policy' "$scratch/out" || fail 'observer did not publish a positive verdict'
 cp "$scratch/jobs.json" "$scratch/good-jobs.json"
+# reject_jobs — Mutate the known-good jobs and require refusal without any positive verdict.
 reject_jobs() {
   jq "$1" "$scratch/good-jobs.json" >"$scratch/jobs.json"
   if check pr >"$scratch/out" 2>"$scratch/error"; then fail "unsafe native evidence accepted: $1"; fi
@@ -47,6 +53,7 @@ reject_jobs '.[1].jobs[0].head_sha = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"'
 reject_jobs '.[1].jobs[0].status = "in_progress"'
 reject_jobs '.[1].jobs[0].name += " unexpected"'
 reject_jobs '.[1].jobs[1].steps |= map(select(.name != "Save Go module cache"))'
+# reject_restore_with_summary — Require a rejected restore to expose only the expected sanitized diagnostic.
 reject_restore_with_summary() {
   reject_jobs "$1"
   local summary
@@ -82,6 +89,7 @@ reject_restore_with_summary '.[1].jobs[4].steps[0].conclusion = "failure"' \
   '.restore_steps == 1 and .states == [{status:"completed",conclusion:"failure"}]' 108 8
 reject_restore_with_summary '.[1].jobs[4].steps[0] |= (.status="private-response-sentinel" | .conclusion="private-response-sentinel")' \
   '.states == [{status:"unrecognized",conclusion:"unrecognized"}]' 108 8
+# reject_jobs_with_summary — Require rejected job evidence to produce the expected sanitized job summary.
 reject_jobs_with_summary() {
   reject_jobs "$1"
   local summary
@@ -173,6 +181,33 @@ cp "$scratch/good-caches.json" "$scratch/caches.json"
 cp "$scratch/good-jobs.json" "$scratch/jobs.json"
 printf '##[group]Run actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9\n  key: %s\n##[endgroup]\nCache restored from key: %s\n' "$key" "$key" >"$scratch/logs/105.log"
 check main >"$scratch/out" 2>"$scratch/error" || fail "second main run must reuse the archive without saving: $(cat "$scratch/error")"
+# A read-only lint job may reuse the previous dependency archive on main. The
+# Test writer above still restores its exact key and must not save on an exact hit.
+cp "$scratch/logs/102.log" "$scratch/before-main-lint.log"
+lint_fallback="${key%-*}-$(printf '%064d' 2)"
+printf '##[group]Run actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9\n  key: %s\n  restore-keys: %s\n##[endgroup]\nCache restored from key: %s\n' "$key" "${key%-*}-" "$lint_fallback" >"$scratch/logs/102.log"
+check main >"$scratch/out" 2>"$scratch/error" || fail "main lint reader must accept its compatible fallback: $(cat "$scratch/error")"
+cp "$scratch/logs/102.log" "$scratch/main-lint-fallback.log"
+for invalid in "${lint_fallback/Linux/Windows}" "${lint_fallback/X64/ARM64}" "${lint_fallback/go-postgresql-fixture/other-module}" "${key%-*}-not-a-hash"; do
+  sed '/^Cache /d' "$scratch/main-lint-fallback.log" >"$scratch/logs/102.log"
+  printf 'Cache restored from key: %s\n' "$invalid" >>"$scratch/logs/102.log"
+  if check main >"$scratch/out" 2>"$scratch/error"; then fail 'main lint accepted a foreign archive'; fi
+done
+cp "$scratch/main-lint-fallback.log" "$scratch/logs/102.log"
+printf 'Cache saved with key: %s\n' "$key" >>"$scratch/logs/102.log"
+if check main >"$scratch/out" 2>"$scratch/error"; then fail 'main lint became a cache writer'; fi
+cp "$scratch/main-lint-fallback.log" "$scratch/logs/102.log"
+# Other main readers and the sole module writer retain their original policy.
+for id in 101 105; do
+  cp "$scratch/logs/$id.log" "$scratch/before-non-lint.log"
+  cp "$scratch/main-lint-fallback.log" "$scratch/logs/$id.log"
+  if check main >"$scratch/out" 2>"$scratch/error"; then fail "main job $id accepted lint-only fallback"; fi
+  cp "$scratch/before-non-lint.log" "$scratch/logs/$id.log"
+done
+sed '/^Cache /d' "$scratch/main-lint-fallback.log" >"$scratch/logs/102.log"
+printf 'Cache not found for input keys: %s, %s\n' "$key" "${key%-*}-" >>"$scratch/logs/102.log"
+check main >"$scratch/out" 2>"$scratch/error" || fail "main lint miss with both requested keys was rejected: $(cat "$scratch/error")"
+cp "$scratch/before-main-lint.log" "$scratch/logs/102.log"
 rm "$scratch/logs/103.log"
 if check main >"$scratch/out" 2>"$scratch/error"; then fail 'missing job log was accepted'; fi
 # Exercise the shipped collector too: a successful API call is not a verdict.
@@ -232,6 +267,7 @@ if PATH="$scratch/bin:$PATH" FAIL_CACHE_READ=true bash "$helper" observe >"$scra
 if PATH="$scratch/bin:$PATH" GITHUB_REPOSITORY=other/fixture bash "$helper" observe >"$scratch/out" 2>"$scratch/error"; then fail 'collector admitted another repository'; fi
 if PATH="$scratch/bin:$PATH" GITHUB_RUN_ATTEMPT=1 bash "$helper" observe >"$scratch/out" 2>"$scratch/error"; then fail 'collector admitted another attempt'; fi
 # A lagging fixture status is re-read a bounded number of times (#655).
+# count_calls — Count mocked API or wait invocations matching the supplied assertion pattern.
 count_calls() { grep -c "$1" "$scratch/calls" || true; }
 : >"$scratch/calls"
 PATH="$scratch/bin:$PATH" LAG_READS=2 bash "$helper" observe >"$scratch/out" 2>"$scratch/error" || fail "collector rejected a status lag that cleared: $(cat "$scratch/error")"

@@ -1,0 +1,49 @@
+name: Guard Go module cache
+description: Discard a restored module archive unless it matches the exact key or requested module namespace.
+inputs:
+  path:
+    description: Absolute GOMODCACHE path identified by Go before restore.
+    required: true
+  primary-key:
+    description: The restore action's requested primary key.
+    required: true
+  matched-key:
+    description: The restore action's actual matched key; empty means no archive was restored.
+    required: false
+    default: ""
+  namespace-prefix:
+    description: Requested OS, architecture and module prefix, including its trailing separator.
+    required: true
+  fallback-prefix:
+    description: The restore step's allowed fallback prefix; empty retains exact-only restore policy.
+    required: false
+    default: ""
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      env:
+        GO_MOD_CACHE_PATH: ${{ inputs.path }}
+        CACHE_PRIMARY_KEY: ${{ inputs.primary-key }}
+        CACHE_MATCHED_KEY: ${{ inputs.matched-key }}
+        CACHE_PREFIX: ${{ inputs.namespace-prefix }}
+        CACHE_FALLBACK_PREFIX: ${{ inputs.fallback-prefix }}
+      run: |
+        set -euo pipefail
+        [[ -n "$CACHE_MATCHED_KEY" ]] || exit 0
+        [[ -n "$CACHE_PRIMARY_KEY" && -n "$CACHE_PREFIX" ]]
+        # Keep exact hits even when hashFiles is empty because go.sum is absent.
+        [[ "$CACHE_MATCHED_KEY" != "$CACHE_PRIMARY_KEY" ]] || exit 0
+        suffix="${CACHE_MATCHED_KEY#"$CACHE_PREFIX"}"
+        if [[ "$CACHE_FALLBACK_PREFIX" == "$CACHE_PREFIX" && "$CACHE_MATCHED_KEY" == "$CACHE_PREFIX"* && "$suffix" =~ ^[a-f0-9]{64}$ ]]; then
+          exit 0
+        fi
+        # The restore service uses prefix matching: foo- also matches foo-bar-.
+        # Never let foreign restored bytes reach a tool or the default-branch writer.
+        [[ "$GO_MOD_CACHE_PATH" == /* && "$GO_MOD_CACHE_PATH" != / && "$GO_MOD_CACHE_PATH" != *$'\n'* ]]
+        case "$GO_MOD_CACHE_PATH/" in
+        //* | */./* | */../*) exit 1 ;;
+        esac
+        # Go also removes read-only module directories that ordinary rm cannot.
+        GOMODCACHE="$GO_MOD_CACHE_PATH" go clean -modcache
+        printf '%s\n' 'Discarded incompatible Go module cache'
