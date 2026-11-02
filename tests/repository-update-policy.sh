@@ -286,7 +286,7 @@ missing_agent_topics="$(
   yq -N '
     select(
       .kind == "Repository" and
-      (.metadata.name == "agent-plugins" or .metadata.name == "agent-skills") and
+      .metadata.name == "agent-plugins" and
       ((.spec.forProvider.topics // []) | length == 0)
     ) |
     .metadata.name
