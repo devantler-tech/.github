@@ -48,6 +48,9 @@ The artifact includes:
 Completeness also requires actual runner image identity and no retained unknown
 component measurements, independently of the writable failure marker. Absent
 paths and intentionally uncollected periodic component sizes remain distinct.
+A command that finishes before its first periodic sample has no `during-command`
+frame and is reported as `complete:false`, even when Go and observer shutdown
+both succeed. Boundary samples cannot substitute for during-command coverage.
 `command.completed` and `command.exit` describe Go. The separately persisted
 `command.observerCompleted` starts false and changes only after verified sampler
 shutdown and the final edge collection. Failed atomic completion writes leave
@@ -61,7 +64,14 @@ targets as Go; private observation state and evidence files reject symlinks.
 Component sizes can overlap (for example module and workspace, or a toolchain
 inside the module cache), so they must not be added together.
 
-Each filesystem/component probe is bounded. Samples have a nominal one-second
+Each filesystem/component probe has a two-second deadline and one-second kill
+grace. The shared rich-frame budget accounts for eight labels with two `df`
+reads and up to two `stat` attempts each, seven component walks, and the initial
+sample's `df`: forty probe attempts × three seconds, plus ten seconds of
+process/JSON overhead, gives 130 seconds. Cooperative shutdown allows that frame
+budget plus one sampler delay (131 seconds). The legacy single-filesystem edge
+and cancellation bounds stay unchanged; no job or Go-command deadline is raised.
+Samples have a nominal one-second
 delay; component walks can lengthen the interval and can miss shorter peaks.
 Component walks run at boundaries and every sixty periodic iterations. The
 history is limited to 1,800 periodic iterations and 8 MiB. Failed, malformed,

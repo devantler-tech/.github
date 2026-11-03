@@ -72,25 +72,61 @@ mkdir -p "$scratch/bin" "$scratch/module" "$scratch/build" "$scratch/toolchain" 
 export RUNNER_TEMP="$scratch/runner" OBS_TEST_ROOT="$scratch"
 cat >"$scratch/bin/go" <<'SH'
 #!/usr/bin/env bash
+set -euo pipefail
 [[ "$1" == env && "$2" == -json && "$#" -gt 2 ]] || exit 91
 if [[ "${OBS_TEST_MODE:-}" == go-hung ]]; then
   trap '' TERM
   echo "$BASHPID" >"$OBS_TEST_ROOT/hung-pid"
   sleep 30
 fi
-jq -nc --arg root "$OBS_TEST_ROOT" '{GOCACHE:($root+"/build"),GOMODCACHE:($root+"/module"),GOROOT:($root+"/toolchain"),GOTMPDIR:($root+"/tmp"),GOVERSION:"go1.27.3",GOOS:"linux",GOARCH:"amd64",CGO_ENABLED:"1"}'
+keys="$(printf '%s\n' "${@:3}" | jq -Rnc '[inputs]')"
+jq -nc --arg root "$OBS_TEST_ROOT" --argjson keys "$keys" '{GOCACHE:($root+"/build"),GOMODCACHE:($root+"/module"),GOROOT:($root+"/toolchain"),GOTMPDIR:($root+"/tmp"),GOVERSION:"go1.27.3",GOOS:"linux",GOARCH:"amd64",CGO_ENABLED:"1"} |
+  with_entries(select(.key as $key | $keys | index($key)))'
+SH
+cat >"$scratch/probe-delay.sh" <<'SH'
+delay_probe() {
+  local count=0
+  case "${OBS_TEST_MODE:-}:$1" in
+    slow-edge:*)
+      [[ ! -f "$OBS_TEST_ROOT/probe-count" ]] || count="$(cat "$OBS_TEST_ROOT/probe-count")"
+      count=$((count + 1))
+      printf '%s\n' "$count" >"$OBS_TEST_ROOT/probe-count"
+      # Initial df plus 8*(2 df + 2 stat attempts) + 7 du = 40 probes.
+      if ((count <= 40)); then sleep 0.9; fi
+      ;;
+    slow-stop:du)
+      if [[ -f "$OBS_TEST_ROOT/command-running" ]]; then
+        [[ ! -f "$OBS_TEST_ROOT/probe-count" ]] || count="$(cat "$OBS_TEST_ROOT/probe-count")"
+        count=$((count + 1))
+        printf '%s\n' "$count" >"$OBS_TEST_ROOT/probe-count"
+        if ((count <= 7)); then
+          : >"$OBS_TEST_ROOT/slow-frame-started"
+          sleep 1.7
+        fi
+      fi
+      ;;
+  esac
+}
 SH
 cat >"$scratch/bin/df" <<'SH'
 #!/usr/bin/env bash
+source "$OBS_TEST_ROOT/probe-delay.sh"
+delay_probe df
 printf 'Filesystem blocks Used Available Capacity Mounted\nfixture 10000 2000 8000 20%% /\n'
 [[ "${OBS_TEST_MODE:-}" != partial ]] || exit 23
 SH
 cat >"$scratch/bin/stat" <<'SH'
 #!/usr/bin/env bash
+source "$OBS_TEST_ROOT/probe-delay.sh"
+delay_probe stat
+# Exercise the legitimate GNU-to-BSD fallback instead of counting one stat only.
+if [[ "${OBS_TEST_MODE:-}" == slow-edge && "$*" == *' -c '* ]]; then exit 23; fi
 case "${*: -1}" in */module|*/build) echo 9 ;; *) echo 1 ;; esac
 SH
 cat >"$scratch/bin/du" <<'SH'
 #!/usr/bin/env bash
+source "$OBS_TEST_ROOT/probe-delay.sh"
+delay_probe du
 printf '42\tprivate-path\n'
 [[ "${OBS_TEST_MODE:-}" != du-partial ]] || exit 23
 SH
@@ -98,6 +134,85 @@ chmod +x "$scratch/bin/"*
 export PATH="$scratch/bin:$PATH"
 export GO_DISK_MODULE_PRIMARY_KEY=go-mod-fixture GO_DISK_MODULE_MATCHED_KEY=go-mod-fixture GO_DISK_MODULE_CACHE_HIT=true
 export GO_DISK_BUILD_PRIMARY_KEY=go-build-fixture GO_DISK_BUILD_MATCHED_KEY=go-build-fixture GO_DISK_BUILD_CACHE_HIT=true
+# The real keyed Go query returns only named fields. Otherwise dropping a
+# required key from the production query could still pass every fixture.
+go env -json GOCACHE | jq -e 'keys==["GOCACHE"]' >/dev/null || fail 'keyed Go shim returned unrequested metadata'
+sed 's/GOTMPDIR GOVERSION GOOS/GOTMPDIR GOOS/' "$script" >"$scratch/no-goversion.sh"
+! cmp -s "$script" "$scratch/no-goversion.sh" || fail 'GOVERSION query ablation changed nothing'
+bash "$scratch/no-goversion.sh" snapshot after-setup >"$scratch/output" 2>"$scratch/error"
+[[ ! -e "$RUNNER_TEMP/go-disk-observation/identity.json" ]] || fail 'missing GOVERSION query was not detected'
+rm -rf -- "$RUNNER_TEMP/go-disk-observation"
+# The two controls use successful probes below the individual two-second limit.
+# Seven 1.7s walks exceed the old 10s stop wait; forty 0.9s probes exceed the
+# old 30s edge wait. Only one frame is slowed, keeping this regression bounded.
+budget_failures=0
+for scenario in slow-stop slow-edge; do
+  rm -rf -- "$RUNNER_TEMP/go-disk-observation"
+  rm -f "$scratch/probe-count" "$scratch/command-running" "$scratch/slow-frame-started"
+  {
+    bash "$script" snapshot after-setup
+    bash "$script" snapshot after-restore
+  } >>"$scratch/output" 2>>"$scratch/error"
+  rc=0
+  if [[ "$scenario" == slow-stop ]]; then
+    OBS_TEST_MODE="$scenario" bash "$script" test bash -c '
+      : >"$OBS_TEST_ROOT/command-running"
+      for _ in {1..100}; do
+        [[ ! -f "$OBS_TEST_ROOT/slow-frame-started" ]] || exit 7
+        sleep 0.1
+      done
+      exit 99' >>"$scratch/output" 2>>"$scratch/error" || rc=$?
+  else
+    OBS_TEST_MODE="$scenario" bash "$script" test bash -c 'sleep 4; exit 7' >>"$scratch/output" 2>>"$scratch/error" || rc=$?
+  fi
+  [[ "$rc" == 7 ]] || fail "$scenario changed the original command result"
+  if ! jq -e '.complete and .command.exit==7 and .command.observerCompleted' "$RUNNER_TEMP/go-disk-observation/public/report.json" >/dev/null; then
+    printf 'Successful %s frame exceeded the observer budget\n' "$scenario" >&2
+    budget_failures=$((budget_failures + 1))
+  fi
+done
+[[ "$budget_failures" == 0 ]] || fail 'successful bounded observation frames were truncated'
+rm -rf -- "$RUNNER_TEMP/go-disk-observation"
+rm -f "$scratch/probe-count" "$scratch/command-running" "$scratch/slow-frame-started"
+printf 'Go disk observation keyed-query and frame-budget controls passed\n'
+# Cancellation keeps its original short process-group cleanup rather than
+# waiting for the larger cooperative completion budget of a valid frame.
+{
+  bash "$script" snapshot after-setup
+  bash "$script" snapshot after-restore
+} >>"$scratch/output" 2>>"$scratch/error"
+OBS_TEST_MODE=slow-stop bash "$script" test bash -c '
+  echo "$BASHPID" >"$OBS_TEST_ROOT/command-pid"
+  : >"$OBS_TEST_ROOT/command-running"
+  sleep 20' >>"$scratch/output" 2>>"$scratch/error" &
+collector=$!
+for _ in {1..100}; do
+  [[ ! -f "$scratch/slow-frame-started" ]] || break
+  sleep 0.1
+done
+[[ -f "$scratch/slow-frame-started" ]] || fail 'rich cancellation never reached its slow frame'
+cancel_started=$SECONDS
+kill -TERM "$collector"
+rc=0
+wait "$collector" || rc=$?
+[[ "$rc" == 143 ]] || fail 'rich cancellation changed the original signal result'
+((SECONDS - cancel_started <= 6)) || fail 'rich cancellation waited for the cooperative frame budget'
+! kill -0 "$(cat "$scratch/command-pid")" 2>/dev/null || fail 'rich cancellation left its command alive'
+count="$(cat "$scratch/probe-count")"
+sleep 3
+[[ "$(cat "$scratch/probe-count")" == "$count" ]] || fail 'rich sampler survived cancellation'
+rm -rf -- "$RUNNER_TEMP/go-disk-observation"
+rm -f "$scratch/probe-count" "$scratch/command-running" "$scratch/slow-frame-started" "$scratch/command-pid"
+# An immediate command can finish before the first periodic tick. Its Go result
+# and clean observer shutdown do not replace missing during-command coverage.
+{
+  bash "$script" snapshot after-setup
+  bash "$script" snapshot after-restore
+  bash "$script" test true
+} >>"$scratch/output" 2>>"$scratch/error"
+jq -e '.complete==false and .command.completed and .command.exit==0 and .command.observerCompleted and
+  all(.frames[];.phase!="during-command")' "$RUNNER_TEMP/go-disk-observation/public/report.json" >/dev/null || fail 'short command invented during-command coverage'
+rm -rf -- "$RUNNER_TEMP/go-disk-observation"
 # Removing path collection or switching the workload cache must lose this evidence.
 bash "$script" snapshot after-setup >"$scratch/output" 2>"$scratch/error" || fail 'after-setup observation is unsupported'
 bash "$script" snapshot after-restore >>"$scratch/output" 2>>"$scratch/error"

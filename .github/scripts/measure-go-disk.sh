@@ -69,9 +69,20 @@ observation_state="${RUNNER_TEMP:-/tmp}/go-disk-observation"
 observation_phase=before-command
 observation_components=true
 observation_failed=false
+readonly -a observation_labels=(root workspace module module-cache build-cache toolchain go-temp runner-temp)
+readonly observation_probe_timeout_seconds=2 observation_probe_kill_grace_seconds=1 observation_sample_interval_seconds=1
+# Each label has two df reads and up to two stat attempts. Every non-root
+# label can also have a du walk; sample() has one initial df read as well.
+# Include each probe's TERM-to-KILL grace and bounded process/JSON overhead.
+readonly observation_frame_probe_count=$((${#observation_labels[@]} * (2 + 2) + ${#observation_labels[@]} - 1 + 1))
+readonly observation_frame_budget_seconds=$((observation_frame_probe_count * (observation_probe_timeout_seconds + observation_probe_kill_grace_seconds) + 10))
+readonly observation_stop_budget_seconds=$((observation_frame_budget_seconds + observation_sample_interval_seconds))
 observation_timeout=timeout
 if command -v gnutimeout >/dev/null 2>&1; then observation_timeout=gnutimeout; fi
 if command -v gtimeout >/dev/null 2>&1; then observation_timeout=gtimeout; fi
+observation_probe() {
+  "$observation_timeout" --kill-after="${observation_probe_kill_grace_seconds}s" "${observation_probe_timeout_seconds}s" "$@" 2>/dev/null
+}
 observation_unknown() {
   observation_failed=true
   if [[ -d "$observation_state" && ! -L "$observation_state" ]]; then
@@ -122,7 +133,7 @@ observation_init() {
     mkdir "$observation_state" "$observation_state/public"
   ) || return 1
   local environment checkout module mod_hash sum_hash=null
-  environment="$("$observation_timeout" --kill-after=1s 2s go env -json GOCACHE GOMODCACHE GOROOT GOTMPDIR GOVERSION GOOS GOARCH CGO_ENABLED 2>/dev/null)" || return 1
+  environment="$(observation_probe go env -json GOCACHE GOMODCACHE GOROOT GOTMPDIR GOVERSION GOOS GOARCH CGO_ENABLED)" || return 1
   jq -e 'type=="object" and
     ([.GOCACHE,.GOMODCACHE,.GOROOT] | all(type=="string" and startswith("/") and (test("[\\r\\n]")|not))) and
     (.GOTMPDIR|type=="string") and (.GOTMPDIR=="" or (.GOTMPDIR|startswith("/") and (test("[\\r\\n]")|not))) and
@@ -170,12 +181,12 @@ observation_entry() {
     size=0
     component=absent
   fi
-  frame="$("$observation_timeout" --kill-after=1s 2s env LC_ALL=C df -Pk "$path" 2>/dev/null)" || return 1
+  frame="$(observation_probe env LC_ALL=C df -Pk "$path")" || return 1
   bytes="$(awk 'NR==2 && NF==6 {print $2,$3,$4} END {if(NR!=2) exit 1}' <<<"$frame")" || return 1
-  frame="$("$observation_timeout" --kill-after=1s 2s env LC_ALL=C df -Pi "$path" 2>/dev/null)" || return 1
+  frame="$(observation_probe env LC_ALL=C df -Pi "$path")" || return 1
   inodes="$(awk 'NR==2 && NF==6 {print $2,$3,$4} END {if(NR!=2) exit 1}' <<<"$frame")" || return 1
-  if ! device="$("$observation_timeout" --kill-after=1s 2s stat -L -c '%d' -- "$path" 2>/dev/null)"; then
-    device="$("$observation_timeout" --kill-after=1s 2s stat -L -f '%d' "$path" 2>/dev/null)" || return 1
+  if ! device="$(observation_probe stat -L -c '%d' -- "$path")"; then
+    device="$(observation_probe stat -L -f '%d' "$path")" || return 1
   fi
   [[ "$bytes" =~ ^[0-9]{1,12}\ [0-9]{1,12}\ [0-9]{1,12}$ && "$inodes" =~ ^[0-9]{1,12}\ [0-9]{1,12}\ [0-9]{1,12}$ &&
     "$device" =~ ^[0-9]{1,20}$ ]] || return 1
@@ -185,7 +196,7 @@ observation_entry() {
     group="$(wc -l <"$observation_state/devices" | tr -d '[:space:]')" || return 1
   }
   if [[ "$status" != absent && "$observation_components" == true && "$label" != root ]]; then
-    if frame="$("$observation_timeout" --kill-after=1s 2s du -sHk -- "$path" 2>/dev/null)" &&
+    if frame="$(observation_probe du -sHk -- "$path")" &&
       size="$(awk 'NR==1 {print $1} END {if(NR!=1) exit 1}' <<<"$frame")" && [[ "$size" =~ ^[0-9]{1,12}$ ]]; then
       component=measured
     else
@@ -206,15 +217,15 @@ observation_frame() {
   observation_bound || return 1
   local environment rows frame index path size
   environment="$(cat "$observation_state/paths.json")" || return 1
-  local labels=(root workspace module module-cache build-cache toolchain go-temp runner-temp)
   local paths=(/ "$GITHUB_WORKSPACE" "$PWD" "$(jq -r .GOMODCACHE <<<"$environment")" "$(jq -r .GOCACHE <<<"$environment")"
   "$(jq -r .GOROOT <<<"$environment")" "$(jq -r '.GOTMPDIR|select(.!="")' <<<"$environment")" "${RUNNER_TEMP:-/tmp}")
   [[ -n "${paths[6]}" ]] || paths[6]="${TMPDIR:-/tmp}"
+  [[ "${#paths[@]}" == "${#observation_labels[@]}" ]] || return 1
   rows="$(mktemp "$observation_state/rows.XXXXXX")" || return 1
-  for index in "${!labels[@]}"; do
+  for index in "${!observation_labels[@]}"; do
     path="${paths[$index]}"
     [[ "$path" == /* && "$path" != *$'\n'* && "$path" != *$'\r'* ]] || return 1
-    observation_entry "${labels[$index]}" "$path" >>"$rows" || return 1
+    observation_entry "${observation_labels[$index]}" "$path" >>"$rows" || return 1
   done
   frame="$(jq -nc --arg phase "$observation_phase" --argjson epoch "$(date +%s)" --slurpfile entries "$rows" \
     '{phase:$phase,epoch:$epoch,entries:$entries}')" || return 1
@@ -344,9 +355,10 @@ stop_group() {
   fi
 }
 stop_monitor() {
+  local stop_tick
   if [[ "$observation" == true && -n "$monitor_pid" && "${cancelling:-false}" != true ]]; then
     touch "$scratch/stop-requested" || measurement_unknown=true
-    for _ in {1..100}; do
+    for ((stop_tick = 0; stop_tick < observation_stop_budget_seconds * 10; stop_tick++)); do
       kill -0 "$monitor_pid" 2>/dev/null || break
       sleep 0.1
     done
@@ -384,8 +396,12 @@ sample() {
   local frame values total used available
   # Capture the complete command before parsing: plausible stdout followed by
   # an operational failure is unknown, never an accepted partial observation.
-  if ! frame="$(LC_ALL=C df -Pk . 2>/dev/null)" ||
-    ! values="$(awk 'NR == 2 {print $2, $3, $4} END {if (NR != 2) exit 1}' <<<"$frame")"; then
+  if [[ "$observation" == true ]]; then
+    frame="$(observation_probe env LC_ALL=C df -Pk .)" || return 1
+  else
+    frame="$(LC_ALL=C df -Pk . 2>/dev/null)" || return 1
+  fi
+  if ! values="$(awk 'NR == 2 {print $2, $3, $4} END {if (NR != 2) exit 1}' <<<"$frame")"; then
     return 1
   fi
   if [[ ! "$values" =~ ^([0-9]{1,12})[[:space:]]([0-9]{1,12})[[:space:]]([0-9]{1,12})$ ]]; then
@@ -408,8 +424,9 @@ sample() {
 collect_sample() {
   # Initial/final reads also need their own bounded, cancellable group.
   local ticks=20
-  # A component frame has seven independently bounded paths, rather than one df.
-  if [[ "$observation" == true ]]; then ticks=300; fi
+  # Rich frames share the same derived bound as cooperative sampler shutdown.
+  # A legacy single-df sample retains its original two-second outer bound.
+  if [[ "$observation" == true ]]; then ticks=$((observation_frame_budget_seconds * 10)); fi
   (
     set +m
     sample && [[ "$observation_failed" == false ]]
@@ -450,7 +467,7 @@ if [[ -n "$scratch" ]]; then
           printf '%s\n' "$observation_failed" >"$scratch/stop-acknowledged" || exit 1
           exit 0
         fi
-        sleep 1 || exit 1
+        sleep "$observation_sample_interval_seconds" || exit 1
         if [[ -f "$scratch/stop-requested" ]]; then
           printf '%s\n' "$observation_failed" >"$scratch/stop-acknowledged" || exit 1
           exit 0
