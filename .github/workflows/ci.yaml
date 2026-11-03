@@ -2483,7 +2483,7 @@ jobs:
       - name: Set up the native PostgreSQL fixture's declared Go toolchain
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version-file: .github/tests/go-postgresql-fixture/go.mod
+          go-version-file: tests/go-postgresql-fixture/go.mod
           cache: false
 
       - name: Reject incomplete native PostgreSQL cleanup observations
@@ -2750,7 +2750,7 @@ jobs:
     name: "[Test] Validate Go Project - Isolated PostgreSQL"
     uses: $/.github/workflows/validate-go-project-readonly.yaml
     with:
-      working-directory: .github/tests/go-postgresql-fixture
+      working-directory: tests/go-postgresql-fixture
       enable-postgresql-fixture: true
       apply-signed-fixes: false
       minimum-free-disk-gib: 32
@@ -2782,7 +2782,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           EXPECTED_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
-          MODULE_CACHE_KEY: go-mod-v1-${{ runner.os }}-${{ runner.arch }}-.github/tests/go-postgresql-fixture-${{ hashFiles('.github/tests/go-postgresql-fixture/go.sum') }}
+          MODULE_CACHE_KEY: go-mod-v1-${{ runner.os }}-${{ runner.arch }}-tests/go-postgresql-fixture-${{ hashFiles('tests/go-postgresql-fixture/go.sum') }}
         run: bash .github/scripts/observe-go-cache.sh observe
 
   test-validate-go-project-manual-fixes:

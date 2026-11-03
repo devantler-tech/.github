@@ -59,7 +59,7 @@ updates:
         patterns:
           - "*"
   - package-ecosystem: gomod
-    directory: /.github/tests/go-postgresql-fixture
+    directory: /tests/go-postgresql-fixture
     schedule:
       interval: weekly
     cooldown:

@@ -81,8 +81,8 @@ const evaluate = (expr, values) => {
 for (const go of ['true', 'false']) {
   assert.equal(evaluate(production.jobs.changes.outputs.go, {'steps.filter.outputs.go': go}), go, 'production Go filter changed');
   for (const repository of ['devantler-tech/.github', 'devantler-tech/ksail']) {
-    for (const directory of ['.github/tests/go-valid-fixture', '.github/tests/go-postgresql-fixture', '', 'another-module']) {
-      const fixture = repository === 'devantler-tech/.github' && ['.github/tests/go-valid-fixture', '.github/tests/go-postgresql-fixture'].includes(directory);
+    for (const directory of ['.github/tests/go-valid-fixture', 'tests/go-postgresql-fixture', '.github/tests/go-postgresql-fixture', '', 'another-module']) {
+      const fixture = repository === 'devantler-tech/.github' && ['.github/tests/go-valid-fixture', 'tests/go-postgresql-fixture'].includes(directory);
       assert.equal(evaluate(w.jobs.changes.outputs.go, {
         'steps.filter.outputs.go': go, 'github.repository': repository, 'inputs.working-directory': directory
       }), fixture ? 'true' : go, 'fixture validation admission');
