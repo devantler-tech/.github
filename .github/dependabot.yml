@@ -49,7 +49,7 @@ updates:
         patterns:
           - "*"
   - package-ecosystem: gomod
-    directory: /.github/tests/catalogue-credentials
+    directory: /tests/catalogue-credentials
     schedule:
       interval: weekly
     cooldown:

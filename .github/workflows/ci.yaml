@@ -2325,8 +2325,8 @@ jobs:
       - name: 🧰 Set up Go for the catalogue credential graph
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version-file: .github/tests/catalogue-credentials/go.mod
-          cache-dependency-path: .github/tests/catalogue-credentials/go.sum
+          go-version-file: tests/catalogue-credentials/go.mod
+          cache-dependency-path: tests/catalogue-credentials/go.sum
 
       - name: 🔐 Check every catalogue CI credential path
         shell: bash
