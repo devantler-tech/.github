@@ -139,3 +139,10 @@ The portfolio's whole-PR fifteen-minute objective remains [#654](https://github.
 | `test-lint-gate-lockstep` | 3 | 133 | 10 |
 | `validate-manifests` | 3 | 97 | 5 |
 | `ci-required-checks` | 3 | 10 | 5 |
+
+The four historical `test-govulncheck-main-coverage*` and
+`test-go-filter-nested-modules*` rows now share `test-go-workflow-guards`, retaining
+the five-minute limit. Those rows describe their original separate allocations;
+the grouped runtime has not yet been measured. Required CI still checks each
+logical outcome independently. #863 owns native grouping verification; #475 retains
+the real burst and Platform queue acceptance.

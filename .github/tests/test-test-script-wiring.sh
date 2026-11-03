@@ -146,6 +146,15 @@ yq -i '.jobs.tests-extra = .jobs.unrelated | del(.jobs.unrelated) |
   .jobs.ci-required-checks.steps[0].env.JOB_RESULTS = "${{ needs.tests-extra.result }}"' "$ci"
 blocked 'required summary contains only a similarly named job'
 
+# Neither side of physical dependency/result parity may silently lose a job.
+# shellcheck disable=SC2016 # Preserve the literal GitHub result reference.
+for mutation in '.jobs.ci-required-checks.needs=[]' '.jobs.ci-required-checks.steps[0].env.JOB_RESULTS="${{ needs.other.result }}"'; do
+  yq '.jobs.tests.steps += [{"run": "bash .github/tests/test-sentinel.sh"}]' "$work/base.yaml" >"$ci"
+  yq -i "$mutation" "$ci"
+  if run_guard; then fail "physical result parity accepted: $mutation"; fi
+  grep -Eq 'missing from the trusted inline JOB_RESULTS|referenced in JOB_RESULTS but not in' "$work/result" || fail 'missing physical result parity diagnostic'
+done
+
 # A custom shell can return success without executing the generated script.
 # Check inherited defaults as well as the step's explicit shell selection.
 for scope in step job workflow; do
@@ -192,7 +201,12 @@ echo 'PASS: repository-root working directory at every scope'
 
 # These are literal GitHub expressions, not shell interpolation.
 # shellcheck disable=SC2016
-for condition in 'false' '${{ false }}' '${{ github.event_name == "never" }}'; do
+CONDITION='${{ !cancelled() }}' yq '.jobs.tests.steps += [{"if": strenv(CONDITION), "run": "bash .github/tests/test-sentinel.sh"}]' "$work/base.yaml" >"$ci"
+run_guard || fail 'independent uncancelled test step was rejected'
+echo 'PASS: exact uncancelled step condition is admitted'
+
+# shellcheck disable=SC2016
+for condition in 'false' '${{ false }}' '${{ github.event_name == "never" }}' '${{ always() }}' '${{ success() }}' '${{ !cancelled() && false }}'; do
   CONDITION="$condition" yq '.jobs.tests.steps += [{"if": strenv(CONDITION), "run": "bash .github/tests/test-sentinel.sh"}]' "$work/base.yaml" >"$ci"
   blocked "conditional test step: $condition"
 done

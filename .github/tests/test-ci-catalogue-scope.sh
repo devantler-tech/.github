@@ -224,11 +224,8 @@ expected_selected='[
   "test-enable-auto-merge-on-pr-credential-boundary",
   "test-enable-auto-merge-pentad-gate",
   "test-go-cache-native-observer",
-  "test-go-filter-nested-modules",
-  "test-go-filter-nested-modules-blocks",
+  "test-go-workflow-guards",
   "test-govulncheck-action-lockstep",
-  "test-govulncheck-main-coverage",
-  "test-govulncheck-main-coverage-blocks",
   "test-govulncheck-timeout",
   "test-lint-gate-lockstep",
   "test-release-please-semantics",
@@ -249,6 +246,7 @@ jq -en --argjson actual "$selected" --argjson expected "$expected_selected" '$ac
   fail 'deployment-only selection changed the independent coverage floor'
 jq -e 'index("test-validate-go-postgresql-fixture") != null' <<<"${selected}" >/dev/null || fail 'native PostgreSQL caller left the independent coverage floor'
 jq -e 'index("test-go-cache-native-observer") != null' <<<"${selected}" >/dev/null || fail 'native Go cache observer left the independent coverage floor'
+jq -e 'index("test-go-workflow-guards") != null' <<<"${selected}" >/dev/null || fail 'grouped Go guards left the independent coverage floor'
 jq -en --argjson selected "${selected}" --slurpfile inventory "${repo_root}/.github/scripts/ci-selection/inventory.json" '
   ($inventory[0].catalogue_optional | length == 37) and
   all($selected[]; . as $id | ($inventory[0].catalogue_optional | index($id)) == null) and
@@ -257,9 +255,18 @@ jq -en --argjson selected "${selected}" --slurpfile inventory "${repo_root}/.git
 ' >/dev/null || fail 'selection omitted an independent credential or signed-fix contract'
 reducer="$(yq -r '.jobs."ci-required-checks".steps[] | select(.name == "📊 Summarize workflow result") | .run' "${ci}")"
 needs="$(jq -cn --argjson selected "${selected}" --slurpfile inventory "${repo_root}/.github/scripts/ci-selection/inventory.json" '
-  reduce ($inventory[0].jobs | keys[]) as $id ({}; .[$id] = {result:(if $selected | index($id) != null then "success" else "skipped" end)})
+  reduce ($inventory[0].jobs | keys[]) as $id ({}; .[$id] = {result:(if $selected | index($id) != null then "success" else "skipped" end)}) |
+  .["test-go-workflow-guards"].outputs = {
+    "test-govulncheck-main-coverage":"success","test-govulncheck-main-coverage-blocks":"success",
+    "test-go-filter-nested-modules":"success","test-go-filter-nested-modules-blocks":"success"}
 ')"
 JOB_RESULTS='success skipped' CATALOGUE_REQUIRED=true SELECTOR_RESULT=success SELECTED_JOBS="${selected}" NEEDS_JSON="${needs}" bash -c "${reducer}" || fail 'real deployment-only selection failed the required reducer'
+for member in test-govulncheck-main-coverage test-govulncheck-main-coverage-blocks test-go-filter-nested-modules test-go-filter-nested-modules-blocks; do
+  bad_needs="$(jq --arg member "$member" 'del(."test-go-workflow-guards".outputs[$member])' <<<"${needs}")"
+  if JOB_RESULTS='success skipped' CATALOGUE_REQUIRED=true SELECTOR_RESULT=success SELECTED_JOBS="${selected}" NEEDS_JSON="${bad_needs}" bash -c "${reducer}"; then
+    fail "deployment-only selection lost logical coverage: $member"
+  fi
+done
 bad_needs="$(jq '."test-approve-pr-credential-boundary".result="skipped"' <<<"${needs}")"
 if JOB_RESULTS='success skipped' CATALOGUE_REQUIRED=true SELECTOR_RESULT=success SELECTED_JOBS="${selected}" NEEDS_JSON="${bad_needs}" bash -c "${reducer}"; then
   fail 'selected-but-skipped credential replay was accepted'
