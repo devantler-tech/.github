@@ -6,6 +6,10 @@ The repository that owns an application also owns its README, workflow results a
 instructions. The [project board](https://github.com/orgs/devantler-tech/projects/5) shows the work
 queue; each issue belongs in the repository where it can be addressed.
 
+Organization members may initially see a separate member-only README. Select **View as: Public**
+on the organization overview, or open the [public profile view](https://github.com/devantler-tech?view_as=public),
+to see the public README and pins. This repository's [README](../README.md) also links here.
+
 ## View an application's evidence
 
 1. Open the application's repository and read its README for access, installation and support.
