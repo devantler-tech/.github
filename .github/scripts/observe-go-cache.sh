@@ -151,7 +151,7 @@ check() {
   metadata="$6"; jobs="$7"; caches="$8"; logs="$9"
   [[ "$mode" == pr || "$mode" == main ]] || fail 'unsupported observation mode'
   [[ "$run" =~ ^[1-9][0-9]*$ && "$attempt" =~ ^[1-9][0-9]*$ && "$head" =~ ^[a-f0-9]{40}$ ]] || fail 'invalid run identity'
-  [[ "$key" =~ ^go-mod-v1-Linux-X64-\.github/tests/go-postgresql-fixture-[a-f0-9]{64}$ ]] || fail 'invalid exact fixture cache key'
+  [[ "$key" =~ ^go-mod-v1-Linux-X64-tests/go-postgresql-fixture-[a-f0-9]{64}$ ]] || fail 'invalid exact fixture cache key'
   jq -e --argjson run "$run" --argjson attempt "$attempt" --arg head "$head" --arg mode "$mode" '
     .id == $run and .run_attempt == $attempt and .head_sha == $head and
     .repository.full_name == "devantler-tech/.github" and
@@ -169,10 +169,10 @@ check() {
       while IFS= read -r archive; do
         case "$name" in
           "${prefix}🧪 Test")
-            [[ "$archive" == "Cache saved with key: $key" || "$archive" =~ ^Cache\ saved\ with\ key:\ go-build-v1-Linux-X64-[^[:space:]]+-\.github/tests/go-postgresql-fixture-test-[a-f0-9]{64}$ ]] || fail 'Test saved an unexpected Go archive'
+            [[ "$archive" == "Cache saved with key: $key" || "$archive" =~ ^Cache\ saved\ with\ key:\ go-build-v1-Linux-X64-[^[:space:]]+-tests/go-postgresql-fixture-test-[a-f0-9]{64}$ ]] || fail 'Test saved an unexpected Go archive'
             ;;
           "${prefix}📊 Code Coverage")
-            [[ "$archive" =~ ^Cache\ saved\ with\ key:\ go-build-v1-Linux-X64-[^[:space:]]+-\.github/tests/go-postgresql-fixture-coverage-[a-f0-9]{64}$ ]] || fail 'Coverage saved an unexpected Go archive'
+            [[ "$archive" =~ ^Cache\ saved\ with\ key:\ go-build-v1-Linux-X64-[^[:space:]]+-tests/go-postgresql-fixture-coverage-[a-f0-9]{64}$ ]] || fail 'Coverage saved an unexpected Go archive'
             ;;
           *) fail 'non-writer job saved a Go archive' ;;
         esac
@@ -295,7 +295,7 @@ observe() {
   done < <(jq -r --arg prefix "$prefix" '.[].jobs[] | select((.name | startswith($prefix)) and .name != ($prefix + "🔍 Detect Changes")) | .id' "$jobs")
   printf '[]\n' >"$scratch/caches.json"
   if [[ "$mode" == main ]]; then
-    [[ "$key" =~ ^go-mod-v1-Linux-X64-\.github/tests/go-postgresql-fixture-[a-f0-9]{64}$ ]] || fail 'invalid trusted fixture cache key'
+    [[ "$key" =~ ^go-mod-v1-Linux-X64-tests/go-postgresql-fixture-[a-f0-9]{64}$ ]] || fail 'invalid trusted fixture cache key'
     gh api --paginate --slurp "repos/devantler-tech/.github/actions/caches?per_page=100&key=$key&ref=refs%2Fheads%2Fmain" >"$scratch/caches.json" || fail 'complete archive read failed'
   fi
   check "$mode" "$run" "$attempt" "$head" "$key" "$scratch/run.json" "$scratch/jobs.json" "$scratch/caches.json" "$scratch/logs"

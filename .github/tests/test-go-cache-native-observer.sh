@@ -12,7 +12,7 @@ fail() {
 }
 prefix='[Test] Validate Go Project - Isolated PostgreSQL / '
 head=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
-key="go-mod-v1-Linux-X64-.github/tests/go-postgresql-fixture-$(printf '%064d' 1)"
+key="go-mod-v1-Linux-X64-tests/go-postgresql-fixture-$(printf '%064d' 1)"
 mkdir "$scratch/logs"
 jq -n --arg head "$head" '{id:23,run_attempt:2,head_sha:$head,event:"pull_request",repository:{full_name:"devantler-tech/.github"}}' >"$scratch/run.json"
 jq -n --arg prefix "$prefix" --arg head "$head" '
