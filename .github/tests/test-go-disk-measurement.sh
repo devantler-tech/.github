@@ -6,6 +6,7 @@ fail() { echo "::error::$*" >&2; exit 1; }
 [[ "$(yq -r '.on.workflow_call.inputs.measure-disk-usage.default' "$workflow")" == false ]] || fail 'Go disk collection must be explicitly default-off'
 script="$root/.github/scripts/measure-go-disk.sh"
 [[ -f "$script" ]] || fail 'Go disk collection has no executable implementation'
+bash "$root/.github/tests/go-disk-observation-controls.sh"
 scratch="$(mktemp -d)"
 trap 'rm -rf "$scratch"' EXIT
 mkdir "$scratch/bin"

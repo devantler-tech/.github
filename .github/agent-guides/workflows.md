@@ -201,6 +201,14 @@ commands run; cancellation stops the command process group and sampler. The
 read-only projection admits Go for selected catalogue fixture callers even on
 workflow-only diffs; production and other consumers retain their Go path filter. Keep
 `test-go-disk-measurement.sh` and the generated read-only projection passing.
+The separate, default-off ordinary Test observer reads a closed module-local
+`.go-disk-observation.json` only for the native-proven empty-inputs plus own-workflow-ref
+required invocation. Reusable callers do not inherit it. Keep the declared Go command,
+cleanup, caching and permissions unchanged. Fixed labels and opaque filesystem groups
+retain component/inode/cache provenance without uploading private paths or probe stderr;
+failed collection never means complete and never replaces the Go result. Missing paths
+are described, not created. See [its bounds and acceptance](../../docs/go-storage-observation.md).
+Publication, consumer opt-in/off proof and native ordinary-run evidence remain under #838.
 The optional `minimum-free-disk-gib` budget defaults to zero (unconditional cleanup).
 A complete bounded capacity read can retain toolchains only when the opted-in budget
 is met; unknown capacity retains reclamation. Keep `test-go-disk-cleanup.sh` passing.
