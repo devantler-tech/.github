@@ -6,6 +6,9 @@ building blocks every product repository uses, documented below. To make a small
 documentation contribution, start with [Contributing](CONTRIBUTING.md). The
 [repository contract](AGENTS.md) carries the detailed ownership and engineering rules.
 
+To find an application's README, CI results or manual-run form, follow the
+[GitHub navigation guide](docs/github-navigation.md).
+
 New repositories deliberately enrolled in Renovate inherit the organization's
 [onboarding preset](renovate-config.json): recommended updates with the Dependency Dashboard
 disabled. Renovate [discovers this preset during onboarding](https://docs.renovatebot.com/config-presets/#grouporganization-level-presets).
