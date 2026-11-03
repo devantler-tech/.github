@@ -27,19 +27,45 @@ updates:
         group-by: dependency-name
         patterns:
           - "actions/upload-code-coverage"
-  # Runnable catalogue modules; keep these separate from the frozen advisory fixtures below.
+  # Scope each runnable module's update job separately; advisory fixtures below stay frozen.
   - package-ecosystem: gomod
-    directories:
-      - /actions/validate-naming
-      - /actions/validate-shell-pipelines
-      - /.github/tests/catalogue-credentials
-      - /.github/tests/go-postgresql-fixture
+    directory: /actions/validate-naming
     schedule:
       interval: weekly
     cooldown:
       default-days: 7
     groups:
-      catalogue-go:
+      naming-validator:
+        patterns:
+          - "*"
+  - package-ecosystem: gomod
+    directory: /actions/validate-shell-pipelines
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    groups:
+      shell-validator:
+        patterns:
+          - "*"
+  - package-ecosystem: gomod
+    directory: /.github/tests/catalogue-credentials
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    groups:
+      credential-guard:
+        patterns:
+          - "*"
+  - package-ecosystem: gomod
+    directory: /.github/tests/go-postgresql-fixture
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    groups:
+      postgresql-fixture:
         patterns:
           - "*"
   # The govulncheck allowlist self-test fixture (.github/tests/govulncheck-allowlist)
