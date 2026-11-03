@@ -38,6 +38,8 @@ function fixture(name, modules, untracked = []) {
     if (modules.includes(mod)) git(dir, 'add', '--', mod, path.relative(dir, path.join(moduleDir, 'probe.go')),
       path.relative(dir, path.join(moduleDir, 'probe_test.go')));
   }
+  git(dir, '-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid',
+    '-c', 'commit.gpgsign=false', 'commit', '--allow-empty', '-qm', 'fixture');
   return dir;
 }
 const directExpr = "${{ toJSON(inputs) == '{}' && contains(github.workflow_ref, '/.github/workflows/validate-go-project.yaml@') }}";
@@ -56,11 +58,15 @@ function resolve(dir, input = '', direct = true, extraEnv = {}) {
   assert.equal(checkout.with.ref, '${{ job.workflow_sha }}');
   assert.equal(checkout.with['persist-credentials'], false);
   assert.equal(checkout.with.path, '.devantler-tech-go-module');
-  assert.equal(checkout.with['sparse-checkout'], '.github/scripts/resolve-go-module.sh');
+  assert.deepEqual(checkout.with['sparse-checkout'].trim().split('\n'), [
+    '.github/scripts/resolve-go-module.sh',
+    '.github/scripts/resolve-go-test-parallelism.sh',
+  ]);
   assert.equal(checkout.with['sparse-checkout-cone-mode'], false);
   const helper = path.join(dir, '.devantler-tech-go-module/.github/scripts');
   fs.mkdirSync(helper, {recursive: true});
   fs.copyFileSync(path.join(source, '.github/scripts/resolve-go-module.sh'), path.join(helper, 'resolve-go-module.sh'));
+  fs.copyFileSync(path.join(source, '.github/scripts/resolve-go-test-parallelism.sh'), path.join(helper, 'resolve-go-test-parallelism.sh'));
   const output = path.join(scratch, `output-${controls++}`);
   fs.writeFileSync(output, '');
   const result = command('bash', ['-euo', 'pipefail', '-c', step.run], dir, {
@@ -69,9 +75,9 @@ function resolve(dir, input = '', direct = true, extraEnv = {}) {
   });
   const bytes = fs.readFileSync(output, 'utf8');
   assert.equal(fs.existsSync(path.join(dir, '.devantler-tech-go-module')), false, 'resolver checkout remained in consumer workspace');
-  if (result.status === 0) assert.match(bytes, /^module-directory=[A-Za-z0-9._/-]+\n$/, 'invalid or repeated output');
+  if (result.status === 0) assert.match(bytes, /^module-directory=[A-Za-z0-9._/-]+\ntest-parallelism=\n$/, 'invalid or repeated output');
   else assert.equal(bytes, '', 'failed resolution published a directory');
-  return {status: result.status, output: bytes.slice('module-directory='.length).trim(), stderr: result.stderr};
+  return {status: result.status, output: bytes.split('\n')[0].slice('module-directory='.length), stderr: result.stderr};
 }
 function expect(dir, input, direct, wanted, native = false) {
   const result = resolve(dir, input, direct);

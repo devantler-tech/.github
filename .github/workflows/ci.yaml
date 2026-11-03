@@ -2476,6 +2476,10 @@ jobs:
         shell: bash
         run: bash .github/tests/test-go-module-resolution.sh
 
+      - name: Check bounded Go test parallelism and unchanged validation arguments
+        shell: bash
+        run: bash .github/tests/test-go-test-parallelism.sh
+
       - name: Check PostgreSQL fixture declaration and provisioning failure boundaries
         shell: bash
         run: bash .github/tests/test-go-postgresql-fixture.sh
@@ -2729,12 +2733,14 @@ jobs:
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-validate-go-project') }}"
     name: "[Test] Validate Go Project"
     uses: $/.github/workflows/validate-go-project-readonly.yaml
-    # Fixture-targeted: validate the known-good Go fixture (this repo is not itself a Go module).
+    # Independently assert the opted-in worker count in Test and race Coverage.
     with:
       go-memory-limit: 4GiB
+      enable-test-parallelism: true
+      test-parallelism: 8
       measure-disk-usage: true
       minimum-free-disk-gib: 32
-      working-directory: .github/tests/go-valid-fixture
+      working-directory: .github/tests/go-parallelism-fixture
       # The OFF state, passed explicitly now that the input defaults to true: the read-only path
       # must still run the fixers and reject an unexpected dirty tree without committing to the
       # branch under test.
