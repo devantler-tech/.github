@@ -172,8 +172,8 @@ for scenario in du-partial du-fast-failure du-malformed du-empty du-deadline; do
       (.componentProbe.elapsedSeconds|type=="number" and .>=0 and floor==.))' \
     "$RUNNER_TEMP/go-disk-observation/public/report.json" >/dev/null || fail "$scenario lost the failed probe diagnostic"
   if [[ "$scenario" == du-deadline ]]; then
-    jq -e 'any(.frames[-1].entries[];.label=="go-temp" and .componentProbe.elapsedSeconds>=1)' \
-      "$RUNNER_TEMP/go-disk-observation/public/report.json" >/dev/null || fail 'deadline probe lost its elapsed time'
+    jq -e 'any(.frames[-1].entries[];.label=="go-temp" and .componentProbe.elapsedSeconds>=1 and .componentProbe.elapsedSeconds<=5)' \
+      "$RUNNER_TEMP/go-disk-observation/public/report.json" >/dev/null || fail 'deadline probe elapsed time is outside its expected bounds'
   fi
   ! grep -E 'private-path|private-probe-secret' "$RUNNER_TEMP/go-disk-observation/public/report.json" "$scratch/output" "$scratch/error" >/dev/null || fail 'raw probe output escaped sanitisation'
   if [[ "$scenario" == du-partial ]]; then

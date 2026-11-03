@@ -169,6 +169,8 @@ observation_init() {
       toolchain:{version:$environment.GOVERSION,os:$environment.GOOS,arch:$environment.GOARCH,cgo:$environment.CGO_ENABLED}}' \
     >"$observation_state/identity.json" || return 1
 }
+# Collect one fixed label's filesystem counters and optional bounded size walk.
+# Failed walks retain an unknown size and numeric diagnostics, without raw output.
 observation_entry() {
   local label="$1" path="$2" scope=path status=measured bytes inodes device group size=null component=not-collected frame parent
   local path_source="${3:-fixed-label}" probe_result=not-collected probe_exit=null probe_elapsed=null probe_started
@@ -226,6 +228,8 @@ observation_entry() {
        componentProbe:{result:$result,exitCode:$code,elapsedSeconds:$elapsed}}
     else error("inconsistent counters") end'
 }
+# Append a provenance-bound frame for the eight fixed labels, distinguishing the
+# effective Go-temp source from explicit, shared and system-default directories.
 observation_frame() {
   observation_bound || return 1
   local environment rows frame index path size temp_source=go-env source
@@ -262,6 +266,8 @@ observation_caches() {
     >"$observation_state/caches.json.pending" 2>/dev/null || return 1
   mv "$observation_state/caches.json.pending" "$observation_state/caches.json"
 }
+# Validate retained frames and command state before publishing allowlisted fields.
+# Unknown measurements or incomplete collection cannot produce a complete report.
 observation_publish() {
   observation_bound || return 1
   local complete=true command='{"executed":false,"completed":false,"exit":null,"observerCompleted":false}' caches='{}' identity size
