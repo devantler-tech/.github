@@ -4,7 +4,7 @@ set -euo pipefail
 root="$(pwd)"
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
-(cd "$root/.github/tests/catalogue-credentials" && go test ./... && go build -o "$tmp/guard" .)
+(cd "$root/tests/catalogue-credentials" && go test ./... && go build -o "$tmp/guard" .)
 mkdir -p "$tmp/catalogue/.github"
 cp -R "$root/.github/workflows" "$tmp/catalogue/.github/workflows"
 cp -R "$root/.github/actions" "$tmp/catalogue/.github/actions"
