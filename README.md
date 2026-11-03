@@ -6,6 +6,9 @@ building blocks every product repository uses, documented below. To make a small
 documentation contribution, start with [Contributing](CONTRIBUTING.md). The
 [repository contract](AGENTS.md) carries the detailed ownership and engineering rules.
 
+To find an application's README, CI results or manual-run form, follow the
+[GitHub navigation guide](docs/github-navigation.md).
+
 New repositories deliberately enrolled in Renovate inherit the organization's
 [onboarding preset](renovate-config.json): recommended updates with the Dependency Dashboard
 disabled. Renovate [discovers this preset during onboarding](https://docs.renovatebot.com/config-presets/#grouporganization-level-presets).
@@ -1083,6 +1086,15 @@ failures still fail validation. Measurement does not change the selected cleanup
 these observations alone never authorize skipping it. Measurement rollout and
 retirement, representative-consumer evidence and cleanup policy remain in [#527](https://github.com/devantler-tech/.github/issues/527).
 Rollout and flag retirement are tracked in [#276](https://github.com/devantler-tech/.github/issues/276).
+
+An input-free organization-required Test can separately opt in through the
+selected module's tracked `.go-disk-observation.json`, with exactly
+`{"version":1,"test":true}`. Reusable callers do not inherit that declaration.
+This default-off observer records labelled component/filesystem/inode counters
+and actual source, toolchain and cache-restore provenance while preserving the
+ordinary command, cleanup and caching. See [ordinary Go Test storage observation](docs/go-storage-observation.md)
+for bounds, redaction, incompleteness and native adoption requirements. Quota
+limits and cache archive byte identity remain unestablished; #838 remains open.
 
 </details>
 

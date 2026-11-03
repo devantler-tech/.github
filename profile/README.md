@@ -17,6 +17,17 @@ We focus on creating innovative solutions in the cloud-native ecosystem, with pa
 
 We work primarily with **Go**, **AI**, **Kubernetes**, and various cloud-native tools, always with a focus on quality, simplicity, and agile development practices.
 
+## Find an application or its status
+
+Start with the [organization's repositories](https://github.com/orgs/devantler-tech/repositories)
+or the pinned projects below. An application's README explains how to use it; its CI badges and
+**Actions** tab lead to workflow results. The [project board](https://github.com/orgs/devantler-tech/projects/5)
+shows planned and ongoing work.
+
+The [GitHub navigation guide](https://github.com/devantler-tech/.github/blob/main/docs/github-navigation.md)
+walks through an example, explains missing status signals, and shows where an authorized maintainer
+can inspect a manual-run form. Viewing results and authorizing an operation are separate steps.
+
 ---
 
 *Interested in collaborating or learning more? Check out our projects below!*
