@@ -2849,25 +2849,6 @@ jobs:
       pull-requests: read
       code-quality: write # callers must grant this for the coverage upload (GitHub Code Quality)
 
-  # The ordinary fixture call above inherits maintenance-default-branch (ON).
-  # This call preserves explicit OFF; trigger fixtures cover actual default-branch refs,
-  # which cannot be selected by a pull-request-triggered reusable-workflow call.
-  test-validate-go-project-maintenance-default-branch:
-    needs: [select-ci-tests]
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-validate-go-project-maintenance-default-branch') }}"
-    name: "[Test] Validate Go Project - Default-Branch Maintenance Opted Out"
-    uses: $/.github/workflows/validate-go-project-readonly.yaml
-    with:
-      working-directory: .github/tests/go-valid-fixture
-      maintenance-default-branch: false
-      measure-disk-usage: true
-      minimum-free-disk-gib: 32
-      apply-signed-fixes: false
-    permissions:
-      contents: read
-      pull-requests: read
-      code-quality: write
-
   test-run-dotnet-tests-workflow:
     timeout-minutes: 5
     needs: [select-ci-tests]
@@ -4492,8 +4473,8 @@ jobs:
       #     self-test, which run on the same repository + ref. A reusable workflow
       #     inherits the CALLER's github.workflow (devantler-tech/actions#587).
       #   * the invocation's inputs — two calls from the SAME caller on the same ref,
-      #     which github.workflow cannot tell apart. The maintenance-default-branch
-      #     both-states self-tests are identical but for one input.
+      #     which github.workflow cannot tell apart. The test-default-branch
+      #     both-states self-tests must retain distinct invocation groups.
       #
       # This guard goes red if either discriminator is dropped. The grep is a regex (not
       # -F) so the group's own ${{ … }} expressions are matched as literals here rather
@@ -5237,7 +5218,6 @@ jobs:
       - test-validate-go-project-manual-fixes
       - test-validate-go-project-apply-signed-fixes
       - test-validate-go-project-test-default-branch
-      - test-validate-go-project-maintenance-default-branch
       - test-run-dotnet-tests-workflow
       - test-run-dotnet-tests-workflow-authenticated
       - test-enable-auto-merge
@@ -5360,7 +5340,6 @@ jobs:
             ${{ needs.test-validate-go-project-manual-fixes.result }}
             ${{ needs.test-validate-go-project-apply-signed-fixes.result }}
             ${{ needs.test-validate-go-project-test-default-branch.result }}
-            ${{ needs.test-validate-go-project-maintenance-default-branch.result }}
             ${{ needs.test-run-dotnet-tests-workflow.result }}
             ${{ needs.test-run-dotnet-tests-workflow-authenticated.result }}
             ${{ needs.test-enable-auto-merge.result }}

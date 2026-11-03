@@ -23,8 +23,15 @@ assert.deepEqual(interfaces[0].with, {'working-directory': '', 'apply-signed-fix
 assert.equal(interfaces[0].secrets, undefined, 'production interface forwarded credentials');
 assert.deepEqual(production.jobs.lint.needs, ['changes'], 'production reporter lost its skipped prerequisite');
 assert.doesNotMatch(production.jobs.lint.if, /\b(always|success|failure|cancelled)\s*\(/i, 'production reporter overrides skipped prerequisite');
-const callers = Object.values(ci.jobs).filter(j => j.uses === '$/.github/workflows/validate-go-project-readonly.yaml');
-assert.equal(callers.length, 6, 'all six Go fixture callers must remain');
+const callerEntries = Object.entries(ci.jobs).filter(([, j]) => j.uses === '$/.github/workflows/validate-go-project-readonly.yaml');
+assert.deepEqual(callerEntries.map(([id]) => id).sort(), [
+  'test-validate-go-postgresql-fixture',
+  'test-validate-go-project',
+  'test-validate-go-project-apply-signed-fixes',
+  'test-validate-go-project-manual-fixes',
+  'test-validate-go-project-test-default-branch',
+], 'all supported Go fixture callers must remain after maintenance flag retirement');
+const callers = callerEntries.map(([, j]) => j);
 assert.equal(ci.jobs['test-validate-go-postgresql-fixture'].with['enable-postgresql-fixture'], true, 'native database caller lost explicit admission');
 for (const j of callers) {
   assert.deepEqual(j.permissions, {contents: 'read', 'pull-requests': 'read', 'code-quality': 'write'}, 'fixture grants mutation permissions');
@@ -103,7 +110,7 @@ assert.ok(w.jobs.test.steps.some(s => s.run?.includes('go test')), 'real tests r
 assert.ok(w.jobs.coverage.steps.some(s => s.run?.includes('go test -race -coverprofile')), 'real coverage removed');
 assert.ok(w.jobs.coverage.steps.some(s => s.uses?.endsWith('/actions/upload-coverage')), 'coverage upload removed');
 assert.equal(w.jobs.coverage.permissions['code-quality'], 'write', 'coverage upload permission missing');
-console.log('PASS: six credential-safe callers; bounded fixture admissions; four signed-fix denials; normal reporting and real validation retained');
+console.log('PASS: five credential-safe callers; bounded fixture admissions; four signed-fix denials; normal reporting and real validation retained');
 JS
 # Execute the actual dirty-tree gate from the read-only job.
 yq -r '.jobs.lint.steps[] | select(.name == "❌ Fail if uncommitted changes remain (read-only mode)") | .run' "$workflow" >"$work/dirty-gate.sh"

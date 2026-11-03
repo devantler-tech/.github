@@ -47,11 +47,6 @@ on:
         type: boolean
         default: true
         description: "Run the Go test suite on every default-branch invocation, rather than only when the diff touched a Go file. `go` answers 'did a Go source file change', which is narrower than 'could the suite's verdict have changed': a Go test may read a non-Go file as its subject, so a commit touching only those files skips the suite while breaking it, and the default branch keeps reporting green. On by default, so a consumer inherits the corrected coverage without knowing this input exists; the default branch then reports whatever the suite actually says, which may be red. Set it to false only to accept a default branch whose green does not mean the suite ran (devantler-tech/ksail#6373)."
-      maintenance-default-branch:
-        required: false
-        type: boolean
-        default: true
-        description: "Run go mod tidy and dead-code analysis on default-branch pushes that change Go files. On by default and read-only: findings fail validation without pushing fixes to the default branch. Pass false to opt out during rollout. Flag retirement: devantler-tech/.github#276."
 # Invocation-aware concurrency: two invocations that differ in any way are different
 # logical invocations and must not cancel each other. Only reruns of the SAME invocation
 # supersede. Two discriminators are needed, for two separate collisions both seen live:
@@ -64,7 +59,7 @@ on:
 #
 #   * the invocation's inputs — separates two calls from the SAME caller workflow on the
 #     same ref, which github.workflow alone cannot tell apart. The both-states self-tests
-#     for `maintenance-default-branch` have that shape: the enabled and disabled
+#     for `test-default-branch` have that shape: the enabled and disabled
 #     invocations must both complete.
 #
 #   * the run, on the default branch only — each default-branch run is the verification
@@ -78,7 +73,7 @@ on:
 # Adding a discriminator only ever splits groups further; it cannot merge two that were
 # separate, so this direction of change cannot reintroduce #587.
 concurrency:
-  group: "validate-go-project-readonly-${{ github.repository }}-${{ github.ref }}-${{ github.ref == format('refs/heads/{0}', github.event.repository.default_branch) && github.run_id || '' }}-${{ github.workflow }}-${{ inputs.pr-owner }}-${{ inputs.working-directory }}-${{ inputs.test-default-branch }}-${{ inputs.maintenance-default-branch }}-${{ inputs.apply-signed-fixes }}-${{ inputs.manual-workflow-fixes }}-${{ inputs.go-memory-limit }}-${{ inputs.measure-disk-usage }}-${{ inputs.minimum-free-disk-gib || 0 }}-${{ inputs.enable-postgresql-fixture }}"
+  group: "validate-go-project-readonly-${{ github.repository }}-${{ github.ref }}-${{ github.ref == format('refs/heads/{0}', github.event.repository.default_branch) && github.run_id || '' }}-${{ github.workflow }}-${{ inputs.pr-owner }}-${{ inputs.working-directory }}-${{ inputs.test-default-branch }}-${{ inputs.apply-signed-fixes }}-${{ inputs.manual-workflow-fixes }}-${{ inputs.go-memory-limit }}-${{ inputs.measure-disk-usage }}-${{ inputs.minimum-free-disk-gib || 0 }}-${{ inputs.enable-postgresql-fixture }}"
   cancel-in-progress: true
 permissions: {}
 jobs:
@@ -306,10 +301,7 @@ jobs:
       && github.event_name != 'merge_group'
       && (
         github.ref != format('refs/heads/{0}', github.event.repository.default_branch)
-        || (
-          github.event_name == 'push'
-          && (inputs.maintenance-default-branch == true || inputs.maintenance-default-branch == 'true')
-        )
+        || github.event_name == 'push'
       )
     outputs:
       fixes-created: ${{ steps.fixes.outputs.changed }}
@@ -498,7 +490,6 @@ jobs:
         || (
           github.event_name == 'push'
           && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
-          && (inputs.maintenance-default-branch == true || inputs.maintenance-default-branch == 'true')
         )
       )
     permissions:

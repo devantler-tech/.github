@@ -118,12 +118,12 @@ credential, and a scenario set that no longer covers every comment mode and resu
 the action. A bump of the action pin that changes its conversation or its messages fails the
 affected leg: read what changed in the job log before updating the scenario file.
 
-**Default-branch Go maintenance:** `maintenance-default-branch` defaults to true
-after the KSail pilot and complete caller inventory. Explicit false remains the
-rollout rollback. Tidy and dead-code findings fail read-only validation without
-default-branch writes. Keep inherited-default and explicit-opt-out callers,
-renamed branches, PR/feature routing, merge-queue exclusions and actual finding
-rejection covered. Final input and concurrency-discriminator removal remain #276.
+**Default-branch Go maintenance:** Go-changing default-branch pushes run tidy and
+dead-code analysis unconditionally after the released-default KSail adoption and
+complete caller inventory. The temporary maintenance input and its concurrency
+discriminator are retired. Callers must omit the removed input. Findings fail
+read-only validation without default-branch writes. Keep renamed branches,
+PR/feature routing, merge-queue exclusions and actual finding rejection covered.
 
 **Go module selection:** Validation reads one complete tracked-file inventory.
 Explicit `working-directory` calls keep their selected module; empty called inputs

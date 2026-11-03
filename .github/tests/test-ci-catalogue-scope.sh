@@ -242,7 +242,6 @@ expected_selected='[
   "test-validate-go-postgresql-fixture",
   "test-validate-go-project",
   "test-validate-go-project-apply-signed-fixes",
-  "test-validate-go-project-maintenance-default-branch",
   "test-validate-go-project-manual-fixes",
   "test-validate-go-project-test-default-branch"
 ]'

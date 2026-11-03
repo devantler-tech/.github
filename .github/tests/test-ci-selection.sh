@@ -80,7 +80,7 @@ EVENT_NAME=push RUN_CATALOGUE=true CATALOGUE_SCOPE=true GITHUB_OUTPUT="$work/out
   go -C "$root/.github/scripts/ci-selection" run . "$root" "$root/.github/scripts/ci-selection/inventory.json" "$work/workflow.json"
 selected="$(sed -n 's/^selected=//p' "$work/output")"
 # The skill action executions moved with their standalone repositories; all remaining executions stay selected.
-jq -e 'length == 65 and index("test-lint-workflow") == null and
+jq -e 'length == 64 and index("test-lint-workflow") == null and
   index("test-lint-workflow-manual-fixes") == null' <<< "$selected" >/dev/null
 jq -e 'index("test-validate-go-postgresql-fixture") != null' <<<"$selected" >/dev/null
 jq -e 'index("test-go-cache-native-observer") != null' <<<"$selected" >/dev/null
