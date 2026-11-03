@@ -1084,6 +1084,15 @@ these observations alone never authorize skipping it. Measurement rollout and
 retirement, representative-consumer evidence and cleanup policy remain in [#527](https://github.com/devantler-tech/.github/issues/527).
 Rollout and flag retirement are tracked in [#276](https://github.com/devantler-tech/.github/issues/276).
 
+An input-free organization-required Test can separately opt in through the
+selected module's tracked `.go-disk-observation.json`, with exactly
+`{"version":1,"test":true}`. Reusable callers do not inherit that declaration.
+This default-off observer records labelled component/filesystem/inode counters
+and actual source, toolchain and cache-restore provenance while preserving the
+ordinary command, cleanup and caching. See [ordinary Go Test storage observation](docs/go-storage-observation.md)
+for bounds, redaction, incompleteness and native adoption requirements. Quota
+limits and cache archive byte identity remain unestablished; #838 remains open.
+
 </details>
 
 <a name="workflow-go-readonly"></a>

@@ -50,7 +50,7 @@ for job in build test coverage; do
     [to_entries[] | select(.value.name == "🧹 Free disk space")] as $cleanup |
     ($guard|length) == 1 and ($checkout|length) == 1 and ($prepare|length) == 1 and ($cleanup|length) == 1 and
     $guard[0].key < $checkout[0].key and $checkout[0].key < $prepare[0].key and $prepare[0].key < $cleanup[0].key and
-    $guard[0].value.if == "${{ inputs.measure-disk-usage == true }}" and
+    $guard[0].value.if == (if $job=="test" then "${{ inputs.measure-disk-usage == true || needs.changes.outputs.disk-observation == '\''true'\'' }}" else "${{ inputs.measure-disk-usage == true }}" end) and
     $checkout[0].value.if == $guard[0].value.if and $prepare[0].value.if == $guard[0].value.if and
     $cleanup[0].value.env.MEASURE_DISK_USAGE == "${{ inputs.measure-disk-usage }}" and
     $cleanup[0].value.env.GO_DISK_WORKFLOW_SHA == "${{ job.workflow_sha }}" and

@@ -1,0 +1,94 @@
+# Ordinary Go Test storage observation
+
+The required Go workflow can observe an ordinary Test job without replaying an
+old source or cache archive. This is default-off instrumentation for #838. It is
+not a capacity correction, quota proof, or completion of that issue.
+
+A consumer's selected Go module may track the regular file
+`.go-disk-observation.json` containing exactly:
+
+```json
+{"version":1,"test":true}
+```
+
+Only the direct, input-free organization-required `validate-go-project.yaml`
+invocation reads this declaration. A reusable caller's false or omitted
+`measure-disk-usage` input stays off, even if the caller uses a similarly named
+workflow. Existing `measure-disk-usage: true` callers retain the original build,
+test and coverage collector. This declaration changes neither their interface
+nor their behavior. Missing declarations and `test:false` remain disabled;
+unknown fields, duplicate keys, untracked files and symlinks are refused.
+
+Observation does not select additional Go jobs. The required Test must already
+be selected by its normal source/default-branch rules. Its cleanup policy, cache
+restore/save rules, permissions and `go test` arguments stay the same, including
+`-count=1` for an independently enabled PostgreSQL fixture. Consumer enablement
+and real native artifact validation must follow publication separately.
+
+The observer queries only named Go environment keys. It records the actual
+workspace, selected module, module cache, build cache, toolchain, effective Go
+temporary directory and runner temporary directory using fixed labels. Paths
+and probe diagnostics stay private in the runner's temporary directory. Only
+`go-disk-observation/public/report.json` is uploaded, with seven-day retention.
+The artifact includes:
+
+- Byte and inode filesystem counters, with opaque filesystem groups so paths
+  sharing a filesystem can be recognized without disclosing device names.
+- Bounded component sizes after setup, after cache restore, before the command,
+  periodically during execution and on command exit. Between component walks,
+  periodic frames retain filesystem counters with component sizes uncollected.
+- The source and catalogue commits, repository, run/attempt/job, selected module
+  and `go.mod`/`go.sum` SHA-256 values, keyed Go toolchain identity and runner image.
+- The actual module/build cache primary keys, matched keys and hit outputs.
+  These identify the restore decision; they do not establish archive byte identity.
+- The original command result and an explicit completeness verdict. A failed Go
+  command may have complete observations; successful Go execution does not imply
+  complete observations.
+
+Completeness also requires actual runner image identity and no retained unknown
+component measurements, independently of the writable failure marker. Absent
+paths and intentionally uncollected periodic component sizes remain distinct.
+A command that finishes before its first periodic sample has no `during-command`
+frame and is reported as `complete:false`, even when Go and observer shutdown
+both succeed. Boundary samples cannot substitute for during-command coverage.
+`command.completed` and `command.exit` describe Go. The separately persisted
+`command.observerCompleted` starts false and changes only after verified sampler
+shutdown and the final edge collection. Failed atomic completion writes leave
+the earlier false record, so a later publisher cannot forget collection failure
+when the auxiliary failure marker was unwritable.
+
+An absent cache is reported as absent, with zero component size and explicitly
+labelled nearest-existing-parent filesystem counters. It is never created or
+relocated by the observer. Existing path symlinks follow the same effective
+targets as Go; private observation state and evidence files reject symlinks.
+Component sizes can overlap (for example module and workspace, or a toolchain
+inside the module cache), so they must not be added together.
+
+Each filesystem/component probe has a two-second deadline and one-second kill
+grace. The shared rich-frame budget accounts for eight labels with two `df`
+reads and up to two `stat` attempts each, seven component walks, and the initial
+sample's `df`: forty probe attempts × three seconds, plus ten seconds of
+process/JSON overhead, gives 130 seconds. Cooperative shutdown allows that frame
+budget plus one sampler delay (131 seconds). The legacy single-filesystem edge
+and cancellation bounds stay unchanged; no job or Go-command deadline is raised.
+Samples have a nominal one-second
+delay; component walks can lengthen the interval and can miss shorter peaks.
+Component walks run at boundaries and every sixty periodic iterations. The
+history is limited to 1,800 periodic iterations and 8 MiB. Failed, malformed,
+partial, timed-out, interrupted or unwritable observations are incomplete;
+observer failures never replace or repeat the wrapped Go command. Cancellation
+retains the existing bounded process-group cleanup and signal result. A missing
+artifact establishes no measurement. Cancellation or a forced runner shutdown
+may leave no artifact at all.
+
+Filesystem counters do not establish filesystem/user/project quota limits or
+which process caused growth. Both quota limits and cache archive byte identity
+remain explicitly `not-established`. The report is observational evidence from
+the job, not a cryptographic attestation. No historical cache is reconstructed,
+and no historical replay selector is introduced.
+
+Run `bash .github/tests/test-go-disk-measurement.sh` for the actual collector,
+admission, command/cleanup preservation and failure controls. Regenerate the
+read-only workflow with `bash .github/scripts/generate-go-readonly.sh` after
+changing production wiring. Required catalogue CI runs these controls; consumer
+publication, opt-in/off proof and ordinary native acceptance remain separate.

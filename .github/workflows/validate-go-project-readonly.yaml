@@ -94,6 +94,7 @@ jobs:
       govulncheck: ${{ steps.filter.outputs.govulncheck }}
       lintable: ${{ steps.filter.outputs.lintable }}
       module-directory: ${{ steps.module-directory.outputs.module-directory }}
+      disk-observation: ${{ steps.disk-observation.outputs.enabled || 'false' }}
       fixture-enabled: ${{ steps.fixture.outputs.enabled || 'false' }}
       fixture-owner: ${{ steps.fixture.outputs.owner }}
       fixture-namespace: ${{ steps.fixture.outputs.namespace }}
@@ -286,6 +287,49 @@ jobs:
             value="$(jq -r --arg field "$field" '.[$field] // ""' <<<"$fixture")"
             printf '%s=%s\n' "$field" "$value" >>"$GITHUB_OUTPUT"
           done
+      # A closed module-local declaration can enable this observer only for the
+      # input-free required invocation. Called false/omitted inputs stay off.
+      - name: Select ordinary Test observation mode
+        id: disk-observation-mode
+        shell: bash
+        env:
+          OBSERVATION_MODULE: ${{ steps.module-directory.outputs.module-directory }}
+          DIRECT_REQUIRED_RUN: ${{ toJSON(inputs) == '{}' && contains(github.workflow_ref, '/.github/workflows/validate-go-project.yaml@') }}
+        run: |
+          set -euo pipefail
+          mode=disabled
+          if [[ "$DIRECT_REQUIRED_RUN" == true && -n "$OBSERVATION_MODULE" ]]; then
+            declaration="$OBSERVATION_MODULE/.go-disk-observation.json"
+            tracked="$(git ls-files -- "$declaration")"
+            if [[ -n "$tracked" || -e "$declaration" || -L "$declaration" ]]; then mode=optional; fi
+          fi
+          printf 'mode=%s\n' "$mode" >>"$GITHUB_OUTPUT"
+      - name: Reserve observation reader checkout path
+        if: ${{ steps.disk-observation-mode.outputs.mode == 'optional' }}
+        shell: bash
+        run: |
+          [[ ! -e "$GITHUB_WORKSPACE/.devantler-tech-go-disk-reader" && ! -L "$GITHUB_WORKSPACE/.devantler-tech-go-disk-reader" ]]
+      - name: Checkout immutable observation reader
+        if: ${{ steps.disk-observation-mode.outputs.mode == 'optional' }}
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ${{ job.workflow_repository }}
+          ref: ${{ job.workflow_sha }}
+          path: .devantler-tech-go-disk-reader
+          persist-credentials: false
+          sparse-checkout: .github/scripts/measure-go-disk.sh
+          sparse-checkout-cone-mode: false
+      - name: Resolve ordinary Test observation declaration
+        id: disk-observation
+        if: ${{ steps.disk-observation-mode.outputs.mode == 'optional' }}
+        shell: bash
+        env:
+          OBSERVATION_MODULE: ${{ steps.module-directory.outputs.module-directory }}
+        run: |
+          set -euo pipefail
+          trap 'rm -rf -- "$GITHUB_WORKSPACE/.devantler-tech-go-disk-reader"' EXIT
+          enabled="$(bash "$GITHUB_WORKSPACE/.devantler-tech-go-disk-reader/.github/scripts/measure-go-disk.sh" select "$OBSERVATION_MODULE" optional)"
+          printf 'enabled=%s\n' "$enabled" >>"$GITHUB_OUTPUT"
   tidy:
     name: "\U0001F4E6 Tidy"
     timeout-minutes: 10
@@ -1123,12 +1167,12 @@ jobs:
         with:
           persist-credentials: false
       - name: Reserve disk measurement checkout path
-        if: ${{ inputs.measure-disk-usage == true }}
+        if: ${{ inputs.measure-disk-usage == true || needs.changes.outputs.disk-observation == 'true' }}
         shell: bash
         run: |
           [[ ! -e "$GITHUB_WORKSPACE/.devantler-tech-go-disk" && ! -L "$GITHUB_WORKSPACE/.devantler-tech-go-disk" ]]
       - name: Checkout disk measurement helper
-        if: ${{ inputs.measure-disk-usage == true }}
+        if: ${{ inputs.measure-disk-usage == true || needs.changes.outputs.disk-observation == 'true' }}
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: ${{ job.workflow_repository }}
@@ -1138,7 +1182,7 @@ jobs:
           sparse-checkout: .github/scripts/measure-go-disk.sh
           sparse-checkout-cone-mode: false
       - name: Prepare disk measurement outside the consumer workspace
-        if: ${{ inputs.measure-disk-usage == true }}
+        if: ${{ inputs.measure-disk-usage == true || needs.changes.outputs.disk-observation == 'true' }}
         shell: bash
         run: |
           set -euo pipefail
@@ -1219,6 +1263,13 @@ jobs:
         with:
           go-version-file: ${{ needs.changes.outputs.module-directory }}/go.mod
           cache: false
+      - name: Observe Go storage after setup
+        if: ${{ needs.changes.outputs.disk-observation == 'true' }}
+        env:
+          GO_DISK_OBSERVATION: 'true'
+          GO_DISK_WORKFLOW_SHA: ${{ job.workflow_sha }}
+          GO_DISK_WORKFLOW_REPOSITORY: ${{ job.workflow_repository }}
+        run: bash "$RUNNER_TEMP/measure-go-disk.sh" snapshot after-setup
       # Module downloads come from the default branch's archive. Only the default branch's
       # Test job writes one, and it starts from an exact match so the archive cannot
       # accumulate retired module versions (devantler-tech/.github#565).
@@ -1283,6 +1334,19 @@ jobs:
           key: kubeconform-schema-cache-v1-${{ github.job }}-${{ github.run_id }}
           restore-keys: |
             kubeconform-schema-cache-v1-${{ github.job }}-
+      - name: Observe Go storage after restore
+        if: ${{ needs.changes.outputs.disk-observation == 'true' }}
+        env:
+          GO_DISK_OBSERVATION: 'true'
+          GO_DISK_WORKFLOW_SHA: ${{ job.workflow_sha }}
+          GO_DISK_WORKFLOW_REPOSITORY: ${{ job.workflow_repository }}
+          GO_DISK_MODULE_PRIMARY_KEY: ${{ steps.go-mod-cache.outputs.cache-primary-key }}
+          GO_DISK_MODULE_MATCHED_KEY: ${{ steps.go-mod-cache.outputs.cache-matched-key }}
+          GO_DISK_MODULE_CACHE_HIT: ${{ steps.go-mod-cache.outputs.cache-hit }}
+          GO_DISK_BUILD_PRIMARY_KEY: ${{ steps.go-build-cache.outputs.cache-primary-key }}
+          GO_DISK_BUILD_MATCHED_KEY: ${{ steps.go-build-cache.outputs.cache-matched-key }}
+          GO_DISK_BUILD_CACHE_HIT: ${{ steps.go-build-cache.outputs.cache-hit }}
+        run: bash "$RUNNER_TEMP/measure-go-disk.sh" snapshot after-restore
       - name: Reserve PostgreSQL fixture helper path
         if: ${{ needs.changes.outputs.fixture-enabled == 'true' }}
         working-directory: .
@@ -1315,8 +1379,10 @@ jobs:
           printf '%s\n' "$fixture_env" >>"$GITHUB_ENV"
       - name: "\U0001F9EA Test"
         env:
-          MEASURE_DISK_USAGE: ${{ inputs.measure-disk-usage }}
+          MEASURE_DISK_USAGE: ${{ inputs.measure-disk-usage == true || needs.changes.outputs.disk-observation == 'true' }}
+          GO_DISK_OBSERVATION: ${{ needs.changes.outputs.disk-observation }}
           GO_DISK_WORKFLOW_SHA: ${{ job.workflow_sha }}
+          GO_DISK_WORKFLOW_REPOSITORY: ${{ job.workflow_repository }}
           FIXTURE_ENABLED: ${{ needs.changes.outputs.fixture-enabled }}
         run: |
           # External fixtures are fresh each job; never reuse cached test verdicts.
@@ -1331,6 +1397,29 @@ jobs:
           else
             go test ./...
           fi
+      - name: Finalize Go storage observation
+        id: disk-observation-report
+        if: ${{ !cancelled() && needs.changes.outputs.disk-observation == 'true' }}
+        env:
+          GO_DISK_OBSERVATION: 'true'
+          GO_DISK_WORKFLOW_SHA: ${{ job.workflow_sha }}
+          GO_DISK_WORKFLOW_REPOSITORY: ${{ job.workflow_repository }}
+        run: |
+          bash "$RUNNER_TEMP/measure-go-disk.sh" publish
+          state="$RUNNER_TEMP/go-disk-observation"
+          if [[ -d "$state" && ! -L "$state" && -d "$state/public" && ! -L "$state/public" &&
+            -f "$state/public/report.json" && ! -L "$state/public/report.json" ]]; then
+            printf 'ready=true\n' >>"$GITHUB_OUTPUT" || echo '::warning::Storage artifact readiness could not be retained'
+          fi
+      - name: Upload Go storage observation
+        if: ${{ !cancelled() && needs.changes.outputs.disk-observation == 'true' && steps.disk-observation-report.outputs.ready == 'true' }}
+        continue-on-error: true
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: go-storage-observation-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/go-disk-observation/public/report.json
+          if-no-files-found: warn
+          retention-days: 7
       # The one module-cache writer: a pull request restores this archive and never writes its own.
       - name: Save Go module cache
         if: success() && github.ref == format('refs/heads/{0}', github.event.repository.default_branch) && steps.go-mod-cache.outputs.cache-hit != 'true'
