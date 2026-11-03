@@ -29,7 +29,7 @@ check() {
     cd "$work"
     export PATH="$work/bin:$PATH" FIXTURE="$work"
     export REPOSITORY=devantler-tech/fixture RUN_ID=123 RUN_ATTEMPT=2 HEAD_SHA=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
-    export JOB_RESULTS='success success' CATALOGUE_REQUIRED="${6:-true}" SELECTOR_RESULT="${7:-success}"
+    export JOB_RESULTS='success success skipped' CATALOGUE_REQUIRED="${6:-true}" SELECTOR_RESULT="${7:-success}"
     export SELECTED_JOBS="$selected" NEEDS_JSON="$needs"
     bash "$work/gate.sh"
   ) > "$work/output" 2>&1 || rc=$?
@@ -44,23 +44,23 @@ check() {
   echo "PASS: $label"
 }
 selected='["test-enable-auto-merge-queue","test-other"]'
-successful='{"select-ci-tests":{"result":"success"},"test-enable-auto-merge-queue":{"result":"success"},"test-other":{"result":"success"}}'
+successful='{"select-ci-tests":{"result":"success"},"test-enable-auto-merge-queue":{"result":"success"},"test-other":{"result":"success"},"test-go-workflow-guards":{"result":"skipped"}}'
 check 'rejects a successful matrix with missing native queue slot 2' "$selected" "$successful" fail 1
 check 'rejects a disconnected successful observer result' "$selected" \
-  '{"select-ci-tests":{"result":"success"},"test-enable-auto-merge-queue":{"result":"success"},"test-other":{"result":"success"},"test-enable-auto-merge-queue-results":{"result":"success"}}' fail 1
+  '{"select-ci-tests":{"result":"success"},"test-enable-auto-merge-queue":{"result":"success"},"test-other":{"result":"success"},"test-enable-auto-merge-queue-results":{"result":"success"},"test-go-workflow-guards":{"result":"skipped"}}' fail 1
 
 cp "$root/.github/tests/fixtures/queue-slots.json" "$work/response.json"
 check 'full selection accepts complete current-attempt native slots' "$selected" "$successful" pass 1
 check 'narrow selection omits the native query when the queue was not scheduled' \
-  '["test-other"]' '{"test-other":{"result":"success"},"test-enable-auto-merge-queue":{"result":"skipped"}}' pass 0
+  '["test-other"]' '{"test-other":{"result":"success"},"test-enable-auto-merge-queue":{"result":"skipped"},"test-go-workflow-guards":{"result":"skipped"}}' pass 0
 check 'selected skipped queue fails before any API read' "$selected" \
-  '{"test-other":{"result":"success"},"test-enable-auto-merge-queue":{"result":"skipped"}}' fail 0
+  '{"test-other":{"result":"success"},"test-enable-auto-merge-queue":{"result":"skipped"},"test-go-workflow-guards":{"result":"skipped"}}' fail 0
 check 'missing queue dependency cannot be treated as skipped' '["test-other"]' \
-  '{"test-other":{"result":"success"}}' fail 0
+  '{"test-other":{"result":"success"},"test-go-workflow-guards":{"result":"skipped"}}' fail 0
 check 'unknown queue result fails before any API read' '["test-other"]' \
-  '{"test-other":{"result":"success"},"test-enable-auto-merge-queue":{"result":"unknown"}}' fail 0
+  '{"test-other":{"result":"success"},"test-enable-auto-merge-queue":{"result":"unknown"},"test-go-workflow-guards":{"result":"skipped"}}' fail 0
 check 'excluded catalogue event preserves the original no-query skip' '' \
-  '{"test-enable-auto-merge-queue":{"result":"skipped"}}' pass 0 false skipped
+  '{"test-enable-auto-merge-queue":{"result":"skipped"},"test-go-workflow-guards":{"result":"skipped"}}' pass 0 false skipped
 check 'excluded event rejects manufactured selection' "$selected" "$successful" fail 0 false success
 check 'malformed selection fails before any API read' '{' "$successful" fail 0
 
