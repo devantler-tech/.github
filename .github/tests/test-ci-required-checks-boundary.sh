@@ -57,8 +57,7 @@ selection_case() {
   # dependency result; native queue execution is exercised by the API fixtures.
   local complete
   if complete=$(jq -c 'if type == "object" then
-    (if has("test-enable-auto-merge-queue") then . else . + {"test-enable-auto-merge-queue":{"result":"skipped"}} end) |
-    (if has("test-go-workflow-guards") then . else . + {"test-go-workflow-guards":{"result":"skipped"}} end)
+    (if has("test-enable-auto-merge-queue") then . else . + {"test-enable-auto-merge-queue":{"result":"skipped"}} end)
     else . end' <<<"$needs" 2>/dev/null); then
     needs=$complete
   fi
@@ -70,19 +69,21 @@ selection_case() {
     fail "$label failed: $output"
   fi
 }
-selection_case 'selected successful test' success '["test-one"]' '{"test-one":{"result":"success"}}' pass
-selection_case 'selected skipped test' success '["test-one"]' '{"test-one":{"result":"skipped"}}' fail
-selection_case 'selected missing test' success '["test-one"]' '{}' fail
-selection_case 'failed selector' failure '[]' '{}' fail
-selection_case 'skipped selector' skipped '[]' '{}' fail
-selection_case 'missing selection evidence' success '' '{}' fail
-selection_case 'non-array selection evidence' success '{}' '{}' fail
-selection_case 'duplicate selected jobs' success '["test-one","test-one"]' '{"test-one":{"result":"success"}}' fail
+selection_case 'selected successful test' success '["test-one"]' '{"test-one":{"result":"success"},"test-go-workflow-guards":{"result":"skipped"}}' pass
+selection_case 'selected skipped test' success '["test-one"]' '{"test-one":{"result":"skipped"},"test-go-workflow-guards":{"result":"skipped"}}' fail
+selection_case 'selected missing test' success '["test-one"]' '{"test-go-workflow-guards":{"result":"skipped"}}' fail
+selection_case 'failed selector' failure '[]' '{"test-go-workflow-guards":{"result":"skipped"}}' fail
+selection_case 'skipped selector' skipped '[]' '{"test-go-workflow-guards":{"result":"skipped"}}' fail
+selection_case 'missing selection evidence' success '' '{"test-go-workflow-guards":{"result":"skipped"}}' fail
+selection_case 'non-array selection evidence' success '{}' '{"test-go-workflow-guards":{"result":"skipped"}}' fail
+selection_case 'duplicate selected jobs' success '["test-one","test-one"]' '{"test-one":{"result":"success"},"test-go-workflow-guards":{"result":"skipped"}}' fail
 selection_case 'malformed results evidence' success '[]' 'invalid' fail
-selection_case 'original excluded-event skip' skipped '' '{}' pass false
-selection_case 'executed selector on excluded event' success '[]' '{}' fail false
-selection_case 'manufactured excluded-event selection' skipped '["test-one"]' '{}' fail false
-selection_case 'unknown event eligibility' success '[]' '{}' fail unknown
+selection_case 'original excluded-event skip' skipped '' '{"test-go-workflow-guards":{"result":"skipped"}}' pass false
+selection_case 'executed selector on excluded event' success '[]' '{"test-go-workflow-guards":{"result":"skipped"}}' fail false
+selection_case 'manufactured excluded-event selection' skipped '["test-one"]' '{"test-go-workflow-guards":{"result":"skipped"}}' fail false
+selection_case 'unknown event eligibility' success '[]' '{"test-go-workflow-guards":{"result":"skipped"}}' fail unknown
+selection_case 'unselected missing physical group' success '[]' '{}' fail
+selection_case 'selected missing physical group' success '["test-go-workflow-guards"]' '{}' fail
 
 # A green physical runner must not conceal an unexecuted logical member.
 group=test-go-workflow-guards
