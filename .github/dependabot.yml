@@ -27,6 +27,21 @@ updates:
         group-by: dependency-name
         patterns:
           - "actions/upload-code-coverage"
+  # Runnable catalogue modules; keep these separate from the frozen advisory fixtures below.
+  - package-ecosystem: gomod
+    directories:
+      - /actions/validate-naming
+      - /actions/validate-shell-pipelines
+      - /.github/tests/catalogue-credentials
+      - /.github/tests/go-postgresql-fixture
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    groups:
+      catalogue-go:
+        patterns:
+          - "*"
   # The govulncheck allowlist self-test fixture (.github/tests/govulncheck-allowlist)
   # DELIBERATELY pins a vulnerable golang.org/x/text v0.3.0 so the CI self-test
   # (ci.yaml: test-govulncheck-allowlist-honored / test-govulncheck-strict-blocks)
