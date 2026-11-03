@@ -28,7 +28,7 @@ and real native artifact validation must follow publication separately.
 The observer queries only named Go environment keys. It records the actual
 workspace, selected module, module cache, build cache, toolchain, effective Go
 temporary directory and runner temporary directory using fixed labels. Paths
-and probe diagnostics stay private in the runner's temporary directory. Only
+and raw probe output stay private in the runner's temporary directory. Only
 `go-disk-observation/public/report.json` is uploaded, with seven-day retention.
 The artifact includes:
 
@@ -44,6 +44,15 @@ The artifact includes:
 - The original command result and an explicit completeness verdict. A failed Go
   command may have complete observations; successful Go execution does not imply
   complete observations.
+- Each component walk's fixed result class (`measured`, `command-failed`, or
+  `invalid-output`), bounded-probe exit status and coarse whole-second elapsed
+  time. Absent and intentionally uncollected components have matching classes
+  and null exit/time fields. A nonzero status does not identify a permission
+  error or prove that the deadline fired; raw stdout and stderr are omitted.
+  The Go-temp label also distinguishes an explicit Go environment value from
+  the TMPDIR fallback or system default, without disclosing those paths. A
+  fallback may cover shared temporary contents; no category proves exclusive
+  Go ownership. Other labels use the fixed `fixed-label` source category.
 
 Completeness also requires actual runner image identity and no retained unknown
 component measurements, independently of the writable failure marker. Absent

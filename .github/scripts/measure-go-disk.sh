@@ -171,6 +171,7 @@ observation_init() {
 }
 observation_entry() {
   local label="$1" path="$2" scope=path status=measured bytes inodes device group size=null component=not-collected frame parent
+  local path_source="${3:-fixed-label}" probe_result=not-collected probe_exit=null probe_elapsed=null probe_started
   if [[ ! -e "$path" && ! -L "$path" ]]; then
     parent="$(dirname "$path")"
     while [[ ! -e "$parent" && ! -L "$parent" && "$parent" != / ]]; do parent="$(dirname "$parent")"; done
@@ -180,6 +181,7 @@ observation_entry() {
     status=absent
     size=0
     component=absent
+    probe_result=absent
   fi
   frame="$(observation_probe env LC_ALL=C df -Pk "$path")" || return 1
   bytes="$(awk 'NR==2 && NF==6 {print $2,$3,$4} END {if(NR!=2) exit 1}' <<<"$frame")" || return 1
@@ -196,8 +198,17 @@ observation_entry() {
     group="$(wc -l <"$observation_state/devices" | tr -d '[:space:]')" || return 1
   }
   if [[ "$status" != absent && "$observation_components" == true && "$label" != root ]]; then
-    if frame="$(observation_probe du -sHk -- "$path")" &&
-      size="$(awk 'NR==1 {print $1} END {if(NR!=1) exit 1}' <<<"$frame")" && [[ "$size" =~ ^[0-9]{1,12}$ ]]; then
+    probe_started=$SECONDS
+    if frame="$(observation_probe du -sHk -- "$path")"; then probe_exit=0; else probe_exit=$?; fi
+    probe_elapsed=$((SECONDS - probe_started))
+    if [[ "$probe_exit" != 0 ]]; then
+      probe_result='command-failed'
+    elif size="$(awk 'NR==1 {print $1} END {if(NR!=1) exit 1}' <<<"$frame")" && [[ "$size" =~ ^[0-9]{1,12}$ ]]; then
+      probe_result=measured
+    else
+      probe_result=invalid-output
+    fi
+    if [[ "$probe_result" == measured ]]; then
       component=measured
     else
       size=null
@@ -206,26 +217,34 @@ observation_entry() {
     fi
   fi
   jq -nc --arg label "$label" --arg status "$status" --arg scope "$scope" --arg group "fs-$group" \
-    --arg bytes "$bytes" --arg inodes "$inodes" --argjson size "$size" --arg component "$component" '
+    --arg bytes "$bytes" --arg inodes "$inodes" --argjson size "$size" --arg component "$component" \
+    --arg source "$path_source" --arg result "$probe_result" --argjson code "$probe_exit" --argjson elapsed "$probe_elapsed" '
     ($bytes|split(" ")|map(tonumber)) as $b | ($inodes|split(" ")|map(tonumber)) as $i |
     if ($b[0]>0 and $b[1]+$b[2]<=$b[0] and $i[0]>0 and $i[1]+$i[2]<=$i[0]) then
       {label:$label,status:$status,filesystemScope:$scope,filesystemGroup:$group,totalKiB:$b[0],usedKiB:$b[1],availableKiB:$b[2],
-       totalInodes:$i[0],usedInodes:$i[1],availableInodes:$i[2],componentKiB:$size,componentStatus:$component}
+       totalInodes:$i[0],usedInodes:$i[1],availableInodes:$i[2],componentKiB:$size,componentStatus:$component,pathSource:$source,
+       componentProbe:{result:$result,exitCode:$code,elapsedSeconds:$elapsed}}
     else error("inconsistent counters") end'
 }
 observation_frame() {
   observation_bound || return 1
-  local environment rows frame index path size
+  local environment rows frame index path size temp_source=go-env source
   environment="$(cat "$observation_state/paths.json")" || return 1
   local paths=(/ "$GITHUB_WORKSPACE" "$PWD" "$(jq -r .GOMODCACHE <<<"$environment")" "$(jq -r .GOCACHE <<<"$environment")"
   "$(jq -r .GOROOT <<<"$environment")" "$(jq -r '.GOTMPDIR|select(.!="")' <<<"$environment")" "${RUNNER_TEMP:-/tmp}")
-  [[ -n "${paths[6]}" ]] || paths[6]="${TMPDIR:-/tmp}"
+  if [[ -z "${paths[6]}" ]]; then
+    paths[6]="${TMPDIR:-/tmp}"
+    temp_source=system-default
+    [[ -z "${TMPDIR:-}" ]] || temp_source=tmpdir-fallback
+  fi
   [[ "${#paths[@]}" == "${#observation_labels[@]}" ]] || return 1
   rows="$(mktemp "$observation_state/rows.XXXXXX")" || return 1
   for index in "${!observation_labels[@]}"; do
     path="${paths[$index]}"
     [[ "$path" == /* && "$path" != *$'\n'* && "$path" != *$'\r'* ]] || return 1
-    observation_entry "${observation_labels[$index]}" "$path" >>"$rows" || return 1
+    source=fixed-label
+    [[ "${observation_labels[$index]}" != go-temp ]] || source="$temp_source"
+    observation_entry "${observation_labels[$index]}" "$path" "$source" >>"$rows" || return 1
   done
   frame="$(jq -nc --arg phase "$observation_phase" --argjson epoch "$(date +%s)" --slurpfile entries "$rows" \
     '{phase:$phase,epoch:$epoch,entries:$entries}')" || return 1
@@ -263,12 +282,21 @@ observation_publish() {
     def number: type=="number" and .>=0 and floor==.;
     def key: type=="string" and test("^go-[a-zA-Z0-9_./-]{1,500}$");
     def cache: (.primary|key) and (.matched=="" or (.matched|key)) and (.hit|IN(true,false,null));
+    def probe:
+      (if .componentStatus=="unknown" then (.componentProbe.result|IN("command-failed","invalid-output"))
+       else .componentProbe.result==.componentStatus end) and
+      (.componentProbe | keys==["elapsedSeconds","exitCode","result"] and
+        if (.result|IN("absent","not-collected")) then .exitCode==null and .elapsedSeconds==null
+        else (.elapsedSeconds|number) and
+          if .result=="command-failed" then (.exitCode|number and .>0 and .<=255) else .exitCode==0 end
+        end);
     def frame:
       (.phase|IN("after-setup","after-restore","before-command","during-command","command-exit")) and (.epoch|number) and
       ([.entries[].label]|sort)==["build-cache","go-temp","module","module-cache","root","runner-temp","toolchain","workspace"] and
       all(.entries[];
         (.status|IN("measured","absent")) and (.filesystemScope|IN("path","nearest-existing-parent")) and
         (.filesystemGroup|test("^fs-[0-9]{1,3}$")) and (.componentStatus|IN("measured","absent","not-collected","unknown")) and
+        (if .label=="go-temp" then (.pathSource|IN("go-env","tmpdir-fallback","system-default")) else .pathSource=="fixed-label" end) and probe and
         ([.totalKiB,.usedKiB,.availableKiB,.totalInodes,.usedInodes,.availableInodes]|all(number)) and
         (.componentKiB==null or (.componentKiB|number)));
     if (($identity.head|test("^[a-f0-9]{40}$")) and ($identity.catalogue|test("^[a-f0-9]{40}$")) and
@@ -287,7 +315,8 @@ observation_publish() {
         module:(.module|{directory,goModSHA256,goSumSHA256}),toolchain:(.toolchain|{version,os,arch,cgo})}) +
       {schema:1,command:($command|{executed,completed,exit,finishedEpoch,observerCompleted}),
       caches:($caches|{module:(.module|{primary,matched,hit}),build:(.build|{primary,matched,hit})}),
-      frames:[$frames[]|{phase,epoch,entries:[.entries[]|{label,status,filesystemScope,filesystemGroup,totalKiB,usedKiB,availableKiB,totalInodes,usedInodes,availableInodes,componentKiB,componentStatus}]}],
+      frames:[$frames[]|{phase,epoch,entries:[.entries[]|{label,status,filesystemScope,filesystemGroup,totalKiB,usedKiB,availableKiB,totalInodes,usedInodes,availableInodes,componentKiB,componentStatus,pathSource,
+        componentProbe:(.componentProbe|{result,exitCode,elapsedSeconds})}]}],
       quotaLimits:"not-established",cacheArchiveIdentity:"not-established",
       complete:($complete and $command.completed==true and $command.observerCompleted==true and
         $identity.image!="unknown" and $identity.imageVersion!="unknown" and

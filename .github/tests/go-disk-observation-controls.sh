@@ -80,7 +80,7 @@ if [[ "${OBS_TEST_MODE:-}" == go-hung ]]; then
   sleep 30
 fi
 keys="$(printf '%s\n' "${@:3}" | jq -Rnc '[inputs]')"
-jq -nc --arg root "$OBS_TEST_ROOT" --argjson keys "$keys" '{GOCACHE:($root+"/build"),GOMODCACHE:($root+"/module"),GOROOT:($root+"/toolchain"),GOTMPDIR:($root+"/tmp"),GOVERSION:"go1.27.3",GOOS:"linux",GOARCH:"amd64",CGO_ENABLED:"1"} |
+jq -nc --arg root "$OBS_TEST_ROOT" --arg mode "${OBS_TEST_MODE:-}" --argjson keys "$keys" '{GOCACHE:($root+"/build"),GOMODCACHE:($root+"/module"),GOROOT:($root+"/toolchain"),GOTMPDIR:(if ($mode|startswith("go-temp-")) then "" else $root+"/tmp" end),GOVERSION:"go1.27.3",GOOS:"linux",GOARCH:"amd64",CGO_ENABLED:"1"} |
   with_entries(select(.key as $key | $keys | index($key)))'
 SH
 cat >"$scratch/probe-delay.sh" <<'SH'
@@ -127,6 +127,15 @@ cat >"$scratch/bin/du" <<'SH'
 #!/usr/bin/env bash
 source "$OBS_TEST_ROOT/probe-delay.sh"
 delay_probe du
+printf 'private-probe-secret\n' >&2
+if [[ "${*: -1}" == "$OBS_TEST_ROOT/tmp" ]]; then
+  case "${OBS_TEST_MODE:-}" in
+    du-fast-failure) printf '42\tprivate-path\n'; exit 1 ;;
+    du-malformed) printf 'not-a-size\tprivate-path\n'; exit 0 ;;
+    du-empty) exit 0 ;;
+    du-deadline) sleep 30 ;;
+  esac
+fi
 printf '42\tprivate-path\n'
 [[ "${OBS_TEST_MODE:-}" != du-partial ]] || exit 23
 SH
@@ -142,6 +151,68 @@ sed 's/GOTMPDIR GOVERSION GOOS/GOTMPDIR GOOS/' "$script" >"$scratch/no-goversion
 bash "$scratch/no-goversion.sh" snapshot after-setup >"$scratch/output" 2>"$scratch/error"
 [[ ! -e "$RUNNER_TEMP/go-disk-observation/identity.json" ]] || fail 'missing GOVERSION query was not detected'
 rm -rf -- "$RUNNER_TEMP/go-disk-observation"
+# Dropping a failed walk's real status or accepting malformed stdout must lose
+# the public, sanitised explanation without changing its incomplete verdict.
+for scenario in du-partial du-fast-failure du-malformed du-empty du-deadline; do
+  {
+    OBS_TEST_MODE="$scenario" bash "$script" snapshot after-setup
+    OBS_TEST_MODE="$scenario" bash "$script" snapshot after-restore
+    bash "$script" publish
+  } >>"$scratch/output" 2>>"$scratch/error"
+  result=invalid-output
+  code=0
+  case "$scenario" in
+    du-partial) result=command-failed; code=23 ;;
+    du-fast-failure) result=command-failed; code=1 ;;
+    du-deadline) result=command-failed; code=124 ;;
+  esac
+  jq -e --arg result "$result" --argjson code "$code" '.complete==false and
+    any(.frames[-1].entries[];.label=="go-temp" and .componentStatus=="unknown" and .componentKiB==null and
+      .pathSource=="go-env" and .componentProbe.result==$result and .componentProbe.exitCode==$code and
+      (.componentProbe.elapsedSeconds|type=="number" and .>=0 and floor==.))' \
+    "$RUNNER_TEMP/go-disk-observation/public/report.json" >/dev/null || fail "$scenario lost the failed probe diagnostic"
+  if [[ "$scenario" == du-deadline ]]; then
+    jq -e 'any(.frames[-1].entries[];.label=="go-temp" and .componentProbe.elapsedSeconds>=1)' \
+      "$RUNNER_TEMP/go-disk-observation/public/report.json" >/dev/null || fail 'deadline probe lost its elapsed time'
+  fi
+  ! grep -E 'private-path|private-probe-secret' "$RUNNER_TEMP/go-disk-observation/public/report.json" "$scratch/output" "$scratch/error" >/dev/null || fail 'raw probe output escaped sanitisation'
+  if [[ "$scenario" == du-partial ]]; then
+    cp "$RUNNER_TEMP/go-disk-observation/frames.jsonl" "$scratch/diagnostic-frames"
+    # Invalid diagnostics must revoke the detailed receipt, rather than become
+    # public free text or contradict the retained unknown component status.
+    for mutation in \
+      '.entries[6].componentProbe.result="private-probe-secret"' \
+      '.entries[6].componentProbe.exitCode=256' \
+      '.entries[6].componentProbe.elapsedSeconds=-1' \
+      '.entries[6].componentProbe.stderr="private-probe-secret"' \
+      '.entries[6].pathSource="private-probe-secret"' \
+      '.entries[6].componentProbe.result="measured"'; do
+      jq -c "$mutation" "$scratch/diagnostic-frames" >"$RUNNER_TEMP/go-disk-observation/frames.jsonl"
+      bash "$script" publish >>"$scratch/output" 2>>"$scratch/error"
+      jq -e '.complete==false and (has("frames")|not)' "$RUNNER_TEMP/go-disk-observation/public/report.json" >/dev/null || fail 'invalid probe diagnostic was published'
+      ! grep -F 'private-probe-secret' "$RUNNER_TEMP/go-disk-observation/public/report.json" "$scratch/output" "$scratch/error" >/dev/null || fail 'invalid diagnostic disclosed private data'
+    done
+    # The allowlisted projection must also strip unrelated extra entry fields.
+    jq -c '.entries[6].privatePath="private-probe-secret"' "$scratch/diagnostic-frames" >"$RUNNER_TEMP/go-disk-observation/frames.jsonl"
+    bash "$script" publish >>"$scratch/output" 2>>"$scratch/error"
+    jq -e '.complete==false and (.frames|length)>0' "$RUNNER_TEMP/go-disk-observation/public/report.json" >/dev/null || fail 'valid diagnostics lost their detailed receipt'
+    ! grep -F 'private-probe-secret' "$RUNNER_TEMP/go-disk-observation/public/report.json" >/dev/null || fail 'entry projection copied an unapproved field'
+  fi
+  rm -rf -- "$RUNNER_TEMP/go-disk-observation"
+done
+# Empty GOTMPDIR does not establish a Go-owned directory: describe which
+# existing fallback was selected, without publishing the directory itself.
+for source in tmpdir-fallback system-default; do
+  if [[ "$source" == tmpdir-fallback ]]; then
+    TMPDIR="$scratch/tmp" OBS_TEST_MODE=go-temp-empty bash "$script" snapshot after-setup >>"$scratch/output" 2>>"$scratch/error"
+  else
+    env -u TMPDIR OBS_TEST_MODE=go-temp-empty bash "$script" snapshot after-setup >>"$scratch/output" 2>>"$scratch/error"
+  fi
+  jq -se --arg source "$source" 'any(.[].entries[];.label=="go-temp" and .pathSource==$source and
+    .componentProbe.result=="measured" and .componentProbe.exitCode==0)' "$RUNNER_TEMP/go-disk-observation/frames.jsonl" >/dev/null || fail 'effective temp fallback source was lost'
+  rm -rf -- "$RUNNER_TEMP/go-disk-observation"
+done
+printf 'Go disk observation probe diagnostic controls passed\n'
 # The two controls use successful probes below the individual two-second limit.
 # Seven 1.7s walks exceed the old 10s stop wait; forty 0.9s probes exceed the
 # old 30s edge wait. Only one frame is slowed, keeping this regression bounded.
@@ -255,10 +326,12 @@ rm -rf -- "$RUNNER_TEMP/go-disk-observation"
 rc=0
 OBS_TEST_MODE=du-partial bash "$script" test bash -c 'sleep 2; exit 7' >>"$scratch/output" 2>>"$scratch/error" || rc=$?
 [[ "$rc" == 7 ]] || fail 'failed component walk changed Go failure'
-jq -e '.complete==false and .command.exit==7 and
+jq -e '.complete==false and .command.exit==7 and .command.observerCompleted==false and
   any(.frames[];.phase=="during-command") and
   any(.frames[-1].entries[];.label=="build-cache" and .availableKiB==8000 and .componentStatus=="unknown" and .componentKiB==null)' \
   "$report" >/dev/null || fail 'failed component walk discarded independent filesystem evidence'
+sed -n 's/^GO_DISK_USAGE //p' "$scratch/output" | tail -n 1 | jq -e '.status=="unknown" and .command_exit==7 and
+  [.initial_available_kib,.final_available_kib,.minimum_available_kib,.maximum_used_kib]==[null,null,null,null]' >/dev/null || fail 'component failure weakened legacy UNKNOWN counters'
 # A cold cache is described through its parent filesystem; observation must
 # never manufacture a cache directory or substitute a workload cache.
 rm -rf -- "$RUNNER_TEMP/go-disk-observation" "$scratch/module" "$scratch/build"
