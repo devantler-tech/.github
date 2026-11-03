@@ -196,6 +196,11 @@ jobs:
           pr_labels: ${{ inputs.pr-labels }}
           pr_branch_name_prefix: ${{ inputs.pr-branch-name-prefix }}
           template_sync_ignore_file_path: ${{ inputs.template-sync-ignore-file-path }}
+          # The action always pulls with `--tags`, so a caller that releases its own tags with the
+          # template's version numbers gets "would clobber existing tag", the fetch fails, nothing
+          # merges and the run still passes (#861). `--no-tags` comes after the action's `--tags`
+          # and wins; the rest is the action's own default merge behaviour.
+          git_remote_pull_params: --no-tags --allow-unrelated-histories --squash --strategy=recursive -X theirs
 
       - name: 📑 Checkout shared signing helper
         if: ${{ inputs.use-app-token }}
