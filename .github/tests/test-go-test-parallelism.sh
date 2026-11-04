@@ -142,7 +142,7 @@ for job in test coverage; do
     "$root/.github/workflows/validate-go-project.yaml" >"$work/command.sh"
   for fixture_enabled in false true; do
     for measured in false true; do
-      for parallelism in '' 8; do
+      for parallelism in '' 2 8; do
         rm -f -- "$work/argv"
         PATH="$work/bin:$PATH" GO_CAPTURE="$work/argv" RUNNER_TEMP="$work/runner" \
           FIXTURE_ENABLED="$fixture_enabled" MEASURE_DISK_USAGE="$measured" \
