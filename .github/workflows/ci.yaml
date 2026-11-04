@@ -2651,6 +2651,7 @@ jobs:
           export TESTED_JOB_CONDITION='$'"{{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
           export TESTED_SELECTOR_PREFIX='$'"{{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), '"
           export TESTED_SELECTOR_SUFFIX="') }}"
+          export TESTED_STEP_CONDITION='$'"{{ !cancelled() }}"
           # shellcheck disable=SC2016 # These are yq variables, not shell variables.
           invoked_tests="$(
             yq -r '
@@ -2669,7 +2670,7 @@ jobs:
               | .steps[]?
               | select((has("shell") | not) or .shell == "bash")
               | select((has("working-directory") | not) or .working-directory == ".")
-              | select(.run != null and (has("if") | not))
+              | select(.run != null and ((has("if") | not) or .if == strenv(TESTED_STEP_CONDITION)))
               | select((has("continue-on-error") | not) or .continue-on-error == false)
               | .run
               | select((split("\n") | map(select(test("^[[:space:]]*(#.*)?$") | not)) | length) == 1)
@@ -4006,14 +4007,21 @@ jobs:
           fi
           echo "A failure before the deadline fails the gate and is not retried ✅"
 
-  test-govulncheck-main-coverage:
+  # Four independent read-only guards share one runner; every logical outcome
+  # remains mandatory even after an earlier assertion fails.
+  test-go-workflow-guards:
     timeout-minutes: 5
     needs: [select-ci-tests]
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-govulncheck-main-coverage') }}"
-    name: "[Test] Govulncheck - Default-Branch & Allowlist Trigger Coverage"
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-go-workflow-guards') }}"
+    name: "[Test] Go workflow guards"
     runs-on: ubuntu-latest
     permissions:
       contents: read
+    outputs:
+      test-govulncheck-main-coverage: ${{ steps.test-govulncheck-main-coverage.outcome }}
+      test-govulncheck-main-coverage-blocks: ${{ steps.test-govulncheck-main-coverage-blocks.outcome }}
+      test-go-filter-nested-modules: ${{ steps.test-go-filter-nested-modules.outcome }}
+      test-go-filter-nested-modules-blocks: ${{ steps.test-go-filter-nested-modules-blocks.outcome }}
     steps:
       - name: 🛡️ Harden runner
         uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
@@ -4026,79 +4034,27 @@ jobs:
           persist-credentials: false
 
       - name: 🧪 Assert govulncheck runs on the default branch and on allowlist edits
+        id: test-govulncheck-main-coverage
+        if: ${{ !cancelled() }}
+        shell: bash
         run: bash .github/tests/test-govulncheck-main-coverage.sh
 
-  # ── Failing-input counterpart to the job above (the both-tests convention) ──
-  # The trigger guard is itself a gate, and its checks are structural string analysis over
-  # a GitHub expression — unusually easy to make silently vacuous (a `strip_groups`
-  # regression that empties `$top_level` satisfies every assertion). The happy-path job
-  # above cannot catch that. This one points the SAME guard at deliberately-bad fixtures
-  # and asserts it fails WITH THE EXPECTED MESSAGE, plus that it still passes the real
-  # workflow — so neither an accept-everything nor a reject-everything guard passes.
-  test-govulncheck-main-coverage-blocks:
-    timeout-minutes: 5
-    needs: [select-ci-tests]
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-govulncheck-main-coverage-blocks') }}"
-    name: "[Test] Govulncheck Trigger Guard - Blocks On Bad Input"
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    steps:
-      - name: 🛡️ Harden runner
-        uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
-        with:
-          egress-policy: audit
-
-      - name: 📄 Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-
       - name: 🧪 Assert the trigger guard blocks every bad-input fixture
+        id: test-govulncheck-main-coverage-blocks
+        if: ${{ !cancelled() }}
+        shell: bash
         run: bash .github/tests/test-govulncheck-main-coverage-blocks.sh
 
-  test-go-filter-nested-modules:
-    timeout-minutes: 5
-    needs: [select-ci-tests]
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-go-filter-nested-modules') }}"
-    name: "[Test] Go Filter Nested Modules"
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    steps:
-      - name: 🛡️ Harden runner
-        uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
-        with:
-          egress-policy: audit
-
-      - name: 📄 Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-
       - name: 🧪 Assert the go filter covers nested modules
+        id: test-go-filter-nested-modules
+        if: ${{ !cancelled() }}
+        shell: bash
         run: bash .github/tests/test-go-filter-nested-modules.sh
 
-  test-go-filter-nested-modules-blocks:
-    timeout-minutes: 5
-    needs: [select-ci-tests]
-    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-go-filter-nested-modules-blocks') }}"
-    name: "[Test] Go Filter Nested Modules - Blocks On Bad Input"
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    steps:
-      - name: 🛡️ Harden runner
-        uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
-        with:
-          egress-policy: audit
-
-      - name: 📄 Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-
       - name: 🧪 Assert the nested-module filter guard blocks every bad-input fixture
+        id: test-go-filter-nested-modules-blocks
+        if: ${{ !cancelled() }}
+        shell: bash
         run: bash .github/tests/test-go-filter-nested-modules-blocks.sh
 
   # ── The same property, asserted for the Go TEST suite (ksail#6373) ──────────────
@@ -5249,10 +5205,7 @@ jobs:
       - test-govulncheck-action-lockstep
       - test-govulncheck-timeout
       - test-govulncheck-timeout-retry-live
-      - test-govulncheck-main-coverage
-      - test-govulncheck-main-coverage-blocks
-      - test-go-filter-nested-modules
-      - test-go-filter-nested-modules-blocks
+      - test-go-workflow-guards
       - test-suite-default-branch-coverage
       - test-suite-default-branch-coverage-blocks
       - test-zizmor-blocks
@@ -5371,10 +5324,7 @@ jobs:
             ${{ needs.test-govulncheck-action-lockstep.result }}
             ${{ needs.test-govulncheck-timeout.result }}
             ${{ needs.test-govulncheck-timeout-retry-live.result }}
-            ${{ needs.test-govulncheck-main-coverage.result }}
-            ${{ needs.test-govulncheck-main-coverage-blocks.result }}
-            ${{ needs.test-go-filter-nested-modules.result }}
-            ${{ needs.test-go-filter-nested-modules-blocks.result }}
+            ${{ needs.test-go-workflow-guards.result }}
             ${{ needs.test-suite-default-branch-coverage.result }}
             ${{ needs.test-suite-default-branch-coverage-blocks.result }}
             ${{ needs.test-zizmor-blocks.result }}
@@ -5419,7 +5369,8 @@ jobs:
           if [[ "$CATALOGUE_REQUIRED" == false ]]; then
             # These events retain the original candidate-code exclusion. The
             # selector must itself be skipped, with no manufactured selection.
-            if [[ "$SELECTOR_RESULT" != skipped || -n "$SELECTED_JOBS" ]]; then
+            if [[ "$SELECTOR_RESULT" != skipped || -n "$SELECTED_JOBS" ]] ||
+              ! jq -e '."test-go-workflow-guards".result == "skipped"' <<< "$NEEDS_JSON" >/dev/null; then
               echo "❌ CI - Required Checks — excluded catalogue event ran selection."
               exit 1
             fi
@@ -5440,6 +5391,24 @@ jobs:
             all($selected[]; $results[.].result == "success")
           ' > /dev/null || {
             echo "❌ CI - Required Checks — incomplete selection or a selected test did not succeed."
+            exit 1
+          }
+
+          # Physical success cannot replace the four independent guard outcomes.
+          # An unselected group must retain its scheduling skip.
+          jq -en --argjson selected "$SELECTED_JOBS" --argjson results "$NEEDS_JSON" '
+            if ($selected | index("test-go-workflow-guards")) == null then
+              $results["test-go-workflow-guards"].result == "skipped"
+            else
+              $results["test-go-workflow-guards"].outputs as $members |
+              ($members | type == "object") and
+              ($members | keys == [
+                "test-go-filter-nested-modules","test-go-filter-nested-modules-blocks",
+                "test-govulncheck-main-coverage","test-govulncheck-main-coverage-blocks"
+              ]) and all($members[]; . == "success")
+            end
+          ' > /dev/null || {
+            echo "❌ CI - Required Checks — grouped Go guard outcomes are incomplete or not successful."
             exit 1
           }
 

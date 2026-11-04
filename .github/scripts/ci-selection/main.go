@@ -21,6 +21,7 @@ const scheduling = "github.event_name != 'merge_group' && !startsWith(github.eve
 const dotnetFixtureAction = ".github/actions/test-dotnet-fixture/action.yaml"
 const goCacheObserver = "test-go-cache-native-observer"
 const goCacheFixture = "test-validate-go-postgresql-fixture"
+const goWorkflowGuards = "test-go-workflow-guards"
 
 var ordinarySelectiveFiles = map[string]bool{
 	dotnetFixtureAction: true,
@@ -58,6 +59,9 @@ func validateInventory(i inventory, w workflow) ([]string, error) {
 		return nil, err
 	}
 	if err := validateGoCacheOwners(i, w); err != nil {
+		return nil, err
+	}
+	if err := validateGoWorkflowGuards(i, w); err != nil {
 		return nil, err
 	}
 	seen := map[string]bool{"select-ci-tests": true, "ci-required-checks": true}
@@ -128,6 +132,22 @@ func validateInventory(i inventory, w workflow) ([]string, error) {
 	}
 	sort.Strings(gated)
 	return gated, nil
+}
+
+func validateGoWorkflowGuards(i inventory, w workflow) error {
+	j, exists := w.Jobs[goWorkflowGuards]
+	if !exists || j.Uses != "" || !reflect.DeepEqual(i.Jobs[goWorkflowGuards], []string{"actions/upload-coverage/"}) {
+		return fmt.Errorf("incomplete grouped Go workflow guards")
+	}
+	if _, preserved := i.Preserved[goWorkflowGuards]; preserved {
+		return fmt.Errorf("grouped Go workflow guards have bypass scheduling")
+	}
+	for _, optional := range i.CatalogueOptional {
+		if optional == goWorkflowGuards {
+			return fmt.Errorf("grouped Go workflow guards must remain required")
+		}
+	}
+	return nil
 }
 
 func validateGoCacheOwners(i inventory, w workflow) error {

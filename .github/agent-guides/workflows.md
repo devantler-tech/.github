@@ -221,8 +221,10 @@ matched fixture-CI timing comparison. Production budgets and broader rollout rem
 
 Every `.github/tests/test-*.sh` is a test entrypoint and must have an explicit invocation in a
 `ci.yaml` step's `run:` block. Put `bash .github/tests/test-name.sh` (or the executable path) in a
-dedicated step without a step-level `if`; quoting, arguments, and surrounding comments or blank lines
-are supported. Use portable filenames containing letters, digits, dots, underscores, and hyphens.
+dedicated step without a step-level `if`, or with exactly `${{ !cancelled() }}` when
+independent assertions must continue after an earlier failure. Other step conditions do not count.
+Quoting, arguments, and surrounding comments or blank lines are supported. Use portable filenames
+containing letters, digits, dots, underscores, and hyphens.
 Explicit shells and job/workflow shell defaults must use `bash`; a custom shell could return
 success without executing the test script.
 Working-directory overrides at those scopes must be `.` so relative paths identify the repository's
@@ -276,6 +278,16 @@ successful selector and every selected job's success; an unexpectedly skipped te
 cannot make CI green. Keep `test-ci-selection.sh`, its inventory and required-reducer
 negative controls passing. Historical coverage and burst latency measurements remain
 separate evidence in #475.
+
+The four default-branch/allowlist and nested-module Go workflow guards share the
+inline `test-go-workflow-guards` runner. Their unchanged Bash commands execute as
+independent uncancelled steps, with no failure tolerance. Each original logical ID
+exports its own actual step outcome; the workspace-independent reducer requires all
+four successes when selected and a physical skip when unselected. Keep the group's
+`actions/upload-coverage/` ownership and deployment-only mandatory floor. This is
+three fewer runner allocations when selected, not measured queue or latency relief.
+Keep actual-command failure, output-binding, selection, reducer and wiring controls
+required. Parent #475's burst and Platform acceptance remain separate.
 
 `lint-readme-parity` also checks every reusable workflow's declared inputs and secrets against
 its own level-three section in the root README. Link that section to the workflow file and put

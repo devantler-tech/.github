@@ -209,6 +209,69 @@ func TestJobInventoryFailsClosed(t *testing.T) {
 	}
 }
 
+func TestGoWorkflowGuardGroupRequiresItsOwnerAndDeploymentFloor(t *testing.T) {
+	for _, mutation := range []string{"complete", "removed", "ownerless", "wrong owner", "optional", "preserved", "reusable"} {
+		t.Run(mutation, func(t *testing.T) {
+			i, w := dotnetSelectionFixture(t)
+			const group = "test-go-workflow-guards"
+			i.Jobs[group] = []string{"actions/upload-coverage/"}
+			w.Jobs[group] = job{If: selectionGuard(group), Needs: []any{"select-ci-tests"}}
+			switch mutation {
+			case "removed":
+				delete(i.Jobs, group)
+				delete(w.Jobs, group)
+			case "ownerless":
+				i.Jobs[group] = []string{}
+			case "wrong owner":
+				i.Jobs[group] = []string{"actions/one/"}
+			case "optional":
+				i.CatalogueOptional = append(i.CatalogueOptional, group)
+			case "preserved":
+				i.Preserved[group] = w.Jobs[group]
+			case "reusable":
+				j := w.Jobs[group]
+				j.Uses = "$/.github/workflows/validate-go-project.yaml"
+				w.Jobs[group] = j
+			}
+			_, err := validateInventory(i, w)
+			if mutation == "complete" {
+				if err != nil {
+					t.Fatalf("complete grouped guard rejected: %v", err)
+				}
+			} else if err == nil {
+				t.Fatalf("accepted %s grouped guard evidence", mutation)
+			}
+		})
+	}
+}
+
+func TestGoWorkflowGuardGroupSelectionBoundaries(t *testing.T) {
+	i, _ := dotnetSelectionFixture(t)
+	for _, tc := range []struct {
+		name  string
+		paths []string
+		want  bool
+	}{
+		{"coverage action", []string{"actions/upload-coverage/action.yaml"}, true},
+		{"unrelated known action", []string{"actions/one/action.yaml"}, false},
+		{"unknown", []string{"unknown"}, true},
+		{"shared helper", []string{".scripts/retry.sh"}, true},
+		{"workflow", []string{".github/workflows/ci.yaml"}, true},
+		{"mixed", []string{"actions/one/action.yaml", "unknown"}, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got := selectJobs(i, "pull_request", tc.paths)
+			found := false
+			for _, id := range got {
+				found = found || id == "test-go-workflow-guards"
+			}
+			if found != tc.want {
+				t.Fatalf("group selection %v for %v; want %v", got, tc.paths, tc.want)
+			}
+		})
+	}
+}
+
 func TestEntrypointBindsGitEvidenceAndSelectedOutput(t *testing.T) {
 	dir, base, git := gitFixture(t)
 	if err := os.WriteFile(filepath.Join(dir, "actions/one/action.yaml"), []byte("changed\n"), 0600); err != nil {
@@ -239,7 +302,7 @@ func TestEntrypointBindsGitEvidenceAndSelectedOutput(t *testing.T) {
 		fails                             bool
 	}{
 		{"selective PR", "pull_request", "true", head, "selected=[\"test-one\",\"test-one-wrapper\"]\n", false},
-		{"main retains complete inventory", "push", "true", "", "selected=[\"test-go-cache-native-observer\",\"test-one\",\"test-one-wrapper\",\"test-run-dotnet-tests-gate-lockstep\",\"test-run-dotnet-tests-mtp\",\"test-run-dotnet-tests-workflow\",\"test-two\",\"test-validate-go-postgresql-fixture\",\"test-workflow\"]\n", false},
+		{"main retains complete inventory", "push", "true", "", "selected=[\"test-go-cache-native-observer\",\"test-go-workflow-guards\",\"test-one\",\"test-one-wrapper\",\"test-run-dotnet-tests-gate-lockstep\",\"test-run-dotnet-tests-mtp\",\"test-run-dotnet-tests-workflow\",\"test-two\",\"test-validate-go-postgresql-fixture\",\"test-workflow\"]\n", false},
 		{"excluded event", "merge_group", "false", "", "selected=[]\n", false},
 		{"missing immutable head", "pull_request", "true", strings.Repeat("a", 40), "", true},
 		{"unknown eligibility", "push", "", "", "", true},
@@ -307,8 +370,8 @@ func TestDeploymentCatalogueScopeComposesWithSelection(t *testing.T) {
 		name, event, eligible, scope, want string
 		fails                              bool
 	}{
-		{"deployment smoke omission only", "pull_request", "true", "false", "selected=[\"test-go-cache-native-observer\",\"test-one-wrapper\",\"test-run-dotnet-tests-gate-lockstep\",\"test-run-dotnet-tests-mtp\",\"test-run-dotnet-tests-workflow\",\"test-validate-go-postgresql-fixture\",\"test-workflow\"]\n", false},
-		{"full scope", "pull_request", "true", "true", "selected=[\"test-go-cache-native-observer\",\"test-one\",\"test-one-wrapper\",\"test-run-dotnet-tests-gate-lockstep\",\"test-run-dotnet-tests-mtp\",\"test-run-dotnet-tests-workflow\",\"test-two\",\"test-validate-go-postgresql-fixture\",\"test-workflow\"]\n", false},
+		{"deployment smoke omission only", "pull_request", "true", "false", "selected=[\"test-go-cache-native-observer\",\"test-go-workflow-guards\",\"test-one-wrapper\",\"test-run-dotnet-tests-gate-lockstep\",\"test-run-dotnet-tests-mtp\",\"test-run-dotnet-tests-workflow\",\"test-validate-go-postgresql-fixture\",\"test-workflow\"]\n", false},
+		{"full scope", "pull_request", "true", "true", "selected=[\"test-go-cache-native-observer\",\"test-go-workflow-guards\",\"test-one\",\"test-one-wrapper\",\"test-run-dotnet-tests-gate-lockstep\",\"test-run-dotnet-tests-mtp\",\"test-run-dotnet-tests-workflow\",\"test-two\",\"test-validate-go-postgresql-fixture\",\"test-workflow\"]\n", false},
 		{"missing scope", "pull_request", "true", "", "", true},
 		{"malformed scope", "pull_request", "true", "unknown", "", true},
 		{"push cannot omit smoke", "push", "true", "false", "", true},

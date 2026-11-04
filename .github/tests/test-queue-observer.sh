@@ -58,9 +58,9 @@ observe() {
     export FIXTURE="$work/case" PATH="$work/bin:$PATH"
     export REPOSITORY=devantler-tech/fixture RUN_ID=123 RUN_ATTEMPT=2
     export HEAD_SHA=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
-    export JOB_RESULTS='success success' CATALOGUE_REQUIRED=true SELECTOR_RESULT=success
+    export JOB_RESULTS='success success skipped' CATALOGUE_REQUIRED=true SELECTOR_RESULT=success
     export SELECTED_JOBS='["test-enable-auto-merge-queue"]'
-    export NEEDS_JSON='{"select-ci-tests":{"result":"success"},"test-enable-auto-merge-queue":{"result":"success"}}'
+    export NEEDS_JSON='{"select-ci-tests":{"result":"success"},"test-enable-auto-merge-queue":{"result":"success"},"test-go-workflow-guards":{"result":"skipped"}}'
     bash -e "$work/observer.sh"
   ) >"$work/output" 2>&1
 }

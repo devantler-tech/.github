@@ -66,9 +66,9 @@ for mutation in \
   fi
 done
 reducer="$(jq -r '.jobs["ci-required-checks"].steps[] | select(.name == "📊 Summarize workflow result") | .run' "$work/ci.json")"
-# Publication-only input still includes the queue dependency's actual skipped
-# result. Missing native dependencies are incomplete evidence, never a skip.
-needs='{"test-enable-auto-merge-queue":{"result":"skipped"}}'
+# Publication-only input includes the actual skips for both unrelated native
+# dependencies. Missing dependency evidence is never a scheduling skip.
+needs='{"test-enable-auto-merge-queue":{"result":"skipped"},"test-go-workflow-guards":{"result":"skipped"}}'
 JOB_RESULTS='success success' CATALOGUE_REQUIRED=true SELECTOR_RESULT=success \
   SELECTED_JOBS='[]' NEEDS_JSON="$needs" bash -c "$reducer" >"$work/gate.log" 2>&1
 for outcome in failure cancelled; do

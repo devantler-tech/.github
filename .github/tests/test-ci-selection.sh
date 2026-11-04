@@ -80,7 +80,7 @@ EVENT_NAME=push RUN_CATALOGUE=true CATALOGUE_SCOPE=true GITHUB_OUTPUT="$work/out
   go -C "$root/.github/scripts/ci-selection" run . "$root" "$root/.github/scripts/ci-selection/inventory.json" "$work/workflow.json"
 selected="$(sed -n 's/^selected=//p' "$work/output")"
 # The skill action executions moved with their standalone repositories; all remaining executions stay selected.
-jq -e 'length == 64 and index("test-lint-workflow") == null and
+jq -e 'length == 61 and index("test-lint-workflow") == null and
   index("test-lint-workflow-manual-fixes") == null' <<< "$selected" >/dev/null
 jq -e 'index("test-validate-go-postgresql-fixture") != null' <<<"$selected" >/dev/null
 jq -e 'index("test-go-cache-native-observer") != null' <<<"$selected" >/dev/null
@@ -91,7 +91,10 @@ jq -e 'index("test-go-cache-native-observer") != null' <<<"$selected" >/dev/null
 interface_callers='["test-apply-signed-fixes-suppresses-bots","test-template-sync","test-template-sync-merge-ignore","test-validate-go-project-interface"]'
 needs="$(jq -cn --argjson skipped "$interface_callers" --slurpfile workflow "$work/workflow.json" '
   reduce ($workflow[0].jobs | keys[]) as $id ({};
-    .[$id] = {result: (if ($skipped | index($id)) != null then "skipped" else "success" end)})
+    .[$id] = {result: (if ($skipped | index($id)) != null then "skipped" else "success" end)}) |
+  .["test-go-workflow-guards"].outputs = {
+    "test-govulncheck-main-coverage":"success","test-govulncheck-main-coverage-blocks":"success",
+    "test-go-filter-nested-modules":"success","test-go-filter-nested-modules-blocks":"success"}
 ')"
 reducer="$(yq -r '.jobs."ci-required-checks".steps[] | select(.name == "📊 Summarize workflow result") | .run' "$ci")"
 # Native evidence files belong to this offline fixture, never the checkout.
@@ -168,7 +171,7 @@ EVENT_NAME=pull_request RUN_CATALOGUE=true CATALOGUE_SCOPE=true BASE_SHA="$base"
   go -C "$root/.github/scripts/ci-selection" run . "$dotnet" "$root/.github/scripts/ci-selection/inventory.json" "$work/workflow.json"
 selected="$(sed -n 's/^selected=//p' "$work/output")"
 jq -e '. == ["test-run-dotnet-tests-gate-lockstep","test-run-dotnet-tests-mtp","test-run-dotnet-tests-workflow"]' <<< "$selected" >/dev/null
-needs="$(jq -cn --argjson selected "$selected" 'reduce $selected[] as $id ({"test-run-dotnet-tests-workflow-authenticated":{result:"skipped"},"test-enable-auto-merge-queue":{result:"skipped"}}; .[$id] = {result:"success"})')"
+needs="$(jq -cn --argjson selected "$selected" 'reduce $selected[] as $id ({"test-run-dotnet-tests-workflow-authenticated":{result:"skipped"},"test-enable-auto-merge-queue":{result:"skipped"},"test-go-workflow-guards":{result:"skipped"}}; .[$id] = {result:"success"})')"
 JOB_RESULTS='success skipped' CATALOGUE_REQUIRED=true SELECTOR_RESULT=success SELECTED_JOBS="$selected" NEEDS_JSON="$needs" run_reducer
 for caller in $(jq -r '.[]' <<< "$selected"); do
   for outcome in skipped failure; do
