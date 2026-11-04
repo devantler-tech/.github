@@ -516,7 +516,7 @@ retained queue with cancellation. The temporary `queue-pending-evaluations` opt-
 ([#277](https://github.com/devantler-tech/.github/issues/277)). The input stays declared and is
 ignored, so callers that still pass it keep validating. The variable is no longer read.
 
-When opted in, GitHub processes queued evaluations in the order they begin waiting, which can
+GitHub processes queued evaluations in the order they begin waiting, which can
 differ from event delivery order; evaluations still read current PR state. Actor-enforced lifecycle
 and evidence-removal events keep their intentional workflow-level cancellation of stale runs, using
 the compatible `single` queue. Additional arrivals beyond GitHub's 100-pending limit are cancelled.

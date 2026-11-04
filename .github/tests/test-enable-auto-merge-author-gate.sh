@@ -246,8 +246,9 @@ cancel_condition="${cancel_condition% \}\}}"
 expected_workflow_cancel="\${{ !inputs.dry-run && $cancel_condition }}"
 expected_workflow_queue="\${{ !($cancel_condition) && 'max' || 'single' }}"
 expected_job_queue="max"
-if yq -o=json 'del(.on.workflow_call.inputs."queue-pending-evaluations")' "$workflow" |
-  grep -E 'queue-pending-evaluations|QUEUE_PENDING_EVALUATIONS' >/dev/null; then
+# Read the workflow first, so a yq failure fails the run instead of matching nothing.
+retired_queue_reads="$(yq -o=json 'del(.on.workflow_call.inputs."queue-pending-evaluations")' "$workflow")"
+if grep -E 'queue-pending-evaluations|QUEUE_PENDING_EVALUATIONS' >/dev/null <<<"$retired_queue_reads"; then
   echo "::error file=$workflow::the retired queue opt-in and opt-out must not be read anywhere"
   status=1
 fi
