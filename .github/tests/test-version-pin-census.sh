@@ -48,6 +48,16 @@ jobs:
         with:
           node-version: 22
       - run: npx tool@1.2.3
+      - run: docker pull "\$HELPER_IMAGE"
+        env:
+          HELPER_IMAGE: ghcr.io/example/helper:v1@$digest
+  fixture:
+    runs-on: ubuntu-latest
+    services:
+      pg:
+        image: \${{ inputs.fixture == 'true' && 'postgres:16@$digest' || '' }}
+    steps:
+      - run: true
 YAML
 cat > "$base/actions/a/action.yaml" <<YAML
 runs:
@@ -61,6 +71,8 @@ printf 'module example.com/local\n\ngo 1.26\n\nrequire example.com/sibling v0.0.
 jq -n --arg d "$digest" '{schema: 1, pins: [
   {kind: "image", pin: ("postgres:17@" + $d), files: [".github/workflows/w.yaml"], refresh: "Resolve the new tag digest in a reviewed PR."},
   {kind: "image", pin: ("ghcr.io/example/tool:v2@" + $d), files: [".github/workflows/w.yaml"], refresh: "Resolve the new tag digest in a reviewed PR."},
+  {kind: "image", pin: ("ghcr.io/example/helper:v1@" + $d), files: [".github/workflows/w.yaml"], refresh: "Resolve the new tag digest in a reviewed PR."},
+  {kind: "image", pin: ("postgres:16@" + $d), files: [".github/workflows/w.yaml"], refresh: "Resolve the new tag digest in a reviewed PR."},
   {kind: "tool", pin: "node-version: 22", files: [".github/workflows/w.yaml"], refresh: "Move to the next LTS major when needed."},
   {kind: "tool", pin: "tool@1.2.3", files: [".github/workflows/w.yaml"], refresh: "Compare with the latest release upstream."},
   {kind: "module", pin: "example.com/frozen", files: ["mod-frozen/go.mod"], refresh: "Frozen on purpose for a vulnerability fixture."}
@@ -81,7 +93,7 @@ expect() { # name exit [row-pattern]
 run_case baseline
 expect baseline 0
 [[ "$(grep -c $'^tracked\taction\t' "$scratch/baseline.tsv")" == 3 ]] || fail 'baseline: three tracked action pins expected'
-[[ "$(grep -c '^manifest' "$scratch/baseline.tsv")" == 5 ]] || fail 'baseline: five listed pins expected'
+[[ "$(grep -c '^manifest' "$scratch/baseline.tsv")" == 7 ]] || fail 'baseline: seven listed pins expected'
 grep -q $'^tracked\tmodule\tmod-tracked/go.mod:1\texample.com/tracked$' "$scratch/baseline.tsv" || fail 'baseline: tracked module missing'
 ! grep -q 'example.com/local\|ignored' "$scratch/baseline.tsv" || fail 'baseline: local replacements and comments are not pins'
 
@@ -111,6 +123,22 @@ run_case stale-entry; sed -i.bak 's/tool@1.2.3/tool@1.2.4/' "$case_root/.github/
 expect stale-entry 1 'stale manifest entry tool tool@1.2.3 in .github/workflows/w.yaml'
 run_case malformed; jq '.pins[0].refresh = "short"' "$base/.github/version-pins.json" > "$case_root/.github/version-pins.json"
 expect malformed 2 'does not match its schema'
+run_case env-image; printf '      - run: echo\n        env:\n          OTHER_IMAGE: alpine:3\n' >> "$case_root/.github/workflows/w.yaml"
+expect env-image 1 $'^violation\timage\t.github/workflows/w.yaml:[0-9]+\talpine:3 \\(mutable: no digest\\)'
+run_case docker-run; printf '      - run: docker run --rm --name probe busybox:1 true\n' >> "$case_root/.github/workflows/w.yaml"
+expect docker-run 1 $'^violation\timage\t.github/workflows/w.yaml:[0-9]+\tbusybox:1 \\(mutable: no digest\\)'
+run_case docker-run-continued; printf '      - run: |\n          docker run --rm \\\n            --env A=1 \\\n            busybox:1 true\n' >> "$case_root/.github/workflows/w.yaml"
+expect docker-run-continued 1 $'^violation\timage\t.github/workflows/w.yaml:[0-9]+\tbusybox:1 \\(mutable: no digest\\)'
+run_case expression-branch; sed -i.bak "s/|| '' }}/|| 'postgres:latest' }}/" "$case_root/.github/workflows/w.yaml"
+expect expression-branch 1 $'^violation\timage\t.github/workflows/w.yaml:[0-9]+\tpostgres:latest \\(mutable: no digest\\)'
+run_case unlisted-env-digest; printf '      - run: echo\n        env:\n          NEW_IMAGE: ghcr.io/example/new:v1@%s\n' "$digest" >> "$case_root/.github/workflows/w.yaml"
+expect unlisted-env-digest 1 $'^violation\timage\t.github/workflows/w.yaml:[0-9]+\tghcr.io/example/new:v1@sha256:'
+run_case nested-action; mkdir -p "$case_root/actions/a/b"; cp "$case_root/actions/a/action.yaml" "$case_root/actions/a/b/action.yaml"
+expect nested-action 1 $'^violation\taction\tactions/a/b/action.yaml:4'
+run_case no-pull-requests; sed -i.bak 's#directories: \["/", "/actions/\*"\]#directories: ["/", "/actions/*"]\n    open-pull-requests-limit: 0#' "$case_root/.github/dependabot.yml"
+expect no-pull-requests 1 $'^violation\taction\tactions/a/action.yaml:4'
+run_case template; mkdir -p "$case_root/workflow-templates"; printf 'jobs:\n  a:\n    steps:\n      - uses: example/action@%s # v1.2.3\n' "$sha" > "$case_root/workflow-templates/t.yml"
+expect template 1 $'^violation\taction\tworkflow-templates/t.yml:4'
 run_case no-dependabot; rm "$case_root/.github/dependabot.yml"
 expect no-dependabot 2 'missing'
 

@@ -112,7 +112,7 @@ comments and helpers do not count as execution.
     branch and *why* there is no version, so a future re-pin to a newer branch
     commit is not mistaken for a floating branch ref.
 - **Every version pin is tracked or listed.** `.github/scripts/version-pin-census.sh`
-  lists every pin in workflows, action metadata and Go modules. A pin passes when
+  lists every pin in workflows, workflow templates, action metadata and Go modules. A pin passes when
   Dependabot updates it: a full-SHA action with a `# v<version>` comment in a
   directory that `dependabot.yml` covers, or a module in a `gomod` entry that does not
   ignore `*`. Any other pin needs an entry with its refresh path in
@@ -123,8 +123,14 @@ comments and helpers do not count as execution.
   fails on a mutable, untracked or unlisted pin and on a manifest entry that no
   longer matches. Update the entry in the same PR as the pin.
   `bash .github/tests/test-version-pin-census.sh` runs it with its refusal controls.
-  The census cannot see inside third-party actions, so check a new Docker action's
-  `runs.image` by hand.
+  Image references are checked under `image:`, `container:`, `docker://`, any
+  `*_IMAGE` assignment, `docker run`/`pull`/`create` arguments, joined across continued
+  lines, and every digest anywhere. In an expression, each result branch must be
+  digest-pinned or empty. The census has four limits. It cannot see inside third-party
+  actions, so check a new Docker action's `runs.image` by hand. It does not resolve
+  shell variables, other than `*_IMAGE` assignments. A tool version needs a dotted
+  number (`pkg@1.2`, not `pkg@1`). And a `#` inside a quoted string ends the scanned
+  text.
 
 ## Reliability
 

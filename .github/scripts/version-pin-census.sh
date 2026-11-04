@@ -1,13 +1,15 @@
 #!/usr/bin/env bash
 # version-pin-census.sh [ROOT] — list every version pin the catalogue runs (#627).
 #
-# Scope: workflow files, action metadata and Go modules. Each pin is one of:
+# Scope: workflows, workflow templates, action metadata and Go modules. Each pin is one of:
 #   tracked   Dependabot updates it: a full-SHA action reference with a version
 #             comment in a directory Dependabot's github-actions entry covers, or
 #             a module with dependencies in a gomod entry that does not ignore "*".
 #   manifest  .github/version-pins.json lists it with its refresh path.
 #   violation neither, or mutable: an action ref that is not a full SHA, or an
-#             image without a digest.
+#             image without a digest (any branch of an image expression).
+# Limits (actions/CONTRIBUTING.md): no shell-variable resolution beyond *_IMAGE
+# assignments, tool versions need a dotted number, a quoted "#" ends the scan.
 # Prints one TSV row per pin (status, kind, file:line, pin). Exits 0 when every pin
 # is tracked or listed and every manifest entry still matches a pin, 1 on any
 # violation or stale entry, and 2 when an input cannot be read. Never reads the
@@ -32,25 +34,26 @@ jq -e '
     (.refresh | type == "string" and length >= 20))
 ' "$manifest" >/dev/null 2>&1 || unreadable "$manifest does not match its schema"
 yq -o=json '.updates' "$dependabot" > "$scratch/updates.json" 2>/dev/null || unreadable "$dependabot is unreadable"
-jq -r '[.[] | select(."package-ecosystem" == "github-actions") | (.directories // [.directory])[]] | .[]' \
+# An entry that ignores every dependency or may open no pull request updates nothing.
+updating='select(([.ignore[]?."dependency-name"] | index("*") | not) and ((."open-pull-requests-limit" // 5) > 0))'
+jq -r "[.[] | select(.\"package-ecosystem\" == \"github-actions\") | $updating | (.directories // [.directory])[]] | .[]" \
   "$scratch/updates.json" > "$scratch/action-dirs" || unreadable 'github-actions directories are unreadable'
-jq -r '[.[] | select(."package-ecosystem" == "gomod")
-        | select([.ignore[]?."dependency-name"] | index("*") | not)
-        | (.directories // [.directory])[]] | .[]' \
+jq -r "[.[] | select(.\"package-ecosystem\" == \"gomod\") | $updating | (.directories // [.directory])[]] | .[]" \
   "$scratch/updates.json" > "$scratch/gomod-dirs" || unreadable 'gomod directories are unreadable'
 jq -r '.pins[] | .kind as $k | .pin as $p | .files[] | [$k, ., $p] | @tsv' "$manifest" > "$scratch/listed"
 
 # Dependabot's github-actions updater reads .github/workflows for "/" and action
-# metadata in each listed directory ("*" matches one level).
+# metadata in each listed directory ("*" matches exactly one path segment).
 actions_tracked() {
-  local file="$1" dir pattern
+  local file="$1" dir pattern regex
   case "$file" in
     .github/workflows/*) dir=/ ;;
     *) dir="/$(dirname "$file")" ;;
   esac
   while IFS= read -r pattern; do
-    # shellcheck disable=SC2053 # The Dependabot directory is a glob.
-    [[ "$dir" == $pattern ]] && return 0
+    regex="${pattern//./\\.}"
+    regex="^${regex//\*/[^/]+}$"
+    [[ "$dir" =~ $regex ]] && return 0
   done < "$scratch/action-dirs"
   return 1
 }
@@ -67,10 +70,12 @@ classify() { # kind file line pin [tracked]
 [[ -d .github/workflows ]] || unreadable '.github/workflows is missing'
 action_roots=()
 for dir in actions .github/actions .github/fixtures; do [[ ! -d "$dir" ]] || action_roots+=("$dir"); done
-{
-  find .github/workflows -maxdepth 1 -type f \( -name '*.yml' -o -name '*.yaml' \)
-  ((${#action_roots[@]} == 0)) || find "${action_roots[@]}" -type f \( -name action.yml -o -name action.yaml \)
-} | sed 's#^\./##' | LC_ALL=C sort > "$scratch/files"
+workflow_roots=(.github/workflows)
+# Organization workflow templates are copied into consumers with their pins.
+[[ ! -d workflow-templates ]] || workflow_roots+=(workflow-templates)
+find "${workflow_roots[@]}" -maxdepth 1 -type f \( -name '*.yml' -o -name '*.yaml' \) > "$scratch/files.raw"
+((${#action_roots[@]} == 0)) || find "${action_roots[@]}" -type f \( -name action.yml -o -name action.yaml \) >> "$scratch/files.raw"
+sed 's#^\./##' "$scratch/files.raw" | LC_ALL=C sort > "$scratch/files"
 [[ -s "$scratch/files" ]] || unreadable 'no workflow or action files found'
 
 digest_re='[a-z0-9][a-z0-9._/-]*(:[A-Za-z0-9._-]+)?@sha256:[0-9a-f]{64}'
@@ -104,6 +109,31 @@ extract='
       value = code; sub(/^[[:space:]]*(-[[:space:]]+)?(image|container):[[:space:]]*/, "", value)
       printf "I\t%d\t%s\n", NR, value; next
     }
+    # Any other image digest (an env value, a JSON string) is a pin as well.
+    rest = code
+    while (match(rest, /[a-z0-9][a-z0-9._\/-]*(:[A-Za-z0-9._-]+)?@sha256:[0-9a-f]+/)) {
+      printf "D\t%d\t%s\n", NR, substr(rest, RSTART, RLENGTH); rest = substr(rest, RSTART + RLENGTH)
+    }
+    # An *_IMAGE assignment names an image that later steps pull or run.
+    if (match(code, /^[[:space:]]*(-[[:space:]]+)?(export[[:space:]]+)?[A-Z][A-Z0-9_]*_IMAGE(:[[:space:]]|=)[[:space:]]*[^[:space:]]/)) {
+      value = substr(code, RSTART); sub(/^[[:space:]]*(-[[:space:]]+)?(export[[:space:]]+)?[A-Z0-9_]*_IMAGE[=:][[:space:]]*/, "", value); sub(/[[:space:]].*$/, "", value)
+      gsub(/["\047]/, "", value); printf "K\t%d\t%s\n", NR, value
+    }
+    # docker run/pull/create: the first argument after the options is the image.
+    # Continued shell lines are joined so an image on a later line is still seen.
+    joined = pending code; pending = ""
+    if (joined ~ /\\[[:space:]]*$/) {sub(/\\[[:space:]]*$/, " ", joined); pending = joined}
+    else {
+      n = split(joined, w, /[[:space:]]+/)
+      for (i = 1; i < n; i++) if (w[i] == "docker" && (w[i + 1] == "run" || w[i + 1] == "pull" || w[i + 1] == "create")) {
+        j = i + 2
+        while (j <= n && (w[j] == "" || w[j] ~ /^-/)) {
+          if (w[j] !~ /=/ && w[j] ~ /^(-[evwuplhm]|--(env|env-file|volume|workdir|name|network|pull|user|entrypoint|publish|platform|mount|label|cidfile|add-host|hostname|memory|cpus|shm-size|tmpfs|ulimit|device|security-opt|cap-add|cap-drop|log-driver|log-opt|restart|stop-signal|group-add))$/) j++
+          j++
+        }
+        if (j <= n) {t = w[j]; gsub(/["\047]/, "", t); printf "R\t%d\t%s\n", NR, t}
+      }
+    }
     rest = code
     while (match(rest, /[A-Za-z0-9._\/@-]*[A-Za-z0-9]@v?[0-9]+(\.[0-9]+)+|[A-Za-z0-9_-]*(version|release):[[:space:]]*["\047]?v?[0-9][A-Za-z0-9._-]*|[A-Z][A-Z0-9_]*_VERSION[=:][[:space:]]*["\047]?v?[0-9][A-Za-z0-9._-]*/)) {
       token = substr(rest, RSTART, RLENGTH); rest = substr(rest, RSTART + RLENGTH)
@@ -134,19 +164,39 @@ while IFS= read -r file; do
           *) emit violation action "$file:$line" "$value (mutable: no ref)" ;;
         esac ;;
       I)
-        images="$(grep -oE "$digest_re" <<< "$value" || true)"
-        if [[ -n "$images" ]]; then
-          while IFS= read -r image; do classify image "$file" "$line" "$image"; done <<< "$images"
-        elif [[ "$value" == *"$expression_marker"* ]]; then
-          emit violation image "$file:$line" "$value (unverifiable expression)"
+        if [[ "$value" == *"$expression_marker"* ]]; then
+          # Every branch of an expression must be a digest-pinned literal or empty.
+          # Only result branches count: a literal after ${{, && or ||, not a comparison operand.
+          literals="$(grep -oE "(\\$\\{\\{|&&|\\|\\|)[[:space:]]*'[^']*'" <<< "$value" | grep -oE "'[^']*'" || true)"
+          if [[ -z "$literals" ]]; then
+            emit violation image "$file:$line" "$value (unverifiable expression)"
+            continue
+          fi
+          while IFS= read -r literal; do
+            literal="${literal#\'}"; literal="${literal%\'}"
+            if [[ -z "$literal" ]]; then continue
+            elif [[ "$literal" =~ ^${digest_re}$ ]]; then classify image "$file" "$line" "$literal"
+            else emit violation image "$file:$line" "$literal (mutable: no digest)"; fi
+          done <<< "$literals"
+        elif [[ "$value" =~ ^[\"\']?(${digest_re})[\"\']?$ ]]; then
+          classify image "$file" "$line" "${BASH_REMATCH[1]}"
         elif [[ "$value" != Dockerfile ]]; then
           emit violation image "$file:$line" "$value (mutable: no digest)"
         fi ;;
+      D)
+        if [[ "$value" =~ ^${digest_re}$ ]]; then classify image "$file" "$line" "$value"
+        else emit violation image "$file:$line" "$value (malformed digest)"; fi ;;
+      K | R)
+        # A variable reference is checked where the variable is assigned.
+        if [[ "$value" == *\$* || "$value" =~ ^${digest_re}$ ]]; then :
+        else emit violation image "$file:$line" "$value (mutable: no digest)"; fi ;;
       T) classify tool "$file" "$line" "$value" ;;
     esac
   done < "$scratch/records"
 done < "$scratch/files"
 
+find . -name go.mod -not -path './.git/*' > "$scratch/gomods.raw"
+LC_ALL=C sort "$scratch/gomods.raw" > "$scratch/gomods"
 # A module that requires other modules must receive updates or be listed (frozen).
 # Requirements replaced by a local path are part of this repository, not versions.
 while IFS= read -r gomod; do
@@ -166,7 +216,7 @@ while IFS= read -r gomod; do
   else
     classify module "$gomod" 1 "$module"
   fi
-done < <(find . -name go.mod -not -path './.git/*' | LC_ALL=C sort)
+done < "$scratch/gomods"
 
 cat "$scratch/found"
 status=0

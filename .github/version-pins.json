@@ -10,6 +10,23 @@
       "refresh": "Upstream publishes no tags or releases, so Dependabot cannot propose an update. Compare with Homebrew/actions main and move the SHA in a reviewed PR."
     },
     {
+      "kind": "action",
+      "pin": "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+      "files": [
+        "workflow-templates/example.yaml"
+      ],
+      "refresh": "Dependabot does not read workflow-templates/. Keep it equal to the checkout pin Dependabot moves in .github/workflows; new repositories then track it themselves."
+    },
+    {
+      "kind": "image",
+      "pin": "ghcr.io/alstr/todo-to-issue-action:v5.1.15@sha256:a1794cab7e7a0306d6f74dd5249734f2c0b49e47d7549c6cdca4421bced67c9d",
+      "files": [
+        ".github/actions/test-todo-default-fixture/action.yaml",
+        "actions/create-issues-from-todos/action.yaml"
+      ],
+      "refresh": "Dependabot does not read env values. On a new alstr/todo-to-issue-action release, resolve its image digest and move the action and its default-fixture copy together; ci.yaml asserts the tag-plus-digest shape."
+    },
+    {
       "kind": "image",
       "pin": "ghcr.io/github-community-projects/stale_repos:v9.1.1@sha256:b259f6c3d90e6e29c7d9a0644f4bf7b4004f51e08184cb3f834e98dc56de5745",
       "files": [
