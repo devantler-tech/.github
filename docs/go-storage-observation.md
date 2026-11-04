@@ -138,6 +138,10 @@ quota limits remain unread. The image-to-mount correlation comes from logs
 and one observation report, not from the image's published layout. Consumers
 pick the route up when they bump their pinned release. After that, the next
 required Test runs on each image are the native readback.
+The route covers build, test and coverage only. The lint and vulnerability
+scans and the default-off `measure-go-disk.yaml` evaluation keep the system
+temporary directory. The evaluation therefore measures a runner-disk load
+without the routed work directory, which production now adds.
 
 Run `bash .github/tests/test-go-temp-route.sh` for the placement, receipt and
 refusal controls.

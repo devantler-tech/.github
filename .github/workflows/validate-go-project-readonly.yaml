@@ -1092,8 +1092,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          if [[ "${RUNNER_TEMP:-}" != /* ]]; then
-            echo '::error::RUNNER_TEMP must be an absolute path'
+          if [[ "${RUNNER_TEMP:-}" != /* || "$RUNNER_TEMP" == *$'\n'* || "$RUNNER_TEMP" == *$'\r'* ]]; then
+            echo '::error::RUNNER_TEMP must be an absolute single-line path'
             exit 2
           fi
           go_temp="$RUNNER_TEMP/go-tmp"
@@ -1330,8 +1330,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          if [[ "${RUNNER_TEMP:-}" != /* ]]; then
-            echo '::error::RUNNER_TEMP must be an absolute path'
+          if [[ "${RUNNER_TEMP:-}" != /* || "$RUNNER_TEMP" == *$'\n'* || "$RUNNER_TEMP" == *$'\r'* ]]; then
+            echo '::error::RUNNER_TEMP must be an absolute single-line path'
             exit 2
           fi
           go_temp="$RUNNER_TEMP/go-tmp"
@@ -1686,8 +1686,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          if [[ "${RUNNER_TEMP:-}" != /* ]]; then
-            echo '::error::RUNNER_TEMP must be an absolute path'
+          if [[ "${RUNNER_TEMP:-}" != /* || "$RUNNER_TEMP" == *$'\n'* || "$RUNNER_TEMP" == *$'\r'* ]]; then
+            echo '::error::RUNNER_TEMP must be an absolute single-line path'
             exit 2
           fi
           go_temp="$RUNNER_TEMP/go-tmp"

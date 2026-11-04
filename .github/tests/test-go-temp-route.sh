@@ -86,14 +86,15 @@ run_route hostile 'ROUTE_SYSTEM_FSTYPE=tmpfs","x":"y'
 [[ "$rc" == 0 ]] || fail "hostile fstype exited $rc"
 receipt hostile | jq -e '.system_temp_fstype == "unknown" and (keys|length) == 5' >/dev/null || fail "hostile fstype leaked: $(receipt hostile)"
 
-# Refusals: no runner temp, a relative one, an occupied path, an unwritable environment file.
-for refusal in missing relative occupied env-unwritable; do
+# Refusals: no runner temp, a relative or multi-line one, an occupied path, an unwritable environment file.
+for refusal in missing relative multiline occupied env-unwritable; do
   mkdir -p "$scratch/$refusal/runner-temp" "$scratch/$refusal/system-temp"
   : > "$scratch/$refusal/env"
   runner_temp="$scratch/$refusal/runner-temp"; github_env="$scratch/$refusal/env"
   case "$refusal" in
     missing) runner_temp='' ;;
     relative) runner_temp='runner-temp' ;;
+    multiline) runner_temp="$scratch/$refusal/runner-temp"$'\n'"/elsewhere" ;;
     occupied) : > "$scratch/$refusal/runner-temp/go-tmp" ;;
     env-unwritable) github_env="$scratch/$refusal" ;;
   esac
