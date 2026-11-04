@@ -2,10 +2,22 @@ package main
 
 import (
 	"errors"
+	"flag"
 	"os"
 	"path/filepath"
+	"runtime"
+	"strconv"
 	"testing"
 )
+
+// Native default callers must retain Go's own scheduling.
+func TestDefaultParallelismReachesGo(t *testing.T) {
+	want := strconv.Itoa(runtime.GOMAXPROCS(0))
+	got := flag.Lookup("test.parallel")
+	if got == nil || got.Value.String() != want {
+		t.Fatalf("test worker count = %v, want %s", got, want)
+	}
+}
 
 // Validation helpers must not become files the consumer's own tests can inspect.
 func TestValidationHelperOutsideConsumerWorkspace(t *testing.T) {

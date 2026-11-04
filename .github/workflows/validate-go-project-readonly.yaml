@@ -27,6 +27,16 @@ on:
         type: boolean
         default: false
         description: "Opt in to the tracked closed-schema PostgreSQL 17 test fixture. Called false/omitted inputs are inert. Input-free required runs opt in only through a tracked module-local declaration. No production endpoint or credentials are accepted; rollout and retirement: devantler-tech/.github#573."
+      enable-test-parallelism:
+        required: false
+        type: boolean
+        default: false
+        description: "Opt in to bounded Go test scheduling. Called false/omitted inputs retain Go defaults. Input-free required runs opt in through a committed module-local .go-test-execution.json declaration. Full test scope, race, coverage and deadlines are unchanged; qualification: devantler-tech/.github#865; retirement: devantler-tech/.github#867."
+      test-parallelism:
+        required: false
+        type: number
+        default: 8
+        description: "Test worker count, one through eight, used only with enable-test-parallelism. Select a value from complete-suite measurements."
       go-memory-limit:
         required: false
         type: string
@@ -73,7 +83,7 @@ on:
 # Adding a discriminator only ever splits groups further; it cannot merge two that were
 # separate, so this direction of change cannot reintroduce #587.
 concurrency:
-  group: "validate-go-project-readonly-${{ github.repository }}-${{ github.ref }}-${{ github.ref == format('refs/heads/{0}', github.event.repository.default_branch) && github.run_id || '' }}-${{ github.workflow }}-${{ inputs.pr-owner }}-${{ inputs.working-directory }}-${{ inputs.test-default-branch }}-${{ inputs.apply-signed-fixes }}-${{ inputs.manual-workflow-fixes }}-${{ inputs.go-memory-limit }}-${{ inputs.measure-disk-usage }}-${{ inputs.minimum-free-disk-gib || 0 }}-${{ inputs.enable-postgresql-fixture }}"
+  group: "validate-go-project-readonly-${{ github.repository }}-${{ github.ref }}-${{ github.ref == format('refs/heads/{0}', github.event.repository.default_branch) && github.run_id || '' }}-${{ github.workflow }}-${{ inputs.pr-owner }}-${{ inputs.working-directory }}-${{ inputs.test-default-branch }}-${{ inputs.apply-signed-fixes }}-${{ inputs.manual-workflow-fixes }}-${{ inputs.go-memory-limit }}-${{ inputs.measure-disk-usage }}-${{ inputs.minimum-free-disk-gib || 0 }}-${{ inputs.enable-postgresql-fixture }}-${{ inputs.enable-test-parallelism }}-${{ inputs.test-parallelism }}"
   cancel-in-progress: true
 permissions: {}
 jobs:
@@ -90,10 +100,11 @@ jobs:
       contents: read
       pull-requests: read
     outputs:
-      go: ${{ (github.repository == 'devantler-tech/.github' && (inputs.working-directory == '.github/tests/go-valid-fixture' || inputs.working-directory == 'tests/go-postgresql-fixture')) && 'true' || steps.filter.outputs.go }}
+      go: ${{ (github.repository == 'devantler-tech/.github' && (inputs.working-directory == '.github/tests/go-valid-fixture' || inputs.working-directory == '.github/tests/go-parallelism-fixture' || inputs.working-directory == 'tests/go-postgresql-fixture')) && 'true' || steps.filter.outputs.go }}
       govulncheck: ${{ steps.filter.outputs.govulncheck }}
       lintable: ${{ steps.filter.outputs.lintable }}
       module-directory: ${{ steps.module-directory.outputs.module-directory }}
+      test-parallelism: ${{ steps.module-directory.outputs.test-parallelism }}
       disk-observation: ${{ steps.disk-observation.outputs.enabled || 'false' }}
       fixture-enabled: ${{ steps.fixture.outputs.enabled || 'false' }}
       fixture-owner: ${{ steps.fixture.outputs.owner }}
@@ -136,6 +147,8 @@ jobs:
               - '**/.golangci.yaml'
               - '.go-test-fixture.json'
               - '**/.go-test-fixture.json'
+              - '.go-test-execution.json'
+              - '**/.go-test-execution.json'
             # The allowlist decides which advisories the vuln scan accepts, so a change to
             # it changes the gate's verdict on unchanged code: without this filter, editing
             # the allowlist skips the very scan that reads it.
@@ -221,13 +234,17 @@ jobs:
           ref: ${{ job.workflow_sha }}
           path: .devantler-tech-go-module
           persist-credentials: false
-          sparse-checkout: .github/scripts/resolve-go-module.sh
+          sparse-checkout: |
+            .github/scripts/resolve-go-module.sh
+            .github/scripts/resolve-go-test-parallelism.sh
           sparse-checkout-cone-mode: false
       - name: Resolve tracked Go module
         id: module-directory
         shell: bash
         env:
           MODULE_DIRECTORY: ${{ inputs.working-directory }}
+          TEST_PARALLELISM_OPT_IN: ${{ inputs.enable-test-parallelism || false }}
+          TEST_PARALLELISM_INPUT: ${{ inputs.test-parallelism }}
           DIRECT_REQUIRED_RUN: ${{ toJSON(inputs) == '{}' && contains(github.workflow_ref, '/.github/workflows/validate-go-project.yaml@') }}
           RESOLVE_REQUIRED: ${{ inputs.working-directory != '' || steps.filter.outputs.go == 'true' || steps.filter.outputs.govulncheck == 'true' || steps.filter.outputs.lintable == 'true' || github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
         run: |
@@ -236,7 +253,9 @@ jobs:
           [[ "$RESOLVE_REQUIRED" == true ]] || exit 0
           trap 'rm -rf -- "$GITHUB_WORKSPACE/.devantler-tech-go-module"' EXIT
           directory="$(bash "$GITHUB_WORKSPACE/.devantler-tech-go-module/.github/scripts/resolve-go-module.sh")"
-          printf 'module-directory=%s\n' "$directory" >>"$GITHUB_OUTPUT"
+          export MODULE_DIRECTORY="$directory"
+          parallelism="$(bash "$GITHUB_WORKSPACE/.devantler-tech-go-module/.github/scripts/resolve-go-test-parallelism.sh")"
+          printf 'module-directory=%s\ntest-parallelism=%s\n' "$directory" "$parallelism" >>"$GITHUB_OUTPUT"
       - name: Select PostgreSQL fixture mode
         id: fixture-mode
         shell: bash
@@ -1379,23 +1398,29 @@ jobs:
           printf '%s\n' "$fixture_env" >>"$GITHUB_ENV"
       - name: "\U0001F9EA Test"
         env:
+          GO_TEST_PARALLELISM: ${{ needs.changes.outputs.test-parallelism }}
           MEASURE_DISK_USAGE: ${{ inputs.measure-disk-usage == true || needs.changes.outputs.disk-observation == 'true' }}
           GO_DISK_OBSERVATION: ${{ needs.changes.outputs.disk-observation }}
           GO_DISK_WORKFLOW_SHA: ${{ job.workflow_sha }}
           GO_DISK_WORKFLOW_REPOSITORY: ${{ job.workflow_repository }}
           FIXTURE_ENABLED: ${{ needs.changes.outputs.fixture-enabled }}
         run: |
+          set --
+          if [[ -n "${GO_TEST_PARALLELISM:-}" ]]; then
+            [[ "$GO_TEST_PARALLELISM" =~ ^[1-8]$ ]] || { echo '::error::Go test parallelism must be an integer from one to eight'; exit 2; }
+            set -- -parallel "$GO_TEST_PARALLELISM"
+          fi
           # External fixtures are fresh each job; never reuse cached test verdicts.
           if [[ "${FIXTURE_ENABLED:-false}" == true ]]; then
             if [[ "$MEASURE_DISK_USAGE" == true ]]; then
-              bash "$RUNNER_TEMP/measure-go-disk.sh" test go test -count=1 ./...
+              bash "$RUNNER_TEMP/measure-go-disk.sh" test go test -count=1 "$@" ./...
             else
-              go test -count=1 ./...
+              go test -count=1 "$@" ./...
             fi
           elif [[ "$MEASURE_DISK_USAGE" == true ]]; then
-            bash "$RUNNER_TEMP/measure-go-disk.sh" test go test ./...
+            bash "$RUNNER_TEMP/measure-go-disk.sh" test go test "$@" ./...
           else
-            go test ./...
+            go test "$@" ./...
           fi
       - name: Finalize Go storage observation
         id: disk-observation-report
@@ -1659,20 +1684,26 @@ jobs:
         run: go env -w GOTOOLCHAIN=go1.26.0+auto
       - name: "\U0001F4C4 Generate coverage"
         env:
+          GO_TEST_PARALLELISM: ${{ needs.changes.outputs.test-parallelism }}
           MEASURE_DISK_USAGE: ${{ inputs.measure-disk-usage }}
           GO_DISK_WORKFLOW_SHA: ${{ job.workflow_sha }}
           FIXTURE_ENABLED: ${{ needs.changes.outputs.fixture-enabled }}
         run: |
+          set --
+          if [[ -n "${GO_TEST_PARALLELISM:-}" ]]; then
+            [[ "$GO_TEST_PARALLELISM" =~ ^[1-8]$ ]] || { echo '::error::Go test parallelism must be an integer from one to eight'; exit 2; }
+            set -- -parallel "$GO_TEST_PARALLELISM"
+          fi
           if [[ "${FIXTURE_ENABLED:-false}" == true ]]; then
             if [[ "$MEASURE_DISK_USAGE" == true ]]; then
-              bash "$RUNNER_TEMP/measure-go-disk.sh" coverage go test -count=1 -race -coverprofile=coverage.txt -covermode=atomic ./...
+              bash "$RUNNER_TEMP/measure-go-disk.sh" coverage go test -count=1 "$@" -race -coverprofile=coverage.txt -covermode=atomic ./...
             else
-              go test -count=1 -race -coverprofile=coverage.txt -covermode=atomic ./...
+              go test -count=1 "$@" -race -coverprofile=coverage.txt -covermode=atomic ./...
             fi
           elif [[ "$MEASURE_DISK_USAGE" == true ]]; then
-            bash "$RUNNER_TEMP/measure-go-disk.sh" coverage go test -race -coverprofile=coverage.txt -covermode=atomic ./...
+            bash "$RUNNER_TEMP/measure-go-disk.sh" coverage go test "$@" -race -coverprofile=coverage.txt -covermode=atomic ./...
           else
-            go test -race -coverprofile=coverage.txt -covermode=atomic ./...
+            go test "$@" -race -coverprofile=coverage.txt -covermode=atomic ./...
           fi
       - name: Save Go compilation cache
         if: success() && github.ref == format('refs/heads/{0}', github.event.repository.default_branch) && steps.go-build-cache.outputs.cache-hit != 'true'

@@ -32,6 +32,13 @@ assert.deepEqual(callerEntries.map(([id]) => id).sort(), [
   'test-validate-go-project-test-default-branch',
 ], 'all supported Go fixture callers must remain after maintenance flag retirement');
 const callers = callerEntries.map(([, j]) => j);
+const parallelCaller = ci.jobs['test-validate-go-project'].with;
+assert.equal(parallelCaller['working-directory'], '.github/tests/go-parallelism-fixture', 'native worker proof selected the wrong fixture');
+assert.equal(parallelCaller['enable-test-parallelism'], true, 'native worker proof lost its opt-in');
+assert.equal(parallelCaller['test-parallelism'], 8, 'native worker proof selected the wrong count');
+for (const [, caller] of callerEntries.filter(([id]) => id !== 'test-validate-go-project')) {
+  assert.notEqual(caller.with['enable-test-parallelism'], true, 'native default proof became opted in');
+}
 assert.equal(ci.jobs['test-validate-go-postgresql-fixture'].with['enable-postgresql-fixture'], true, 'native database caller lost explicit admission');
 for (const j of callers) {
   assert.deepEqual(j.permissions, {contents: 'read', 'pull-requests': 'read', 'code-quality': 'write'}, 'fixture grants mutation permissions');
@@ -81,8 +88,8 @@ const evaluate = (expr, values) => {
 for (const go of ['true', 'false']) {
   assert.equal(evaluate(production.jobs.changes.outputs.go, {'steps.filter.outputs.go': go}), go, 'production Go filter changed');
   for (const repository of ['devantler-tech/.github', 'devantler-tech/ksail']) {
-    for (const directory of ['.github/tests/go-valid-fixture', 'tests/go-postgresql-fixture', '.github/tests/go-postgresql-fixture', '', 'another-module']) {
-      const fixture = repository === 'devantler-tech/.github' && ['.github/tests/go-valid-fixture', 'tests/go-postgresql-fixture'].includes(directory);
+    for (const directory of ['.github/tests/go-valid-fixture', '.github/tests/go-parallelism-fixture', 'tests/go-postgresql-fixture', '.github/tests/go-postgresql-fixture', '', 'another-module']) {
+      const fixture = repository === 'devantler-tech/.github' && ['.github/tests/go-valid-fixture', '.github/tests/go-parallelism-fixture', 'tests/go-postgresql-fixture'].includes(directory);
       assert.equal(evaluate(w.jobs.changes.outputs.go, {
         'steps.filter.outputs.go': go, 'github.repository': repository, 'inputs.working-directory': directory
       }), fixture ? 'true' : go, 'fixture validation admission');
@@ -107,7 +114,7 @@ assert.ok(safe.steps.some(s => s.id === 'fixes'), 'fix exporter removed');
 assert.ok(safe.steps.some(s => s.run?.includes('exit 1')), 'read-only dirty-tree rejection removed');
 assert.ok(w.jobs.build.steps.some(s => s.run?.includes('go build')), 'real build removed');
 assert.ok(w.jobs.test.steps.some(s => s.run?.includes('go test')), 'real tests removed');
-assert.ok(w.jobs.coverage.steps.some(s => s.run?.includes('go test -race -coverprofile')), 'real coverage removed');
+assert.ok(w.jobs.coverage.steps.some(s => s.run?.includes('go test "$@" -race -coverprofile=coverage.txt -covermode=atomic ./...')), 'real coverage removed');
 assert.ok(w.jobs.coverage.steps.some(s => s.uses?.endsWith('/actions/upload-coverage')), 'coverage upload removed');
 assert.equal(w.jobs.coverage.permissions['code-quality'], 'write', 'coverage upload permission missing');
 console.log('PASS: five credential-safe callers; bounded fixture admissions; four signed-fix denials; normal reporting and real validation retained');

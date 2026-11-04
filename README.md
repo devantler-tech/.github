@@ -1015,11 +1015,33 @@ jobs:
 | `apply-signed-fixes`  | Input (boolean) | `true`  | No       | Commit each fixer lane's auto-fixes back to the pull request branch as a signed commit (on by default; the org-required direct run is opted in by its workflow ref). Pass false to keep a caller read-only. Forks, Dependabot/Renovate branches and non-PR events are always read-only and fail with their diff if changes remain; other same-repository automation branches (release, bot-authored) do receive fixer commits like any contributor branch                                                                                                               |
 | `working-directory`   | Input (string)  | `""`    | No       | Tracked module directory. Empty called inputs select the root; input-free required runs prefer a tracked root module, otherwise the sole tracked nested module. Unsafe or ambiguous selection fails. |
 | `enable-postgresql-fixture` | Input (boolean) | `false` | No | Opt in to the module-local PostgreSQL 17 fixture declaration; input-free required runs use only an explicit tracked declaration. No production endpoints or credentials are accepted. |
+| `enable-test-parallelism` | Input (boolean) | `false` | No | Opt in to bounded Go test workers in both Test and race/atomic Coverage. |
+| `test-parallelism` | Input (number) | `8` | No | Worker count from 1 through 8; used only when the parallelism opt-in is true. |
 | `go-memory-limit` | Input (string) | `8GiB` | No | Soft Go heap limit for deadcode and vulnerability analysis; lower it for smaller runners. Decimal Go units are accepted up to 8GiB; total runner memory is not capped. |
 | `minimum-free-disk-gib` | Input (number) | `0` | No | Opt in to retaining toolchains when a complete root-filesystem observation meets a measured whole-number GiB budget (1–1024). Zero and unknown capacity retain cleanup. |
 | `measure-disk-usage` | Input (boolean) | `false` | No | Record sampled filesystem headroom around cleanup and during build, test and race coverage; cleanup and Go results stay unchanged. |
 | `manual-workflow-fixes` | Input (boolean) | `false` | No | Opt in to complete workflow-file patches for manual application, including after lint errors; existing upload eligibility still applies |
 | `test-default-branch` | Input (boolean) | `true`  | No       | Run the Go test suite on every default-branch run, not just when the diff touched a Go file. On by default: a test can take a non-Go file as its subject, so a diff-only gate leaves the default branch reporting green over a suite it never ran. Set to `false` to accept a default branch that can report green without the suite having run          |
+
+#### Bounded Go test workers
+
+Called workflows pass `enable-test-parallelism: true` and a measured
+`test-parallelism` value from 1 through 8. Omitted or false opt-ins preserve Go's
+default scheduling, even if the consumer has a declaration.
+
+Input-free organization-required runs opt in by committing a regular
+`.go-test-execution.json` beside the selected `go.mod`:
+
+`{"version":1,"parallelism":8}`
+
+This closed schema accepts only these two numeric fields, each exactly once.
+Unsupported versions, out-of-range or fractional counts, untracked or modified
+files, symlinks and extra keys fail before test execution. A declaration change
+selects full Go validation. Without a declaration, scheduling stays unchanged.
+Only Go's `-parallel` flag changes: the complete package scope, test deadlines,
+race detection, atomic coverage, fixture cache refusal and cleanup are retained.
+Measure the complete instrumented suite before adopting a worker count; local
+timings do not establish hosted-runner performance.
 
 #### Disposable PostgreSQL integration tests
 
@@ -1126,6 +1148,8 @@ generator and regenerate it; CI checks the complete projection and credential bo
 | `pr-owner` | Input (string) | - | No | Pull request author login |
 | `working-directory` | Input (string) | `""` | No | Go module directory; empty selects the repository root |
 | `enable-postgresql-fixture` | Input (boolean) | `false` | No | Opt in to the tracked module-local PostgreSQL 17 test fixture |
+| `enable-test-parallelism` | Input (boolean) | `false` | No | Opt in to bounded Test and Coverage workers |
+| `test-parallelism` | Input (number) | `8` | No | Worker count from 1 through 8 when the parallelism opt-in is true |
 | `go-memory-limit` | Input (string) | `8GiB` | No | Soft Go heap limit for analysis; lower it for smaller runners, up to the 8GiB ceiling |
 | `minimum-free-disk-gib` | Input (number) | `0` | No | Opt in to retaining toolchains when a complete root-filesystem observation meets a measured whole-number GiB budget (1–1024). Zero and unknown capacity retain cleanup. |
 | `measure-disk-usage` | Input (boolean) | `false` | No | Record sampled filesystem headroom around cleanup and during build, test and race coverage; cleanup stays enabled |
