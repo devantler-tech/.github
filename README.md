@@ -508,17 +508,13 @@ safe repository-wide actor-trust lane; explicit keys isolate independent callers
 The direct and cross-repository required-workflow paths have a built-in stable source identity.
 Legacy default-off callers retain their existing authorization behavior.
 
-Set `queue-pending-evaluations: true` on a `workflow_call` invocation to retain up to 100 pending
-evaluations in non-cancelling workflow runs and both approval/revocation jobs. This temporary opt-in
-defaults to `false`: omitted/false inputs keep the existing single queue, which can replace a waiting
-evaluation.
-
-Direct and organization-required runs take no inputs, so they retain pending evaluations by default.
-A repository or organization can return to the single queue by setting the
-`QUEUE_PENDING_EVALUATIONS` variable to `false`; an unset variable or any other value keeps the
-queue. The variable applies only to those runs: a `workflow_call` invocation always follows its own
-input, so an explicit `false` stays honoured. Removal of the temporary input and variable is tracked
-in [#277](https://github.com/devantler-tech/.github/issues/277).
+Every run retains up to 100 pending evaluations, in arrival order, in non-cancelling workflow runs
+and in both approval/revocation jobs, so a waiting evaluation is never replaced. Only a run whose
+actor-enforced cancellation supersedes old state uses the single queue, because GitHub forbids a
+retained queue with cancellation. The temporary `queue-pending-evaluations` opt-in and the
+`QUEUE_PENDING_EVALUATIONS` opt-out are retired
+([#277](https://github.com/devantler-tech/.github/issues/277)). The input stays declared and is
+ignored, so callers that still pass it keep validating. The variable is no longer read.
 
 When opted in, GitHub processes queued evaluations in the order they begin waiting, which can
 differ from event delivery order; evaluations still read current PR state. Actor-enforced lifecycle
@@ -606,8 +602,7 @@ jobs:
 | `dry-run`              | Input  | `false` | No       | Run read-only offline decision fixtures without changing a pull request  |
 | `enforce-actor-trust`  | Input  | `false` | No       | Opt-in trusted-trigger enforcement with fail-closed revocation            |
 | `enforce-review-gates` | Input  | `false` | No       | Opt-in fail-closed gate before approval; agent arms after live pentad     |
-| `queue-pending-evaluations` | Input | `false` | No | Temporary opt-in to retain pending evaluations during event bursts |
-| `QUEUE_PENDING_EVALUATIONS` | Variable | unset | No | Temporary opt-out for direct and organization-required runs only: `false` restores the single queue |
+| `queue-pending-evaluations` | Input | `false` | No | Deprecated and ignored: every run retains pending evaluations |
 | `concurrency-key`      | Input  | `""`    | No       | Recommended with actor trust; omitted calls share a safe fallback lane    |
 
 </details>

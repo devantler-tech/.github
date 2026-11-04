@@ -21,6 +21,12 @@ if [[ "$actor_gate_default" != "false" || "$queue_default" != "false" || -n "$co
   echo "::error file=$workflow::actor trust and expanded queues must ship as default-off workflow_call inputs"
   status=1
 fi
+# The retired queue input stays declared (and ignored) so callers that still pass it keep validating.
+queue_description="$(yq -r '.on.workflow_call.inputs."queue-pending-evaluations".description // ""' "$workflow")"
+if [[ "$queue_description" != "Deprecated and ignored."* ]]; then
+  echo "::error file=$workflow::queue-pending-evaluations must stay declared as a deprecated, ignored input"
+  status=1
+fi
 queue_call="$(yq -o=json '.jobs."test-enable-auto-merge-queued"' "$ci_workflow")"
 if ! jq -e '
   .uses == "$/.github/workflows/enable-auto-merge.yaml"
@@ -29,7 +35,7 @@ if ! jq -e '
 ' <<<"$queue_call" >/dev/null ||
   [[ "$(yq -r '.jobs."test-enable-auto-merge-actor-trust".with."queue-pending-evaluations" | tostring' "$ci_workflow")" != "false" ]] ||
   [[ "$(yq -r '.jobs."test-enable-auto-merge".with | has("queue-pending-evaluations")' "$ci_workflow")" != "false" ]]; then
-  echo "::error file=$ci_workflow::CI must exercise omitted, explicit-false, and enabled queue inputs in isolated public calls"
+  echo "::error file=$ci_workflow::CI must keep omitted, explicit-false and explicit-true callers of the deprecated queue input validating in isolated public calls"
   status=1
 fi
 
@@ -230,20 +236,21 @@ workflow_concurrency_group="$(yq -r '.concurrency.group // ""' "$workflow")"
 workflow_cancel_in_progress="$(yq -r '.concurrency."cancel-in-progress" // ""' "$workflow")"
 workflow_queue="$(yq -r '.concurrency.queue // "single"' "$workflow")"
 expected_workflow_cancel="\${{ (inputs.enforce-actor-trust || vars.ENFORCE_ACTOR_TRUST == 'true') && (github.event_name == 'pull_request' || ((inputs.enforce-review-gates || vars.ENFORCE_MERGE_GATES == 'true') && (github.event.action == 'dismissed' || github.event.action == 'deleted'))) }}"
-# The opt-in retains pending evaluations only when cancellation is disabled.
-# Omitted/false inputs preserve the legacy queue in all event configurations.
-# Direct and required runs have no inputs, so they retain the queue by default
-# and opt out only when the QUEUE_PENDING_EVALUATIONS variable is false (an
-# unset variable reads as the empty string). The variable is read only when the
-# inputs context is empty AND this file is the running workflow: a workflow_call
-# run carries every declared input and its caller's workflow_ref, so the
-# variable can never override an explicit or defaulted `false` input.
+# Every run retains pending evaluations unless actor-enforced cancellation
+# supersedes old state (GitHub forbids queue:max with cancellation enabled).
+# The temporary opt-in input and the QUEUE_PENDING_EVALUATIONS opt-out are
+# retired (#277): nothing may read either, so no caller or variable can bring
+# back the single queue that drops a waiting evaluation.
 cancel_condition="${expected_workflow_cancel#\$\{\{ }"
 cancel_condition="${cancel_condition% \}\}}"
 expected_workflow_cancel="\${{ !inputs.dry-run && $cancel_condition }}"
-queue_enabled="(inputs.queue-pending-evaluations || (toJSON(inputs) == '{}' && startsWith(github.workflow_ref, 'devantler-tech/.github/.github/workflows/enable-auto-merge.yaml@') && vars.QUEUE_PENDING_EVALUATIONS != 'false'))"
-expected_workflow_queue="\${{ $queue_enabled && !($cancel_condition) && 'max' || 'single' }}"
-expected_job_queue="\${{ $queue_enabled && 'max' || 'single' }}"
+expected_workflow_queue="\${{ !($cancel_condition) && 'max' || 'single' }}"
+expected_job_queue="max"
+if yq -o=json 'del(.on.workflow_call.inputs."queue-pending-evaluations")' "$workflow" |
+  grep -E 'queue-pending-evaluations|QUEUE_PENDING_EVALUATIONS' >/dev/null; then
+  echo "::error file=$workflow::the retired queue opt-in and opt-out must not be read anywhere"
+  status=1
+fi
 # shellcheck disable=SC2016 # GitHub expressions are compared literally.
 expected_workflow_group='enable-auto-merge-${{github.repository}}-${{inputs.concurrency-key||(startsWith(github.workflow_ref,'"'"'devantler-tech/.github/.github/workflows/enable-auto-merge.yaml@'"'"')&&'"'"'direct'"'"')||((inputs.enforce-actor-trust||vars.ENFORCE_ACTOR_TRUST=='"'"'true'"'"')&&'"'"'actor-trust-legacy'"'"')||github.workflow_ref}}-${{github.event.pull_request.number||github.event.issue.number||github.run_id}}-${{((inputs.concurrency-key!='"'"''"'"'||startsWith(github.workflow_ref,'"'"'devantler-tech/.github/.github/workflows/enable-auto-merge.yaml@'"'"')||inputs.enforce-actor-trust||vars.ENFORCE_ACTOR_TRUST=='"'"'true'"'"')&&((github.event_name=='"'"'pull_request'"'"'&&!github.event.pull_request.draft&&contains(fromJSON('"'"'["dependabot[bot]","renovate[bot]","github-actions[bot]","ksail-bot[bot]","coderabbitai[bot]","cursor[bot]"]'"'"'),github.event.pull_request.user.login))||((inputs.enforce-review-gates||vars.ENFORCE_MERGE_GATES=='"'"'true'"'"')&&((github.event_name=='"'"'pull_request_review'"'"'&&github.event.action=='"'"'dismissed'"'"'&&!github.event.pull_request.draft&&contains(fromJSON('"'"'["coderabbitai[bot]","chatgpt-codex-connector[bot]"]'"'"'),github.event.review.user.login)&&contains(fromJSON('"'"'["dependabot[bot]","renovate[bot]","github-actions[bot]","ksail-bot[bot]","coderabbitai[bot]","cursor[bot]"]'"'"'),github.event.pull_request.user.login))||(github.event_name=='"'"'issue_comment'"'"'&&github.event.action=='"'"'deleted'"'"'&&github.event.issue.pull_request&&github.event.issue.state=='"'"'open'"'"'&&contains(fromJSON('"'"'["coderabbitai[bot]","chatgpt-codex-connector[bot]"]'"'"'),github.event.comment.user.login)&&contains(fromJSON('"'"'["dependabot[bot]","renovate[bot]","github-actions[bot]","ksail-bot[bot]","coderabbitai[bot]","cursor[bot]"]'"'"'),github.event.issue.user.login))))))&&'"'"'state'"'"'||github.run_id}}'
 normalized_workflow_group="$(tr -d '[:space:]' <<<"$workflow_concurrency_group")"
@@ -268,7 +275,7 @@ if [[ "$normalized_workflow_group" != "$expected_workflow_group" ||
 fi
 if [[ "$workflow_queue" != "$expected_workflow_queue" ||
   "$review_job_queue" != "$expected_job_queue" || "$disarm_job_queue" != "$expected_job_queue" ]]; then
-  echo "::error file=$workflow::opted-in non-cancelling runs and both mutation jobs must retain pending evaluations; other runs must use the single queue"
+  echo "::error file=$workflow::non-cancelling runs and both mutation jobs must retain pending evaluations; only actor-enforced cancelling runs use the single queue"
   status=1
 fi
 queue_fixture="$(yq -o=json '.jobs."test-enable-auto-merge-queue"' "$ci_workflow")"
