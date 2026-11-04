@@ -111,6 +111,20 @@ comments and helpers do not count as execution.
     `# main (no upstream releases)`). This keeps the comment honest — it names the
     branch and *why* there is no version, so a future re-pin to a newer branch
     commit is not mistaken for a floating branch ref.
+- **Every version pin is tracked or listed.** `.github/scripts/version-pin-census.sh`
+  lists every pin in workflows, action metadata and Go modules. A pin passes when
+  Dependabot updates it: a full-SHA action with a `# v<version>` comment in a
+  directory that `dependabot.yml` covers, or a module in a `gomod` entry that does not
+  ignore `*`. Any other pin needs an entry with its refresh path in
+  `.github/version-pins.json`. That covers images, which must always carry a digest,
+  tool versions in `run:`, `with:` and `env:`, branch-tracked actions and frozen
+  fixtures. A Docker action whose metadata runs a floating image tag is called by
+  image digest instead (`uses: docker://<image>:<tag>@sha256:<digest>`). The census
+  fails on a mutable, untracked or unlisted pin and on a manifest entry that no
+  longer matches. Update the entry in the same PR as the pin.
+  `bash .github/tests/test-version-pin-census.sh` runs it with its refusal controls.
+  The census cannot see inside third-party actions, so check a new Docker action's
+  `runs.image` by hand.
 
 ## Reliability
 

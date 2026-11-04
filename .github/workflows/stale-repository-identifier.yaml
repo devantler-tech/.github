@@ -33,7 +33,12 @@ jobs:
           persist-credentials: true
 
       - name: 🧹 Identify stale repositories
-        uses: github/stale-repos@07243c72d78533a27c0e37a93bfa87275fca4aa1 # v9.1.1
+        # github/stale-repos v9.1.1 (07243c72) is a Docker action whose metadata runs
+        # the floating `stale_repos:v9` tag, so its SHA pin froze nothing while this
+        # step holds the App token (#627). Run the same image by digest instead; the
+        # action declares no inputs or entrypoint, so the step behaves the same.
+        # Refresh path: .github/version-pins.json.
+        uses: docker://ghcr.io/github-community-projects/stale_repos:v9.1.1@sha256:b259f6c3d90e6e29c7d9a0644f4bf7b4004f51e08184cb3f834e98dc56de5745
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           EXEMPT_TOPICS: "keep,template"
