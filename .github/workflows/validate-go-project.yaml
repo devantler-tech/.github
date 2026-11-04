@@ -1247,6 +1247,49 @@ jobs:
             cleanup_disk
           fi
 
+      - name: Route Go temporary storage to the runner disk
+        # `go build` and `go test` keep their work directory (packages in flight and
+        # every linked test binary) under GOTMPDIR, which defaults to the system
+        # temporary directory. Some ubuntu-26.04 images mount that directory as a
+        # small tmpfs, separate from the disk the cleanup above reclaims. A large
+        # module then fails there with "disk quota exceeded" while tens of GiB stay
+        # free on the runner disk (#838). Only the go command's work directory moves;
+        # the tests' own TMPDIR is unchanged. An unreadable capacity is reported as
+        # unknown and never withholds the route.
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${RUNNER_TEMP:-}" != /* ]]; then
+            echo '::error::RUNNER_TEMP must be an absolute path'
+            exit 2
+          fi
+          go_temp="$RUNNER_TEMP/go-tmp"
+          mkdir -p -- "$go_temp"
+          [[ -d "$go_temp" && -w "$go_temp" ]] || { echo '::error::The Go temporary directory is not writable'; exit 2; }
+          timeout_command=timeout
+          # Ubuntu 26 supplies GNU timeout under this explicit name.
+          if command -v gnutimeout >/dev/null 2>&1; then timeout_command=gnutimeout; fi
+          status=measured
+          available_kib() {
+            local frame
+            frame="$("$timeout_command" --kill-after=1s 5s env LC_ALL=C df -Pk "$1" 2>/dev/null)" || return 1
+            awk 'NR == 2 && $4 ~ /^[0-9]{1,12}$/ {print $4; found = 1} END {exit !found}' <<< "$frame"
+          }
+          filesystem_type() {
+            local fstype
+            fstype="$("$timeout_command" --kill-after=1s 5s findmnt -n -o FSTYPE --target "$1" 2>/dev/null)" || return 1
+            [[ "$fstype" =~ ^[a-z0-9][a-z0-9._-]{0,31}$ ]] || return 1
+            printf '%s\n' "$fstype"
+          }
+          system_temp="${TMPDIR:-/tmp}"
+          system_type="$(filesystem_type "$system_temp")" || { system_type=unknown; status=unknown; }
+          system_available="$(available_kib "$system_temp")" || { system_available=null; status=unknown; }
+          go_type="$(filesystem_type "$go_temp")" || { go_type=unknown; status=unknown; }
+          go_available="$(available_kib "$go_temp")" || { go_available=null; status=unknown; }
+          printf 'GO_TEMP_ROUTE {"status":"%s","system_temp_fstype":"%s","system_temp_available_kib":%s,"go_temp_fstype":"%s","go_temp_available_kib":%s}\n' \
+            "$status" "$system_type" "$system_available" "$go_type" "$go_available"
+          printf 'GOTMPDIR=%s\n' "$go_temp" >> "$GITHUB_ENV"
+
       - name: ⚙️ Setup Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
@@ -1457,6 +1500,49 @@ jobs:
           else
             cleanup_disk
           fi
+
+      - name: Route Go temporary storage to the runner disk
+        # `go build` and `go test` keep their work directory (packages in flight and
+        # every linked test binary) under GOTMPDIR, which defaults to the system
+        # temporary directory. Some ubuntu-26.04 images mount that directory as a
+        # small tmpfs, separate from the disk the cleanup above reclaims. A large
+        # module then fails there with "disk quota exceeded" while tens of GiB stay
+        # free on the runner disk (#838). Only the go command's work directory moves;
+        # the tests' own TMPDIR is unchanged. An unreadable capacity is reported as
+        # unknown and never withholds the route.
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${RUNNER_TEMP:-}" != /* ]]; then
+            echo '::error::RUNNER_TEMP must be an absolute path'
+            exit 2
+          fi
+          go_temp="$RUNNER_TEMP/go-tmp"
+          mkdir -p -- "$go_temp"
+          [[ -d "$go_temp" && -w "$go_temp" ]] || { echo '::error::The Go temporary directory is not writable'; exit 2; }
+          timeout_command=timeout
+          # Ubuntu 26 supplies GNU timeout under this explicit name.
+          if command -v gnutimeout >/dev/null 2>&1; then timeout_command=gnutimeout; fi
+          status=measured
+          available_kib() {
+            local frame
+            frame="$("$timeout_command" --kill-after=1s 5s env LC_ALL=C df -Pk "$1" 2>/dev/null)" || return 1
+            awk 'NR == 2 && $4 ~ /^[0-9]{1,12}$/ {print $4; found = 1} END {exit !found}' <<< "$frame"
+          }
+          filesystem_type() {
+            local fstype
+            fstype="$("$timeout_command" --kill-after=1s 5s findmnt -n -o FSTYPE --target "$1" 2>/dev/null)" || return 1
+            [[ "$fstype" =~ ^[a-z0-9][a-z0-9._-]{0,31}$ ]] || return 1
+            printf '%s\n' "$fstype"
+          }
+          system_temp="${TMPDIR:-/tmp}"
+          system_type="$(filesystem_type "$system_temp")" || { system_type=unknown; status=unknown; }
+          system_available="$(available_kib "$system_temp")" || { system_available=null; status=unknown; }
+          go_type="$(filesystem_type "$go_temp")" || { go_type=unknown; status=unknown; }
+          go_available="$(available_kib "$go_temp")" || { go_available=null; status=unknown; }
+          printf 'GO_TEMP_ROUTE {"status":"%s","system_temp_fstype":"%s","system_temp_available_kib":%s,"go_temp_fstype":"%s","go_temp_available_kib":%s}\n' \
+            "$status" "$system_type" "$system_available" "$go_type" "$go_available"
+          printf 'GOTMPDIR=%s\n' "$go_temp" >> "$GITHUB_ENV"
 
       - name: ⚙️ Setup Go
         id: setup-go
@@ -1799,6 +1885,49 @@ jobs:
           else
             cleanup_disk
           fi
+
+      - name: Route Go temporary storage to the runner disk
+        # `go build` and `go test` keep their work directory (packages in flight and
+        # every linked test binary) under GOTMPDIR, which defaults to the system
+        # temporary directory. Some ubuntu-26.04 images mount that directory as a
+        # small tmpfs, separate from the disk the cleanup above reclaims. A large
+        # module then fails there with "disk quota exceeded" while tens of GiB stay
+        # free on the runner disk (#838). Only the go command's work directory moves;
+        # the tests' own TMPDIR is unchanged. An unreadable capacity is reported as
+        # unknown and never withholds the route.
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${RUNNER_TEMP:-}" != /* ]]; then
+            echo '::error::RUNNER_TEMP must be an absolute path'
+            exit 2
+          fi
+          go_temp="$RUNNER_TEMP/go-tmp"
+          mkdir -p -- "$go_temp"
+          [[ -d "$go_temp" && -w "$go_temp" ]] || { echo '::error::The Go temporary directory is not writable'; exit 2; }
+          timeout_command=timeout
+          # Ubuntu 26 supplies GNU timeout under this explicit name.
+          if command -v gnutimeout >/dev/null 2>&1; then timeout_command=gnutimeout; fi
+          status=measured
+          available_kib() {
+            local frame
+            frame="$("$timeout_command" --kill-after=1s 5s env LC_ALL=C df -Pk "$1" 2>/dev/null)" || return 1
+            awk 'NR == 2 && $4 ~ /^[0-9]{1,12}$/ {print $4; found = 1} END {exit !found}' <<< "$frame"
+          }
+          filesystem_type() {
+            local fstype
+            fstype="$("$timeout_command" --kill-after=1s 5s findmnt -n -o FSTYPE --target "$1" 2>/dev/null)" || return 1
+            [[ "$fstype" =~ ^[a-z0-9][a-z0-9._-]{0,31}$ ]] || return 1
+            printf '%s\n' "$fstype"
+          }
+          system_temp="${TMPDIR:-/tmp}"
+          system_type="$(filesystem_type "$system_temp")" || { system_type=unknown; status=unknown; }
+          system_available="$(available_kib "$system_temp")" || { system_available=null; status=unknown; }
+          go_type="$(filesystem_type "$go_temp")" || { go_type=unknown; status=unknown; }
+          go_available="$(available_kib "$go_temp")" || { go_available=null; status=unknown; }
+          printf 'GO_TEMP_ROUTE {"status":"%s","system_temp_fstype":"%s","system_temp_available_kib":%s,"go_temp_fstype":"%s","go_temp_available_kib":%s}\n' \
+            "$status" "$system_type" "$system_available" "$go_type" "$go_available"
+          printf 'GOTMPDIR=%s\n' "$go_temp" >> "$GITHUB_ENV"
 
       - name: ⚙️ Setup Go
         id: setup-go

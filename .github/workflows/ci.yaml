@@ -2509,6 +2509,9 @@ jobs:
       - name: Check capacity-based Go disk cleanup and failure controls
         run: bash .github/tests/test-go-disk-cleanup.sh
 
+      - name: Check Go temporary storage routing and failure controls
+        run: bash .github/tests/test-go-temp-route.sh
+
       - name: Reject unbounded catalogue runner jobs
         shell: bash
         run: bash .github/tests/test-ci-runner-timeouts.sh
