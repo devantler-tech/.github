@@ -212,6 +212,10 @@ Publication, consumer opt-in/off proof and native ordinary-run evidence remain u
 The optional `minimum-free-disk-gib` budget defaults to zero (unconditional cleanup).
 A complete bounded capacity read can retain toolchains only when the opted-in budget
 is met; unknown capacity retains reclamation. Keep `test-go-disk-cleanup.sh` passing.
+After cleanup, build, test and coverage route only the go command's work directory
+(`GOTMPDIR`) to `RUNNER_TEMP` on the runner disk, because some images mount the system
+temporary directory as a small tmpfs (#838). The tests' `TMPDIR` is unchanged; unknown
+capacity still routes. Keep `test-go-temp-route.sh` passing.
 The default-off, reviewed-main `measure-go-disk.yaml` evaluation uses a pinned public
 KSail baseline with read-only authority. It compares unconditional cleanup and an experimental
 64 GiB policy in four cold build/race jobs, retaining small structured receipts independently

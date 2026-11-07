@@ -101,3 +101,47 @@ admission, command/cleanup preservation and failure controls. Regenerate the
 read-only workflow with `bash .github/scripts/generate-go-readonly.sh` after
 changing production wiring. Required catalogue CI runs these controls; consumer
 publication, opt-in/off proof and ordinary native acceptance remain separate.
+
+## Go temporary storage route (#838)
+
+The failing KSail Test jobs ran on runner image `20261018.50.1`. Their normal
+cleanup left about 40 GiB free on the runner disk, yet every write that failed
+was under the system temporary directory: the Go linker's output and
+`vet.cfg`/`importcfg` in the go command's work directory, then the tests' own
+fixtures. Writes to the module and build caches on the runner disk never
+failed. The error was `disk quota exceeded`, which a size-limited tmpfs
+reports and an unquota'd runner disk does not. An instrumented passing run on
+image `20261026.180.1` found the system temporary directory on the same
+filesystem as the runner disk. Its peak use during `go test ./...` was about
+19.8 GiB: 6.5 GiB of module cache, 6.2 GiB of build cache and a transient
+work directory of several GiB.
+
+The build, test and coverage jobs therefore run one step, after cleanup and
+before Go is installed, that sets `GOTMPDIR` to a directory under
+`RUNNER_TEMP`. `RUNNER_TEMP` is on the runner disk that the cleanup reclaims and
+measures. The step prints one `GO_TEMP_ROUTE` receipt with the filesystem type
+and available KiB of two directories: the system temporary directory, where Go
+wrote before (the "before" reading), and the routed directory, where it writes
+now (the "after" reading). The receipt says
+`unknown` when it cannot read them and still routes. Only the go command's work
+directory moves. The tests' `TMPDIR`, the test command, cleanup, caches and
+permissions do not change. A missing or relative `RUNNER_TEMP`, an occupied
+path or an unwritable environment file fails the job.
+
+Capacity requirement: the runner disk must hold the restored module cache,
+the build cache and the transient work directory together. That is about
+20 GiB for KSail's complete unit suite on a cold build cache. The system
+temporary directory needs only the tests' own fixtures.
+
+Limitations: the receipt is one reading before the command, not a peak, and
+quota limits remain unread. The image-to-mount correlation comes from logs
+and one observation report, not from the image's published layout. Consumers
+pick the route up when they bump their pinned release. After that, the next
+required Test runs on each image are the native readback.
+The route covers build, test and coverage only. The lint and vulnerability
+scans and the default-off `measure-go-disk.yaml` evaluation keep the system
+temporary directory. The evaluation therefore measures a runner-disk load
+without the routed work directory, which production now adds.
+
+Run `bash .github/tests/test-go-temp-route.sh` for the placement, receipt and
+refusal controls.
