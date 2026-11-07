@@ -24,8 +24,8 @@ yq -e '
 # Byte equivalence is not signer equivalence: the revision is part of the certificate
 # identity. Update this revision only AFTER consumer approval has been deployed and
 # read back. Content and file-mode review remain independently required.
-approved_publisher_revision='57310dc609dcc8f9205f53c674ff17c5dc979b73'
-reviewed_workflow_blob='7c6709ab447a826c816d6542f01d8d3503ddafde'
+approved_publisher_revision='56ceec6717a1faa0686d865424cd2d1d45f18a0a'
+reviewed_workflow_blob='ce6ed49062b44b56379c408c8c785a542cff533f'
 reviewed_absence_blob='3566e4067e953a1d9cb34e6a50a0f9b72a5d8bc8'
 reviewed_recovery_blob='48dc38f60ddebf90b0976758df9f1983bbb86bfd'
 source_remote='https://github.com/devantler-tech/.github.git'
