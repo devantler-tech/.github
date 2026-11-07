@@ -1,0 +1,171 @@
+{
+  "schema": 1,
+  "pins": [
+    {
+      "kind": "action",
+      "pin": "Homebrew/actions/setup-homebrew@9ffcbcc2c89631400988e8d4b1e3ac17dbbe3fe9",
+      "files": [
+        "actions/setup-ksail-cli/action.yaml"
+      ],
+      "refresh": "Upstream publishes no tags or releases, so Dependabot cannot propose an update. Compare with Homebrew/actions main and move the SHA in a reviewed PR."
+    },
+    {
+      "kind": "action",
+      "pin": "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+      "files": [
+        "workflow-templates/example.yaml"
+      ],
+      "refresh": "Dependabot does not read workflow-templates/. Keep it equal to the checkout pin Dependabot moves in .github/workflows; new repositories then track it themselves."
+    },
+    {
+      "kind": "image",
+      "pin": "ghcr.io/alstr/todo-to-issue-action:v5.1.15@sha256:a1794cab7e7a0306d6f74dd5249734f2c0b49e47d7549c6cdca4421bced67c9d",
+      "files": [
+        ".github/actions/test-todo-default-fixture/action.yaml",
+        "actions/create-issues-from-todos/action.yaml"
+      ],
+      "refresh": "Dependabot does not read env values. On a new alstr/todo-to-issue-action release, resolve its image digest and move the action and its default-fixture copy together; ci.yaml asserts the tag-plus-digest shape."
+    },
+    {
+      "kind": "image",
+      "pin": "ghcr.io/github-community-projects/stale_repos:v9.1.1@sha256:b259f6c3d90e6e29c7d9a0644f4bf7b4004f51e08184cb3f834e98dc56de5745",
+      "files": [
+        ".github/workflows/stale-repository-identifier.yaml"
+      ],
+      "refresh": "Dependabot does not read docker:// steps. On a new github/stale-repos release, resolve the release tag's image digest and update the tag and digest together."
+    },
+    {
+      "kind": "image",
+      "pin": "postgres:17.11-bookworm@sha256:3645570cccdfa447589da9f57dd740faa29b30938e861289a5574b6ca6b03826",
+      "files": [
+        ".github/workflows/validate-go-project.yaml",
+        ".github/workflows/validate-go-project-readonly.yaml"
+      ],
+      "refresh": "Dependabot does not read workflow service images. Resolve the new tag's digest, update the production workflow and regenerate the read-only projection."
+    },
+    {
+      "kind": "module",
+      "pin": "example.com/govulncheck-allowlist-fixture",
+      "files": [
+        ".github/tests/govulncheck-allowlist/go.mod"
+      ],
+      "refresh": "Frozen on purpose: the govulncheck self-tests need its known-vulnerable requirement. dependabot.yml ignores every dependency here."
+    },
+    {
+      "kind": "module",
+      "pin": "example.com/govulncheck-generics",
+      "files": [
+        ".github/tests/govulncheck-generics/go.mod"
+      ],
+      "refresh": "Frozen on purpose: the govulncheck self-tests need its known-vulnerable requirement. dependabot.yml ignores every dependency here."
+    },
+    {
+      "kind": "tool",
+      "pin": "SDK_VERSIONS: 10.0.402",
+      "files": [
+        "actions/run-dotnet-tests/action.yaml"
+      ],
+      "refresh": "The .NET SDKs: previous STS and current LTS, exact published versions. Move actions/run-dotnet-tests and the native fixture steps in ci.yaml together."
+    },
+    {
+      "kind": "tool",
+      "pin": "SDK_VERSIONS: 9.0.319",
+      "files": [
+        "actions/run-dotnet-tests/action.yaml"
+      ],
+      "refresh": "The .NET SDKs: previous STS and current LTS, exact published versions. Move actions/run-dotnet-tests and the native fixture steps in ci.yaml together."
+    },
+    {
+      "kind": "tool",
+      "pin": "dotnet-version: 10.0.402",
+      "files": [
+        ".github/workflows/ci.yaml",
+        "actions/run-dotnet-tests/action.yaml"
+      ],
+      "refresh": "The .NET SDKs: previous STS and current LTS, exact published versions. Move actions/run-dotnet-tests and the native fixture steps in ci.yaml together."
+    },
+    {
+      "kind": "tool",
+      "pin": "dotnet-version: 9.0.319",
+      "files": [
+        ".github/workflows/ci.yaml",
+        "actions/run-dotnet-tests/action.yaml"
+      ],
+      "refresh": "The .NET SDKs: previous STS and current LTS, exact published versions. Move actions/run-dotnet-tests and the native fixture steps in ci.yaml together."
+    },
+    {
+      "kind": "tool",
+      "pin": "github.com/boumenot/gocover-cobertura@v1.5.0",
+      "files": [
+        ".github/workflows/validate-go-project.yaml",
+        ".github/workflows/validate-go-project-readonly.yaml"
+      ],
+      "refresh": "Compare with the module's latest tag, update the production workflow and regenerate the read-only projection."
+    },
+    {
+      "kind": "tool",
+      "pin": "go-version: 1.26.9",
+      "files": [
+        ".github/workflows/ci.yaml",
+        ".github/workflows/inspect-release-recovery.yaml",
+        ".github/workflows/publish-release-recovery.yaml",
+        ".github/workflows/release-recovery-offline-fixture.yaml",
+        "actions/create-issues-from-todos/action.yaml"
+      ],
+      "refresh": "Go toolchain for the catalogue's own helpers. Move every listed file together with the go directives of the modules they build."
+    },
+    {
+      "kind": "tool",
+      "pin": "go-version: 99.99.99",
+      "files": [
+        ".github/workflows/ci.yaml"
+      ],
+      "refresh": "Never refreshed: a deliberately unpublished version for the unpublished-version refusal fixture."
+    },
+    {
+      "kind": "tool",
+      "pin": "golang.org/x/tools/cmd/deadcode@v0.50.0",
+      "files": [
+        ".github/workflows/validate-go-project.yaml",
+        ".github/workflows/validate-go-project-readonly.yaml"
+      ],
+      "refresh": "Compare with golang.org/x/tools' latest tag, update the production workflow and regenerate the read-only projection."
+    },
+    {
+      "kind": "tool",
+      "pin": "golang.org/x/vuln/cmd/govulncheck@v1.8.0",
+      "files": [
+        ".github/actions/govulncheck/action.yaml"
+      ],
+      "refresh": "Compare with golang.org/x/vuln's latest tag. The govulncheck self-tests in ci.yaml prove the bump."
+    },
+    {
+      "kind": "tool",
+      "pin": "node-version: 22",
+      "files": [
+        ".github/workflows/ci.yaml",
+        ".github/workflows/create-release.yaml"
+      ],
+      "refresh": "A major line: setup-node resolves its latest patch. Move to the next Node LTS major when semantic-release requires it."
+    },
+    {
+      "kind": "tool",
+      "pin": "semantic-release@25.0.9",
+      "files": [
+        ".github/workflows/ci.yaml",
+        ".github/workflows/create-release.yaml"
+      ],
+      "refresh": "Compare with semantic-release's latest release and its security advisories. Move the release workflow and its CI fixture together."
+    },
+    {
+      "kind": "tool",
+      "pin": "version: v2.14.0",
+      "files": [
+        ".github/workflows/ci.yaml",
+        ".github/workflows/validate-go-project.yaml",
+        ".github/workflows/validate-go-project-readonly.yaml"
+      ],
+      "refresh": "golangci-lint. test-catalogue-tool-pin-parity.sh keeps the three places equal. Compare with golangci-lint's latest release."
+    }
+  ]
+}
