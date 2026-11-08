@@ -470,3 +470,58 @@ func TestIntegerRequiresRepresentableIdentity(t *testing.T) {
 		}
 	}
 }
+
+// A push that regenerates large generated files (licence notices, lockfiles) yields a diff far
+// above the 16 MiB bound on JSON evidence: ksail#8182 produced a 54 MB compare diff. The production
+// diff bound must admit that with headroom, and must apply only on the bound diff route.
+func TestProductionDiffBoundAdmitsRegeneratedNotices(t *testing.T) {
+	if maxDiffResponse < 128<<20 || maxAPIResponse != 16<<20 {
+		t.Fatalf("bounds changed: diff=%d json=%d", maxDiffResponse, maxAPIResponse)
+	}
+}
+
+func TestLargeDiffWithinDiffBoundIsServed(t *testing.T) {
+	saved := maxDiffResponse
+	t.Cleanup(func() { maxDiffResponse = saved })
+	diff := "diff --git a/n.txt b/n.txt\n" + strings.Repeat("+x\n", (17<<20)/3)
+	// Larger than the 54 MB diff that motivated the bound, read under the production bound.
+	notices := "diff --git a/n.txt b/n.txt\n" + strings.Repeat("+y\n", (60<<20)/3)
+	json := "[" + strings.Repeat(" ", 17<<20) + "]"
+	compare := "/repos/offline/fixture/compare/fixture-base...1111111111111111111111111111111111111111"
+	issues := "/repos/offline/fixture/issues?per_page=100&page=1&state=open"
+	for _, tc := range []struct {
+		name, path, accept, body string
+		bound                    int64
+		served                   bool
+	}{
+		{"diff above JSON bound", compare, "application/vnd.github.v3.diff", diff, 24 << 20, true},
+		{"60 MiB diff under the production bound", compare, "application/vnd.github.v3.diff", notices, saved, true},
+		{"diff above diff bound", compare, "application/vnd.github.v3.diff", diff, 16 << 20, false},
+		{"JSON above JSON bound", issues, "application/vnd.github+json", json, 24 << 20, false},
+		{"diff Accept on a JSON route", issues, "application/vnd.github.v3.diff", json, 24 << 20, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			maxDiffResponse = tc.bound
+			calls := 0
+			g := fixtureGuard(t, func(w http.ResponseWriter, r *http.Request) { calls++; io.WriteString(w, tc.body) })
+			g.cfg.Before = "fixture-base"
+			r := httptest.NewRequest("GET", tc.path, nil)
+			r.Header.Set("Authorization", "token fixture-token")
+			r.Header.Set("Accept", tc.accept)
+			w := httptest.NewRecorder()
+			g.ServeHTTP(w, r)
+			if calls == 0 {
+				t.Fatal("request never reached the upstream read")
+			}
+			if tc.served {
+				if w.Code != 200 || g.verdict() != nil || w.Body.String() != tc.body {
+					t.Fatalf("large diff rejected: status=%d len=%d verdict=%v", w.Code, w.Body.Len(), g.verdict())
+				}
+				return
+			}
+			if w.Code == 200 || g.verdict() == nil {
+				t.Fatalf("oversized body accepted: status=%d verdict=%v", w.Code, g.verdict())
+			}
+		})
+	}
+}
