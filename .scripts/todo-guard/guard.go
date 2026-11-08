@@ -199,6 +199,12 @@ type response struct {
 }
 
 func (g *guard) fetch(r *http.Request, target *url.URL, body []byte) (response, error) {
+	return g.fetchBounded(r, target, body, maxAPIResponse)
+}
+
+// fetchBounded buffers at most limit bytes of the upstream body. Only the bound diff route passes
+// maxDiffResponse; every other route keeps the JSON bound whatever Accept header it sends.
+func (g *guard) fetchBounded(r *http.Request, target *url.URL, body []byte, limit int64) (response, error) {
 	u := *g.cfg.API
 	if target.IsAbs() {
 		if target.Scheme != u.Scheme || target.Host != u.Host || !strings.HasPrefix(target.Path, strings.TrimSuffix(u.Path, "/")+"/") {
@@ -223,10 +229,6 @@ func (g *guard) fetch(r *http.Request, target *url.URL, body []byte) (response, 
 		return response{}, errors.New("API transport failed")
 	}
 	defer p.Body.Close()
-	limit := maxAPIResponse
-	if req.Header.Get("Accept") == "application/vnd.github.v3.diff" {
-		limit = maxDiffResponse
-	}
 	b, e := io.ReadAll(io.LimitReader(p.Body, limit+1))
 	if e != nil || int64(len(b)) > limit {
 		return response{}, errors.New("API response incomplete")
@@ -530,7 +532,7 @@ func (g *guard) diff(w http.ResponseWriter, r *http.Request, prefix string) {
 			return
 		}
 	}
-	p, e := g.fetch(r, r.URL, nil)
+	p, e := g.fetchBounded(r, r.URL, nil, maxDiffResponse)
 	if e != nil || p.code != 200 {
 		if strings.HasPrefix(r.URL.Path, compare) && !g.mutationStarted {
 			g.diffPending = true
