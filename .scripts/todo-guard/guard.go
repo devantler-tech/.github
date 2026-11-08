@@ -184,6 +184,14 @@ func onlyQuery(q url.Values, keys ...string) bool {
 	return true
 }
 
+// maxAPIResponse bounds every JSON evidence body the guard buffers. maxDiffResponse bounds a diff
+// body instead: a push that regenerates large generated files (licence notices, lockfiles) yields a
+// diff far above the JSON bound, and refusing it fails the scan on every such push. A body above
+// either bound is still refused, so oversized evidence never reaches the scanner truncated.
+const maxAPIResponse int64 = 16 << 20
+
+var maxDiffResponse int64 = 256 << 20
+
 type response struct {
 	code   int
 	header http.Header
@@ -215,8 +223,12 @@ func (g *guard) fetch(r *http.Request, target *url.URL, body []byte) (response, 
 		return response{}, errors.New("API transport failed")
 	}
 	defer p.Body.Close()
-	b, e := io.ReadAll(io.LimitReader(p.Body, (16<<20)+1))
-	if e != nil || len(b) > 16<<20 {
+	limit := maxAPIResponse
+	if req.Header.Get("Accept") == "application/vnd.github.v3.diff" {
+		limit = maxDiffResponse
+	}
+	b, e := io.ReadAll(io.LimitReader(p.Body, limit+1))
+	if e != nil || int64(len(b)) > limit {
 		return response{}, errors.New("API response incomplete")
 	}
 	return response{p.StatusCode, p.Header.Clone(), b}, nil

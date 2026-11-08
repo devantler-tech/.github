@@ -470,3 +470,48 @@ func TestIntegerRequiresRepresentableIdentity(t *testing.T) {
 		}
 	}
 }
+
+// A push that regenerates large generated files (licence notices, lockfiles) yields a diff far
+// above the 16 MiB cap that bounds ordinary JSON evidence. Such a diff must still reach the
+// scanner, while an oversized JSON body and a diff above the diff cap stay refused.
+func TestLargeDiffWithinDiffCapIsServed(t *testing.T) {
+	saved := maxDiffResponse
+	t.Cleanup(func() { maxDiffResponse = saved })
+	maxDiffResponse = 24 << 20
+	big := "diff --git a/n.txt b/n.txt\n" + strings.Repeat("+x\n", (17<<20)/3)
+	for _, tc := range []struct {
+		name   string
+		accept string
+		body   string
+		cap    int64
+		want   int
+	}{
+		{"diff above JSON cap", "application/vnd.github.v3.diff", big, 24 << 20, 200},
+		{"diff above diff cap", "application/vnd.github.v3.diff", big, 16 << 20, 0},
+		{"JSON above JSON cap", "application/vnd.github+json", "[" + strings.Repeat(" ", 17<<20) + "]", 24 << 20, 0},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			maxDiffResponse = tc.cap
+			g := fixtureGuard(t, func(w http.ResponseWriter, r *http.Request) { io.WriteString(w, tc.body) })
+			g.cfg.Before = "fixture-base"
+			path := "/repos/offline/fixture/compare/fixture-base...1111111111111111111111111111111111111111"
+			if !strings.HasSuffix(tc.accept, "diff") {
+				path = "/repos/offline/fixture/issues?state=all&per_page=100"
+			}
+			r := httptest.NewRequest("GET", path, nil)
+			r.Header.Set("Authorization", "token fixture-token")
+			r.Header.Set("Accept", tc.accept)
+			w := httptest.NewRecorder()
+			g.ServeHTTP(w, r)
+			if tc.want == 200 {
+				if w.Code != 200 || g.verdict() != nil || w.Body.Len() != len(tc.body) {
+					t.Fatalf("large diff rejected: status=%d len=%d verdict=%v", w.Code, w.Body.Len(), g.verdict())
+				}
+				return
+			}
+			if w.Code == 200 && g.verdict() == nil {
+				t.Fatalf("oversized body accepted: status=%d", w.Code)
+			}
+		})
+	}
+}
