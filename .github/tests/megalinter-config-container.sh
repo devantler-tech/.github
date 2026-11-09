@@ -42,7 +42,7 @@ case "${1:-}" in
       # The action has already pulled this image at its immutable action pin.
       # Reuse its LOCAL image id with networking disabled to capture the precise
       # parser failure, rather than accepting an image-pull/runner error as RED.
-      image="$(docker image inspect ghcr.io/oxsecurity/megalinter-go:v10.1.0 --format '{{.Id}}')"
+      image="$(docker image inspect ghcr.io/oxsecurity/megalinter-go:v10.2.0 --format '{{.Id}}')"
       [[ "$image" =~ ^sha256:[0-9a-f]{64}$ ]]
       log="$workspace/megalinter-malformed-config.log"
       status=0
