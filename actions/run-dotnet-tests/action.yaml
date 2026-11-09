@@ -43,7 +43,7 @@ runs:
         printf 'install-needed=%s\n' "$install_needed" >>"$GITHUB_OUTPUT"
     - name: ⚙️ Setup .NET
       if: steps.sdk-check.outputs.install-needed != 'false'
-      uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+      uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
       with:
         # Provision both the previous STS (9) and the current LTS (10) so callers can
         # target either TFM. Exact published SDKs avoid premature channel redirects.
