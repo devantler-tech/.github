@@ -988,7 +988,7 @@ jobs:
       # native scanner cases (test-catalogue-tool-pin-parity.sh).
       - name: 🧹 Lint
         id: ml
-        uses: oxsecurity/megalinter/flavors/go@9949bad031045f366be2467e00e8371a7328a2e2 # v10.1.0
+        uses: oxsecurity/megalinter/flavors/go@f2fe8c1cba37091848df3e524066c8c23ef353ed # v10.2.0
         env:
           DEFAULT_WORKSPACE: ${{ needs.changes.outputs.module-directory }}
           GOTOOLCHAIN: go${{ steps.setup-go.outputs.go-version }}
@@ -1087,7 +1087,7 @@ jobs:
     name: 📦 Tidy - apply fixes
     needs: [changes, tidy]
     if: ${{ needs.changes.outputs.signed-fixes == 'true' }}
-    uses: devantler-tech/.github/.github/workflows/apply-signed-fixes.yaml@56ceec6717a1faa0686d865424cd2d1d45f18a0a # v20.1.6
+    uses: devantler-tech/.github/.github/workflows/apply-signed-fixes.yaml@e6db1a4ed5b23ce6f69e755deeddd6649313e9dc # v20.1.12
     permissions:
       contents: read
     with:
@@ -1102,7 +1102,7 @@ jobs:
     name: 🧹 Lint - golangci-lint - apply fixes
     needs: [changes, golangci-lint, apply-tidy-fixes]
     if: ${{ !cancelled() && needs.changes.outputs.signed-fixes == 'true' && needs.golangci-lint.result == 'success' && (needs.apply-tidy-fixes.result == 'success' || needs.apply-tidy-fixes.result == 'skipped') }}
-    uses: devantler-tech/.github/.github/workflows/apply-signed-fixes.yaml@56ceec6717a1faa0686d865424cd2d1d45f18a0a # v20.1.6
+    uses: devantler-tech/.github/.github/workflows/apply-signed-fixes.yaml@e6db1a4ed5b23ce6f69e755deeddd6649313e9dc # v20.1.12
     permissions:
       contents: read
     with:
@@ -1117,7 +1117,7 @@ jobs:
     name: 🧹 Lint - apply fixes
     needs: [changes, lint, apply-golangci-lint-fixes]
     if: ${{ !cancelled() && needs.changes.outputs.signed-fixes == 'true' && needs.lint.result == 'success' && (needs.apply-golangci-lint-fixes.result == 'success' || needs.apply-golangci-lint-fixes.result == 'skipped') }}
-    uses: devantler-tech/.github/.github/workflows/apply-signed-fixes.yaml@56ceec6717a1faa0686d865424cd2d1d45f18a0a # v20.1.6
+    uses: devantler-tech/.github/.github/workflows/apply-signed-fixes.yaml@e6db1a4ed5b23ce6f69e755deeddd6649313e9dc # v20.1.12
     permissions:
       contents: read
     with:
