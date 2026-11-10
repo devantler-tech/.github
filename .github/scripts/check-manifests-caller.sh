@@ -24,7 +24,7 @@ yq -e '
 # Byte equivalence is not signer equivalence: the revision is part of the certificate
 # identity. Update this revision only AFTER consumer approval has been deployed and
 # read back. Content and file-mode review remain independently required.
-approved_publisher_revision='e6db1a4ed5b23ce6f69e755deeddd6649313e9dc'
+approved_publisher_revision='1a0eb6f18b88a7816b91cbf692b8ad8ea9a08123'
 reviewed_workflow_blob='ce6ed49062b44b56379c408c8c785a542cff533f'
 reviewed_absence_blob='3566e4067e953a1d9cb34e6a50a0f9b72a5d8bc8'
 reviewed_recovery_blob='48dc38f60ddebf90b0976758df9f1983bbb86bfd'
