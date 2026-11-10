@@ -206,8 +206,9 @@ jobs:
           # run passes with no proposal (#887). Its precommit hook runs after the pull and before
           # anything is staged, so it fails the run unless the squash pull completed (git writes
           # SQUASH_MSG only then) and left no unmerged path. A consumer that is already up to date
-          # never reaches the hook, so it still passes. The hooks come only from this input, never
-          # from a file in the caller.
+          # still passes: the squash pull completes with nothing new (template commits never enter
+          # this history), and the action then stops with "nothing to commit". The hooks come only
+          # from this input, never from a file in the caller.
           is_allow_hooks: true
           hooks: |
             precommit:
