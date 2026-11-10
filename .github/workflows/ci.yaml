@@ -2400,6 +2400,11 @@ jobs:
         shell: bash
         run: bash .github/tests/test-template-sync-ignore-merge.sh
 
+      # A failed template pull must fail the run, never pass with no proposal (#887).
+      - name: 🚦 Check Template Sync fails when its template pull fails
+        shell: bash
+        run: bash .github/tests/test-template-sync-pull-verdict.sh
+
       - name: ✍️ Check every automated commit producer is signed
         shell: bash
         run: bash .github/tests/test-automated-commits-signed.sh
