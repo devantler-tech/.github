@@ -5,10 +5,10 @@
 # The pinned action runs `git pull` with the workflow's parameters, ignores a nonzero result, and
 # exits 0 with "nothing to commit" when nothing was staged. The workflow's precommit hook is the
 # verdict. This reads the hook commands and pull parameters from the workflow itself, replays the
-# action's own sequence on real git fixtures (branch, pull with the failure swallowed, restore the
-# ignore file, run each hook as `echo "$command" | bash`), and checks every outcome: a normal
-# change and a genuine no-change pass; an unreachable source, a missing branch, a refused merge and
-# a conflicting merge fail with the matching annotation.
+# action's own sequence on real git fixtures (the up-to-date precheck, branch, pull with the failure
+# swallowed, restore the ignore file, run each hook as `echo "$command" | bash`), and checks every
+# outcome: a normal change, a genuine no-change and a shared-history no-change pass; an unreachable
+# source, a missing branch, a refused merge and a conflicting merge fail with the matching annotation.
 
 set -euo pipefail
 
@@ -85,6 +85,14 @@ cat > "$test_root/replay.sh" <<'EOF'
 set -e
 dir="$1" source="$2" ref="$3" pull_params="$4" commands_file="$5"
 cd "$dir"
+# arr_prechecks -> check_if_commit_already_in_hist_graceful_exit: the action reads the template's tip
+# with ls-remote and stops with success, before any pull or hook, when that commit is already here
+# (the workflow checks out full history, so this holds for any template tip in the caller's history).
+template_hash="$(git ls-remote "$source" "$ref" 2>/dev/null | awk '{print $1}')"
+if [ -n "$template_hash" ] && git cat-file -e "$template_hash" 2>/dev/null; then
+  echo "repository is up to date!"
+  exit 0
+fi
 git checkout -q -b chore/template-sync_test
 # sync_template.sh: eval "git pull ${source_repo} --tags ${git_remote_pull_params} ${ref}" || pull_has_issues=true
 eval "git pull \"$source\" --tags $pull_params $ref" >/dev/null 2>&1 || pull_has_issues=true
@@ -137,8 +145,26 @@ g -C "$c" commit -qm "earlier sync"
 g -C "$c" checkout -q main
 g -C "$c" merge -q --ff-only chore/template-sync_test
 g -C "$c" branch -q -D chore/template-sync_test
+# CI checks out a fresh clone, so the squashed template commits are not in its object store and the
+# run reaches the pull and the hook.
+fresh="$test_root/synced-fresh"
+g clone -q --no-local "$c" "$fresh"
+g -C "$fresh" config pull.rebase false
+c="$fresh"
 expect "genuine no-change passes" pass - "$c" "$template" main
+[[ "$(g -C "$c" branch --show-current)" == chore/template-sync_test ]] || fail "genuine no-change: the run stopped before the pull and the hook"
 [[ -z "$(g -C "$c" diff --cached --name-only)" ]] || fail "genuine no-change: something was staged"
+
+# A consumer whose history already holds the template's tip (cloned from the template, or one that
+# merged its history) stops at the action's precheck with success; the pull verdict never runs.
+shared="$test_root/shared"
+g clone -q --no-local "$template" "$shared"
+printf 'mine\n' > "$shared/own.txt"
+printf 'own.txt\n' > "$shared/.templatesyncignore"
+g -C "$shared" add .
+g -C "$shared" commit -qm "consumer on the template's history"
+expect "shared-history no-change passes" pass "repository is up to date!" "$shared" "$template" main
+[[ "$(g -C "$shared" branch --show-current)" == main ]] || fail "shared-history no-change: the run went past the precheck"
 
 c="$(new_consumer unreachable)"
 expect "unreachable source fails" fail "::error title=Template pull failed::" "$c" "$test_root/missing-template" main

@@ -207,8 +207,11 @@ jobs:
           # anything is staged, so it fails the run unless the squash pull completed (git writes
           # SQUASH_MSG only then) and left no unmerged path. A consumer that is already up to date
           # still passes: the squash pull completes with nothing new (template commits never enter
-          # this history), and the action then stops with "nothing to commit". The hooks come only
-          # from this input, never from a file in the caller.
+          # this history), and the action then stops with "nothing to commit". A consumer whose
+          # history already holds the template's tip (git would say "nothing to squash" and write no
+          # SQUASH_MSG) never reaches the hook: the action's precheck finds that commit in the full
+          # checkout and stops first with success. The hooks come only from this input, never from a
+          # file in the caller.
           is_allow_hooks: true
           hooks: |
             precommit:
