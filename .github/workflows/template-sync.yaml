@@ -201,6 +201,23 @@ jobs:
           # merges and the run still passes (#861). `--no-tags` comes after the action's `--tags`
           # and wins; the rest is the action's own default merge behaviour.
           git_remote_pull_params: --no-tags --allow-unrelated-histories --squash --strategy=recursive -X theirs
+          # The action also ignores a failed pull: an unreachable source, a refused sign-in, a missing
+          # branch or a refused merge leaves nothing staged, so it reports "nothing to commit" and the
+          # run passes with no proposal (#887). Its precommit hook runs after the pull and before
+          # anything is staged, so it fails the run unless the squash pull completed (git writes
+          # SQUASH_MSG only then) and left no unmerged path. A consumer that is already up to date
+          # still passes: the squash pull completes with nothing new (template commits never enter
+          # this history), and the action then stops with "nothing to commit". A consumer whose
+          # history already holds the template's tip (git would say "nothing to squash" and write no
+          # SQUASH_MSG) never reaches the hook: the action's precheck finds that commit in the full
+          # checkout and stops first with success. The hooks come only from this input, never from a
+          # file in the caller.
+          is_allow_hooks: true
+          hooks: |
+            precommit:
+              commands:
+                - 'if [ ! -f "$(git rev-parse --git-path SQUASH_MSG)" ]; then echo "::error title=Template pull failed::The pull from the template did not complete (unreachable source, refused sign-in, missing branch or refused merge), so nothing was synced."; exit 1; fi'
+                - 'if [ -n "$(git ls-files --unmerged)" ]; then echo "::error title=Template merge conflict::The pull from the template left unmerged paths:"; git ls-files --unmerged | cut -f2 | sort -u; exit 1; fi'
 
       - name: 📑 Checkout shared signing helper
         if: ${{ inputs.use-app-token }}
