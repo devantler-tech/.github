@@ -44,6 +44,8 @@ actions/run-dotnet-tests/action.yaml|config_path="$(find . -maxdepth 1 \( -type 
 .github/tests/test-suite-default-branch-coverage.sh|fail "no OR-arm both references '$flag_ref' and carries the default-branch clause, so the default-branch run is not the thing the opt-in input actually gates. See AGENTS.md, 'Shipping a new capability behind an opt-in flag'."
 .github/tests/test-suite-default-branch-coverage.sh|fail "an OR-arm of the test job's gate carries a ref/default-branch predicate without being gated by '$flag_ref', so the new default-branch behaviour reaches consumers that never opted in. Offending arm: ${arm}. See AGENTS.md, 'Shipping a new capability behind an opt-in flag'."
 .github/workflows/validate-go-project-readonly.yaml|# reachable from more than one trigger receives it either way (AGENTS.md, *Gotchas*).
+.github/tests/test-create-release-breaking-bang.sh|before="$(cd "$tmp/$name" && find . -type f -exec shasum {} \; | sort)"
+.github/tests/test-create-release-breaking-bang.sh|after="$(cd "$tmp/$name" && find . -type f -exec shasum {} \; | sort)"
 LINES
 
 git -C "$root" ls-files >"$work/tracked"
@@ -70,7 +72,7 @@ jq -r --rawfile gated "$work/gated" '
   $ids[] as $id | .jobs[$id] as $job |
   if $job == null then error("gated job \($id) is missing from the workflow") else . end |
   "@@job \($id) \(($job.uses // "-") | sub("^(\\$|\\.)/"; "") | sub("@.*$"; ""))",
-  ([($job.steps[]? | (.uses // empty), (.run // empty), ((.with // {}) | tostring))] | join("\n") | split("\n")[] | "| " + .)
+  ([(($job | .with, .env, .defaults) // empty | tostring), ($job.steps[]? | (.uses // empty), (.run // empty), ((.with // {}) | tostring), ((.env // {}) | tostring), (."working-directory" // empty))] | join("\n") | split("\n")[] | "| " + .)
 ' "$workflow" >"$work/jobs"
 
 # Walk every job's executed code in one pass; files are read and classified once.
@@ -144,7 +146,7 @@ awk -v root="$root" -v tracked="$work/tracked" -v exempt="$work/non-reading" '
   }
   BEGIN {
     mentions = "README|AGENTS\\.md"
-    whole = "(^|[^A-Za-z0-9_])(cp|rsync|tar|find|archive)[[:space:]][^|;&]*[[:space:]](\"?[$][{]?(root|repo_root|source_root|GITHUB_WORKSPACE)[}]?/?[.]?\"?|[.]|[.]/)([[:space:]]|$)"
+    whole = "(^|[^A-Za-z0-9_])(cp|rsync|tar|find|archive)[[:space:]]([^|;&]*[[:space:]])?(\"?[$][{]?(root|repo_root|source_root|GITHUB_WORKSPACE)[}]?/?[.]?\"?|[.]|[.]/)([[:space:]]|$)"
     while ((getline line < tracked) > 0) {
       paths[++ntracked] = line; tracked_set[line] = 1
       if (line ~ /\/(action\.ya?ml|go\.mod)$/) { d = line; sub(/\/[^\/]*$/, "", d); unit[d] = 1 }

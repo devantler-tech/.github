@@ -209,12 +209,17 @@ jq '.jobs["test-upload-coverage"] += ["README.md"]' "$inventory" >"$work/readers
 reject_readers 'an invented README reader' "$route" "$work/readers-inventory.json" "$work/workflow.json"
 jq '.jobs["test-approve-pr"] += ["AGENTS.md"]' "$inventory" >"$work/readers-inventory.json"
 reject_readers 'an AGENTS.md owner' 'AGENTS.md has no gated reader' "$work/readers-inventory.json" "$work/workflow.json"
-for step in 'cat README.md' 'grep -q Agents AGENTS.md' 'cp -R . /tmp/copy' 'tar -cf /tmp/all.tar .'; do
+for step in 'cat README.md' 'grep -q Agents AGENTS.md' 'cp -R . /tmp/copy' 'tar -cf /tmp/all.tar .' 'find . -type f'; do
   reason="$unreviewed"
   [[ "$step" != *README* ]] || reason="$route"
   jq --arg run "$step" '.jobs["test-approve-pr"].steps += [{"run": $run}]' "$work/workflow.json" >"$work/readers-workflow.json"
   reject_readers "an unrouted new reader: $step" "$reason" "$inventory" "$work/readers-workflow.json"
 done
+# A document named only in a step or job environment is still read.
+jq '.jobs["test-approve-pr"].steps += [{"env": {"DOC": "README.md"}, "run": "cat \"$DOC\""}]' "$work/workflow.json" >"$work/readers-workflow.json"
+reject_readers 'a README reader through a step environment' "$route" "$inventory" "$work/readers-workflow.json"
+jq '.jobs["test-approve-pr"].env = {"DOC": "AGENTS.md"}' "$work/workflow.json" >"$work/readers-workflow.json"
+reject_readers 'an AGENTS.md reader through a job environment' "$unreviewed" "$inventory" "$work/readers-workflow.json"
 # A reader reached only through an executed script is still a reader; a
 # script that never reads the documents keeps the route unchanged.
 jq '.jobs["test-approve-pr"].steps += [{"run": "bash .github/tests/test-catalogue-pin-guards-controls.sh"}]' "$work/workflow.json" >"$work/readers-workflow.json"
