@@ -187,4 +187,110 @@ if JOB_RESULTS='success failure' CATALOGUE_REQUIRED=true SELECTOR_RESULT=success
   echo 'FAIL: independently admitted authenticated caller failure was concealed' >&2
   exit 1
 fi
+
+# Root documents route only to the gated jobs that actually read them. Derive
+# that reader set from the tracked workflow and executed scripts, and prove the
+# derivation rejects a missing, invented or new reader.
+readers="$root/.github/tests/ci-selection-document-readers.sh"
+inventory="$root/.github/scripts/ci-selection/inventory.json"
+bash "$readers" "$root" "$inventory" "$work/workflow.json"
+reject_readers() { # description expected-reason inventory workflow
+  if bash "$readers" "$root" "$3" "$4" >"$work/readers.log" 2>&1 || ! grep -qF -- "$2" "$work/readers.log"; then
+    echo "FAIL: document reader guard did not reject $1 with: $2" >&2
+    cat "$work/readers.log" >&2
+    exit 1
+  fi
+}
+route='README.md route differs from its tracked gated readers'
+unreviewed='unreviewed AGENTS.md or whole-checkout read'
+jq '.jobs["test-lint-gate-lockstep"] -= ["README.md"]' "$inventory" >"$work/readers-inventory.json"
+reject_readers 'a README reader without its route' "$route" "$work/readers-inventory.json" "$work/workflow.json"
+jq '.jobs["test-upload-coverage"] += ["README.md"]' "$inventory" >"$work/readers-inventory.json"
+reject_readers 'an invented README reader' "$route" "$work/readers-inventory.json" "$work/workflow.json"
+jq '.jobs["test-approve-pr"] += ["AGENTS.md"]' "$inventory" >"$work/readers-inventory.json"
+reject_readers 'an AGENTS.md owner' 'AGENTS.md has no gated reader' "$work/readers-inventory.json" "$work/workflow.json"
+for step in 'cat README.md' 'grep -q Agents AGENTS.md' 'cp -R . /tmp/copy' 'tar -cf /tmp/all.tar .'; do
+  reason="$unreviewed"
+  [[ "$step" != *README* ]] || reason="$route"
+  jq --arg run "$step" '.jobs["test-approve-pr"].steps += [{"run": $run}]' "$work/workflow.json" >"$work/readers-workflow.json"
+  reject_readers "an unrouted new reader: $step" "$reason" "$inventory" "$work/readers-workflow.json"
+done
+# A reader reached only through an executed script is still a reader; a
+# script that never reads the documents keeps the route unchanged.
+jq '.jobs["test-approve-pr"].steps += [{"run": "bash .github/tests/test-catalogue-pin-guards-controls.sh"}]' "$work/workflow.json" >"$work/readers-workflow.json"
+reject_readers 'a transitive README reader' "$route" "$inventory" "$work/readers-workflow.json"
+jq '.jobs["test-approve-pr"].steps += [{"run": "bash .github/tests/test-approve-pr-credential-boundary.sh"}]' "$work/workflow.json" >"$work/readers-workflow.json"
+bash "$readers" "$root" "$inventory" "$work/readers-workflow.json" >/dev/null
+
+# A reviewed exemption that no longer names a real line must not linger.
+awk '{ print } /^cat >"\$work\/non-reading" <<'"'"'LINES'"'"'$/ { print "actions/approve-pr/action.yaml|cat README.md" }' "$readers" >"$work/stale-readers.sh"
+if bash "$work/stale-readers.sh" "$root" "$inventory" "$work/workflow.json" >"$work/readers.log" 2>&1 ||
+  ! grep -qF 'stale non-reading exemption' "$work/readers.log"; then
+  echo 'FAIL: document reader guard kept a stale exemption' >&2
+  exit 1
+fi
+
+# Exercise real root-document change sets through the production selector and
+# the required reducer. Narrow routes still require every selected success.
+docs="$work/docs"
+mkdir -p "$docs/actions/approve-pr"
+git init -q "$docs"
+git -C "$docs" config user.name 'CI fixture'
+git -C "$docs" config user.email 'fixture@example.invalid'
+git -C "$docs" config commit.gpgsign false
+printf 'readme\n' >"$docs/README.md"
+printf 'agents\n' >"$docs/AGENTS.md"
+printf 'action\n' >"$docs/actions/approve-pr/action.yaml"
+git -C "$docs" add -- README.md AGENTS.md actions/approve-pr/action.yaml
+git -C "$docs" commit -qm 'test: documents baseline'
+docs_base="$(git -C "$docs" rev-parse HEAD)"
+select_docs() { # change-kind... ; prints the selected JSON
+  git -C "$docs" checkout -q --detach "$docs_base"
+  local change
+  for change in "$@"; do
+    case "$change" in
+      readme) printf 'readme change\n' >>"$docs/README.md" ;;
+      agents) printf 'agents change\n' >>"$docs/AGENTS.md" ;;
+      action) printf 'action change\n' >>"$docs/actions/approve-pr/action.yaml" ;;
+      unknown) printf 'unknown\n' >"$docs/unclassified.txt" ;;
+      readme-renamed) git -C "$docs" mv README.md docs-readme.md ;;
+    esac
+  done
+  git -C "$docs" add -A -- .
+  git -C "$docs" commit -qm "test: $*"
+  : >"$work/docs-output"
+  EVENT_NAME=pull_request RUN_CATALOGUE=true CATALOGUE_SCOPE=true BASE_SHA="$docs_base" \
+    HEAD_SHA="$(git -C "$docs" rev-parse HEAD)" GITHUB_OUTPUT="$work/docs-output" \
+    go -C "$root/.github/scripts/ci-selection" run . "$docs" "$inventory" "$work/workflow.json" >/dev/null
+  sed -n 's/^selected=//p' "$work/docs-output"
+}
+readme_readers='["test-enable-auto-merge-author-gate","test-enable-auto-merge-pentad-gate","test-lint-gate-lockstep","test-validate-go-gate-lockstep"]'
+action_only="$(select_docs action)"
+jq -e '. == ["test-approve-pr","test-approve-pr-credential-boundary"]' <<<"$action_only" >/dev/null
+jq -e --argjson want "$readme_readers" '. == $want' <<<"$(select_docs readme)" >/dev/null ||
+  { echo 'FAIL: README-only change did not select exactly its readers' >&2; exit 1; }
+jq -e --argjson want "$action_only" '. == $want' <<<"$(select_docs action agents)" >/dev/null ||
+  { echo 'FAIL: AGENTS.md companion changed a recognized action selection' >&2; exit 1; }
+jq -e --argjson a "$action_only" --argjson r "$readme_readers" '. == ($a + $r | unique)' <<<"$(select_docs action readme agents)" >/dev/null ||
+  { echo 'FAIL: README with a recognized action lost a reader or an owner' >&2; exit 1; }
+for kinds in 'agents' 'readme agents' 'readme unknown' 'action agents unknown' 'readme-renamed'; do
+  # shellcheck disable=SC2086 # Each kinds word is one fixture change.
+  jq -e 'length == 61' <<<"$(select_docs $kinds)" >/dev/null ||
+    { echo "FAIL: root-document change '$kinds' narrowed full coverage" >&2; exit 1; }
+done
+for kinds in 'readme' 'action readme agents'; do
+  # shellcheck disable=SC2086 # Each kinds word is one fixture change.
+  selected="$(select_docs $kinds)"
+  needs="$(jq -cn --argjson selected "$selected" 'reduce $selected[] as $id ({"test-enable-auto-merge-queue":{result:"skipped"},"test-go-workflow-guards":{result:"skipped"}}; .[$id] = {result:"success"})')"
+  JOB_RESULTS='success skipped' CATALOGUE_REQUIRED=true SELECTOR_RESULT=success SELECTED_JOBS="$selected" NEEDS_JSON="$needs" run_reducer >/dev/null
+  for caller in $(jq -r '.[]' <<<"$selected"); do
+    for outcome in skipped failure; do
+      bad_needs="$(jq --arg caller "$caller" --arg outcome "$outcome" '.[$caller].result=$outcome' <<<"$needs")"
+      if JOB_RESULTS="$(jq -r '[.[].result] | join(" ")' <<<"$bad_needs")" CATALOGUE_REQUIRED=true SELECTOR_RESULT=success SELECTED_JOBS="$selected" NEEDS_JSON="$bad_needs" run_reducer >/dev/null 2>&1; then
+        echo "FAIL: selected root-document reader $caller was $outcome without rejection" >&2
+        exit 1
+      fi
+    done
+  done
+done
 echo 'PASS: complete job inventory, owner coverage and preserved scheduling'
