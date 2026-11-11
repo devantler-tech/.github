@@ -66,7 +66,17 @@ printf '%s %s\n' "$method" "$endpoint" >>"$FAKE_GH_LOG"
 case "$method $endpoint" in
   "GET repos/example/consumer/git/ref/heads/chore/template-sync_deadbee")
     if [[ -f "$FAKE_GH_UPDATED" ]]; then
-      jq -n --arg sha "$SIGNED_SHA" '{object:{sha:$sha}}'
+      # After the update, serve the previous commit for the first FAKE_GH_STALE_READS reads.
+      stale_seen=0
+      if [[ -f "$FAKE_GH_UPDATED.reads" ]]; then
+        stale_seen="$(cat "$FAKE_GH_UPDATED.reads")"
+      fi
+      if ((stale_seen < ${FAKE_GH_STALE_READS:-0})); then
+        printf '%s\n' "$((stale_seen + 1))" >"$FAKE_GH_UPDATED.reads"
+        jq -n --arg sha "$REMOTE_SHA" '{object:{sha:$sha}}'
+      else
+        jq -n --arg sha "$SIGNED_SHA" '{object:{sha:$sha}}'
+      fi
     else
       jq -n --arg sha "$REMOTE_SHA" '{object:{sha:$sha}}'
     fi
@@ -174,6 +184,49 @@ if (
 fi
 [[ ! -f "$FAKE_GH_UPDATED" ]] || fail "helper moved the ref before signature verification passed"
 grep -q "GitHub did not verify" "$fixture/error" || fail "unsigned failure did not name the verification gate"
+
+# A branch read that is stale once after the update, then current, still succeeds (#897).
+run_readback_case() { # <name> <stale reads> -> runs the helper; output and error land in the fixture
+  fixture="$(make_fixture "$1")"
+  base_sha="$(git -C "$fixture/repo" rev-parse HEAD)"
+  git -C "$fixture/repo" switch -q -c chore/template-sync_deadbee
+  printf 'synced\n' >"$fixture/repo/file.txt"
+  git -C "$fixture/repo" add file.txt
+  git -C "$fixture/repo" commit -q -m "chore: sync template"
+  EXPECTED_TREE="$(git -C "$fixture/repo" rev-parse 'HEAD^{tree}')"
+  export EXPECTED_TREE
+  export EXPECTED_PARENT="$base_sha"
+  EXPECTED_MESSAGE="$(git -C "$fixture/repo" log -1 --format=%B | sed '${/^$/d;}')"
+  export EXPECTED_MESSAGE
+  REMOTE_SHA="$(git -C "$fixture/repo" rev-parse HEAD)"
+  export REMOTE_SHA
+  export FAKE_GH_LOG="$fixture/gh.log"
+  export FAKE_GH_UPDATED="$fixture/updated"
+  export FAKE_GH_MODE=success
+  export FAKE_GH_STALE_READS="$2"
+  (
+    cd "$fixture/repo"
+    PATH="$fixture/bin:$PATH" GITHUB_REPOSITORY=example/consumer \
+      "$helper" --base-sha "$base_sha" --branch-prefix chore/template-sync
+  ) >"$fixture/output" 2>"$fixture/error"
+}
+# Count the branch reads the helper made after it moved the branch.
+reads_after_update() {
+  awk '/^PATCH / { seen = 1; next } seen && /^GET repos\/example\/consumer\/git\/ref\/heads\// { n++ } END { print n + 0 }' "$FAKE_GH_LOG"
+}
+
+run_readback_case stale-once 1 || fail "helper failed although the branch read was stale only once"
+grep -qx "$SIGNED_SHA" "$fixture/output" || fail "stale-once readback did not return the verified replacement sha"
+[[ "$(reads_after_update)" == 2 ]] || fail "stale-once readback did not read the branch exactly twice"
+
+# A branch that keeps pointing at another commit still fails, after the bounded retries.
+if run_readback_case never-current 99; then
+  fail "helper accepted a branch that never pointed at the verified replacement"
+fi
+grep -q "generated branch does not point to the verified replacement" "$fixture/error" ||
+  fail "persistent readback mismatch did not name the branch gate"
+[[ "$(reads_after_update)" == 5 ]] || fail "persistent readback mismatch was not read exactly five times"
+unset FAKE_GH_STALE_READS
 
 fixture="$(make_fixture no-change)"
 base_sha="$(git -C "$fixture/repo" rev-parse HEAD)"
