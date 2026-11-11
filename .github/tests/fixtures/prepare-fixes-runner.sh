@@ -46,31 +46,60 @@ GIT
     fi
     ;;
   verify)
-    [ ! -e .devantler-tech-actions ]
-    [ "$ACTUAL_ARTIFACT" = "$ARTIFACT" ]
-    [ "$ACTUAL_ELIGIBLE" = "$UPLOAD" ]
+    # Name every failed check with its expected and actual values: a bare test
+    # under errexit only reports "exit code 1".
+    expect() {
+      if [ "$2" != "$3" ]; then
+        printf 'FAIL hosted fix exporter (%s): %s: expected %s, got %s\n' \
+          "$SCENARIO" "$1" "${2:-<empty>}" "${3:-<empty>}" >&2
+        exit 1
+      fi
+    }
+    helper=absent
+    [ ! -e .devantler-tech-actions ] || helper=present
+    expect 'helper checkout' absent "$helper"
+    expect 'artifact name' "$ARTIFACT" "$ACTUAL_ARTIFACT"
+    expect 'upload eligibility' "$UPLOAD" "$ACTUAL_ELIGIBLE"
     expected_changed=true
     [ "$SCENARIO" != clean ] || expected_changed=false
-    [ "$ACTUAL_CHANGED" = "$expected_changed" ]
+    expect 'changed output' "$expected_changed" "$ACTUAL_CHANGED"
     if [ "$SCENARIO" = export-failure ]; then
-      [ "$ACTUAL_OUTCOME" = failure ]
-      [ -z "$ACTUAL_MANUAL" ]
+      expect 'step outcome' failure "$ACTUAL_OUTCOME"
+      expect 'manual-required output' '' "$ACTUAL_MANUAL"
     else
-      [ "$ACTUAL_OUTCOME" = success ]
-      [ "$ACTUAL_MANUAL" = "$MANUAL" ]
+      expect 'step outcome' success "$ACTUAL_OUTCOME"
+      expect 'manual-required output' "$MANUAL" "$ACTUAL_MANUAL"
     fi
     expected_artifacts=0
     if [ "$UPLOAD" = true ] && [ "$expected_changed" = true ]; then
       expected_artifacts=1
       cmp "$RUNNER_TEMP/$ARTIFACT.patch" "$RUNNER_TEMP/download/$ARTIFACT.patch"
       git -C "$RUNNER_TEMP/replay" apply --index "$RUNNER_TEMP/download/$ARTIFACT.patch"
-      [ "$(git -C "$RUNNER_TEMP/replay" write-tree)" = "$(cat "$RUNNER_TEMP/expected-tree")" ]
+      expect 'replayed tree' "$(cat "$RUNNER_TEMP/expected-tree")" "$(git -C "$RUNNER_TEMP/replay" write-tree)"
     fi
     # Check real artifact absence as well as successful transfers. A skipped
-    # download alone cannot establish that the upload was suppressed.
-    gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/artifacts" --paginate > "$RUNNER_TEMP/artifacts.json"
-    count="$(jq -s --arg name "$ARTIFACT" '[.[].artifacts[] | select(.name == $name)] | length' "$RUNNER_TEMP/artifacts.json")"
-    [ "$count" = "$expected_artifacts" ]
+    # download alone cannot establish that the upload was suppressed. The run's
+    # artifact listing can lag a finished upload by a few seconds, so re-read it
+    # (bounded) while it shows fewer than expected; the count must still match
+    # exactly, so a missing or extra artifact fails.
+    list_artifacts() {
+      gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/artifacts" --paginate > "$RUNNER_TEMP/artifacts.json"
+    }
+    count_artifacts() {
+      jq -s --arg name "$ARTIFACT" '[.[].artifacts[] | select(.name == $name)] | length' "$RUNNER_TEMP/artifacts.json"
+    }
+    attempts=6
+    delay="${FIXTURE_ARTIFACT_LIST_DELAY:-5}"
+    attempt=1
+    list_artifacts
+    count="$(count_artifacts)"
+    while [ "$count" -lt "$expected_artifacts" ] && [ "$attempt" -lt "$attempts" ]; do
+      sleep "$delay"
+      attempt=$((attempt + 1))
+      list_artifacts
+      count="$(count_artifacts)"
+    done
+    expect 'artifact count' "$expected_artifacts" "$count"
     printf 'PASS hosted fix exporter: %s; artifact count=%s; outcome=%s\n' "$SCENARIO" "$count" "$ACTUAL_OUTCOME"
     ;;
   *) echo 'unknown fixture phase' >&2; exit 1 ;;

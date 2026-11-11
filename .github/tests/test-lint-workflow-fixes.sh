@@ -250,3 +250,86 @@ for ablated in false true; do
   fi
   echo "PASS: native hosted exporter; cleanup ablated=$ablated"
 done
+
+# Exercise the hosted verify phase against a stubbed artifact listing. A failed
+# assertion must name the check with its expected and actual values, and a
+# listing that has not caught up yet must be re-read, without relaxing the exact
+# count: a missing or extra artifact still fails.
+runner_fixture="$root/.github/tests/fixtures/prepare-fixes-runner.sh"
+mkdir -p "$work/verify-bin"
+cat >"$work/verify-bin/gh" <<'GH'
+#!/usr/bin/env bash
+# Answer each artifact listing with the next count from VERIFY_COUNTS.
+calls=$(( $(cat "$VERIFY_STATE/calls" 2>/dev/null || echo 0) + 1 ))
+echo "$calls" >"$VERIFY_STATE/calls"
+read -r -a counts <<<"$VERIFY_COUNTS"
+index=$(( calls <= ${#counts[@]} ? calls - 1 : ${#counts[@]} - 1 ))
+jq -n --arg name "$ARTIFACT" --argjson n "${counts[$index]}" \
+  '{artifacts: ([range($n) | {name: $name}] + [{name: "unrelated"}])}'
+GH
+chmod +x "$work/verify-bin/gh"
+
+# Run verify for one hosted scenario. Remaining arguments are NAME=value overrides
+# of the step outputs. Upload scenarios get a real patch in both transfer paths.
+run_verify() {
+  local name="$1" scenario="$2" upload="$3" counts="$4"
+  shift 4
+  local case_dir="$work/verify-$name"
+  mkdir -p "$case_dir/consumer" "$case_dir/runner/download" "$case_dir/state"
+  local artifact="prepare-fixes-test-$name"
+  (
+    cd "$case_dir/consumer"
+    SCENARIO="$scenario" MANUAL=false RUNNER_TEMP="$case_dir/runner" GITHUB_PATH="$case_dir/path" \
+      bash "$runner_fixture" setup >/dev/null
+    if [[ "$upload" == true && "$scenario" != clean ]]; then
+      git add -- notes.txt new-file.txt binary.bin executable.sh
+      git diff --cached --no-color --binary --full-index HEAD >"$case_dir/runner/$artifact.patch"
+      cp "$case_dir/runner/$artifact.patch" "$case_dir/runner/download/$artifact.patch"
+    fi
+  )
+  local changed=true
+  [[ "$scenario" != clean ]] || changed=false
+  (
+    cd "$case_dir/consumer"
+    env PATH="$work/verify-bin:$PATH" VERIFY_STATE="$case_dir/state" VERIFY_COUNTS="$counts" \
+      SCENARIO="$scenario" MANUAL=false UPLOAD="$upload" ARTIFACT="$artifact" \
+      RUNNER_TEMP="$case_dir/runner" GITHUB_REPOSITORY=example/fixture GITHUB_RUN_ID=1 \
+      FIXTURE_ARTIFACT_LIST_DELAY=0 \
+      ACTUAL_ARTIFACT="$artifact" ACTUAL_ELIGIBLE="$upload" ACTUAL_CHANGED="$changed" \
+      ACTUAL_OUTCOME=success ACTUAL_MANUAL=false "$@" \
+      bash "$runner_fixture" verify
+  ) >"$case_dir/log" 2>&1
+}
+verify_calls() { cat "$work/verify-$1/state/calls" 2>/dev/null || echo 0; }
+
+run_verify pass ordinary true 1 || fail "verify rejected a correct upload: $(cat "$work/verify-pass/log")"
+grep -Fq 'artifact count=1' "$work/verify-pass/log" || fail 'verify did not report the artifact count'
+
+run_verify lagging ordinary true '0 0 1' ||
+  fail "verify did not re-read a listing that had not caught up: $(cat "$work/verify-lagging/log")"
+[[ "$(verify_calls lagging)" == 3 ]] || fail "lagging listing read $(verify_calls lagging) times, want 3"
+
+if run_verify missing ordinary true 0; then fail 'verify accepted a missing artifact'; fi
+grep -Fq 'artifact count: expected 1, got 0' "$work/verify-missing/log" ||
+  fail "missing artifact did not name the count: $(cat "$work/verify-missing/log")"
+[[ "$(verify_calls missing)" -gt 1 ]] || fail 'missing artifact was not re-read before failing'
+
+if run_verify extra ordinary true 2; then fail 'verify accepted an extra artifact'; fi
+grep -Fq 'artifact count: expected 1, got 2' "$work/verify-extra/log" ||
+  fail "extra artifact did not name the count: $(cat "$work/verify-extra/log")"
+[[ "$(verify_calls extra)" == 1 ]] || fail 'an extra artifact must fail without waiting'
+
+run_verify absent read-only false 0 || fail "verify rejected a suppressed upload: $(cat "$work/verify-absent/log")"
+if run_verify unexpected read-only false 1; then fail 'verify accepted an artifact from a suppressed upload'; fi
+grep -Fq 'artifact count: expected 0, got 1' "$work/verify-unexpected/log" ||
+  fail "unexpected artifact did not name the count: $(cat "$work/verify-unexpected/log")"
+
+if run_verify outcome clean true 0 ACTUAL_OUTCOME=failure; then fail 'verify accepted a failed step'; fi
+grep -Fq 'step outcome: expected success, got failure' "$work/verify-outcome/log" ||
+  fail "failed step did not name the outcome: $(cat "$work/verify-outcome/log")"
+
+if run_verify name clean true 0 ACTUAL_ARTIFACT=; then fail 'verify accepted a missing artifact name'; fi
+grep -Fq 'artifact name: expected prepare-fixes-test-name, got <empty>' "$work/verify-name/log" ||
+  fail "missing artifact name was not reported: $(cat "$work/verify-name/log")"
+
+echo 'PASS: hosted verify names failed checks and re-reads a lagging artifact listing'
