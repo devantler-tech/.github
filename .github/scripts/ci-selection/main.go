@@ -23,8 +23,25 @@ const goCacheObserver = "test-go-cache-native-observer"
 const goCacheFixture = "test-validate-go-postgresql-fixture"
 const goWorkflowGuards = "test-go-workflow-guards"
 
+// Root documents admitted only as ordinary regular-file modifications.
+const rootReadme = "README.md"
+const rootAgents = "AGENTS.md"
+
 var ordinarySelectiveFiles = map[string]bool{
 	dotnetFixtureAction: true,
+	rootReadme:          true,
+	rootAgents:          true,
+}
+
+// Every gated job whose executed tests read the root README. The tracked-reader
+// guard (.github/tests/ci-selection-document-readers.sh) derives this set from
+// the workflow and its scripts; the inventory must own README.md for exactly
+// these jobs. Always-on and preserved jobs read it without needing selection.
+var readmeReaders = map[string]bool{
+	"test-enable-auto-merge-author-gate": true,
+	"test-enable-auto-merge-pentad-gate": true,
+	"test-lint-gate-lockstep":            true,
+	"test-validate-go-gate-lockstep":     true,
 }
 
 // Native fixture jobs and their hosted/credential controls share this local action.
@@ -64,6 +81,9 @@ func validateInventory(i inventory, w workflow) ([]string, error) {
 	if err := validateGoWorkflowGuards(i, w); err != nil {
 		return nil, err
 	}
+	if err := validateReadmeReaders(i, w); err != nil {
+		return nil, err
+	}
 	seen := map[string]bool{"select-ci-tests": true, "ci-required-checks": true}
 	for _, id := range i.Always {
 		if seen[id] {
@@ -87,7 +107,8 @@ func validateInventory(i inventory, w workflow) ([]string, error) {
 		seen[id] = true
 		for _, p := range paths {
 			if !regexp.MustCompile(`^actions/[a-z0-9-]+/$`).MatchString(p) &&
-				(p != dotnetFixtureAction || !hasDotnetOwner(id)) {
+				(p != dotnetFixtureAction || !hasDotnetOwner(id)) &&
+				(p != rootReadme || !readmeReaders[id]) {
 				return nil, fmt.Errorf("invalid selective owner %q", p)
 			}
 		}
@@ -171,6 +192,24 @@ func validateGoCacheOwners(i inventory, w workflow) error {
 	return nil
 }
 
+// Each README reader must own the file exactly once and stay selection-gated, so
+// a README change cannot pass without the tests that read it.
+func validateReadmeReaders(i inventory, w workflow) error {
+	for id := range readmeReaders {
+		count := 0
+		for _, p := range i.Jobs[id] {
+			if p == rootReadme {
+				count++
+			}
+		}
+		_, preserved := i.Preserved[id]
+		if _, ok := w.Jobs[id]; !ok || count != 1 || preserved {
+			return fmt.Errorf("incomplete or unbound README reader %s", id)
+		}
+	}
+	return nil
+}
+
 func hasDotnetOwner(id string) bool {
 	_, ok := dotnetOwners[id]
 	return ok
@@ -207,7 +246,14 @@ func selectJobs(i inventory, event string, paths []string) []string {
 		return all
 	}
 	selected := map[string]bool{}
+	// Root AGENTS.md has no gated reader. It may only accompany a recognized
+	// non-documentation change; alone or with other documents it stays full.
+	companion, source := false, false
 	for _, path := range paths {
+		if path == rootAgents {
+			companion = true
+			continue
+		}
 		known := false
 		for id, owners := range i.Jobs {
 			for _, owner := range owners {
@@ -219,6 +265,10 @@ func selectJobs(i inventory, event string, paths []string) []string {
 		if !known {
 			return all
 		}
+		source = source || !isDocumentation(path)
+	}
+	if companion && !source {
+		return all
 	}
 	result := []string{}
 	for id := range selected {
@@ -226,6 +276,11 @@ func selectJobs(i inventory, event string, paths []string) []string {
 	}
 	sort.Strings(result)
 	return result
+}
+
+func isDocumentation(path string) bool {
+	ext := strings.ToLower(filepath.Ext(path))
+	return ext == ".md" || ext == ".markdown" || ext == ".mdx"
 }
 
 func changedPaths(root, base, head string) ([]string, error) {

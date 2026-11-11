@@ -262,7 +262,19 @@ rename destinations keep full coverage. The authenticated caller's original
 event/author admission remains outside mandatory execution selection.
 Shared helpers, other workflows, tests,
 fixtures, root configuration and unknown paths retain full coverage; missing Git
-evidence fails the selector. Classification runs from the immutable trusted base
+evidence fails the selector. Root documents are the only exception and need ordinary
+regular-file modifications: the root `README.md` selects exactly the gated jobs whose
+executed scripts read it, and the always-on documentation gates still run. Root
+`AGENTS.md` has no gated reader, so it adds nothing beside a recognized non-Markdown
+change; alone, with the README or with only Markdown it keeps full coverage. There is
+no general Markdown exemption. `ci-selection-document-readers.sh` (run by
+`test-ci-selection.sh`) derives the reader set from the workflow and every script,
+action and Go module a gated job executes, and fails when the inventory's `README.md`
+owners differ from it, when a gated job reads `AGENTS.md`, or when one copies or walks
+the whole checkout. A new README-consuming check joins routing by adding `README.md`
+to its inventory owners and its job id to the selector's reviewed reader list; a line
+that only mentions a document (fixture data, a message or a comment) joins that
+script's reviewed non-reading list with its exact text. Classification runs from the immutable trusted base
 before candidate checkout and selection on the same read-only runner; there is
 no separate prerequisite runner assignment. A successful trusted-base scope decision
 for a deployment-only PR omits only the explicitly inventoried smoke jobs; the

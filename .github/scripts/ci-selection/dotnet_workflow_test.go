@@ -37,6 +37,10 @@ func dotnetSelectionFixture(t *testing.T) (inventory, workflow) {
 	w.Jobs["test-go-cache-native-observer"] = job{If: selectionGuard("test-go-cache-native-observer"), Needs: []any{"select-ci-tests", "test-validate-go-postgresql-fixture"}}
 	i.Jobs["test-go-workflow-guards"] = []string{"actions/upload-coverage/"}
 	w.Jobs["test-go-workflow-guards"] = job{If: selectionGuard("test-go-workflow-guards"), Needs: []any{"select-ci-tests"}}
+	for id := range readmeReaders {
+		i.Jobs[id] = []string{rootReadme}
+		w.Jobs[id] = job{If: selectionGuard(id), Needs: []any{"select-ci-tests"}}
+	}
 	return i, w
 }
 
