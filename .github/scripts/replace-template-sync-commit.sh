@@ -407,8 +407,21 @@ jq -e \
    and .commit.verification.verified == true' \
   <<<"$verified_commit" >/dev/null || fail "replacement commit readback changed content or lost verification"
 
-updated_ref="$(gh api "$ref_endpoint")" || fail "could not read back the generated branch"
-updated_sha="$(jq -er '.object.sha' <<<"$updated_ref")" || fail "updated branch response has no sha"
+# GitHub can serve a branch's previous commit for a moment after an update. Read it back a few
+# times before failing, and still fail closed when it keeps pointing elsewhere (#897).
+readback_attempts=5
+readback_pause_seconds=2
+updated_sha=""
+for ((readback = 1; readback <= readback_attempts; readback++)); do
+  updated_ref="$(gh api "$ref_endpoint")" || fail "could not read back the generated branch"
+  updated_sha="$(jq -er '.object.sha' <<<"$updated_ref")" || fail "updated branch response has no sha"
+  if [[ "$updated_sha" == "$signed_sha" ]]; then
+    break
+  fi
+  if ((readback < readback_attempts)); then
+    sleep "$readback_pause_seconds"
+  fi
+done
 [[ "$updated_sha" == "$signed_sha" ]] || fail "generated branch does not point to the verified replacement"
 
 printf '%s\n' "$signed_sha"
