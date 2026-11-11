@@ -65,15 +65,15 @@
       "files": [
         "actions/run-dotnet-tests/action.yaml"
       ],
-      "refresh": "The .NET SDKs: previous STS and current LTS, exact published versions. Move actions/run-dotnet-tests and the native fixture steps in ci.yaml together."
+      "refresh": "The .NET SDKs: current LTS and current STS, exact published versions. Move actions/run-dotnet-tests and the native fixture steps in ci.yaml together."
     },
     {
       "kind": "tool",
-      "pin": "SDK_VERSIONS: 9.0.319",
+      "pin": "SDK_VERSIONS: 11.0.100",
       "files": [
         "actions/run-dotnet-tests/action.yaml"
       ],
-      "refresh": "The .NET SDKs: previous STS and current LTS, exact published versions. Move actions/run-dotnet-tests and the native fixture steps in ci.yaml together."
+      "refresh": "The .NET SDKs: current LTS and current STS, exact published versions. Move actions/run-dotnet-tests and the native fixture steps in ci.yaml together."
     },
     {
       "kind": "tool",
@@ -82,16 +82,16 @@
         ".github/workflows/ci.yaml",
         "actions/run-dotnet-tests/action.yaml"
       ],
-      "refresh": "The .NET SDKs: previous STS and current LTS, exact published versions. Move actions/run-dotnet-tests and the native fixture steps in ci.yaml together."
+      "refresh": "The .NET SDKs: current LTS and current STS, exact published versions. Move actions/run-dotnet-tests and the native fixture steps in ci.yaml together."
     },
     {
       "kind": "tool",
-      "pin": "dotnet-version: 9.0.319",
+      "pin": "dotnet-version: 11.0.100",
       "files": [
         ".github/workflows/ci.yaml",
         "actions/run-dotnet-tests/action.yaml"
       ],
-      "refresh": "The .NET SDKs: previous STS and current LTS, exact published versions. Move actions/run-dotnet-tests and the native fixture steps in ci.yaml together."
+      "refresh": "The .NET SDKs: current LTS and current STS, exact published versions. Move actions/run-dotnet-tests and the native fixture steps in ci.yaml together."
     },
     {
       "kind": "tool",

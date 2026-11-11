@@ -1,6 +1,6 @@
 # Run Dotnet Tests
 
-Test .NET solutions or projects across multiple platforms with code coverage reporting. Sets up the .NET 9 (STS) and .NET 10 (LTS) SDKs side-by-side, optionally restores private packages from GitHub Packages without persisting credentials, runs tests with coverage collection, and uploads the report to **GitHub Code Quality** (native PR coverage) on authenticated runs.
+Test .NET solutions or projects across multiple platforms with code coverage reporting. Sets up the .NET 10 (LTS) and .NET 11 (STS) SDKs side-by-side, optionally restores private packages from GitHub Packages without persisting credentials, runs tests with coverage collection, and uploads the report to **GitHub Code Quality** (native PR coverage) on authenticated runs.
 
 > **Permissions:** the calling job must grant `code-quality: write` for the GitHub Code Quality upload. The coverage is merged into a single Cobertura report (via ReportGenerator) and uploaded once, from the Linux matrix leg only. The upload is best-effort (it never fails the build), requires the repo's **Code Quality** to be enabled (_Settings → Code quality_), and is skipped when `github-token` is empty.
 
@@ -36,7 +36,7 @@ steps:
 The action picks the test command from the runner your project uses:
 
 - **VSTest (the default):** runs `dotnet test` with the Coverlet collector (`--collect:"XPlat Code Coverage"`).
-- **Microsoft.Testing.Platform:** used when the nearest `global.json` sets `"test": { "runner": "Microsoft.Testing.Platform" }`. This is the runner xUnit v3 4.x needs on the .NET 10 SDK.
+- **Microsoft.Testing.Platform:** used when the nearest `global.json` sets `"test": { "runner": "Microsoft.Testing.Platform" }`. This is the runner xUnit v3 4.x needs on the .NET 10 SDK and later.
   - If a project references `Microsoft.Testing.Extensions.CodeCoverage`, coverage is collected in Cobertura format with `--coverage`.
   - Otherwise tests still run, and a notice explains that coverage was skipped.
 
