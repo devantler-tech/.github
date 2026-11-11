@@ -19,8 +19,8 @@ runs:
       env:
         # Keep this list aligned with Setup .NET and the native fixture callsites.
         SDK_VERSIONS: |
-          9.0.319
           10.0.402
+          11.0.100
       run: |
         set -euo pipefail
         count=0
@@ -45,12 +45,12 @@ runs:
       if: steps.sdk-check.outputs.install-needed != 'false'
       uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
       with:
-        # Provision both the previous STS (9) and the current LTS (10) so callers can
+        # Provision both the current LTS (10) and the current STS (11) so callers can
         # target either TFM. Exact published SDKs avoid premature channel redirects.
         # Refresh these pins together with the two native fixture setup steps.
         dotnet-version: |
-          9.0.319
           10.0.402
+          11.0.100
     - name: 🚚 Restore packages with GitHub Packages
       if: inputs.github-token != ''
       run: |
