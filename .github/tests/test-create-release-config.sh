@@ -447,5 +447,48 @@ refs/heads/main|main|false|fail
 refs/heads/main||true|fail
 EOF
 
+# Opt-in egress blocking (#912). Both release jobs select block mode only through block-egress and
+# share one measured allow-list (#628); the credential-free offline fixture job keeps plain audit.
+# The CI fixtures exercise the default and the opted-in input state.
+check_block_egress() {
+  local wf="$1" ci_file="$2" job policy endpoints
+  local expected_policy="\${{ inputs.block-egress && 'block' || 'audit' }}"
+  local expected_endpoints='api.github.com:443 github.com:443 registry.npmjs.org:443'
+  [[ "$(yq -r '.on.workflow_call.inputs."block-egress" | [.type, .default] | join(" ")' "$wf")" == "boolean false" ]] ||
+    return 1
+  for job in release release-protected; do
+    policy="$(JOB="$job" yq -r '.jobs[strenv(JOB)].steps[0].with."egress-policy" // ""' "$wf")"
+    endpoints="$(JOB="$job" yq -r '.jobs[strenv(JOB)].steps[0].with."allowed-endpoints" // ""' "$wf")"
+    [[ "$policy" == "$expected_policy" && "$endpoints" == "$expected_endpoints" ]] || return 1
+  done
+  [[ "$(yq -o=json -I=0 '.jobs."offline-test".steps[0].with' "$wf")" == '{"egress-policy":"audit"}' ]] || return 1
+  [[ "$(yq -r '.jobs."test-create-release".with."block-egress" // "unset"' "$ci_file")" == "unset" ]] || return 1
+  [[ "$(yq -r '.jobs."test-create-release-no-issue-side-effects".with."block-egress" // "unset"' "$ci_file")" == "true" ]] ||
+    return 1
+}
+
+if ! check_block_egress "$workflow" "$ci"; then
+  echo "create-release must block egress only when opted in, with one measured allow-list in both release jobs" >&2
+  exit 1
+fi
+
+# Controls: the check must refuse each regression below.
+while IFS='|' read -r label target expression; do
+  cp "$workflow" "$tmp_dir/egress-workflow.yaml"
+  cp "$ci" "$tmp_dir/egress-ci.yaml"
+  yq -i "$expression" "$tmp_dir/egress-$target.yaml"
+  if check_block_egress "$tmp_dir/egress-workflow.yaml" "$tmp_dir/egress-ci.yaml"; then
+    echo "egress control was accepted: $label" >&2
+    exit 1
+  fi
+done <<'EOF_CONTROLS'
+block mode unconditional|workflow|.jobs.release.steps[0].with."egress-policy" = "block"
+extra host in the protected job only|workflow|.jobs["release-protected"].steps[0].with."allowed-endpoints" += " example.com:443"
+input defaults to on|workflow|.on.workflow_call.inputs."block-egress".default = true
+offline fixture job blocks too|workflow|.jobs["offline-test"].steps[0].with."egress-policy" = "block"
+opted-in CI state removed|ci|del(.jobs["test-create-release-no-issue-side-effects"].with."block-egress")
+EOF_CONTROLS
+
 echo "semantic-release issue side effects are opt-in disabled at least privilege"
 echo "protected-source guard accepts the protected default branch and rejects four invalid contexts"
+echo "release egress blocking is opt-in with one measured allow-list and rejects five regressions"

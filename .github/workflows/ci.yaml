@@ -3093,6 +3093,7 @@ jobs:
     with:
       disable-issue-side-effects: true
       warn-missing-breaking-bang: true
+      block-egress: true
       dry-run: true
       offline-test: true
 

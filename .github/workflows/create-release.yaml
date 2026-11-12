@@ -27,6 +27,11 @@ on:
         required: false
         default: false
         type: boolean
+      block-egress:
+        description: "Refuse every outbound host except the release jobs' measured allow-list (opt-in)"
+        required: false
+        default: false
+        type: boolean
     secrets:
       RELEASE_APP_PRIVATE_KEY:
         description: Named binding for the protected release environment's key; keep its value only in that environment.
@@ -54,7 +59,14 @@ jobs:
       - name: 🛡️ Harden runner
         uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
         with:
-          egress-policy: audit
+          # Opt-in block mode (#912) refuses every host not listed here. The list is this job's
+          # measured egress (#628): checkout and tags, the App token and release API, and npm for
+          # semantic-release. Audit mode records traffic and ignores the list.
+          egress-policy: ${{ inputs.block-egress && 'block' || 'audit' }}
+          allowed-endpoints: >-
+            api.github.com:443
+            github.com:443
+            registry.npmjs.org:443
 
       - name: 🔑 Get GitHub App Token
         uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
@@ -354,7 +366,14 @@ jobs:
       - name: 🛡️ Harden runner
         uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
         with:
-          egress-policy: audit
+          # Opt-in block mode (#912) refuses every host not listed here. The list is this job's
+          # measured egress (#628): checkout and tags, the App token and release API, and npm for
+          # semantic-release. Audit mode records traffic and ignores the list.
+          egress-policy: ${{ inputs.block-egress && 'block' || 'audit' }}
+          allowed-endpoints: >-
+            api.github.com:443
+            github.com:443
+            registry.npmjs.org:443
 
       - name: Verify protected release source
         if: inputs.protected-release
