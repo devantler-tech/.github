@@ -774,11 +774,21 @@ jobs:
             }
           done
           if [[ "$BLOCK_EGRESS" == true ]]; then
-            if probe example.com; then
-              echo '::error::block mode reached unlisted host example.com' >&2
-              exit 1
-            fi
-            echo 'Block mode reached every listed host and refused example.com.'
+            # Only curl exit 7, a connection rejected before it opened, counts as the policy's refusal.
+            # A DNS, TLS or timeout failure cannot be attributed to the policy, so it fails the probe.
+            status=0
+            probe example.com || status=$?
+            case "$status" in
+              0)
+                echo '::error::block mode reached unlisted host example.com' >&2
+                exit 1
+                ;;
+              7) echo 'Block mode reached every listed host and refused the connection to example.com.' ;;
+              *)
+                echo "::error::the example.com probe failed with curl exit $status, not a refused connection, so it proves nothing about the policy" >&2
+                exit 1
+                ;;
+            esac
           else
             probe example.com || {
               echo '::error::audit mode could not reach example.com, so a block-mode refusal would prove nothing' >&2
