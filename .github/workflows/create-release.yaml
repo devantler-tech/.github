@@ -738,10 +738,12 @@ jobs:
 
   egress-probe:
     name: Release egress probe
-    # Fixture mode never runs the release jobs, so this job proves their block mode instead. It reads
-    # the input through the same policy and allow-list, must reach every listed host and must be
-    # refused an unlisted one (#912). It holds no credentials and never runs for a real release.
-    if: inputs.offline-test && inputs.block-egress
+    # Fixture mode never runs the release jobs, so this job proves their egress policy instead. It
+    # reads the input through the same policy and allow-list and must reach every listed host. In
+    # block mode it must be refused an unlisted host; in audit mode it must reach that same host, so
+    # the refusal is the policy's and not a network failure (#912). It holds no credentials and never
+    # runs for a real release.
+    if: inputs.offline-test
     timeout-minutes: 5
     runs-on: ubuntu-latest
     permissions: {}
@@ -756,8 +758,10 @@ jobs:
             github.com:443
             registry.npmjs.org:443
 
-      - name: 🧪 Reach listed hosts and refuse an unlisted one
+      - name: 🧪 Reach listed hosts and check an unlisted one
         shell: bash
+        env:
+          BLOCK_EGRESS: ${{ inputs.block-egress }}
         run: |
           probe() {
             env -i PATH="$PATH" curl --disable --silent --show-error --output /dev/null \
@@ -765,12 +769,20 @@ jobs:
           }
           for host in api.github.com github.com registry.npmjs.org; do
             probe "$host" || {
-              echo "::error::block mode refused listed host $host" >&2
+              echo "::error::the egress policy refused listed host $host" >&2
               exit 1
             }
           done
-          if probe example.com; then
-            echo '::error::block mode reached unlisted host example.com' >&2
-            exit 1
+          if [[ "$BLOCK_EGRESS" == true ]]; then
+            if probe example.com; then
+              echo '::error::block mode reached unlisted host example.com' >&2
+              exit 1
+            fi
+            echo 'Block mode reached every listed host and refused example.com.'
+          else
+            probe example.com || {
+              echo '::error::audit mode could not reach example.com, so a block-mode refusal would prove nothing' >&2
+              exit 1
+            }
+            echo 'Audit mode reached every listed host and example.com.'
           fi
-          echo 'Block mode reached every listed host and refused example.com.'
