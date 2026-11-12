@@ -184,6 +184,51 @@ spec:
 apiVersion: repo.github.m.upbound.io/v1alpha1
 kind: RepositoryCustomProperty
 metadata:
+  name: bookkeeper-type
+spec:
+  managementPolicies: [Observe, Create, Update]
+  forProvider:
+    repository: "bookkeeper"
+    propertyName: Type
+    propertyType: single_select
+    propertyValue: ["Application"]
+  providerConfigRef:
+    kind: ProviderConfig
+    name: default
+---
+apiVersion: repo.github.m.upbound.io/v1alpha1
+kind: RepositoryCustomProperty
+metadata:
+  name: bookkeeper-enableautomerge
+spec:
+  managementPolicies: [Observe, Create, Update]
+  forProvider:
+    repository: "bookkeeper"
+    propertyName: EnableAutoMerge
+    propertyType: true_false
+    propertyValue: ["true"]
+  providerConfigRef:
+    kind: ProviderConfig
+    name: default
+---
+apiVersion: repo.github.m.upbound.io/v1alpha1
+kind: RepositoryCustomProperty
+metadata:
+  name: bookkeeper-scangithubactions
+spec:
+  managementPolicies: [Observe, Create, Update]
+  forProvider:
+    repository: "bookkeeper"
+    propertyName: ScanGitHubActions
+    propertyType: true_false
+    propertyValue: ["true"]
+  providerConfigRef:
+    kind: ProviderConfig
+    name: default
+---
+apiVersion: repo.github.m.upbound.io/v1alpha1
+kind: RepositoryCustomProperty
+metadata:
   name: business-site-type
 spec:
   managementPolicies: [Observe, Create, Update]

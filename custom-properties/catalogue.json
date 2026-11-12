@@ -45,6 +45,7 @@
     "agent-plugins": {"type": "Marketplace", "auto_merge": true, "scan_actions": true},
     "ascoachingogvaner": {"type": "Application", "auto_merge": true, "scan_actions": true},
     "aws": {"type": "Infrastructure", "auto_merge": true, "scan_actions": true},
+    "bookkeeper": {"type": "Application", "auto_merge": true, "scan_actions": true},
     "business-site": {"type": "Application", "auto_merge": true, "scan_actions": true},
     "client-orders": {"type": "Metadata", "auto_merge": false, "scan_actions": true},
     "cloudflare": {"type": "Infrastructure", "auto_merge": true, "scan_actions": true},

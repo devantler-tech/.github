@@ -25,6 +25,7 @@ resources:
   - setup-agent-skills-action.yaml
   - update-agent-skills-action.yaml
   - guard-installed-skill-edits-action.yaml
+  - bookkeeper.yaml
   - dot-github.yaml
   - platform.yaml
   - ksail.yaml
