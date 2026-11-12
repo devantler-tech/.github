@@ -39,7 +39,7 @@ jobs:
     # Keep the exact consumer-approved revision, not merely a 40-hex shape or
     # byte-identical publisher. CI requires separate signer and content approval;
     # deploy and read back consumer approval BEFORE changing this identity.
-    uses: devantler-tech/.github/.github/workflows/publish-manifests.yaml@933b53600c15fe7a67189756307cb19e23090c99 # v21.0.1
+    uses: devantler-tech/.github/.github/workflows/publish-manifests.yaml@2666baeaf1384d3c2d918e19692b8a6d9fb6fd78 # v21.1.1
     with:
       oci-name: devantler-tech/github-config
       # The publisher refuses mutable signing refs. Consumer approval of the exact
