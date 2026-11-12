@@ -735,3 +735,42 @@ jobs:
           DISABLE_ISSUE_SIDE_EFFECTS: ${{ inputs.disable-issue-side-effects }}
           WARN_MISSING_BREAKING_BANG: ${{ inputs.warn-missing-breaking-bang }}
         run: bash .github/tests/create-release-fixture.sh
+
+  egress-probe:
+    name: Release egress probe
+    # Fixture mode never runs the release jobs, so this job proves their block mode instead. It reads
+    # the input through the same policy and allow-list, must reach every listed host and must be
+    # refused an unlisted one (#912). It holds no credentials and never runs for a real release.
+    if: inputs.offline-test && inputs.block-egress
+    timeout-minutes: 5
+    runs-on: ubuntu-latest
+    permissions: {}
+    steps:
+      - name: 🛡️ Harden runner
+        uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
+        with:
+          # Exactly the release jobs' policy and list; test-create-release-config.sh keeps them equal.
+          egress-policy: ${{ inputs.block-egress && 'block' || 'audit' }}
+          allowed-endpoints: >-
+            api.github.com:443
+            github.com:443
+            registry.npmjs.org:443
+
+      - name: 🧪 Reach listed hosts and refuse an unlisted one
+        shell: bash
+        run: |
+          probe() {
+            env -i PATH="$PATH" curl --disable --silent --show-error --output /dev/null \
+              --proto '=https' --connect-timeout 10 --max-time 20 "https://$1/"
+          }
+          for host in api.github.com github.com registry.npmjs.org; do
+            probe "$host" || {
+              echo "::error::block mode refused listed host $host" >&2
+              exit 1
+            }
+          done
+          if probe example.com; then
+            echo '::error::block mode reached unlisted host example.com' >&2
+            exit 1
+          fi
+          echo 'Block mode reached every listed host and refused example.com.'
