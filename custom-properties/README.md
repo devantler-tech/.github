@@ -40,16 +40,22 @@ retiring the unused definition. Repository names, organization ownership and uni
 must agree; missing private entries or a failed later page block retirement. The native apply proved
 that the organization writer can initialize every assignment while restricted to this repository,
 but its repository selection made the organization readback incomplete. The writer stays restricted.
-A separate, short-lived read-only token selects exactly the validated catalogue and supplies only
-the organization-value readback. It explicitly requests both organization custom-property read
-authority and repository metadata read access for the selected repositories, with no repository
-content access. Repository selection alone does not request metadata authority when the token's
-permissions are explicitly limited. Neither that token nor its alternate credential is passed to schema or value mutations.
-The action revokes both tokens at job completion.
+A separate, short-lived read-only token covers the whole App installation and supplies only the
+installation's repository listing and the organization-value readback. It explicitly requests
+organization custom-property read authority and repository metadata read access, with no
+repository content access. Neither that token nor its alternate credential is passed to schema or
+value mutations. The action revokes both tokens at job completion.
 
-The readback selection is exactly the reviewed catalogue; changing that selection requires
-maintainer direction, rather than an automatic response to incomplete results. Native full-portfolio readback,
-including private entries, remains required after deployment; offline tests do not establish it.
+The token covers the whole installation, by maintainer direction on 2026-11-13, so that a
+repository the catalogue declares before Crossplane creates it cannot stop the run. A token
+limited to the catalogue fails outright while one of its repositories is missing, and the schema
+then never reaches GitHub. The reconciler lists the installation's repositories first. A
+catalogue repository missing from that listing is printed as `PENDING` and gets no value write or
+readback; its `RepositoryCustomProperty` resources write its values once Crossplane creates it.
+The listing proves absence only when it is complete, covers all repositories and includes this
+one; anything else stops the run before the first write. Native full-portfolio readback,
+including private entries, remains required for every created repository after deployment;
+offline tests do not establish it.
 Repeated runs reassert the same complete catalogue; an effective default alone never replaces a
 successful explicit write.
 

@@ -20,6 +20,7 @@ func TestGHAPIUsesReadOnlyCredentialOnlyForValueReadback(t *testing.T) {
 	t.Setenv("GH_PROPERTY_READBACK_TOKEN", "portfolio-reader")
 	for _, tc := range []struct{ method, path, want string }{
 		{"GET", "orgs/devantler-tech/properties/values?per_page=100&page=1", "portfolio-reader:unset"},
+		{"GET", "installation/repositories?per_page=100&page=1", "portfolio-reader:unset"},
 		{"GET", "orgs/devantler-tech/properties/schema", "schema-writer:unset"},
 		{"PATCH", "orgs/devantler-tech/properties/values", "schema-writer:unset"},
 		{"DELETE", "orgs/devantler-tech/properties/schema/LintDocumentation", "schema-writer:unset"},
@@ -269,12 +270,26 @@ type fakeAPI struct {
 	failRead, failWrite, corrupt bool
 	writes                       []string
 	values                       map[string][]map[string]string
+	missing                      map[string]bool // declared but not created yet
 }
 
 func (f *fakeAPI) call(method, path string, body []byte) ([]byte, error) {
 	if method == "GET" {
 		if f.failRead {
 			return nil, errors.New("unavailable")
+		}
+		if path == "installation/repositories?per_page=100&page=1" {
+			c, err := load("../../custom-properties/catalogue.json")
+			if err != nil {
+				return nil, err
+			}
+			repos := []map[string]string{}
+			for name := range c.Repositories {
+				if !f.missing[name] {
+					repos = append(repos, map[string]string{"name": name, "full_name": "devantler-tech/" + name})
+				}
+			}
+			return json.Marshal(map[string]any{"total_count": len(repos), "repository_selection": "all", "repositories": repos})
 		}
 		if path == "orgs/devantler-tech/properties/values?per_page=100&page=1" {
 			rows := []map[string]any{}
@@ -312,6 +327,9 @@ func (f *fakeAPI) call(method, path string, body []byte) ([]byte, error) {
 		}
 		if len(request.Repositories) != 1 || len(request.Properties) == 0 {
 			return nil, errors.New("incomplete value request")
+		}
+		if f.missing[request.Repositories[0]] {
+			return nil, errors.New("repository not found")
 		}
 		for _, p := range f.schema {
 			if !p.Required || !p.Explicit {
@@ -709,5 +727,54 @@ func TestReviewedMainAdmission(t *testing.T) {
 			t.Fatalf("invalid %s admitted", key)
 		}
 		t.Setenv(key, good[key])
+	}
+}
+
+// A repository declared in the catalogue before Crossplane creates it must not
+// stop the schema from reaching GitHub; it is pending and gets no value writes.
+func TestUncreatedRepositoryIsPendingNotFatal(t *testing.T) {
+	c := fixture(t)
+	f := &fakeAPI{schema: []property{}, missing: map[string]bool{"ksail": true}}
+	if err := reconcile(c, f.call); err != nil {
+		t.Fatalf("an uncreated repository blocked reconciliation: %v", err)
+	}
+	if _, written := f.values["ksail"]; written {
+		t.Fatal("values were written for a repository that does not exist")
+	}
+	if len(f.values) != len(c.Repositories)-1 {
+		t.Fatalf("every created repository needs its values: got %d of %d", len(f.values), len(c.Repositories)-1)
+	}
+	if len(f.schema) != len(c.Properties) {
+		t.Fatal("the schema did not reach the reviewed state")
+	}
+}
+
+// A missing repository is evidence only in a complete listing of an
+// all-repositories installation; anything else stops before the first write.
+func TestInstallationListingMustBeComplete(t *testing.T) {
+	for name, listing := range map[string]string{
+		"selected installation":   `{"total_count":1,"repository_selection":"selected","repositories":[{"name":".github","full_name":"devantler-tech/.github"}]}`,
+		"short of its total":      `{"total_count":2,"repository_selection":"all","repositories":[{"name":".github","full_name":"devantler-tech/.github"}]}`,
+		"foreign repository":      `{"total_count":2,"repository_selection":"all","repositories":[{"name":".github","full_name":"devantler-tech/.github"},{"name":"x","full_name":"other/x"}]}`,
+		"duplicate repository":    `{"total_count":2,"repository_selection":"all","repositories":[{"name":".github","full_name":"devantler-tech/.github"},{"name":".github","full_name":"devantler-tech/.github"}]}`,
+		"without this repository": `{"total_count":1,"repository_selection":"all","repositories":[{"name":"ksail","full_name":"devantler-tech/ksail"}]}`,
+		"no total":                `{"repository_selection":"all","repositories":[]}`,
+		"unreadable":              `not json`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			f := &fakeAPI{schema: []property{}}
+			api := func(method, path string, body []byte) ([]byte, error) {
+				if method == "GET" && strings.HasPrefix(path, "installation/repositories?") {
+					return []byte(listing), nil
+				}
+				return f.call(method, path, body)
+			}
+			if err := reconcile(fixture(t), api); err == nil {
+				t.Fatal("an unproven listing was accepted")
+			}
+			if len(f.writes) != 0 {
+				t.Fatalf("wrote before proving the listing: %v", f.writes)
+			}
+		})
 	}
 }
