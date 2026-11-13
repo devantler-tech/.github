@@ -35,6 +35,7 @@ resources:
   - grant-maintainers-on-khoist.yaml
   - grant-maintainers-on-business-site.yaml
   - grant-maintainers-on-client-orders.yaml
+  - grant-maintainers-on-bookkeeper.yaml
   # Active Admins policy (one admin grant per active repository).
   - grant-admins-on-dot-github.yaml
   - grant-admins-on-agent-plugins.yaml
@@ -58,3 +59,4 @@ resources:
   - grant-admins-on-khoist.yaml
   - grant-admins-on-business-site.yaml
   - grant-admins-on-client-orders.yaml
+  - grant-admins-on-bookkeeper.yaml

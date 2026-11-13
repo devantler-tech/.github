@@ -1,0 +1,15 @@
+apiVersion: actions.github.m.upbound.io/v1alpha1
+kind: RepositoryPermissions
+metadata:
+  name: bookkeeper
+  annotations:
+    crossplane.io/external-name: bookkeeper
+spec:
+  managementPolicies: ["Observe", "Create", "Update"]
+  forProvider:
+    repository: bookkeeper
+    enabled: true
+    allowedActions: all
+  providerConfigRef:
+    kind: ProviderConfig
+    name: default
