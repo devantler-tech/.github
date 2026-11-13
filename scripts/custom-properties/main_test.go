@@ -250,7 +250,7 @@ func TestCatalogueRejectsMissingAndUnknownValues(t *testing.T) {
 	for _, mutation := range []func(*catalogue){
 		func(c *catalogue) { r := c.Repositories["ksail"]; r.AutoMerge = nil; c.Repositories["ksail"] = r },
 		func(c *catalogue) { r := c.Repositories["ksail"]; r.Type = "Unknown"; c.Repositories["ksail"] = r },
-		func(c *catalogue) { c.Properties[0].Explicit = false },
+		func(c *catalogue) { c.Properties[0].Explicit = true },
 		func(c *catalogue) { c.Properties = append(c.Properties, c.Properties[0]) },
 		func(c *catalogue) { c.Retire = append(c.Retire, "EnableAutoMerge") },
 		func(c *catalogue) { c.Retire = []string{"LintDocumentation"} },

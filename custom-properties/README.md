@@ -26,8 +26,11 @@ unexpected property is preserved and stops reconciliation for an ownership revie
 ## Ownership and reconciliation
 
 Repository actors retain the existing permission to set values; Crossplane restores the reviewed
-catalogue. Required values remain explicit rather than relying on defaults. Defaults are only the
-GitHub fallback and do not establish compliance.
+catalogue. The properties are required but do not demand an explicit value when a repository is
+created: neither GitHub's create-from-template API nor the provider's `Repository` resource can pass
+property values, so demanding one stops Crossplane creating any repository. A new repository holds
+the default until its `RepositoryCustomProperty` resources write the catalogue's explicit values.
+Defaults are only that fallback and do not establish compliance.
 
 GitHub rejects independent property creation when other required explicit values are missing.
 The reviewed-main workflow therefore writes each repository's complete assignment atomically,

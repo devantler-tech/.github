@@ -4,7 +4,7 @@
       "property_name": "Type",
       "value_type": "single_select",
       "required": true,
-      "require_explicit_values": true,
+      "require_explicit_values": false,
       "default_value": "Application",
       "description": "Portfolio purpose for catalogue navigation; use native GitHub metadata for language, visibility and template status.",
       "allowed_values": [
@@ -21,7 +21,7 @@
       "property_name": "EnableAutoMerge",
       "value_type": "true_false",
       "required": true,
-      "require_explicit_values": true,
+      "require_explicit_values": false,
       "default_value": "true",
       "description": "Select the existing automatic-merge workflow policy; never bypasses CI, review, draft or branch-protection gates.",
       "values_editable_by": "org_and_repo_actors"
@@ -30,7 +30,7 @@
       "property_name": "ScanGitHubActions",
       "value_type": "true_false",
       "required": true,
-      "require_explicit_values": true,
+      "require_explicit_values": false,
       "default_value": "true",
       "description": "Select the organization workflow-vulnerability scanning policy for this repository.",
       "values_editable_by": "org_and_repo_actors"

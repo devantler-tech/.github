@@ -66,7 +66,7 @@ func validate(c catalogue) error {
 	}
 	seen := map[string]bool{}
 	for _, p := range c.Properties {
-		if !slices.Contains(names, p.Name) || seen[p.Name] || !p.Required || !p.Explicit || p.Description == "" || p.Editable != "org_and_repo_actors" || p.Source != "" {
+		if !slices.Contains(names, p.Name) || seen[p.Name] || !p.Required || p.Explicit || p.Description == "" || p.Editable != "org_and_repo_actors" || p.Source != "" {
 			return errors.New("invalid or duplicate property definition")
 		}
 		seen[p.Name] = true
