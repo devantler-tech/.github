@@ -361,6 +361,7 @@ jobs:
 | `dry-run`                    | Input (boolean) | `false` | No       | Run semantic-release in dry-run mode (no tags or publishes)               |
 | `offline-test`               | Input (boolean) | `false` | No       | Run secret-free catalogue release-decision fixtures; requires dry-run     |
 | `protected-release`          | Input (boolean) | `false` | No       | Use the caller's protected `release` environment and dedicated App credentials; see [setup and acceptance](.github/agent-guides/protected-releases.md) |
+| `block-egress`               | Input (boolean) | `false` | No       | Refuse every outbound host from the release job except `github.com`, `api.github.com` and `registry.npmjs.org`, the hosts it was measured to reach ([#912](https://github.com/devantler-tech/.github/issues/912)) |
 
 The protected mode obtains `RELEASE_APP_CLIENT_ID` and `RELEASE_APP_PRIVATE_KEY` from the
 caller's `release` environment. Explicitly bind `RELEASE_APP_PRIVATE_KEY` in the caller's

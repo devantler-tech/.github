@@ -447,5 +447,109 @@ refs/heads/main|main|false|fail
 refs/heads/main||true|fail
 EOF
 
+# Opt-in egress blocking (#912). Both release jobs select block mode only through block-egress and
+# share one measured allow-list (#628); the credential-free offline fixture job keeps plain audit.
+# The CI fixtures exercise the default and the opted-in input state.
+check_block_egress() {
+  local wf="$1" ci_file="$2" job policy endpoints probe_run refusal
+  local expected_policy="\${{ inputs.block-egress && 'block' || 'audit' }}"
+  local expected_endpoints='api.github.com:443 github.com:443 registry.npmjs.org:443'
+  [[ "$(yq -r '.on.workflow_call.inputs."block-egress" | [.type, .default] | join(" ")' "$wf")" == "boolean false" ]] ||
+    return 1
+  for job in release release-protected; do
+    policy="$(JOB="$job" yq -r '.jobs[strenv(JOB)].steps[0].with."egress-policy" // ""' "$wf")"
+    endpoints="$(JOB="$job" yq -r '.jobs[strenv(JOB)].steps[0].with."allowed-endpoints" // ""' "$wf")"
+    [[ "$policy" == "$expected_policy" && "$endpoints" == "$expected_endpoints" ]] || return 1
+  done
+  [[ "$(yq -o=json -I=0 '.jobs."offline-test".steps[0].with' "$wf")" == '{"egress-policy":"audit"}' ]] || return 1
+  # The fixture-mode probe executes both states: the release jobs' exact hardening step, a fatal
+  # check of every listed host, a refused connection to an unlisted one in block mode and the same
+  # host reached in audit mode, so the refusal is attributable to the policy, and no credentials.
+  local hardening='.steps[0] | {"uses": .uses, "with": .with}' hosts="${expected_endpoints//:443/}"
+  [[ "$(yq -o=json -I=0 ".jobs.\"egress-probe\" | $hardening" "$wf")" == \
+    "$(yq -o=json -I=0 ".jobs.release | $hardening" "$wf")" ]] || return 1
+  [[ "$(yq -r '.jobs."egress-probe".if // ""' "$wf")" == "inputs.offline-test" ]] || return 1
+  [[ "$(yq -o=json -I=0 '.jobs."egress-probe".steps[1].env' "$wf")" == \
+    "{\"BLOCK_EGRESS\":\"\${{ inputs.block-egress }}\"}" ]] || return 1
+  [[ "$(yq -o=json -I=0 '.jobs."egress-probe" | [.permissions, (."continue-on-error" // false), (.steps | length)]' "$wf")" == \
+    '[{},false,2]' ]] || return 1
+  [[ "$(yq -o=json -I=0 '.jobs."egress-probe".steps[1] | [(.if // "none"), (."continue-on-error" // false)]' "$wf")" == \
+    '["none",false]' ]] || return 1
+  probe_run="$(yq -r '.jobs."egress-probe".steps[1].run' "$wf")"
+  # Block mode accepts only a refused connection (curl exit 7) with harden-runner's denial record.
+  refusal="$(
+    cat <<'EOF_REFUSAL'
+  agent_log=/home/agent/agent.log
+  [[ -r "$agent_log" ]] || {
+    echo "::error::harden-runner's agent log $agent_log is unreadable, so a refusal cannot be attributed to the policy" >&2
+    exit 1
+  }
+  before=$(wc -l <"$agent_log")
+  status=0
+  probe example.com || status=$?
+  case "$status" in
+    0)
+      echo '::error::block mode reached unlisted host example.com' >&2
+      exit 1
+      ;;
+    7) ;;
+    *)
+      echo "::error::the example.com probe failed with curl exit $status, not a refused connection, so it proves nothing about the policy" >&2
+      exit 1
+      ;;
+  esac
+  denied=false
+  for _ in 1 2 3 4 5; do
+    if tail -n "+$((before + 1))" "$agent_log" | grep -F 'domain not allowed: example.com.' >/dev/null; then
+      denied=true
+      break
+    fi
+    sleep 1
+  done
+  [[ "$denied" == true ]] || {
+    echo '::error::curl was refused, but harden-runner recorded no denial of example.com for this attempt' >&2
+    exit 1
+  }
+  echo 'Block mode reached every listed host, and harden-runner denied the connection to example.com.'
+EOF_REFUSAL
+  )"
+  [[ "$probe_run" == *"for host in $hosts; do"* && "$probe_run" == *"if [[ \"\$BLOCK_EGRESS\" == true ]]; then"* &&
+    "$probe_run" == *"$refusal"* && "$probe_run" == *"  probe example.com || {"* ]] || return 1
+  [[ "$(yq -r '.jobs."test-create-release".with."block-egress" // "unset"' "$ci_file")" == "unset" ]] || return 1
+  [[ "$(yq -r '.jobs."test-create-release-no-issue-side-effects".with."block-egress" // "unset"' "$ci_file")" == "true" ]] ||
+    return 1
+}
+
+if ! check_block_egress "$workflow" "$ci"; then
+  echo "create-release must block egress only when opted in, with one measured allow-list in both release jobs" >&2
+  exit 1
+fi
+
+# Controls: the check must refuse each regression below.
+while IFS='|' read -r label target expression; do
+  cp "$workflow" "$tmp_dir/egress-workflow.yaml"
+  cp "$ci" "$tmp_dir/egress-ci.yaml"
+  yq -i "$expression" "$tmp_dir/egress-$target.yaml"
+  if check_block_egress "$tmp_dir/egress-workflow.yaml" "$tmp_dir/egress-ci.yaml"; then
+    echo "egress control was accepted: $label" >&2
+    exit 1
+  fi
+done <<'EOF_CONTROLS'
+block mode unconditional|workflow|.jobs.release.steps[0].with."egress-policy" = "block"
+extra host in the protected job only|workflow|.jobs["release-protected"].steps[0].with."allowed-endpoints" += " example.com:443"
+input defaults to on|workflow|.on.workflow_call.inputs."block-egress".default = true
+offline fixture job blocks too|workflow|.jobs["offline-test"].steps[0].with."egress-policy" = "block"
+opted-in CI state removed|ci|del(.jobs["test-create-release-no-issue-side-effects"].with."block-egress")
+probe allow-list drifts from the release jobs|workflow|.jobs["egress-probe"].steps[0].with."allowed-endpoints" += " example.com:443"
+probe drops the audit-mode reachability control|workflow|.jobs["egress-probe"].if = "inputs.offline-test && inputs.block-egress"
+probe ignores the input|workflow|del(.jobs["egress-probe"].steps[1].env)
+probe audit mode tolerates an unreachable host|workflow|.jobs["egress-probe"].steps[1].run |= sub("  probe example.com [|][|] [{]"; "  true || {")
+probe treats any failure as a refusal|workflow|.jobs["egress-probe"].steps[1].run |= sub("    7[)] ;;"; "    *) ;;")
+probe skips the denial record|workflow|.jobs["egress-probe"].steps[1].run |= sub("  denied=false"; "  denied=true")
+probe skips a listed host|workflow|.jobs["egress-probe"].steps[1].run |= sub(" registry.npmjs.org; do"; "; do")
+probe failure tolerated|workflow|.jobs["egress-probe"]."continue-on-error" = true
+EOF_CONTROLS
+
 echo "semantic-release issue side effects are opt-in disabled at least privilege"
 echo "protected-source guard accepts the protected default branch and rejects four invalid contexts"
+echo "release egress blocking is opt-in, probed in both states by an executed job and rejects thirteen regressions"

@@ -27,6 +27,11 @@ on:
         required: false
         default: false
         type: boolean
+      block-egress:
+        description: "Refuse every outbound host except the release jobs' measured allow-list (opt-in)"
+        required: false
+        default: false
+        type: boolean
     secrets:
       RELEASE_APP_PRIVATE_KEY:
         description: Named binding for the protected release environment's key; keep its value only in that environment.
@@ -54,7 +59,14 @@ jobs:
       - name: 🛡️ Harden runner
         uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
         with:
-          egress-policy: audit
+          # Opt-in block mode (#912) refuses every host not listed here. The list is this job's
+          # measured egress (#628): checkout and tags, the App token and release API, and npm for
+          # semantic-release. Audit mode records traffic and ignores the list.
+          egress-policy: ${{ inputs.block-egress && 'block' || 'audit' }}
+          allowed-endpoints: >-
+            api.github.com:443
+            github.com:443
+            registry.npmjs.org:443
 
       - name: 🔑 Get GitHub App Token
         uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
@@ -354,7 +366,14 @@ jobs:
       - name: 🛡️ Harden runner
         uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
         with:
-          egress-policy: audit
+          # Opt-in block mode (#912) refuses every host not listed here. The list is this job's
+          # measured egress (#628): checkout and tags, the App token and release API, and npm for
+          # semantic-release. Audit mode records traffic and ignores the list.
+          egress-policy: ${{ inputs.block-egress && 'block' || 'audit' }}
+          allowed-endpoints: >-
+            api.github.com:443
+            github.com:443
+            registry.npmjs.org:443
 
       - name: Verify protected release source
         if: inputs.protected-release
@@ -716,3 +735,84 @@ jobs:
           DISABLE_ISSUE_SIDE_EFFECTS: ${{ inputs.disable-issue-side-effects }}
           WARN_MISSING_BREAKING_BANG: ${{ inputs.warn-missing-breaking-bang }}
         run: bash .github/tests/create-release-fixture.sh
+
+  egress-probe:
+    name: Release egress probe
+    # Fixture mode never runs the release jobs, so this job proves their egress policy instead. It
+    # reads the input through the same policy and allow-list and must reach every listed host. In
+    # block mode it must be refused an unlisted host, with harden-runner's own denial record for that
+    # attempt; in audit mode it must reach that same host (#912). It holds no credentials and never
+    # runs for a real release.
+    if: inputs.offline-test
+    timeout-minutes: 5
+    runs-on: ubuntu-latest
+    permissions: {}
+    steps:
+      - name: 🛡️ Harden runner
+        uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
+        with:
+          # Exactly the release jobs' policy and list; test-create-release-config.sh keeps them equal.
+          egress-policy: ${{ inputs.block-egress && 'block' || 'audit' }}
+          allowed-endpoints: >-
+            api.github.com:443
+            github.com:443
+            registry.npmjs.org:443
+
+      - name: 🧪 Reach listed hosts and check an unlisted one
+        shell: bash
+        env:
+          BLOCK_EGRESS: ${{ inputs.block-egress }}
+        run: |
+          probe() {
+            env -i PATH="$PATH" curl --disable --silent --show-error --output /dev/null \
+              --proto '=https' --connect-timeout 10 --max-time 20 "https://$1/"
+          }
+          for host in api.github.com github.com registry.npmjs.org; do
+            probe "$host" || {
+              echo "::error::the egress policy refused listed host $host" >&2
+              exit 1
+            }
+          done
+          if [[ "$BLOCK_EGRESS" == true ]]; then
+            # The refusal counts only when curl's connection is rejected (exit 7) and harden-runner's
+            # agent log, which its post step reads from this path, records denying example.com after
+            # this attempt began. Anything else cannot be attributed to the policy and fails the probe.
+            agent_log=/home/agent/agent.log
+            [[ -r "$agent_log" ]] || {
+              echo "::error::harden-runner's agent log $agent_log is unreadable, so a refusal cannot be attributed to the policy" >&2
+              exit 1
+            }
+            before=$(wc -l <"$agent_log")
+            status=0
+            probe example.com || status=$?
+            case "$status" in
+              0)
+                echo '::error::block mode reached unlisted host example.com' >&2
+                exit 1
+                ;;
+              7) ;;
+              *)
+                echo "::error::the example.com probe failed with curl exit $status, not a refused connection, so it proves nothing about the policy" >&2
+                exit 1
+                ;;
+            esac
+            denied=false
+            for _ in 1 2 3 4 5; do
+              if tail -n "+$((before + 1))" "$agent_log" | grep -F 'domain not allowed: example.com.' >/dev/null; then
+                denied=true
+                break
+              fi
+              sleep 1
+            done
+            [[ "$denied" == true ]] || {
+              echo '::error::curl was refused, but harden-runner recorded no denial of example.com for this attempt' >&2
+              exit 1
+            }
+            echo 'Block mode reached every listed host, and harden-runner denied the connection to example.com.'
+          else
+            probe example.com || {
+              echo '::error::audit mode could not reach example.com, so a block-mode refusal would prove nothing' >&2
+              exit 1
+            }
+            echo 'Audit mode reached every listed host and example.com.'
+          fi

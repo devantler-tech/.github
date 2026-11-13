@@ -15,7 +15,7 @@ restored without a new ownership decision; immutable historical releases remain 
 
 1. **Use the `workflow_call` trigger** — this is what makes them reusable.
 2. **Pin all remote actions to commit SHAs** — `uses: owner/repo@<sha> # <version>`; same-source self-references use native `$/` binding to the defining file's exact commit (see the catalogue reference rules).
-3. **Include `step-security/harden-runner`** as the first step of every job (`egress-policy: audit`).
+3. **Include `step-security/harden-runner`** as the first step of every job (`egress-policy: audit`). The one opt-in exception is `create-release.yaml`'s two release jobs: a caller that sets `block-egress` switches them to `block` with their measured allow-list, and `.github/tests/test-create-release-config.sh` keeps that list identical in both jobs and in the fixture-mode `egress-probe` job, which must reach every listed host, be refused an unlisted one in block mode, with harden-runner's denial record for that attempt, and reach that host in audit mode (#912).
 4. **Set `permissions: {}` at the workflow top level** — grant per-job.
 5. **Set `persist-credentials: false`** on `actions/checkout` unless the job pushes.
 6. **Conventional commits.** Releases follow the rules under *Releases* above. A workflow/action change consumers must receive promptly is committed as `fix:` (or `feat:`), not `ci:`/`refactor:`. The reusable `create-release.yaml` product runs semantic-release with each consumer's own configuration.
