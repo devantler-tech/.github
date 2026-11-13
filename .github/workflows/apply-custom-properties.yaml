@@ -48,17 +48,20 @@ jobs:
         env:
           GOTOOLCHAIN: local
         run: go -C scripts/custom-properties run . --root ../.. --check
-      - name: Select validated readback repositories
-        id: readback-repositories
-        run: jq -r '"repositories=" + (.repositories | keys | join(","))' custom-properties/catalogue.json >>"$GITHUB_OUTPUT"
       - name: Get read-only portfolio property token
         id: readback-token
         uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
         with:
           client-id: ${{ vars.APP_CLIENT_ID }}
           private-key: ${{ secrets.APP_PRIVATE_KEY }}
-          owner: devantler-tech
-          repositories: ${{ steps.readback-repositories.outputs.repositories }}
+          # Read only: organization property values and repository metadata. A
+          # deliberate, scoped exception to zizmor's github-app audit, like the
+          # repository coverage check's: a token limited to the catalogue is
+          # refused while a declared repository is not created yet, which stops
+          # the schema reaching GitHub (maintainer direction 2026-11-13). The
+          # reconciler fails closed unless the installation covers all
+          # repositories and its listing is complete.
+          owner: devantler-tech # zizmor: ignore[github-app]
           permission-organization-custom-properties: read
           permission-metadata: read
       - name: Get narrowly scoped organization token

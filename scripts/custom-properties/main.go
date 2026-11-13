@@ -66,7 +66,7 @@ func validate(c catalogue) error {
 	}
 	seen := map[string]bool{}
 	for _, p := range c.Properties {
-		if !slices.Contains(names, p.Name) || seen[p.Name] || !p.Required || !p.Explicit || p.Description == "" || p.Editable != "org_and_repo_actors" || p.Source != "" {
+		if !slices.Contains(names, p.Name) || seen[p.Name] || !p.Required || p.Explicit || p.Description == "" || p.Editable != "org_and_repo_actors" || p.Source != "" {
 			return errors.New("invalid or duplicate property definition")
 		}
 		seen[p.Name] = true
@@ -116,7 +116,8 @@ func ghAPI(method, path string, body []byte) ([]byte, error) {
 		args = append(args, "--input", "-")
 	}
 	cmd := exec.Command("gh", args...)
-	readback := method == "GET" && strings.HasPrefix(path, "orgs/devantler-tech/properties/values?")
+	readback := method == "GET" && (strings.HasPrefix(path, "orgs/devantler-tech/properties/values?") ||
+		strings.HasPrefix(path, "installation/repositories?"))
 	readToken := os.Getenv("GH_PROPERTY_READBACK_TOKEN")
 	if readback && readToken == "" {
 		return nil, errors.New("portfolio readback requires its dedicated read-only credential")
@@ -489,6 +490,65 @@ func verifyValues(wanted map[string][]assignment, api apiFunc) error {
 	return errors.New("property readback exceeded its page bound")
 }
 
+// createdRepositories lists every repository the App installation can see. The
+// read-only credential covers the whole installation, so a catalogue repository
+// missing from a complete all-repositories listing has not been created yet. A
+// selected-repositories installation or an incomplete listing proves nothing.
+func createdRepositories(api apiFunc) (map[string]bool, error) {
+	created := map[string]bool{}
+	for page := 1; page <= 100; page++ {
+		b, err := api("GET", fmt.Sprintf("installation/repositories?per_page=100&page=%d", page), nil)
+		if err != nil {
+			return nil, err
+		}
+		var listing struct {
+			Total        *int   `json:"total_count"`
+			Selection    string `json:"repository_selection"`
+			Repositories []struct {
+				Name     string `json:"name"`
+				FullName string `json:"full_name"`
+			} `json:"repositories"`
+		}
+		if json.Unmarshal(b, &listing) != nil || listing.Total == nil || listing.Repositories == nil {
+			return nil, errors.New("unreadable installation repository listing")
+		}
+		if listing.Selection != "all" {
+			return nil, errors.New("the App installation is limited to selected repositories, so a missing repository proves nothing")
+		}
+		for _, r := range listing.Repositories {
+			if r.Name == "" || r.FullName != "devantler-tech/"+r.Name || created[r.Name] {
+				return nil, errors.New("ambiguous repository identity in installation listing")
+			}
+			created[r.Name] = true
+		}
+		if len(listing.Repositories) < 100 {
+			if len(created) != *listing.Total || !created[".github"] {
+				return nil, errors.New("installation repository listing is incomplete")
+			}
+			return created, nil
+		}
+	}
+	return nil, errors.New("installation repository listing exceeded its page bound")
+}
+
+// splitCreated keeps the catalogue repositories that exist. A repository that is
+// declared but not created yet has no values to write or read back; its
+// RepositoryCustomProperty resources write them once Crossplane creates it.
+func splitCreated(c catalogue, created map[string]bool) (catalogue, []string) {
+	present := c
+	present.Repositories = map[string]repository{}
+	pending := []string{}
+	for name, r := range c.Repositories {
+		if created[name] {
+			present.Repositories[name] = r
+		} else {
+			pending = append(pending, name)
+		}
+	}
+	slices.Sort(pending)
+	return present, pending
+}
+
 func reconcile(c catalogue, api apiFunc) error {
 	if err := validate(c); err != nil {
 		return err
@@ -511,6 +571,14 @@ func reconcile(c catalogue, api apiFunc) error {
 		if old, ok := byName[p.Name]; ok && old.Type != p.Type {
 			return errors.New("property type changed; nothing was applied")
 		}
+	}
+	created, err := createdRepositories(api)
+	if err != nil {
+		return err
+	}
+	present, pending := splitCreated(c, created)
+	for _, name := range pending {
+		fmt.Println("PENDING", name+": declared but not created yet; Crossplane writes its values when it creates the repository")
 	}
 	retirement := &legacyReviewRetirement{}
 	if err = noConsumers(api, c.Retire, retirement); err != nil {
@@ -547,7 +615,7 @@ func reconcile(c catalogue, api apiFunc) error {
 	if err = verifyDesired(c, got, true); err != nil {
 		return err
 	}
-	if err = initializeValues(c, got, api); err != nil {
+	if err = initializeValues(present, got, api); err != nil {
 		return err
 	}
 	confirmation := &legacyReviewRetirement{}
@@ -586,7 +654,7 @@ func reconcile(c catalogue, api apiFunc) error {
 		return err
 	}
 	wanted := map[string][]assignment{}
-	for name, r := range c.Repositories {
+	for name, r := range present.Repositories {
 		wanted[name] = repositoryValues(c, r, got)
 	}
 	if err = verifyValues(wanted, api); err != nil {
