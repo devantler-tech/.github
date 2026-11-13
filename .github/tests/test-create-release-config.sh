@@ -476,9 +476,15 @@ check_block_egress() {
   [[ "$(yq -o=json -I=0 '.jobs."egress-probe".steps[1] | [(.if // "none"), (."continue-on-error" // false)]' "$wf")" == \
     '["none",false]' ]] || return 1
   probe_run="$(yq -r '.jobs."egress-probe".steps[1].run' "$wf")"
-  # Block mode accepts only a refused connection (curl exit 7) as the policy's refusal.
+  # Block mode accepts only a refused connection (curl exit 7) with harden-runner's denial record.
   refusal="$(
     cat <<'EOF_REFUSAL'
+  agent_log=/home/agent/agent.log
+  [[ -r "$agent_log" ]] || {
+    echo "::error::harden-runner's agent log $agent_log is unreadable, so a refusal cannot be attributed to the policy" >&2
+    exit 1
+  }
+  before=$(wc -l <"$agent_log")
   status=0
   probe example.com || status=$?
   case "$status" in
@@ -486,12 +492,25 @@ check_block_egress() {
       echo '::error::block mode reached unlisted host example.com' >&2
       exit 1
       ;;
-    7) echo 'Block mode reached every listed host and refused the connection to example.com.' ;;
+    7) ;;
     *)
       echo "::error::the example.com probe failed with curl exit $status, not a refused connection, so it proves nothing about the policy" >&2
       exit 1
       ;;
   esac
+  denied=false
+  for _ in 1 2 3 4 5; do
+    if tail -n "+$((before + 1))" "$agent_log" | grep -F 'domain not allowed: example.com.' >/dev/null; then
+      denied=true
+      break
+    fi
+    sleep 1
+  done
+  [[ "$denied" == true ]] || {
+    echo '::error::curl was refused, but harden-runner recorded no denial of example.com for this attempt' >&2
+    exit 1
+  }
+  echo 'Block mode reached every listed host, and harden-runner denied the connection to example.com.'
 EOF_REFUSAL
   )"
   [[ "$probe_run" == *"for host in $hosts; do"* && "$probe_run" == *"if [[ \"\$BLOCK_EGRESS\" == true ]]; then"* &&
@@ -525,11 +544,12 @@ probe allow-list drifts from the release jobs|workflow|.jobs["egress-probe"].ste
 probe drops the audit-mode reachability control|workflow|.jobs["egress-probe"].if = "inputs.offline-test && inputs.block-egress"
 probe ignores the input|workflow|del(.jobs["egress-probe"].steps[1].env)
 probe audit mode tolerates an unreachable host|workflow|.jobs["egress-probe"].steps[1].run |= sub("  probe example.com [|][|] [{]"; "  true || {")
-probe treats any failure as a refusal|workflow|.jobs["egress-probe"].steps[1].run |= sub("    7[)] echo"; "    *) echo")
+probe treats any failure as a refusal|workflow|.jobs["egress-probe"].steps[1].run |= sub("    7[)] ;;"; "    *) ;;")
+probe skips the denial record|workflow|.jobs["egress-probe"].steps[1].run |= sub("  denied=false"; "  denied=true")
 probe skips a listed host|workflow|.jobs["egress-probe"].steps[1].run |= sub(" registry.npmjs.org; do"; "; do")
 probe failure tolerated|workflow|.jobs["egress-probe"]."continue-on-error" = true
 EOF_CONTROLS
 
 echo "semantic-release issue side effects are opt-in disabled at least privilege"
 echo "protected-source guard accepts the protected default branch and rejects four invalid contexts"
-echo "release egress blocking is opt-in, probed in both states by an executed job and rejects twelve regressions"
+echo "release egress blocking is opt-in, probed in both states by an executed job and rejects thirteen regressions"
