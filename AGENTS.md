@@ -271,7 +271,7 @@ The [catalogue layout](.github/agent-guides/catalogue.md#layout) lists component
 
 | File | Purpose |
 |---|---|
-| `.releaserc` | This repository's semantic-release configuration. The `create-release` self-test dry-run reads it too. |
+| `.releaserc` | This repository's semantic-release configuration. The `create-release` self-test dry-run reads it too. A `fix(deps)` bump of this repository's own `.github/` or `actions/` pins does not release; it ships with the next real release. |
 | `.mega-linter.yml` | MegaLinter config (disables SPELL_CSPELL) |
 | `.yamllint.yml` | YAML linting rules |
 | `.cspell.json` | Spell-checker config and custom words |

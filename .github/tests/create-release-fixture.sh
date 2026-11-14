@@ -162,6 +162,14 @@ feature	feat: add workflow	1.3.0
 breaking	feat!: require new configuration	2.0.0
 scoped-breaking	fix(release)!: require new configuration	2.0.0
 docs	docs: clarify usage	none
+self-pin-workflow	fix(deps): bump devantler-tech/.github/.github/workflows/publish-manifests.yaml from 21.1.1 to 21.3.1	none
+self-pin-unversioned	fix(deps): bump devantler-tech/.github/.github/workflows/apply-signed-fixes.yaml	none
+self-pin-action	fix(deps): bump devantler-tech/.github/actions/validate-naming from 1.0.0 to 1.1.0	none
+self-pin-feature	feat(deps): bump devantler-tech/.github/.github/workflows/cd.yaml from 1.0.0 to 1.1.0	1.3.0
+self-pin-breaking	fix(deps)!: bump devantler-tech/.github/.github/workflows/cd.yaml from 1.0.0 to 2.0.0	2.0.0
+third-party-pin	fix(deps): bump step-security/harden-runner from 2.22.3 to 2.22.4	1.2.4
+other-own-pin	fix(deps): bump devantler-tech/ksail from 1.0.0 to 1.1.0	1.2.4
+similar-repo-pin	fix(deps): bump devantler-tech/.github-private/x from 1.0.0 to 1.1.0	1.2.4
 warning-missing	fix: exercise missing breaking header	1.2.4
 warning-disabled	fix: exercise disabled diagnostic	1.2.4
 warning-unsupported	fix: exercise unsupported diagnostic configuration	1.2.4
