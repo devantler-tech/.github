@@ -17,11 +17,16 @@ every revision of a shared publisher.
    - the run's ref is `refs/tags/v<semver>` (SemVer 2.0.0; a pre-release is allowed, build
      metadata is dropped from the published version, and every number has at most 15 digits);
    - the calling workflow ref is this repository's own workflow file on that exact tag;
-   - the checked-out commit is the tagged commit;
+   - the tagged commit is checked out at the workspace root, without a persisted git credential
+     (`persist-credentials: false`; the checkout is also the image build context);
    - the tagged commit is an ancestor of the repository's default branch, which it fetches
-     explicitly. When that cannot be established (fetch failure, no default branch), it refuses;
+     explicitly. When that cannot be established (fetch failure, no default-branch commit, a git
+     error), it refuses;
    - the inputs, `deploy-path` and `app-manifest` are valid (see below), and in `deployment` mode
-     the app manifest holds exactly one container named `app-name`.
+     the app manifest holds exactly one container named `app-name`;
+   - `deploy-path` holds only regular files and directories (no links or special files) and is
+     exactly the tagged source: no changed, removed or untracked (ignored included) file in it.
+     Build outputs elsewhere in the workspace are fine.
 2. **Refuses an occupied release version** in the image and manifests repositories, from an
    authenticated, definitive registry read, before the first write.
 3. **Builds or verifies the image.**
@@ -39,6 +44,10 @@ every revision of a shared publisher.
 6. **Exposes only verified releases.** After an image copy keeps the signed digest and the
    version is still unpublished, it tags the version, and `latest` for non-pre-releases. A failed
    verification exposes nothing.
+
+No credential is ever passed on a command line. The default-branch fetch gets the token through
+its environment, flux and cosign use the registry login that `docker/login-action` writes, and the
+version check gives curl its login and bearer token in private config files.
 
 ## Inputs
 
@@ -70,7 +79,7 @@ directory on the way, nor the manifest itself, may be a link. A refused value is
 ## Usage
 
 The calling job must grant `contents: read`, `packages: write` and `id-token: write`, check out
-the tagged commit at the workspace root, and call the action **directly in the product's release
+the tagged commit at the workspace root with `persist-credentials: false` (required), and call the action **directly in the product's release
 workflow**. Called from inside a reusable workflow, the certificate would name that workflow
 instead, and verification would refuse to expose the release. Serialize publishers of one
 repository with a job concurrency group that never cancels.
@@ -102,7 +111,7 @@ jobs:
           egress-policy: audit
       - uses: actions/checkout@<full-commit-sha> # vX.Y.Z
         with:
-          persist-credentials: false
+          persist-credentials: false # required: publish-app refuses a persisted credential
       - uses: devantler-tech/.github/actions/publish-app@<full-commit-sha> # vX.Y.Z
         with:
           app-name: my-app

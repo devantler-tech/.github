@@ -4,6 +4,8 @@
 # Everything is signed by digest, as the calling workflow (keyless, GitHub OIDC). Both signatures
 # must verify against that workflow's own identity at this tag before any selectable tag moves;
 # a failure leaves only run-specific staging tags behind.
+# No credential is ever passed on a command line: flux and cosign read the registry login that
+# docker/login-action wrote, and the version check reads its credential from a private file.
 set +x
 set -euo pipefail
 umask 077
@@ -18,7 +20,6 @@ here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 issuer=https://token.actions.githubusercontent.com
 identity="https://github.com/${GITHUB_WORKFLOW_REF:-}"
 tag="${GITHUB_REF#refs/tags/}"
-creds="${GITHUB_ACTOR:-}:${GH_TOKEN:-}"
 run="${GITHUB_RUN_ID:-}-${GITHUB_RUN_ATTEMPT:-}"
 
 [[ "${VERSION:-}" =~ ^[0-9A-Za-z][0-9A-Za-z.-]{0,127}$ ]] || fail 'admission did not resolve a version'
@@ -56,7 +57,6 @@ stage_manifests() {
     --path="$DEPLOY_PATH" \
     --source="${GITHUB_SERVER_URL:-https://github.com}/$GITHUB_REPOSITORY" \
     --revision="$tag@sha1:$GITHUB_SHA" \
-    --creds "$creds" \
     --output json)"
   manifests_digest="$(jq -r '.digest // ""' <<<"$pushed")"
   [[ "$manifests_digest" =~ ^sha256:[0-9a-f]{64}$ ]] || fail 'flux push did not report the pushed artifact digest'
@@ -120,7 +120,7 @@ expose() {
     # A prerelease is selectable by version but never becomes latest.
     [[ "$pointer" != latest || "$VERSION" != *-* ]] || continue
     [[ "$MODE" == manifests ]] || docker buildx imagetools create --prefer-index=false --tag "$IMAGE:$pointer" "$IMAGE@$digest"
-    flux tag artifact "oci://$ARTIFACT@$manifests_digest" --tag "$pointer" --creds "$creds"
+    flux tag artifact "oci://$ARTIFACT@$manifests_digest" --tag "$pointer"
   done
 }
 
