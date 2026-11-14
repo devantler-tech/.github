@@ -624,18 +624,21 @@ case_outer() {
 case_outer "$action_dir" || fail "accepted a workspace inside a checkout: $(cat "$log")"
 
 # actions/checkout persists its token unless told not to, either in the local config or in a file
-# the local config includes. Either way the checkout (and so the image build context) carries it.
-case_persisted() { # <action-dir> <direct|included>
+# the local config includes, for one host or (with no URL) for every host. Either way the checkout
+# (and so the image build context) carries it.
+case_persisted() { # <action-dir> <direct|any-host|included>
   setup_case "$released"
   if [[ "$2" == direct ]]; then
     git -C "$ws" config --local http.https://github.com/.extraheader 'AUTHORIZATION: basic cGVyc2lzdGVk'
+  elif [[ "$2" == any-host ]]; then
+    git -C "$ws" config --local http.extraheader 'AUTHORIZATION: basic cGVyc2lzdGVk'
   else
     printf '[http "https://github.com/"]\n\textraheader = AUTHORIZATION: basic cGVyc2lzdGVk\n' >"$scratch/persisted.gitconfig"
     git -C "$ws" config --local "includeIf.gitdir:$(cd "$ws/.git" && pwd -P).path" "$scratch/persisted.gitconfig"
   fi
   admission_refusal "$1" 'the checkout persisted a git credential; check out with persist-credentials: false'
 }
-for style in direct included; do
+for style in direct any-host included; do
   case_persisted "$action_dir" "$style" || fail "accepted a checkout with a $style persisted credential: $(cat "$log")"
 done
 
@@ -1041,6 +1044,7 @@ for edit in 'admit.sh|s/^set -euo pipefail$/set -euo pipefail # control/' \
     case_ref "$copy_dir" refs/tags/v9007199254740992.0.0 'numbers of at most 15 digits' &&
     case_identity "$copy_dir" "devantler-tech/app/.github/workflows/release.yaml@refs/heads/main" "$belong" &&
     case_head_moved "$copy_dir" && case_outer "$copy_dir" && case_persisted "$copy_dir" direct &&
+    case_persisted "$copy_dir" any-host &&
     case_not_on_default "$copy_dir" && case_undeterminable "$copy_dir" "file://$scratch/nowhere" &&
     case_no_commit "$copy_dir" && case_ancestry_error "$copy_dir" && case_one_header "$copy_dir" &&
     case_deploy_link "$copy_dir" && case_linked_contents "$copy_dir" deployment &&
@@ -1082,6 +1086,8 @@ must_catch 'a checkout below the workspace root admitted' admit.sh 's/\[\[ "\$(g
   case_outer
 must_catch 'a persisted checkout credential admitted' admit.sh "s/    0) fail 'the checkout persisted/    0) : 'the checkout persisted/" \
   case_persisted direct
+must_catch 'a header for every host passing the persisted-credential check' admit.sh \
+  's/\^http\\\.(\.\*\\\.)?extraheader\$/^http\\\..*\\\.extraheader$/' case_persisted any-host
 must_catch 'tags outside the default branch admitted' admit.sh 's/    1) fail "tag/    1) : "tag/' case_not_on_default
 must_catch 'the default-branch check removed' admit.sh 's/^check_default_branch$/:/' case_not_on_default
 must_catch 'an undeterminable default branch admitted' admit.sh 's/fail "cannot determine/: "cannot determine/g' \

@@ -93,7 +93,8 @@ check_checkout() {
   [[ "$head" == "$GITHUB_SHA" ]] || fail "the checked-out commit is not the tagged commit $GITHUB_SHA"
   # A credential persisted by actions/checkout (its default) stays in the checkout, which is also the
   # image build context. Require persist-credentials: false.
-  git config --local --includes --get-regexp '^http\..*\.extraheader$' >/dev/null || status=$?
+  # Also a header without a URL (http.extraheader), which git sends to every host.
+  git config --local --includes --get-regexp '^http\.(.*\.)?extraheader$' >/dev/null || status=$?
   case "$status" in
     0) fail 'the checkout persisted a git credential; check out with persist-credentials: false' ;;
     1) ;;
