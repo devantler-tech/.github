@@ -728,6 +728,7 @@ for case in \
   ".hidden/deployment.yaml|$plain" \
   "linked-dir|app-manifest base/deployment.yaml passes through a link at ./deploy/base" \
   "linked-file|app-manifest base/deployment.yaml passes through a link at ./deploy/base/deployment.yaml" \
+  "linked-deploy|deploy-path ./deploy passes through a link at ./deploy" \
   "missing|manifest ./deploy/base/deployment.yaml not found"; do
   manifest="${case%%|*}"
   expected="${case#*|}"
@@ -742,9 +743,10 @@ for case in \
     linked-dir) mv "$wd/deploy/base" "$wd/outside" && ln -s ../outside "$wd/deploy/base" ;;
     linked-file) mv "$wd/deploy/base/deployment.yaml" "$wd/outside.yaml" &&
       ln -s ../../outside.yaml "$wd/deploy/base/deployment.yaml" ;;
+    linked-deploy) mv "$wd/deploy" "$wd/manifests" && ln -s manifests "$wd/deploy" ;;
     missing) rm "$wd/deploy/base/deployment.yaml" ;;
   esac
-  case "$manifest" in linked-dir | linked-file | missing) manifest=base/deployment.yaml ;; esac
+  case "$manifest" in linked-dir | linked-file | linked-deploy | missing) manifest=base/deployment.yaml ;; esac
   if run_job "$app" publish "$wd" tag v1.2.3 app-name=app "app-manifest=$manifest"; then
     fail "publish-app accepted app-manifest '$manifest' ($expected)"
   fi

@@ -239,6 +239,16 @@ jobs:
             if ! [[ "$APP_MANIFEST" =~ ^${name}(/${name})*$ ]]; then
               echo "::error::app-manifest must be a relative path of plain names inside deploy-path (letters, digits, '.', '_' and '-'; no leading '/', no empty, '.' or '..' component)"; exit 1
             fi
+            # deploy-path and each of its ancestors must not be a link either: a linked deploy
+            # directory would carry the named manifest outside the deploy tree just the same.
+            prefix="${DEPLOY_PATH%/}"
+            while [ -n "$prefix" ]; do
+              if [ -L "$prefix" ]; then
+                echo "::error::deploy-path $DEPLOY_PATH passes through a link at $prefix"; exit 1
+              fi
+              [[ "$prefix" == */* ]] || break
+              prefix="${prefix%/*}"
+            done
             file="$DEPLOY_PATH"
             IFS=/ read -r -a components <<< "$APP_MANIFEST"
             for component in "${components[@]}"; do
