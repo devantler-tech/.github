@@ -210,6 +210,7 @@ jobs:
           persist-credentials: false
 
       - name: 🔍 Validate the deployment manifest
+        id: manifest
         if: ${{ !inputs.enable-signed-recovery && !inputs.enable-prebuilt-webapp }}
         env:
           APP_NAME: ${{ inputs.app-name }}
@@ -220,7 +221,23 @@ jobs:
           # to go with the image. Only the digest injection waits for the build, because the digest
           # does not exist before it.
           set -euo pipefail
+          # The app manifest is resolved once, here; the pin step reuses this exact path. A product
+          # that splits deploy-path into base/prod/dev overlays keeps the app container in base/.
+          # Without a base entry, the flat layout and its checks are unchanged.
           file="${DEPLOY_PATH}/deployment.yaml"
+          base="${DEPLOY_PATH}/base"
+          if [ -e "$base" ] || [ -L "$base" ]; then
+            if [ -L "$base" ] || [ ! -d "$base" ]; then
+              echo "::error::$base must be a regular directory, not a link or a file"; exit 1
+            fi
+            if [ -e "$file" ] || [ -L "$file" ]; then
+              echo "::error::ambiguous app manifest: $file exists beside $base; keep only $base/deployment.yaml"; exit 1
+            fi
+            file="$base/deployment.yaml"
+            if [ -L "$file" ]; then
+              echo "::error::manifest $file must be a regular file, not a link"; exit 1
+            fi
+          fi
           if [ ! -f "$file" ]; then
             echo "::error::manifest $file not found (check the deploy-path input)"; exit 1
           fi
@@ -228,6 +245,10 @@ jobs:
           if [ "$matches" != "1" ]; then
             echo "::error::expected exactly one container named '$APP_NAME' in $file, found $matches"; exit 1
           fi
+          case "$file" in
+            *$'\n'* | *$'\r'*) echo "::error::deploy-path must not contain a line break"; exit 1 ;;
+          esac
+          echo "file=$file" >> "$GITHUB_OUTPUT"
 
       # Installed before anything is pushed, so a failed download also fails the job while the
       # registry is still untouched.
@@ -346,14 +367,18 @@ jobs:
           IMAGE: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           DIGEST: ${{ steps.build.outputs.digest }}
           APP_NAME: ${{ inputs.app-name }}
-          DEPLOY_PATH: ${{ inputs.deploy-path }}
+          MANIFEST: ${{ steps.manifest.outputs.file }}
         run: |
           # The manifest was validated before the build; this step only injects the digest the build
-          # produced, and checks that the injection took. A registry reference must be lowercase,
-          # which is also how docker/metadata-action named the image it pushed.
+          # produced into the file that validation resolved, and checks that the injection took. A
+          # registry reference must be lowercase, which is also how docker/metadata-action named the
+          # image it pushed.
           set -euo pipefail
           IMAGE="$(printf '%s' "$IMAGE" | tr '[:upper:]' '[:lower:]')"
-          file="${DEPLOY_PATH}/deployment.yaml"
+          file="$MANIFEST"
+          if [ -z "$file" ]; then
+            echo "::error::the validation step did not resolve the app manifest"; exit 1
+          fi
           if [ -z "$DIGEST" ]; then
             echo "::error::build did not produce an image digest"; exit 1
           fi

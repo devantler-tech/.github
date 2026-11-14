@@ -59,7 +59,11 @@ tagged source, public artifact digest and fixed caller CI identity. A private,
 incomplete, failed or changed attempt is unsupported. Do not accept an arbitrary
 image repository, signer or caller-provided source identity. Pin only the image
 of one source-owned WebApp whose name, namespace and spec name match the caller;
-reject linked/special deployment files. This is not complete controller schema
+reject linked/special deployment files. The app manifest rule is shared with
+Deployment mode: when `<deploy-path>/base` exists, only a regular
+`base/webapp.yaml` (or `base/deployment.yaml`) in a regular directory is
+accepted, and a flat manifest beside `base/` is ambiguous; without `base` the
+flat file is unchanged. This is not complete controller schema
 validation. Sign and verify both promoted digests with all fourteen paired
 claims, retaining the original image provenance. Keep helper refusal/pinning,
 promotion mutation, native cryptographic and workflow-interface controls in
