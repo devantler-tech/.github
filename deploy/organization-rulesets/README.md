@@ -276,6 +276,20 @@ gates; a team audit cannot clear the latter two.
   that file's header for the team-vs-enterprise tier caveat on the name-pattern rule and
   its fallback.
 - **Release tag creation** — see [below](#release-tag-creation).
+- **Required-workflow source pins** — v0.20.0 exposes the source repository, path and a
+  branch/tag `ref`, but not GitHub's immutable workflow `sha` selector. The World at Ruin
+  rule therefore binds the external trusted source to `devantler-tech/.github` on
+  `refs/heads/main`; Actions review and merge gates own source changes until the provider
+  exposes `sha`.
+- **Actions policies** — the 2026-06-18
+  [workflow execution protections](https://github.blog/changelog/2026-06-18-control-who-and-what-triggers-github-actions-workflows/)
+  (actor + event allow-lists controlling who/what triggers workflows, delivered as org
+  rulesets scoped by **custom properties**) have no generated provider resource.
+  Custom-property scoping is supported; the execution-policy resource remains the
+  distinct gap. Tracked in [#69](https://github.com/devantler-tech/.github/issues/69);
+  revisit when the provider catches up. Until then they are declared in
+  [`workflow-execution-policies/`](../../workflow-execution-policies/) and applied by a workflow;
+  moving them here is [#226](https://github.com/devantler-tech/.github/issues/226).
 
 ## Release tag creation
 
@@ -315,17 +329,3 @@ and that App as the only App in the bypass list.
 
 `tests/release-tag-creation-ruleset.sh` pins both rulesets and the empty bypass list of
 `protect-release-tags.yaml`.
-- **Required-workflow source pins** — v0.20.0 exposes the source repository, path and a
-  branch/tag `ref`, but not GitHub's immutable workflow `sha` selector. The World at Ruin
-  rule therefore binds the external trusted source to `devantler-tech/.github` on
-  `refs/heads/main`; Actions review and merge gates own source changes until the provider
-  exposes `sha`.
-- **Actions policies** — the 2026-06-18
-  [workflow execution protections](https://github.blog/changelog/2026-06-18-control-who-and-what-triggers-github-actions-workflows/)
-  (actor + event allow-lists controlling who/what triggers workflows, delivered as org
-  rulesets scoped by **custom properties**) have no generated provider resource.
-  Custom-property scoping is supported; the execution-policy resource remains the
-  distinct gap. Tracked in [#69](https://github.com/devantler-tech/.github/issues/69);
-  revisit when the provider catches up. Until then they are declared in
-  [`workflow-execution-policies/`](../../workflow-execution-policies/) and applied by a workflow;
-  moving them here is [#226](https://github.com/devantler-tech/.github/issues/226).
