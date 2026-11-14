@@ -11,8 +11,8 @@ action="${1:-$root/.github/actions/download-go-modules/action.yaml}"
 fail() { echo "FAIL: $*" >&2; exit 1; }
 
 wiring='
-  .runs.using == "composite" and (.runs.steps | length == 1) and
   .runs.steps[0] as $download |
+  .runs.using == "composite" and (.runs.steps | length == 1) and
   $download.shell == "bash" and
   $download["working-directory"] == "${{ github.workspace }}" and
   $download.run == "bash \"$ACTION_PATH/download.sh\" \"$MODULE_DIR\" \"$ACTION_PATH/../../../.scripts/retry.sh\"" and
