@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Retain the approved disabled record without broadening its scope or lifecycle.
+# Pin the signing ruleset: its identity, safe lifecycle and staged scope (#929). Widening
+# it to another repository or to a default branch must change this test deliberately.
 set -euo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -24,15 +25,15 @@ assert_json '"5397812"' '.metadata.annotations."crossplane.io/external-name"'
 assert_json '["Observe","Update"]' '.spec.managementPolicies'
 assert_json '{"kind":"ProviderConfig","name":"default"}' '.spec.providerConfigRef'
 assert_json '{}' '(.spec.initProvider // {})'
-assert_json '"disabled"' '.spec.forProvider.enforcement'
+assert_json '"active"' '.spec.forProvider.enforcement'
 assert_json '"Require signed commits"' '.spec.forProvider.name'
 assert_json '"branch"' '.spec.forProvider.target'
 
 # Update sends the full ruleset: preserve the observed selectors, empty bypass
-# list and all rule booleans explicitly. Empty ref coverage must stay empty.
+# list and all rule booleans explicitly. Stage 1: agent branch namespaces in monorepo only.
 assert_json '[]' '.spec.forProvider.bypassActors'
-assert_json '[{"refName":[{"exclude":[],"include":[]}],"repositoryName":[{"exclude":[],"include":["~ALL"],"protected":false}]}]' '.spec.forProvider.conditions | sort_keys(..)'
+assert_json '[{"refName":[{"exclude":[],"include":["refs/heads/claude/**","refs/heads/codex/**","refs/heads/kagent/**"]}],"repositoryName":[{"exclude":[],"include":["monorepo"],"protected":false}]}]' '.spec.forProvider.conditions | sort_keys(..)'
 assert_json '[{"creation":false,"deletion":false,"nonFastForward":false,"requiredLinearHistory":false,"requiredSignatures":true,"update":false}]' '.spec.forProvider.rules | sort_keys(..)'
 assert_json '["bypassActors","conditions","enforcement","name","rules","target"]' '.spec.forProvider | keys | sort'
 
-echo "signing-rule-retirement: OK"
+echo "signing-rule: OK"

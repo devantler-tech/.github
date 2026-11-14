@@ -163,7 +163,7 @@ bash tests/custom-properties.sh        # explicit values, schema ownership and r
 bash tests/declarative-coverage-fail-closed.sh # rendered-label reads fail closed
 bash tests/actions-retirement.sh       # retired catalogue has no rendered management
 bash tests/repository-update-policy.sh  # active Repository update invariants
-bash tests/signing-rule-retirement.sh  # retained signing-rule identity and safe lifecycle
+bash tests/signing-rule-retirement.sh  # signing-rule identity, safe lifecycle and staged scope
 bash tests/release-contract.sh          # deploy/ changes must trigger a release
 bash tests/deploy-deletions.sh          # removed deploy/ resources must be acknowledged per resource
 bash tests/repository-drift.sh          # declared-vs-live comparison logic

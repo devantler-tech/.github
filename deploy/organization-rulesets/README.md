@@ -13,9 +13,9 @@ Reconciled by the platform `github-config` tenant like the rest of `deploy/`.
   `managementPolicies: ["Observe"]` — Crossplane mirrors live GitHub state into
   `status.atProvider` and **never writes, reverts, or deletes**. This is pure GitOps
   *visibility*, with zero behaviour change (the same flow `repositories/` and `teams/`
-  used). The [retained signing rule](#retained-signing-rule-record) and five fully adopted
+  used). The [signing rule](#signing-rule-record) and five fully adopted
   workflow rules use only Observe and Update.
-  The signing rule preserves its disabled record; the workflow rules use the maintained catalogue. `Delete` is
+  The signing rule keeps its identity and enforces in stages; the workflow rules use the maintained catalogue. `Delete` is
   omitted everywhere, so a CR/Flux prune can never delete a real ruleset.
 - **external-name = the numeric ruleset id**, for both Kinds — `OrganizationRuleset`
   (`gh api orgs/devantler-tech/rulesets`) and `RepositoryRuleset`
@@ -39,7 +39,7 @@ verb — e.g. `require-pull-request.yaml`). Repo-scoped rulesets live next door 
 | Files | Rulesets | Policy |
 |---|---|---|
 | 9 `OrganizationRuleset` files | the imported org rulesets below except the six managed imports in this table | Observe (read-only import) |
-| `require-signed-commits.yaml` | **Require signed commits** (existing, retired) | Observe + Update — retain the disabled record; never create or delete |
+| `require-signed-commits.yaml` | **Require signed commits** (existing, staged) | Observe + Update — enforce on agent branches in monorepo (#929); never create or delete |
 | `require-workflows-go.yaml` | **Require workflows to pass before merging for Go** (existing, adopted) | Observe + Update — preserve the complete observed policy and require the maintained Go workflow; never create or delete |
 | 3 `require-workflows-*.yaml` imports | **DependencyReview**, **EnableAutoMerge** and **ScanGitHubActions** | Observe + Update — preserve the observed policy and maintained source; never create or delete |
 | `require-workflows-dotnet.yaml` | language-selected **.NET** (retired) | Observe + Update — disabled with one inert rule (no required workflow; the provider requires a rules block) after a complete effective-policy census found no consumers; retain identity and selectors, never create or delete |
@@ -176,22 +176,22 @@ A merged manifest alone does not prove effective protection. The existing organi
 Code Quality rule remains separate and is not round-tripped through this provider's
 unsupported schema. No repository duplicate is introduced.
 
-### Retained signing-rule record
+### Signing-rule record
 
-`require-signed-commits.yaml` retains ruleset `5397812` with `enforcement: disabled`.
-Its ref include list is empty, so it covers no branches. The complete observed
-selectors, bypass list and rule fields are declared before allowing `Update`;
-`Create`, `Delete` and `LateInitialize` remain excluded. The disabled record makes
-the control's actual coverage clear without changing effective branch protection.
+`require-signed-commits.yaml` keeps ruleset `5397812` and enforces signed commits in
+stages ([#929](https://github.com/devantler-tech/.github/issues/929)). Stage 1 covers only
+the `claude/**`, `codex/**` and `kagent/**` branches in `monorepo`. Agents sign every commit
+they push there, and nothing squash-merges into those branches. The complete selectors, bypass
+list and rule fields are declared before `Update`; `Create`, `Delete` and `LateInitialize`
+remain excluded.
 
 The effective pull-request, required-status-check and linear-history controls
 remain separate. GitHub-created signed squash commits are outcome evidence, not
 native signature enforcement. GitHub's
 [signed-commit rules](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/available-rules-for-rulesets#require-signed-commits)
 restrict squash merging another author's pull request when signatures are required.
-Any future enforcement proposal must first prove the bot and contributor merge
-paths are compatible; changing the empty ref selector is not part of this retirement.
-The retirement decision and evidence are tracked in
+Default branches stay out of scope until the bot and contributor merge paths are proven
+compatible. The earlier retirement decision and evidence are tracked in
 [#132](https://github.com/devantler-tech/.github/issues/132).
 
 ## Provider capability and adoption gates
