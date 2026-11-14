@@ -67,6 +67,22 @@ required CI. Legacy recovery must refuse prebuilt-marked evidence even when the
 new mode input is omitted. Caller/verifier adoption remains separate; #684 owns
 the finite rollout gate review and retirement.
 
+**Caller-signed publication (`actions/publish-app`):** The composite signs as the
+calling workflow, so its admission is the boundary. Before any registry contact it
+requires a `refs/tags/v<semver>` ref, the caller's own workflow ref at that tag, the
+tagged commit checked out at the workspace root without a persisted credential, and
+that commit on the explicitly fetched default branch; unknown ancestry refuses.
+`deploy-path` and `app-manifest` are plain names without links, and `deploy-path`
+holds only regular files equal to the tagged source. It keeps the occupied-version
+guard before the first write and twice more, signs by digest, and verifies both
+digests against `https://github.com/$GITHUB_WORKFLOW_REF` before exposing version or
+stable `latest`. No credential reaches any argv: flux uses the docker login and the
+action's own version check gives curl private config files (the retiring workflows'
+shared guard and `--creds` stay unchanged). The prebuilt mode reuses
+`prepare-prebuilt-webapp.sh`. Keep `.github/tests/test-publish-app-action.sh`, its
+composite simulation, argv record and mutation controls in required CI. Recovery is
+not carried yet.
+
 Normal publication's public CI evidence reads remain credential-free. The standalone
 verifier additionally supports explicit `PREBUILT_CI_AUTH_MODE=job-token` for
 isolated GitHub-hosted CI, with an explicitly supplied `PREBUILT_CI_READ_TOKEN`.

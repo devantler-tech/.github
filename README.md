@@ -98,6 +98,7 @@ declaration. These are steps inside a caller-owned job, not required workflows.
 | [enable-auto-merge-on-pr](actions/enable-auto-merge-on-pr/README.md) | Enable auto-merge on a pull request | [action.yaml](actions/enable-auto-merge-on-pr/action.yaml) |
 | [free-disk-space](actions/free-disk-space/README.md) | Reclaim runner disk by removing large preinstalled toolchains | [action.yaml](actions/free-disk-space/action.yaml) |
 | [login-to-ghcr](actions/login-to-ghcr/README.md) | Login to GitHub Container Registry | [action.yaml](actions/login-to-ghcr/action.yaml) |
+| [publish-app](actions/publish-app/README.md) | Publish a release signed as the calling workflow on its release tag; refuses tags not on the default branch | [action.yaml](actions/publish-app/action.yaml) |
 | [run-dotnet-tests](actions/run-dotnet-tests/README.md) | Test .NET solution or project with coverage | [action.yaml](actions/run-dotnet-tests/action.yaml) |
 | [setup-go-toolchain](actions/setup-go-toolchain/README.md) | Setup Go with private module discovery | [action.yaml](actions/setup-go-toolchain/action.yaml) |
 | [setup-ksail-cli](actions/setup-ksail-cli/README.md) | Install KSail CLI via Homebrew | [action.yaml](actions/setup-ksail-cli/action.yaml) |
@@ -614,6 +615,8 @@ jobs:
 
 <details>
 <summary>Purpose, interface and usage</summary>
+
+> **Successor:** the [publish-app action](actions/publish-app/README.md) publishes the same image and manifests from the product's own release workflow, signed as that workflow on its release tag. This workflow is unchanged until every consumer has moved.
 
 [.github/workflows/publish-app.yaml](.github/workflows/publish-app.yaml) builds and publishes a containerized app and its Kubernetes manifests to GHCR as cosign-signed OCI artifacts. Normal publication first requires authenticated evidence that the normalized version is absent from both repositories. The default mode builds under a run-specific staging tag, pins the produced image digest into the deployment manifest, stages the manifests artifact, and signs both produced digests. After both signatures succeed and an image copy preserves the signed digest, another authenticated absence check precedes promotion of the version and source-SHA image tags and manifests version. Stable releases then move both `latest` tags from those exact digests; prereleases preserve stable `latest`. Signing failures leave version and latest tags unchanged. Opt-in signed promotion below also verifies signature identity and signed publication claims before exposing release tags.
 

@@ -354,4 +354,78 @@ reset_fixture
 ln -s "$work/run.json" "$work/deploy/unrelated.yaml"
 if invoke none > "$work/log" 2>&1; then fail 'accepted a linked file in the packaged deployment directory'; fi
 [[ ! -s "$work/output" && ! -s "$work/reads" ]] || fail 'linked deployment file reached verification'
+rm "$work/deploy/unrelated.yaml"
+
+# app-manifest names the WebApp manifest inside the deployment directory; omitted, webapp.yaml is
+# used as above, even beside a base/ copy.
+reset_split_fixture() { # <app-manifest> — the healthy WebApp moved to deploy/<app-manifest>
+  rm -rf "$work/deploy" "$work/outside" "$work/outside.yaml" "$work/webapp.yaml"
+  mkdir -p "$work/deploy"
+  reset_fixture
+  mkdir -p "$(dirname "$work/deploy/$1")"
+  [[ "$1" == webapp.yaml ]] || mv "$work/deploy/webapp.yaml" "$work/deploy/$1"
+  cp "$work/deploy/$1" "$work/before.yaml"
+  printf 'resources: [prod]\n' > "$work/deploy/kustomization.yaml"
+}
+pinned_only() { # <file> — the selected image is pinned and every other document value is kept
+  yq -o=json -I=0 '.' "$1" | jq -s -e --arg image "ghcr.io/devantler-tech/app@$image_digest" '
+    . == [
+      {apiVersion:"v1",kind:"ConfigMap",metadata:{name:"unrelated"},data:{literal:"keep me"}},
+      {apiVersion:"kro.run/v1alpha1",kind:"WebApp",metadata:{name:"app",namespace:"app"},
+        spec:{name:"app",image:$image,host:"example.invalid"}}
+    ]' > /dev/null
+}
+reset_split_fixture webapp.yaml
+mkdir -p "$work/deploy/base"
+cp "$work/before.yaml" "$work/deploy/base/webapp.yaml"
+invoke none > "$work/log" 2>&1 || fail "flat WebApp beside base/ refused: $(cat "$work/log")"
+pinned_only "$work/deploy/webapp.yaml" || fail 'default did not pin the flat webapp.yaml'
+cmp -s "$work/before.yaml" "$work/deploy/base/webapp.yaml" || fail 'default pinned a base/ manifest nobody named'
+for manifest in base/webapp.yaml overlays/base/webapp.yaml app.yaml; do
+  reset_split_fixture "$manifest"
+  invoke none APP_MANIFEST="$manifest" > "$work/log" 2>&1 || fail "healthy WebApp at $manifest refused: $(cat "$work/log")"
+  pinned_only "$work/deploy/$manifest" || fail "did not pin only the selected image in $manifest"
+  [[ "$manifest" == app.yaml || ! -e "$work/deploy/webapp.yaml" ]] || fail "$manifest created a flat webapp.yaml"
+  grep -qx "digest=$image_digest" "$work/output" || fail "$manifest omitted the verified image output"
+done
+# Unsafe, linked or missing app-manifest values are refused before any external observation and
+# change no file. A valid WebApp sits wherever each path would lead.
+for case in \
+  '../webapp.yaml|unsafe app manifest path' \
+  '/webapp.yaml|require a relative app manifest inside the deployment directory' \
+  'base/./webapp.yaml|unsafe app manifest path' \
+  'base/../webapp.yaml|unsafe app manifest path' \
+  'base//webapp.yaml|require a relative app manifest inside the deployment directory' \
+  'base/|require a relative app manifest inside the deployment directory' \
+  '.hidden/webapp.yaml|unsafe app manifest path' \
+  "base/webapp.yaml"$'\n'"x|require a relative app manifest inside the deployment directory" \
+  "base/webapp.yaml"$'\r'"|require a relative app manifest inside the deployment directory" \
+  'linked-dir|deployment directories must be regular source directories' \
+  'linked-file|require a regular base/webapp.yaml' \
+  'missing|require a regular base/webapp.yaml' \
+  'linked-sibling|deployment artifacts cannot contain linked or special files'; do
+  manifest="${case%%|*}"
+  expected="${case#*|}"
+  reset_split_fixture base/webapp.yaml
+  cp "$work/before.yaml" "$work/deploy/webapp.yaml"
+  cp "$work/before.yaml" "$work/webapp.yaml"
+  mkdir -p "$work/deploy/.hidden"
+  cp "$work/before.yaml" "$work/deploy/.hidden/webapp.yaml"
+  case "$manifest" in
+    linked-dir) mv "$work/deploy/base" "$work/outside" && ln -s ../outside "$work/deploy/base" ;;
+    linked-file) mv "$work/deploy/base/webapp.yaml" "$work/outside.yaml" &&
+      ln -s ../../outside.yaml "$work/deploy/base/webapp.yaml" ;;
+    missing) rm "$work/deploy/base/webapp.yaml" ;;
+    # The whole packaged directory is scanned, not only the named manifest's directory.
+    linked-sibling) mkdir -p "$work/deploy/prod" && ln -s ../../run.json "$work/deploy/prod/linked.yaml" ;;
+  esac
+  case "$manifest" in linked-dir | linked-file | missing | linked-sibling) manifest=base/webapp.yaml ;; esac
+  find "$work" -type f -name '*webapp.yaml' -exec shasum {} + | sort > "$work/sums-before"
+  [[ -s "$work/sums-before" ]] || fail 'the refusal fixture has no manifests to compare'
+  if invoke none APP_MANIFEST="$manifest" > "$work/log" 2>&1; then fail "accepted app-manifest: $manifest"; fi
+  [[ ! -s "$work/output" && ! -s "$work/reads" ]] || fail "app-manifest $manifest reached verification"
+  grep -qF "$expected" "$work/log" || fail "app-manifest $manifest refused for the wrong reason: $(grep '::error::' "$work/log")"
+  find "$work" -type f -name '*webapp.yaml' -exec shasum {} + | sort | cmp -s - "$work/sums-before" ||
+    fail "refused app-manifest $manifest changed manifests"
+done
 echo 'prebuilt-webapp: real YAML pinning and source/CI/provenance/partial-observation refusals pass'
