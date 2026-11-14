@@ -447,6 +447,12 @@ jobs:
           namespace-prefix: ${{ format('go-mod-v1-{0}-{1}-{2}-', runner.os, runner.arch, needs.changes.outputs.module-directory) }}
           fallback-prefix: ${{ github.ref != format('refs/heads/{0}', github.event.repository.default_branch) && format('go-mod-v1-{0}-{1}-{2}-', runner.os, runner.arch, needs.changes.outputs.module-directory) || '' }}
 
+      - name: Download missing Go modules
+        id: download-go-modules
+        uses: $/.github/actions/download-go-modules
+        with:
+          module-directory: ${{ needs.changes.outputs.module-directory }}
+
       - name: 🧹 go mod tidy
         run: go mod tidy
 
@@ -544,6 +550,12 @@ jobs:
           matched-key: ${{ steps.go-mod-cache.outputs.cache-matched-key }}
           namespace-prefix: ${{ format('go-mod-v1-{0}-{1}-{2}-', runner.os, runner.arch, needs.changes.outputs.module-directory) }}
           fallback-prefix: ${{ format('go-mod-v1-{0}-{1}-{2}-', runner.os, runner.arch, needs.changes.outputs.module-directory) }}
+
+      - name: Download missing Go modules
+        id: download-go-modules
+        uses: $/.github/actions/download-go-modules
+        with:
+          module-directory: ${{ needs.changes.outputs.module-directory }}
 
       - name: 🧹 Run golangci-lint
         id: golangci-lint
@@ -680,6 +692,12 @@ jobs:
           matched-key: ${{ steps.go-mod-cache.outputs.cache-matched-key }}
           namespace-prefix: ${{ format('go-mod-v1-{0}-{1}-{2}-', runner.os, runner.arch, needs.changes.outputs.module-directory) }}
           fallback-prefix: ${{ github.ref != format('refs/heads/{0}', github.event.repository.default_branch) && format('go-mod-v1-{0}-{1}-{2}-', runner.os, runner.arch, needs.changes.outputs.module-directory) || '' }}
+
+      - name: Download missing Go modules
+        id: download-go-modules
+        uses: $/.github/actions/download-go-modules
+        with:
+          module-directory: ${{ needs.changes.outputs.module-directory }}
 
       - name: 📥 Install deadcode
         # Bounded retry so a transient module-proxy 5xx / network blip on this
@@ -965,6 +983,12 @@ jobs:
           matched-key: ${{ steps.go-mod-cache.outputs.cache-matched-key }}
           namespace-prefix: ${{ format('go-mod-v1-{0}-{1}-{2}-', runner.os, runner.arch, needs.changes.outputs.module-directory) }}
           fallback-prefix: ${{ github.ref != format('refs/heads/{0}', github.event.repository.default_branch) && format('go-mod-v1-{0}-{1}-{2}-', runner.os, runner.arch, needs.changes.outputs.module-directory) || '' }}
+
+      - name: Download missing Go modules
+        id: download-go-modules
+        uses: $/.github/actions/download-go-modules
+        with:
+          module-directory: ${{ needs.changes.outputs.module-directory }}
 
       # MegaLinter's container mounts the workspace and the runner temp directory, not the
       # restored path, so Syft's go list would download every module again (devantler-tech/ksail#8078).
@@ -1326,6 +1350,12 @@ jobs:
           namespace-prefix: ${{ format('go-mod-v1-{0}-{1}-{2}-', runner.os, runner.arch, needs.changes.outputs.module-directory) }}
           fallback-prefix: ${{ github.ref != format('refs/heads/{0}', github.event.repository.default_branch) && format('go-mod-v1-{0}-{1}-{2}-', runner.os, runner.arch, needs.changes.outputs.module-directory) || '' }}
 
+      - name: Download missing Go modules
+        id: download-go-modules
+        uses: $/.github/actions/download-go-modules
+        with:
+          module-directory: ${{ needs.changes.outputs.module-directory }}
+
       - name: 🛠️ Build
         env:
           MEASURE_DISK_USAGE: ${{ inputs.measure-disk-usage }}
@@ -1588,6 +1618,12 @@ jobs:
           matched-key: ${{ steps.go-mod-cache.outputs.cache-matched-key }}
           namespace-prefix: ${{ format('go-mod-v1-{0}-{1}-{2}-', runner.os, runner.arch, needs.changes.outputs.module-directory) }}
           fallback-prefix: ${{ github.ref != format('refs/heads/{0}', github.event.repository.default_branch) && format('go-mod-v1-{0}-{1}-{2}-', runner.os, runner.arch, needs.changes.outputs.module-directory) || '' }}
+
+      - name: Download missing Go modules
+        id: download-go-modules
+        uses: $/.github/actions/download-go-modules
+        with:
+          module-directory: ${{ needs.changes.outputs.module-directory }}
 
       # One shared archive cannot retain both ordinary and race builds.
       # Keep each test mode's compilation outputs separately; Go still validates inputs.
@@ -1965,6 +2001,12 @@ jobs:
           matched-key: ${{ steps.go-mod-cache.outputs.cache-matched-key }}
           namespace-prefix: ${{ format('go-mod-v1-{0}-{1}-{2}-', runner.os, runner.arch, needs.changes.outputs.module-directory) }}
           fallback-prefix: ${{ github.ref != format('refs/heads/{0}', github.event.repository.default_branch) && format('go-mod-v1-{0}-{1}-{2}-', runner.os, runner.arch, needs.changes.outputs.module-directory) || '' }}
+
+      - name: Download missing Go modules
+        id: download-go-modules
+        uses: $/.github/actions/download-go-modules
+        with:
+          module-directory: ${{ needs.changes.outputs.module-directory }}
 
       # One shared archive cannot retain both ordinary and race builds.
       # Keep each test mode's compilation outputs separately; Go still validates inputs.

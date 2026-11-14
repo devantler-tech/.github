@@ -44,6 +44,17 @@ cat >"$work/policy.jq" <<'JQ'
     ([$setup[0],$path[0],$restore[0],$guard[0]] | all(."continue-on-error" == null or ."continue-on-error" == false)) and
     (($order|index("go-mod-cache-path")) < ($order|index("go-mod-cache"))) and
     (($order|index("validate-go-mod-cache")) == ($order|index("go-mod-cache")) + 1);
+  # Right after the guard, the job downloads what the restore did not supply, retrying only
+  # the download, so one dropped module-proxy stream cannot fail a build, test or lint (#911).
+  def downloads($steps; $dir):
+    ($steps | map(.id // .name)) as $order |
+    ($steps | map(select(.id == "download-go-modules"))) as $download |
+    ($download | length == 1) and
+    ($download[0].uses == "$/.github/actions/download-go-modules") and
+    ($download[0].if == null) and
+    (($download[0]."continue-on-error" // false) == false) and
+    ($download[0].with == {"module-directory": ("${{ " + $dir + " }}")}) and
+    (($order|index("download-go-modules")) == ($order|index("validate-go-mod-cache")) + 1);
   # MegaLinter runs in a container: the restored modules must reach it through the temp mount.
   def shares_with_megalinter($steps):
     ($steps | map(.id // .name)) as $order |
@@ -65,6 +76,7 @@ cat >"$work/policy.jq" <<'JQ'
      | select(any((.value.steps // [])[];(.uses // "") | startswith("actions/setup-go@"))) | .key ] | sort) as $go_jobs |
   ($go_jobs == ["build","coverage","deadcode","golangci-lint","lint","test","tidy"]) and
   all($go_jobs[]; . as $id | restores($workflow[0].jobs[$id].steps; "needs.changes.outputs.module-directory"; $id == "golangci-lint")) and
+  all($go_jobs[]; downloads($workflow[0].jobs[.].steps; "needs.changes.outputs.module-directory")) and
   restores($action[0].runs.steps; "inputs.work-dir"; false) and
   shares_with_megalinter($workflow[0].jobs.lint.steps) and
   # The scanner is the eighth Go setup: it must stay behind the composite action checked above.
@@ -135,6 +147,13 @@ reject workflow '(.jobs["golangci-lint"].steps[] | select(.id == "validate-go-mo
 reject workflow '(.jobs.test.steps[] | select(.id == "validate-go-mod-cache") | ."continue-on-error") = true'
 reject workflow '(.jobs.test.steps[] | select(.id == "validate-go-mod-cache") | .with["fallback-prefix"]) = (.jobs["golangci-lint"].steps[] | select(.id == "validate-go-mod-cache") | .with["fallback-prefix"])'
 reject workflow '.jobs.tidy.steps |= (map(select(.id == "validate-go-mod-cache")) + map(select(.id != "validate-go-mod-cache")))'
+# Every Go job downloads what the restore missed through the retry, before its own tool runs.
+reject workflow '.jobs.build.steps |= map(select(.id != "download-go-modules"))'
+reject workflow '(.jobs.tidy.steps[] | select(.id == "download-go-modules") | .if) = "false"'
+reject workflow '(.jobs.test.steps[] | select(.id == "download-go-modules") | ."continue-on-error") = true'
+reject workflow '(.jobs.lint.steps[] | select(.id == "download-go-modules") | .with["module-directory"]) = "."'
+reject workflow '.jobs.coverage.steps |= (map(select(.id != "download-go-modules")) + map(select(.id == "download-go-modules")))'
+reject workflow '(.jobs.deadcode.steps[] | select(.id == "download-go-modules") | .uses) = "$/.github/actions/guard-go-module-cache"'
 reject action '.runs.steps |= map(select(.id != "validate-go-mod-cache"))'
 # The default branch must write a clean archive and keep its one writer.
 reject workflow '(.jobs.test.steps[] | select(.id == "go-mod-cache") | .with["restore-keys"]) = "go-mod-v1-"'

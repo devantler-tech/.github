@@ -169,7 +169,11 @@ accumulate retired module versions. Immediately after each restore, the shared
 including an empty checksum suffix. A non-exact match needs an explicitly permitted
 fallback with the same OS, architecture and module prefix plus a 64-character lowercase
 hexadecimal checksum. Other matches are discarded before validation or saving.
-A new job that sets up Go needs the same path, restore and guard steps and no save.
+Right after the guard, the internal `download-go-modules` action downloads whatever the
+restore did not supply through the shared bounded retry, so one dropped module-proxy stream
+cannot fail the job; the build, test or lint that follows still runs once (#911).
+A new job that sets up Go needs the same path, restore, guard and download steps and no save.
+Keep `test-go-module-download.sh` passing for the retry boundaries.
 MegaLinter runs in a container that cannot see the restored path, so its job moves the
 archive under the runner temp directory and points `GOMODCACHE` at the container's mount of
 it; otherwise Syft's `go list` downloads every module again (devantler-tech/ksail#8078).
