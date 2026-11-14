@@ -26,6 +26,7 @@ yq -o=json '.' "$workflow" | jq -e '
     .env == {
       REPOSITORY:"${{ github.repository }}",SOURCE_SHA:"${{ github.sha }}",
       APP_NAME:"${{ inputs.app-name }}",DEPLOY_PATH:"${{ inputs.deploy-path }}",
+      APP_MANIFEST:"${{ inputs.app-manifest }}",
       PREBUILT_IMAGE_DIGEST:"${{ inputs.prebuilt-image-digest }}",
       PREBUILT_PUBLIC_DIGEST:"${{ inputs.prebuilt-public-digest }}",
       PREBUILT_CI_RUN_ID:"${{ inputs.prebuilt-ci-run-id }}",

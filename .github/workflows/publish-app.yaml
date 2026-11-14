@@ -11,6 +11,11 @@ on:
         required: false
         default: ./deploy
         type: string
+      app-manifest:
+        description: "Path, relative to deploy-path, of the manifest holding the app: the Deployment with the app-name container, or the WebApp in prebuilt mode. Empty means deployment.yaml (webapp.yaml in prebuilt mode)."
+        required: false
+        default: ""
+        type: string
       dry-run:
         description: "Skip publish (validate workflow interface only)."
         required: false
@@ -210,24 +215,60 @@ jobs:
           persist-credentials: false
 
       - name: 🔍 Validate the deployment manifest
+        id: manifest
         if: ${{ !inputs.enable-signed-recovery && !inputs.enable-prebuilt-webapp }}
         env:
           APP_NAME: ${{ inputs.app-name }}
           DEPLOY_PATH: ${{ inputs.deploy-path }}
+          APP_MANIFEST: ${{ inputs.app-manifest }}
         run: |
           # Every manifest check runs here, before anything reaches the registry. A release that fails
           # after the image push leaves GHCR changed — `latest` included — with no deployable manifest
           # to go with the image. Only the digest injection waits for the build, because the digest
           # does not exist before it.
           set -euo pipefail
+          export LC_ALL=C
+          # The app manifest is resolved once, here; the pin step reuses this exact path. Without
+          # app-manifest it is deploy-path/deployment.yaml, checked as it always was.
           file="${DEPLOY_PATH}/deployment.yaml"
+          if [ -n "$APP_MANIFEST" ]; then
+            # A caller-named manifest is plain names below deploy-path: no leading /, no empty, `.`
+            # or `..` component, no line break. No component may be a link, so the file cannot leave
+            # deploy-path. The input is not echoed until it has passed this check.
+            name='[A-Za-z0-9_-][A-Za-z0-9_.-]*'
+            if ! [[ "$APP_MANIFEST" =~ ^${name}(/${name})*$ ]]; then
+              echo "::error::app-manifest must be a relative path of plain names inside deploy-path (letters, digits, '.', '_' and '-'; no leading '/', no empty, '.' or '..' component)"; exit 1
+            fi
+            # deploy-path and each of its ancestors must not be a link either: a linked deploy
+            # directory would carry the named manifest outside the deploy tree just the same.
+            prefix="${DEPLOY_PATH%/}"
+            while [ -n "$prefix" ]; do
+              if [ -L "$prefix" ]; then
+                echo "::error::deploy-path $DEPLOY_PATH passes through a link at $prefix"; exit 1
+              fi
+              [[ "$prefix" == */* ]] || break
+              prefix="${prefix%/*}"
+            done
+            file="$DEPLOY_PATH"
+            IFS=/ read -r -a components <<< "$APP_MANIFEST"
+            for component in "${components[@]}"; do
+              file="$file/$component"
+              if [ -L "$file" ]; then
+                echo "::error::app-manifest $APP_MANIFEST passes through a link at $file"; exit 1
+              fi
+            done
+          fi
           if [ ! -f "$file" ]; then
-            echo "::error::manifest $file not found (check the deploy-path input)"; exit 1
+            echo "::error::manifest $file not found (check the deploy-path and app-manifest inputs)"; exit 1
           fi
           matches=$(yq '[.spec.template.spec.containers[] | select(.name == strenv(APP_NAME))] | length' "$file")
           if [ "$matches" != "1" ]; then
             echo "::error::expected exactly one container named '$APP_NAME' in $file, found $matches"; exit 1
           fi
+          case "$file" in
+            *$'\n'* | *$'\r'*) echo "::error::deploy-path must not contain a line break"; exit 1 ;;
+          esac
+          echo "file=$file" >> "$GITHUB_OUTPUT"
 
       # Installed before anything is pushed, so a failed download also fails the job while the
       # registry is still untouched.
@@ -273,6 +314,7 @@ jobs:
           SOURCE_SHA: ${{ github.sha }}
           APP_NAME: ${{ inputs.app-name }}
           DEPLOY_PATH: ${{ inputs.deploy-path }}
+          APP_MANIFEST: ${{ inputs.app-manifest }}
           PREBUILT_IMAGE_DIGEST: ${{ inputs.prebuilt-image-digest }}
           PREBUILT_PUBLIC_DIGEST: ${{ inputs.prebuilt-public-digest }}
           PREBUILT_CI_RUN_ID: ${{ inputs.prebuilt-ci-run-id }}
@@ -346,14 +388,18 @@ jobs:
           IMAGE: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           DIGEST: ${{ steps.build.outputs.digest }}
           APP_NAME: ${{ inputs.app-name }}
-          DEPLOY_PATH: ${{ inputs.deploy-path }}
+          MANIFEST: ${{ steps.manifest.outputs.file }}
         run: |
           # The manifest was validated before the build; this step only injects the digest the build
-          # produced, and checks that the injection took. A registry reference must be lowercase,
-          # which is also how docker/metadata-action named the image it pushed.
+          # produced into the file that validation resolved, and checks that the injection took. A
+          # registry reference must be lowercase, which is also how docker/metadata-action named the
+          # image it pushed.
           set -euo pipefail
           IMAGE="$(printf '%s' "$IMAGE" | tr '[:upper:]' '[:lower:]')"
-          file="${DEPLOY_PATH}/deployment.yaml"
+          file="$MANIFEST"
+          if [ -z "$file" ]; then
+            echo "::error::the validation step did not resolve the app manifest"; exit 1
+          fi
           if [ -z "$DIGEST" ]; then
             echo "::error::build did not produce an image digest"; exit 1
           fi
