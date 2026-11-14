@@ -2477,6 +2477,10 @@ jobs:
         shell: bash
         run: bash .github/tests/test-go-module-cache-policy.sh
 
+      - name: 🧪 Check Go jobs retry only their module download
+        shell: bash
+        run: bash .github/tests/test-go-module-download.sh
+
       - name: Check native Go cache evidence and failure controls
         shell: bash
         run: bash .github/tests/test-go-cache-native-observer.sh

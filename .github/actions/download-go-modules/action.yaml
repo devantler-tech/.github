@@ -1,0 +1,23 @@
+name: Download Go modules
+description: Download the modules a Go job needs that the restored cache did not supply, retrying only the download.
+inputs:
+  module-directory:
+    description: The Go module directory, relative to the workspace, whose modules are downloaded.
+    required: true
+runs:
+  using: composite
+  steps:
+    # A cache miss, such as a pull request that changes go.sum, downloads every module
+    # fresh, and one dropped module-proxy stream would otherwise fail the job
+    # (devantler-tech/.github#911). Download first through the shared bounded retry
+    # (actions/CONTRIBUTING.md#reliability). Only the download is retried: the build,
+    # test or lint step that follows still runs once. Guarded by test-go-module-download.sh.
+    - name: Download missing Go modules
+      shell: bash
+      working-directory: ${{ github.workspace }}
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+        MODULE_DIR: ${{ inputs.module-directory }}
+        RETRY_MAX_ATTEMPTS: '3'
+        RETRY_BASE_DELAY: '5'
+      run: bash "$ACTION_PATH/download.sh" "$MODULE_DIR" "$ACTION_PATH/../../../.scripts/retry.sh"
