@@ -80,7 +80,7 @@ EVENT_NAME=push RUN_CATALOGUE=true CATALOGUE_SCOPE=true GITHUB_OUTPUT="$work/out
   go -C "$root/.github/scripts/ci-selection" run . "$root" "$root/.github/scripts/ci-selection/inventory.json" "$work/workflow.json"
 selected="$(sed -n 's/^selected=//p' "$work/output")"
 # The skill action executions moved with their standalone repositories; all remaining executions stay selected.
-jq -e 'length == 61 and index("test-lint-workflow") == null and
+jq -e 'length == 62 and index("test-lint-workflow") == null and
   index("test-lint-workflow-manual-fixes") == null' <<< "$selected" >/dev/null
 jq -e 'index("test-validate-go-postgresql-fixture") != null' <<<"$selected" >/dev/null
 jq -e 'index("test-go-cache-native-observer") != null' <<<"$selected" >/dev/null
@@ -280,7 +280,7 @@ jq -e --argjson a "$action_only" --argjson r "$readme_readers" '. == ($a + $r | 
   { echo 'FAIL: README with a recognized action lost a reader or an owner' >&2; exit 1; }
 for kinds in 'agents' 'readme agents' 'readme unknown' 'action agents unknown' 'readme-renamed'; do
   # shellcheck disable=SC2086 # Each kinds word is one fixture change.
-  jq -e 'length == 61' <<<"$(select_docs $kinds)" >/dev/null ||
+  jq -e 'length == 62' <<<"$(select_docs $kinds)" >/dev/null ||
     { echo "FAIL: root-document change '$kinds' narrowed full coverage" >&2; exit 1; }
 done
 for kinds in 'readme' 'action readme agents'; do

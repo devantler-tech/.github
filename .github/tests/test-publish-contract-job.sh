@@ -14,7 +14,7 @@ cat >"$work/check.jq" <<'JQ'
    "test-manifests-recovery", "test-app-recovery",
    "test-unpublished-version-native", "test-app-signed-promotion",
    "test-prebuilt-webapp",
-   "test-publish-manifests-promotion"] as $tests |
+   "test-publish-manifests-promotion", "test-publish-app-action"] as $tests |
   ($j != null) and
   ($j.needs == null) and
   ($j.if == "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}") and
@@ -47,6 +47,7 @@ if ! check "$work/ci.json"; then
 fi
 for mutation in \
   '.jobs["test-publish-contracts"].steps |= map(select(.run != "bash .github/tests/test-prebuilt-webapp.sh"))' \
+  '.jobs["test-publish-contracts"].steps |= map(select(.run != "bash .github/tests/test-publish-app-action.sh"))' \
   'del(.jobs["test-publish-contracts"].steps[2])' \
   '.jobs["test-publish-contracts"].steps[2].if = "false"' \
   '.jobs["test-publish-contracts"].steps[2]."continue-on-error" = true' \

@@ -1,0 +1,154 @@
+name: Publish App
+description: Publish a product release to GHCR, keylessly signed as the calling workflow on its release tag, and expose its version only after both signatures verify.
+author: devantler-tech
+
+inputs:
+  mode:
+    description: "What to publish: `deployment` builds the image and pins it into a Deployment, `prebuilt-webapp` verifies the caller's main-CI image and pins it into a WebApp, `manifests` publishes only the manifests."
+    required: false
+    default: deployment
+  app-name:
+    description: "Container name in the Deployment, or the WebApp metadata name, namespace and spec name in prebuilt-webapp mode. Must be empty in manifests mode."
+    required: false
+    default: ""
+  deploy-path:
+    description: "Relative directory of Kubernetes manifests, published whole as the signed manifests artifact."
+    required: false
+    default: ./deploy
+  app-manifest:
+    description: "Path, relative to deploy-path, of the manifest holding the app. Empty means deployment.yaml (webapp.yaml in prebuilt-webapp mode). Must be empty in manifests mode."
+    required: false
+    default: ""
+  oci-name:
+    description: "Manifests mode only: OCI name (`<owner>/<name>`, in the caller's own namespace) to publish under instead of the repository name, for repositories whose name is not a valid OCI path."
+    required: false
+    default: ""
+  prebuilt-image-digest:
+    description: "Prebuilt-webapp mode only: the original main-CI image sha256 digest."
+    required: false
+    default: ""
+  prebuilt-public-digest:
+    description: "Prebuilt-webapp mode only: the public artifact SHA-256 recorded by the original image producer."
+    required: false
+    default: ""
+  prebuilt-ci-run-id:
+    description: "Prebuilt-webapp mode only: the successful public main-push CI run ID that built the image."
+    required: false
+    default: ""
+  prebuilt-ci-run-attempt:
+    description: "Prebuilt-webapp mode only: that CI run's successful attempt, which must still be current."
+    required: false
+    default: ""
+  github-token:
+    description: "Token for the default-branch fetch, registry reads and GHCR writes. Needs contents read and packages write."
+    required: false
+    default: ${{ github.token }}
+
+outputs:
+  version:
+    description: "The published version: the tag without its `v` and build metadata."
+    value: ${{ steps.admit.outputs.version }}
+  image-digest:
+    description: "The signed image digest (empty in manifests mode)."
+    value: ${{ steps.publish.outputs.image-digest }}
+  manifests-digest:
+    description: "The signed manifests artifact digest."
+    value: ${{ steps.publish.outputs.manifests-digest }}
+
+runs:
+  using: composite
+  steps:
+    # Every refusal happens here, before login and before any registry read or write.
+    - name: 🔒 Admit the release tag, inputs and manifests
+      id: admit
+      shell: bash
+      env:
+        MODE: ${{ inputs.mode }}
+        APP_NAME: ${{ inputs.app-name }}
+        DEPLOY_PATH: ${{ inputs.deploy-path }}
+        APP_MANIFEST: ${{ inputs.app-manifest }}
+        OCI_NAME: ${{ inputs.oci-name }}
+        PREBUILT_IMAGE_DIGEST: ${{ inputs.prebuilt-image-digest }}
+        PREBUILT_PUBLIC_DIGEST: ${{ inputs.prebuilt-public-digest }}
+        PREBUILT_CI_RUN_ID: ${{ inputs.prebuilt-ci-run-id }}
+        PREBUILT_CI_RUN_ATTEMPT: ${{ inputs.prebuilt-ci-run-attempt }}
+        GH_TOKEN: ${{ inputs.github-token }}
+      run: bash "$GITHUB_ACTION_PATH/admit.sh"
+
+    - name: ⚙️ Setup Flux CLI
+      uses: fluxcd/flux2/action@3fa784edd773d56630bb9f62645e08f70c2cff0a # v2.10.0
+
+    - name: ✍️ Setup Cosign
+      uses: sigstore/cosign-installer@756fe2d284c7292c4e9b62c8a28f1e5629c59532 # v4.1.3
+
+    - name: 🔐 Log in to registry
+      uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
+      with:
+        registry: ghcr.io
+        username: ${{ github.actor }}
+        password: ${{ inputs.github-token }}
+
+    # Verifies the caller's own main-CI image and provenance, then pins the WebApp. No registry write.
+    - name: 🔎 Verify the original image and pin the WebApp
+      id: prebuilt
+      if: ${{ inputs.mode == 'prebuilt-webapp' }}
+      shell: bash
+      env:
+        APP_NAME: ${{ inputs.app-name }}
+        DEPLOY_PATH: ${{ inputs.deploy-path }}
+        APP_MANIFEST: ${{ inputs.app-manifest }}
+        PREBUILT_IMAGE_DIGEST: ${{ inputs.prebuilt-image-digest }}
+        PREBUILT_PUBLIC_DIGEST: ${{ inputs.prebuilt-public-digest }}
+        PREBUILT_CI_RUN_ID: ${{ inputs.prebuilt-ci-run-id }}
+        PREBUILT_CI_RUN_ATTEMPT: ${{ inputs.prebuilt-ci-run-attempt }}
+      run: REPOSITORY="$GITHUB_REPOSITORY" SOURCE_SHA="$GITHUB_SHA" bash "$GITHUB_ACTION_PATH/../../.github/scripts/prepare-prebuilt-webapp.sh"
+
+    - name: 🔒 Refuse an occupied release version
+      shell: bash
+      env:
+        VERSION: ${{ steps.admit.outputs.version }}
+        IMAGE: ${{ steps.admit.outputs.image }}
+        ARTIFACT: ${{ steps.admit.outputs.artifact }}
+        GH_TOKEN: ${{ inputs.github-token }}
+      run: bash "$GITHUB_ACTION_PATH/require-unpublished.sh"
+
+    - name: 🏷️ Derive image labels
+      id: meta
+      if: ${{ inputs.mode == 'deployment' }}
+      uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
+      with:
+        images: ${{ steps.admit.outputs.image }}
+        flavor: latest=false
+        tags: |
+          type=semver,pattern={{version}}
+          type=sha
+
+    # The image goes to an unselectable, run-specific staging tag; only verified digests are exposed.
+    - name: 🐳 Build & push image
+      id: build
+      if: ${{ inputs.mode == 'deployment' }}
+      uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+      with:
+        context: .
+        push: true
+        tags: ${{ steps.admit.outputs.staging-image }}
+        labels: ${{ steps.meta.outputs.labels }}
+
+    - name: 📦 Sign, verify and expose the release
+      id: publish
+      shell: bash
+      env:
+        MODE: ${{ inputs.mode }}
+        APP_NAME: ${{ inputs.app-name }}
+        VERSION: ${{ steps.admit.outputs.version }}
+        IMAGE: ${{ steps.admit.outputs.image }}
+        ARTIFACT: ${{ steps.admit.outputs.artifact }}
+        DEPLOY_PATH: ${{ steps.admit.outputs.deploy-path }}
+        MANIFEST: ${{ steps.admit.outputs.manifest }}
+        BUILT_DIGEST: ${{ steps.build.outputs.digest }}
+        PREBUILT_DIGEST: ${{ steps.prebuilt.outputs.digest }}
+        PUBLIC_DIGEST: ${{ steps.prebuilt.outputs.public-digest }}
+        PREBUILT_CI_RUN_ID: ${{ inputs.prebuilt-ci-run-id }}
+        PREBUILT_CI_RUN_ATTEMPT: ${{ inputs.prebuilt-ci-run-attempt }}
+        GH_TOKEN: ${{ inputs.github-token }}
+      run: bash "$GITHUB_ACTION_PATH/publish.sh"

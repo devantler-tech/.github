@@ -1767,6 +1767,61 @@ jobs:
             exit 1
           fi
 
+  # ── publish-app (native refusal: a non-tag ref never reaches the registry) ──
+  test-publish-app:
+    timeout-minutes: 5
+    needs: [select-ci-tests]
+    if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && contains(fromJSON(needs.select-ci-tests.outputs.selected), 'test-publish-app') }}"
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: 🔒 Harden Runner
+        uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
+        with:
+          egress-policy: audit
+
+      - name: 📑 Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # CI runs on a branch or pull request ref, which admission must refuse before any registry
+      # contact. The job holds no package or OIDC grant, so nothing could be published anyway.
+      - name: 🧪 Run publish-app on a non-tag ref (expected to refuse)
+        id: publish
+        continue-on-error: true
+        uses: $/actions/publish-app
+        with:
+          app-name: app
+          github-token: not-a-credential
+
+      - name: ✅ Verify the action refused without resolving a release
+        shell: bash
+        env:
+          OUTCOME: ${{ steps.publish.outcome }}
+          VERSION: ${{ steps.publish.outputs.version }}
+        run: |
+          if [[ "$OUTCOME" != "failure" || -n "$VERSION" ]]; then
+            echo "::error::Expected publish-app to refuse a non-tag ref, got outcome '$OUTCOME' and version '$VERSION'"
+            exit 1
+          fi
+
+      - name: 🔎 Verify the refusal names the runner's real non-tag ref
+        shell: bash
+        env:
+          MODE: deployment
+          APP_NAME: app
+          DEPLOY_PATH: ./deploy
+          GH_TOKEN: not-a-credential
+        run: |
+          if bash actions/publish-app/admit.sh >"$RUNNER_TEMP/admit.log" 2>&1; then
+            echo "::error::admission accepted $GITHUB_REF"
+            exit 1
+          fi
+          cat "$RUNNER_TEMP/admit.log"
+          grep -qF 'publish-app must run on a release tag' "$RUNNER_TEMP/admit.log"
+
   # ── stale issues (real upstream action, loopback mutations only) ──
   test-triage-stale-issues:
     timeout-minutes: 5
@@ -2304,6 +2359,10 @@ jobs:
       - name: 🔏 Check manifests promotion never exposes an unsigned release
         shell: bash
         run: bash .github/tests/test-publish-manifests-promotion.sh
+
+      - name: 🔏 Check publish-app signs as the caller and refuses before any registry write
+        shell: bash
+        run: bash .github/tests/test-publish-app-action.sh
 
   lint-ci-coverage-parity:
     timeout-minutes: 10
@@ -3199,7 +3258,7 @@ jobs:
         run: bash .github/tests/test-check-release-pr-lifecycle.sh
 
 
-  test-publish-app:
+  test-publish-app-workflow:
     if: "${{ github.event_name == 'push' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
     name: "[Test] Publish App - Dry Run"
     uses: $/.github/workflows/publish-app.yaml
@@ -5211,6 +5270,7 @@ jobs:
       - test-publish-release-recovery
       - test-publish-release-recovery-disabled
       - test-release-please-semantics
+      - test-publish-app-workflow
       - test-publish-app
       - test-publish-app-caller-pin
       - test-publish-manifests
@@ -5330,6 +5390,7 @@ jobs:
             ${{ needs.test-publish-release-recovery.result }}
             ${{ needs.test-publish-release-recovery-disabled.result }}
             ${{ needs.test-release-please-semantics.result }}
+            ${{ needs.test-publish-app-workflow.result }}
             ${{ needs.test-publish-app.result }}
             ${{ needs.test-publish-app-caller-pin.result }}
             ${{ needs.test-publish-manifests.result }}
