@@ -18,6 +18,7 @@ observes.
 | File | Repo | Ruleset | Policy |
 |---|---|---|---|
 | `require-cla-gate-on-world-at-ruin.yaml` | `world-at-ruin` | Require CLA gate | Managed (net-new; Observe + Create + Update + LateInitialize) |
+| `require-merge-queue-on-agent-plugins.yaml` | `agent-plugins` | Require merge queue | Managed (net-new; Observe + Create + Update + LateInitialize, no Delete); settings copied from platform |
 | `require-merge-queue-on-platform.yaml` | `platform` | Require merge queue | Managed import (Observe + Update; full ruleset backfilled, no LateInitialize, no Delete) |
 | `require-reviewed-admission-on-monorepo.yaml` | `monorepo` | Require reviewed repository admission | Managed, active; exact GitHub Actions executed result, default branch only, no bypass or Delete |
 | `require-reviewed-admission-on-dotgithub.yaml` | `.github` | Require reviewed repository admission | Managed, active; exact GitHub Actions executed result, default branch only, no bypass or Delete |
