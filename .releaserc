@@ -8,6 +8,12 @@
       {
         "releaseRules": [
           {
+            "type": "fix",
+            "scope": "deps",
+            "subject": "bump devantler-tech/.github/{.github,actions}/**",
+            "release": false
+          },
+          {
             "type": "revert",
             "release": "patch"
           },
