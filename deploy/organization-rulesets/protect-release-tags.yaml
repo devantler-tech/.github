@@ -9,7 +9,7 @@
 #   - tagNamePattern:  require `v<semver>` (e.g. v1.2.3, v1.2.3-rc.1)
 # This ruleset does not restrict creating a tag (deletion/nonFastForward only restrict
 # delete/move). Who may create a `v*` tag is restricted separately by
-# restrict-release-tag-creation.yaml and restrict-agent-plugins-release-tag-creation.yaml.
+# restrict-release-tag-creation.yaml.
 #
 # Unlike everything else in this directory this is NOT an import — it has no
 # external-name and is managed (Observe + Create + Update + LateInitialize, never

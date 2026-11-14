@@ -26,7 +26,6 @@ resources:
   # Net-new, managed (Create).
   - protect-release-tags.yaml
   - restrict-release-tag-creation.yaml
-  - restrict-agent-plugins-release-tag-creation.yaml
   - require-world-at-ruin-trusted-regressions.yaml
   - require-monorepo-ci-aggregate-contract.yaml
   - require-dotgithub-deploy-guards.yaml
