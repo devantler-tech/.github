@@ -1,0 +1,64 @@
+# Restrict release tag creation — only the release process may create a `v*` tag (#924).
+#
+# Under ADR 0017 (devantler-tech/monorepo#5046) a product signs its own releases from a
+# release tag, and the platform trusts the release workflow at that tag. Who may CREATE a
+# release tag is therefore part of the trust boundary. "Protect release tags" already blocks
+# deleting or moving a tag; this ruleset adds the missing creation restriction.
+#
+# Why a separate ruleset: a bypass actor bypasses every rule in its ruleset. Adding these
+# release identities to "Protect release tags" would also let them delete and move tags, so
+# that ruleset keeps no bypass actors and this one carries only the creation rule.
+#
+# Scope: every tag whose name starts with `v` (`*` stops at `/`, so the second pattern covers
+# names that contain one). Other tag names that existing workflows create are not release
+# tags and stay unaffected. agent-plugins is excluded here and covered by
+# restrict-agent-plugins-release-tag-creation.yaml, because its release still creates the tag
+# with the workflow token; that bypass must not apply to every repository.
+#
+# Bypass actors are the identities that create release tags today (census on #924):
+#   - 1025824 botantler-1: the organization's release App, used by create-release.yaml.
+#   - 2880167 ksail-bot: ksail's own release App (its APP_CLIENT_ID repository variable).
+#   - 5498800 botantler-marketplace-releases: the protected-release App whose key lives only in
+#     the main-only `release` environment of the three skill action repositories.
+#   - OrganizationAdmin: lets the maintainer cut a release by hand. ID-less, so no actorId.
+#
+# Managed like protect-release-tags.yaml: Create, Update and LateInitialize (so the created
+# id is written back as the external-name), never Delete.
+apiVersion: enterprise.github.m.upbound.io/v1alpha1
+kind: OrganizationRuleset
+metadata:
+  name: restrict-release-tag-creation
+spec:
+  managementPolicies:
+    - Observe
+    - Create
+    - Update
+    - LateInitialize
+  forProvider:
+    name: Restrict release tag creation
+    target: tag
+    enforcement: active
+    bypassActors:
+      - actorType: Integration
+        actorId: 1025824 # botantler-1
+        bypassMode: always
+      - actorType: Integration
+        actorId: 2880167 # ksail-bot
+        bypassMode: always
+      - actorType: Integration
+        actorId: 5498800 # botantler-marketplace-releases
+        bypassMode: always
+      - actorType: OrganizationAdmin
+        bypassMode: always
+    conditions:
+      - refName:
+          - include: ["refs/tags/v*", "refs/tags/v*/**/*"]
+            exclude: []
+        repositoryName:
+          - include: ["~ALL"]
+            exclude: ["agent-plugins"]
+    rules:
+      - creation: true
+  providerConfigRef:
+    kind: ProviderConfig
+    name: default

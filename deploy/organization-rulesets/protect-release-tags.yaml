@@ -7,8 +7,9 @@
 #   - deletion:        block deleting a tag
 #   - nonFastForward:  block force-updating (re-pointing) a tag
 #   - tagNamePattern:  require `v<semver>` (e.g. v1.2.3, v1.2.3-rc.1)
-# Creating a NEW v-semver tag is still allowed (deletion/nonFastForward only restrict
-# delete/move) so normal releases are unaffected; only tampering is blocked.
+# This ruleset does not restrict creating a tag (deletion/nonFastForward only restrict
+# delete/move). Who may create a `v*` tag is restricted separately by
+# restrict-release-tag-creation.yaml and restrict-agent-plugins-release-tag-creation.yaml.
 #
 # Unlike everything else in this directory this is NOT an import — it has no
 # external-name and is managed (Observe + Create + Update + LateInitialize, never
@@ -17,8 +18,9 @@
 # No bypassActors on purpose: clean immutability, consistent with the org's other
 # protective rulesets ("Block force pushes", "Restrict branch names", which also have
 # none), and it avoids the OrganizationAdmin bypass actor_id quirk. An org admin can
-# still edit/disable the ruleset itself. If release automation ever needs to move or
-# delete a tag, add a bypassActors entry here (declaratively) rather than in the UI.
+# still edit/disable the ruleset itself. A bypass actor here bypasses every rule above,
+# so never add one to let an identity create tags: creation bypasses belong in the
+# separate creation rulesets. tests/release-tag-creation-ruleset.sh keeps this list empty.
 #
 # TIER CAVEAT (tagNamePattern): provider/GitHub docs historically flag the tag name
 # pattern rule as "enterprise only". devantler-tech is on the `team` plan, NOT an

@@ -1,0 +1,44 @@
+# Restrict release tag creation - agent-plugins (#924).
+#
+# The same creation restriction as restrict-release-tag-creation.yaml, for the one repository
+# that ruleset excludes. agent-plugins' "Publish marketplace release" workflow creates its `v*`
+# tag with the workflow token (`github.token`), so its release identity is the GitHub Actions
+# App (15368). Bypassing that App in the organization-wide ruleset would let any workflow job
+# with `contents: write` in any repository create a release tag; this ruleset confines that
+# bypass to agent-plugins. Once agent-plugins creates its tag with a dedicated release App, add
+# that App to restrict-release-tag-creation.yaml, drop the exclusion there and retire this rule.
+#
+# A rename of agent-plugins fails closed: the organization-wide exclusion stops matching too,
+# so the stricter ruleset applies.
+apiVersion: enterprise.github.m.upbound.io/v1alpha1
+kind: OrganizationRuleset
+metadata:
+  name: restrict-agent-plugins-release-tag-creation
+spec:
+  managementPolicies:
+    - Observe
+    - Create
+    - Update
+    - LateInitialize
+  forProvider:
+    name: Restrict release tag creation - agent-plugins
+    target: tag
+    enforcement: active
+    bypassActors:
+      - actorType: Integration
+        actorId: 15368 # GitHub Actions (the workflow token)
+        bypassMode: always
+      - actorType: OrganizationAdmin
+        bypassMode: always
+    conditions:
+      - refName:
+          - include: ["refs/tags/v*", "refs/tags/v*/**/*"]
+            exclude: []
+        repositoryName:
+          - include: ["agent-plugins"]
+            exclude: []
+    rules:
+      - creation: true
+  providerConfigRef:
+    kind: ProviderConfig
+    name: default

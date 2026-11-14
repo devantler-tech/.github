@@ -1,6 +1,6 @@
 # `OrganizationRuleset` resources — one per file, named after the rule (an active verb).
 # Nine imported org rulesets remain Observe-only. The retained signing rule and
-# five adopted workflow rules have only Observe/Update. Eight net-new rulesets are managed (Create).
+# five adopted workflow rules have only Observe/Update. Ten net-new rulesets are managed (Create).
 # Rulesets the provider cannot express remain UI-managed —
 # see ./README.md for the importability matrix and the push/tag/Actions-policy analysis.
 # Repo-scoped rulesets live in ../repository-rulesets/. Included by ../kustomization.yaml.
@@ -25,6 +25,8 @@ resources:
   - require-workflows-go.yaml # Full policy adopted: Observe + Update only.
   # Net-new, managed (Create).
   - protect-release-tags.yaml
+  - restrict-release-tag-creation.yaml
+  - restrict-agent-plugins-release-tag-creation.yaml
   - require-world-at-ruin-trusted-regressions.yaml
   - require-monorepo-ci-aggregate-contract.yaml
   - require-dotgithub-deploy-guards.yaml

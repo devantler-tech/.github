@@ -43,7 +43,9 @@ verb — e.g. `require-pull-request.yaml`). Repo-scoped rulesets live next door 
 | `require-workflows-go.yaml` | **Require workflows to pass before merging for Go** (existing, adopted) | Observe + Update — preserve the complete observed policy and require the maintained Go workflow; never create or delete |
 | 3 `require-workflows-*.yaml` imports | **DependencyReview**, **EnableAutoMerge** and **ScanGitHubActions** | Observe + Update — preserve the observed policy and maintained source; never create or delete |
 | `require-workflows-dotnet.yaml` | language-selected **.NET** (retired) | Observe + Update — disabled with one inert rule (no required workflow; the provider requires a rules block) after a complete effective-policy census found no consumers; retain identity and selectors, never create or delete |
-| `protect-release-tags.yaml` | **Protect release tags** (net-new) | Managed (Create) — block tag delete + force-move + require `v<semver>` |
+| `protect-release-tags.yaml` | **Protect release tags** (net-new) | Managed (Create) — block tag delete + force-move + require `v<semver>`; no bypass actors |
+| `restrict-release-tag-creation.yaml` | **Restrict release tag creation** (net-new) | Managed (Create) — only the release Apps and organization admins create `v*` tags; every repository except agent-plugins |
+| `restrict-agent-plugins-release-tag-creation.yaml` | **Restrict release tag creation - agent-plugins** (net-new) | Managed (Create) — only the GitHub Actions App and organization admins create `v*` tags in agent-plugins, until its release uses an App |
 | `require-world-at-ruin-trusted-regressions.yaml` | **Require workflow - World at Ruin trusted regressions** (retired) | Managed (Create), non-deleting — disabled with one inert rule and no workflow association after native shared-admission proof |
 | `require-monorepo-ci-aggregate-contract.yaml` | **Require workflow - Monorepo CI aggregate contract** (retired) | Managed (Create), non-deleting — disabled with one inert rule and no workflow association after native shared-admission proof |
 | `require-repository-pr-admission.yaml` | **Require workflow - Repository PR admission** | Managed (Create) — target monorepo, this catalogue and World at Ruin; trusted shared source runs each product-owned base-revision action, with a repository-bound executed result required for each |
@@ -273,6 +275,46 @@ gates; a team audit cannot clear the latter two.
   release tags immutable (block delete + force-move) and well-formed (`v<semver>`). See
   that file's header for the team-vs-enterprise tier caveat on the name-pattern rule and
   its fallback.
+- **Release tag creation** — see [below](#release-tag-creation).
+
+## Release tag creation
+
+Under ADR 0017 a product signs its releases from a release tag, so who may create a `v*`
+tag is part of the trust boundary ([#924](https://github.com/devantler-tech/.github/issues/924)).
+Two rulesets restrict creation of tags matching `refs/tags/v*` (and `refs/tags/v*/**/*`,
+because `*` stops at `/`). A bypass actor bypasses every rule in its ruleset, so these are
+separate from `protect-release-tags.yaml`, which keeps no bypass actors.
+
+| Repositories | Who may create a `v*` tag | How each one creates it today |
+|---|---|---|
+| All except agent-plugins | botantler-1 (App `1025824`) | `create-release.yaml` with the organization's `APP_CLIENT_ID` |
+| | ksail-bot (App `2880167`) | `create-release.yaml` in ksail, whose `APP_CLIENT_ID` variable names ksail-bot |
+| | botantler-marketplace-releases (App `5498800`) | `create-release.yaml` with `protected-release: true`, its key only in a main-only `release` environment |
+| | Organization admins | A release cut by hand |
+| agent-plugins | GitHub Actions (App `15368`) | "Publish marketplace release" creates the tag with `github.token` |
+| | Organization admins | A release cut by hand |
+
+Other tag names that existing workflows create are not release tags and are not restricted.
+
+**Cutting a release by hand.** First start the repository's release workflow on `main`
+(`gh workflow run <release workflow> --ref main`): it computes the version and tags as the
+release identity above, so no admin bypass is used. When that cannot work, an organization
+admin pushes the tag with their own credentials, for example
+`git tag vX.Y.Z <commit on main> && git push origin vX.Y.Z`. Push the tag rather than
+creating the release first: in ksail, go-template and bookkeeper the tag-triggered
+workflow creates the release itself.
+
+**What this does not stop.** A bypass trusts an identity, not the branch it runs from. A
+release App whose key is an ordinary Actions secret can be used by a workflow on any branch,
+and a GitHub Actions bypass applies to every job that has `contents: write`. The second
+layer is the signing check in [#925](https://github.com/devantler-tech/.github/issues/925),
+which refuses a tag whose commit is not on the default branch. The stronger end state is the
+pattern the three skill action repositories already use: one dedicated release App whose key
+lives only in a `release` environment limited to `main` (`deploy/release-environments/`),
+and that App as the only App in the bypass list.
+
+`tests/release-tag-creation-ruleset.sh` pins both rulesets and the empty bypass list of
+`protect-release-tags.yaml`.
 - **Required-workflow source pins** — v0.20.0 exposes the source repository, path and a
   branch/tag `ref`, but not GitHub's immutable workflow `sha` selector. The World at Ruin
   rule therefore binds the external trusted source to `devantler-tech/.github` on
