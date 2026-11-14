@@ -5081,6 +5081,9 @@ jobs:
       - name: 🧪 Test organization CodeQL protection for metadata repositories
         run: bash tests/metadata-code-scanning-ruleset.sh
 
+      - name: 🧪 Test release tag creation rulesets
+        run: bash tests/release-tag-creation-ruleset.sh
+
       - name: 🧪 Test independent Monorepo CI aggregate ruleset
         run: bash tests/ci-aggregate-ruleset.sh
 
