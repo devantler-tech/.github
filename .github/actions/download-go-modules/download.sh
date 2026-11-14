@@ -7,6 +7,12 @@
 set -euo pipefail
 module="$1" retry="$2"
 cd "$module"
+# A vendoring module builds from vendor/, not the module cache. `go mod download`
+# would still fetch every module there, adding a network dependency it never had.
+if [[ -f vendor/modules.txt ]]; then
+  echo 'The module vendors its dependencies; nothing to download.'
+  exit 0
+fi
 if ! bash "$retry" go mod download; then
   echo "::error::Could not download the Go modules after ${RETRY_MAX_ATTEMPTS:-3} attempts (see the errors above). No build, test or lint step ran." >&2
   exit 1

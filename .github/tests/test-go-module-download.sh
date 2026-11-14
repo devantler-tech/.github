@@ -98,6 +98,10 @@ run 'an unreachable proxy fails after the bounded retries' 3 "$stream" 1 3 'No b
 out="$(: >"$CALLS"; cd "$work" && FAILURES=2 FAILURE_TEXT="$stream" bash "$script" "module with spaces" "$retry" 2>&1)"
 [[ "$(grep -cF "$stream" <<<"$out")" == 2 ]] || fail "each failed attempt's error must stay in the log: $out"
 echo 'PASS: every failed attempt keeps its error in the log'
+# A vendoring module builds from vendor/: the download must not reach the network.
+mkdir -p "$module/vendor" && : >"$module/vendor/modules.txt"
+run 'a vendoring module downloads nothing' 3 "$stream" 0 0 'vendors its dependencies'
+rm -rf "$module/vendor"
 # A checksum mismatch is not transient: it fails every attempt and still fails the job.
 run 'a checksum mismatch still fails the job' 9 'checksum mismatch' 1 3 'No build, test or lint step ran.'
 echo 'PASS: module download retry and failure boundaries'
