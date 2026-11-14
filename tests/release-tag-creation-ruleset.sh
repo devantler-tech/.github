@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Pins who may create a release tag (#924): the two creation rulesets carry exactly the
-# release identities from the census, and "Protect release tags" keeps no bypass actor,
-# because a bypass there would also bypass its delete and force-move rules.
+# Pins who may create a release tag (#924): the one creation ruleset covers every repository
+# and carries exactly the release identities from the census, and "Protect release tags" keeps
+# no bypass actor, because a bypass there would also bypass its delete and force-move rules.
 set -euo pipefail
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 work="$(mktemp -d)"
@@ -20,20 +20,7 @@ organization="$(jq -cn --argjson lifecycle "$lifecycle" --argjson refs "$refs" -
       {actorType: "Integration", actorId: 5498800, bypassMode: "always"},
       {actorType: "OrganizationAdmin", bypassMode: "always"}
     ],
-    conditions: [{refName: $refs, repositoryName: [{include: ["~ALL"], exclude: ["agent-plugins"]}]}],
-    rules: [{creation: true}]
-  },
-  providerConfigRef: $provider
-}')"
-agent_plugins="$(jq -cn --argjson lifecycle "$lifecycle" --argjson refs "$refs" --argjson provider "$provider" '{
-  managementPolicies: $lifecycle,
-  forProvider: {
-    name: "Restrict release tag creation - agent-plugins", target: "tag", enforcement: "active",
-    bypassActors: [
-      {actorType: "Integration", actorId: 15368, bypassMode: "always"},
-      {actorType: "OrganizationAdmin", bypassMode: "always"}
-    ],
-    conditions: [{refName: $refs, repositoryName: [{include: ["agent-plugins"], exclude: []}]}],
+    conditions: [{refName: $refs, repositoryName: [{include: ["~ALL"], exclude: []}]}],
     rules: [{creation: true}]
   },
   providerConfigRef: $provider
@@ -41,7 +28,7 @@ agent_plugins="$(jq -cn --argjson lifecycle "$lifecycle" --argjson refs "$refs" 
 check_rules() {
   local observed
   observed="$(yq -o=json -I=0 '.' "$1" | jq -s '[.[] | select(.kind == "OrganizationRuleset")]')" || { fail 'unreadable render'; return 1; }
-  jq -e --argjson organization "$organization" --argjson agent_plugins "$agent_plugins" '
+  jq -e --argjson organization "$organization" '
     def one($name): [.[] | select(.metadata.name == $name)];
     def created($name; $spec):
       one($name) | length == 1
@@ -49,10 +36,9 @@ check_rules() {
         and .[0].spec == $spec
         and ((.[0].metadata.annotations // {}) | has("crossplane.io/external-name") | not);
     created("restrict-release-tag-creation"; $organization)
-    and created("restrict-agent-plugins-release-tag-creation"; $agent_plugins)
-    # Only these two rulesets may restrict tag creation, so no other bypass list applies to it.
+    # Only this ruleset may restrict tag creation, so no other bypass list applies to it.
     and ([.[] | select(.spec.forProvider.target == "tag" and any(.spec.forProvider.rules[]?; .creation == true))
-          | .metadata.name] | sort == ["restrict-agent-plugins-release-tag-creation", "restrict-release-tag-creation"])
+          | .metadata.name] == ["restrict-release-tag-creation"])
     and (one("protect-release-tags") | length == 1
       and (.[0].spec.forProvider | (.bypassActors // []) == [] and .target == "tag"
         and (.rules | length == 1 and (.[0] | .deletion == true and .nonFastForward == true and (has("creation") | not)))))
@@ -70,7 +56,6 @@ check_rules "$work/render.yaml"
 check_ci "$root/.github/workflows/ci.yaml"
 # Exercise the rendered policies, not second synthetic resources.
 organization_selector='select(.kind == "OrganizationRuleset" and .metadata.name == "restrict-release-tag-creation")'
-agent_plugins_selector='select(.kind == "OrganizationRuleset" and .metadata.name == "restrict-agent-plugins-release-tag-creation")'
 protect_selector='select(.kind == "OrganizationRuleset" and .metadata.name == "protect-release-tags")'
 mutations=(
   "${organization_selector}|del(.spec.managementPolicies)"
@@ -92,18 +77,11 @@ mutations=(
   "${organization_selector}|.spec.forProvider.conditions[0].refName[0].include = [\"refs/tags/v1*\",\"refs/tags/v*/**/*\"]"
   "${organization_selector}|.spec.forProvider.conditions[0].refName[0].exclude = [\"refs/tags/v0*\"]"
   "${organization_selector}|.spec.forProvider.conditions[0].repositoryName[0].exclude += [\"platform\"]"
-  "${organization_selector}|.spec.forProvider.conditions[0].repositoryName[0].exclude = []"
+  "${organization_selector}|.spec.forProvider.conditions[0].repositoryName[0].exclude = [\"agent-plugins\"]"
   "${organization_selector}|.spec.forProvider.conditions[0].repositoryName[0].include = [\"ksail\"]"
   "${organization_selector}|.metadata.annotations.\"crossplane.io/external-name\" = \"18136026\""
   "${organization_selector}|.apiVersion = \"repo.github.m.upbound.io/v1alpha1\""
   "${organization_selector}|.spec.providerConfigRef.name = \"another-provider\""
-  "${agent_plugins_selector}|.spec.managementPolicies += [\"Delete\"]"
-  "${agent_plugins_selector}|.spec.forProvider.enforcement = \"disabled\""
-  "${agent_plugins_selector}|.spec.forProvider.rules[0].creation = false"
-  "${agent_plugins_selector}|.spec.forProvider.bypassActors += [{\"actorType\":\"Integration\",\"actorId\":1025824,\"bypassMode\":\"always\"}]"
-  "${agent_plugins_selector}|.spec.forProvider.conditions[0].repositoryName[0].include = [\"~ALL\"]"
-  "${agent_plugins_selector}|.spec.forProvider.conditions[0].repositoryName[0].include += [\"ksail\"]"
-  "${agent_plugins_selector}|.spec.forProvider.conditions[0].refName[0].include = [\"refs/tags/v*\"]"
   "${protect_selector}|.spec.forProvider.bypassActors = [{\"actorType\":\"Integration\",\"actorId\":1025824,\"bypassMode\":\"always\"}]"
   "${protect_selector}|.spec.forProvider.bypassActors = [{\"actorType\":\"OrganizationAdmin\",\"bypassMode\":\"always\"}]"
   "${protect_selector}|.spec.forProvider.rules[0].creation = true"

@@ -44,8 +44,7 @@ verb — e.g. `require-pull-request.yaml`). Repo-scoped rulesets live next door 
 | 3 `require-workflows-*.yaml` imports | **DependencyReview**, **EnableAutoMerge** and **ScanGitHubActions** | Observe + Update — preserve the observed policy and maintained source; never create or delete |
 | `require-workflows-dotnet.yaml` | language-selected **.NET** (retired) | Observe + Update — disabled with one inert rule (no required workflow; the provider requires a rules block) after a complete effective-policy census found no consumers; retain identity and selectors, never create or delete |
 | `protect-release-tags.yaml` | **Protect release tags** (net-new) | Managed (Create) — block tag delete + force-move + require `v<semver>`; no bypass actors |
-| `restrict-release-tag-creation.yaml` | **Restrict release tag creation** (net-new) | Managed (Create) — only the release Apps and organization admins create `v*` tags; every repository except agent-plugins |
-| `restrict-agent-plugins-release-tag-creation.yaml` | **Restrict release tag creation - agent-plugins** (net-new) | Managed (Create) — only the GitHub Actions App and organization admins create `v*` tags in agent-plugins, until its release uses an App |
+| `restrict-release-tag-creation.yaml` | **Restrict release tag creation** (net-new) | Managed (Create) — only the release Apps and organization admins create `v*` tags, in every repository |
 | `require-world-at-ruin-trusted-regressions.yaml` | **Require workflow - World at Ruin trusted regressions** (retired) | Managed (Create), non-deleting — disabled with one inert rule and no workflow association after native shared-admission proof |
 | `require-monorepo-ci-aggregate-contract.yaml` | **Require workflow - Monorepo CI aggregate contract** (retired) | Managed (Create), non-deleting — disabled with one inert rule and no workflow association after native shared-admission proof |
 | `require-repository-pr-admission.yaml` | **Require workflow - Repository PR admission** | Managed (Create) — target monorepo, this catalogue and World at Ruin; trusted shared source runs each product-owned base-revision action, with a repository-bound executed result required for each |
@@ -295,18 +294,18 @@ gates; a team audit cannot clear the latter two.
 
 Under ADR 0017 a product signs its releases from a release tag, so who may create a `v*`
 tag is part of the trust boundary ([#924](https://github.com/devantler-tech/.github/issues/924)).
-Two rulesets restrict creation of tags matching `refs/tags/v*` (and `refs/tags/v*/**/*`,
-because `*` stops at `/`). A bypass actor bypasses every rule in its ruleset, so these are
-separate from `protect-release-tags.yaml`, which keeps no bypass actors.
+One ruleset restricts creation of tags matching `refs/tags/v*` (and `refs/tags/v*/**/*`,
+because `*` stops at `/`), in every repository. A bypass actor bypasses every rule in its
+ruleset, so it is separate from `protect-release-tags.yaml`, which keeps no bypass actors.
+No release may create its tag with the workflow token: GitHub refuses the built-in GitHub
+Actions integration as a bypass actor in an organization ruleset.
 
-| Repositories | Who may create a `v*` tag | How each one creates it today |
-|---|---|---|
-| All except agent-plugins | botantler-1 (App `1025824`) | `create-release.yaml` with the organization's `APP_CLIENT_ID` |
-| | ksail-bot (App `2880167`) | `create-release.yaml` in ksail, whose `APP_CLIENT_ID` variable names ksail-bot |
-| | botantler-marketplace-releases (App `5498800`) | `create-release.yaml` with `protected-release: true`, its key only in a main-only `release` environment |
-| | Organization admins | A release cut by hand |
-| agent-plugins | GitHub Actions (App `15368`) | "Publish marketplace release" creates the tag with `github.token` |
-| | Organization admins | A release cut by hand |
+| Who may create a `v*` tag | How each one creates it today |
+|---|---|
+| botantler-1 (App `1025824`) | `create-release.yaml` with the organization's `APP_CLIENT_ID`, and agent-plugins' `release-please.yaml` |
+| ksail-bot (App `2880167`) | `create-release.yaml` in ksail, whose `APP_CLIENT_ID` variable names ksail-bot |
+| botantler-marketplace-releases (App `5498800`) | `create-release.yaml` with `protected-release: true`, its key only in a main-only `release` environment |
+| Organization admins | A release cut by hand |
 
 Other tag names that existing workflows create are not release tags and are not restricted.
 
