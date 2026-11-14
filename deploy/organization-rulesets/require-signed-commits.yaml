@@ -1,6 +1,8 @@
-# Retained disabled record: this rule's empty ref selector protects no branches.
-# Backfilled from the observed ruleset before allowing Update; keep all fields
-# and the existing identity. Never create or delete it. See ./README.md and #132.
+# Server-side signed-commit enforcement, rolled out in stages (#929). Stage 1 covers only the
+# agent branch namespaces in monorepo; nothing squash-merges into those branches, so GitHub's
+# author-only squash restriction for signed branches does not apply. Default branches stay out
+# of scope until bot and contributor merge paths are proven compatible (#132).
+# Keep the existing identity and every field. Never create or delete it. See ./README.md.
 apiVersion: enterprise.github.m.upbound.io/v1alpha1
 kind: OrganizationRuleset
 metadata:
@@ -12,14 +14,17 @@ spec:
   forProvider:
     name: Require signed commits
     target: branch
-    enforcement: disabled
+    enforcement: active
     bypassActors: []
     conditions:
       - refName:
-          - include: []
+          - include:
+              - refs/heads/claude/**
+              - refs/heads/codex/**
+              - refs/heads/kagent/**
             exclude: []
         repositoryName:
-          - include: ["~ALL"]
+          - include: ["monorepo"]
             exclude: []
             protected: false
     rules:

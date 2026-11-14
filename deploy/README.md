@@ -36,7 +36,7 @@ out-of-band changes made in the GitHub UI.
   the Crossplane replacement for the old EndBug/label-sync workflow.
 - `organization-rulesets/` — one `OrganizationRuleset` per file (org-wide branch/tag
   protection). 9 existing org rulesets remain **Observe-only**; the existing signing
-  rule is retained disabled with only Observe/Update and its full observed fields.
+  rule keeps only Observe/Update and its full fields, and enforces on agent branches in stages.
   Managed rules cover `v*` tag protection, shared reviewed admission and metadata code scanning.
   Earlier product-specific workflow records remain declared but disabled after native replacement
   proof, with their identities, selectors and non-deleting lifecycle preserved.
