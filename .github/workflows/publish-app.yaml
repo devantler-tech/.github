@@ -11,6 +11,11 @@ on:
         required: false
         default: ./deploy
         type: string
+      app-manifest:
+        description: "Path, relative to deploy-path, of the manifest holding the app: the Deployment with the app-name container, or the WebApp in prebuilt mode. Empty means deployment.yaml (webapp.yaml in prebuilt mode)."
+        required: false
+        default: ""
+        type: string
       dry-run:
         description: "Skip publish (validate workflow interface only)."
         required: false
@@ -215,31 +220,36 @@ jobs:
         env:
           APP_NAME: ${{ inputs.app-name }}
           DEPLOY_PATH: ${{ inputs.deploy-path }}
+          APP_MANIFEST: ${{ inputs.app-manifest }}
         run: |
           # Every manifest check runs here, before anything reaches the registry. A release that fails
           # after the image push leaves GHCR changed — `latest` included — with no deployable manifest
           # to go with the image. Only the digest injection waits for the build, because the digest
           # does not exist before it.
           set -euo pipefail
-          # The app manifest is resolved once, here; the pin step reuses this exact path. A product
-          # that splits deploy-path into base/prod/dev overlays keeps the app container in base/.
-          # Without a base entry, the flat layout and its checks are unchanged.
+          export LC_ALL=C
+          # The app manifest is resolved once, here; the pin step reuses this exact path. Without
+          # app-manifest it is deploy-path/deployment.yaml, checked as it always was.
           file="${DEPLOY_PATH}/deployment.yaml"
-          base="${DEPLOY_PATH}/base"
-          if [ -e "$base" ] || [ -L "$base" ]; then
-            if [ -L "$base" ] || [ ! -d "$base" ]; then
-              echo "::error::$base must be a regular directory, not a link or a file"; exit 1
+          if [ -n "$APP_MANIFEST" ]; then
+            # A caller-named manifest is plain names below deploy-path: no leading /, no empty, `.`
+            # or `..` component, no line break. No component may be a link, so the file cannot leave
+            # deploy-path. The input is not echoed until it has passed this check.
+            name='[A-Za-z0-9_-][A-Za-z0-9_.-]*'
+            if ! [[ "$APP_MANIFEST" =~ ^${name}(/${name})*$ ]]; then
+              echo "::error::app-manifest must be a relative path of plain names inside deploy-path (letters, digits, '.', '_' and '-'; no leading '/', no empty, '.' or '..' component)"; exit 1
             fi
-            if [ -e "$file" ] || [ -L "$file" ]; then
-              echo "::error::ambiguous app manifest: $file exists beside $base; keep only $base/deployment.yaml"; exit 1
-            fi
-            file="$base/deployment.yaml"
-            if [ -L "$file" ]; then
-              echo "::error::manifest $file must be a regular file, not a link"; exit 1
-            fi
+            file="$DEPLOY_PATH"
+            IFS=/ read -r -a components <<< "$APP_MANIFEST"
+            for component in "${components[@]}"; do
+              file="$file/$component"
+              if [ -L "$file" ]; then
+                echo "::error::app-manifest $APP_MANIFEST passes through a link at $file"; exit 1
+              fi
+            done
           fi
           if [ ! -f "$file" ]; then
-            echo "::error::manifest $file not found (check the deploy-path input)"; exit 1
+            echo "::error::manifest $file not found (check the deploy-path and app-manifest inputs)"; exit 1
           fi
           matches=$(yq '[.spec.template.spec.containers[] | select(.name == strenv(APP_NAME))] | length' "$file")
           if [ "$matches" != "1" ]; then
@@ -294,6 +304,7 @@ jobs:
           SOURCE_SHA: ${{ github.sha }}
           APP_NAME: ${{ inputs.app-name }}
           DEPLOY_PATH: ${{ inputs.deploy-path }}
+          APP_MANIFEST: ${{ inputs.app-manifest }}
           PREBUILT_IMAGE_DIGEST: ${{ inputs.prebuilt-image-digest }}
           PREBUILT_PUBLIC_DIGEST: ${{ inputs.prebuilt-public-digest }}
           PREBUILT_CI_RUN_ID: ${{ inputs.prebuilt-ci-run-id }}

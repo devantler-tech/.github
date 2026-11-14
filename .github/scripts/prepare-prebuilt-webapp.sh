@@ -36,24 +36,30 @@ esac
 [[ -n "${GITHUB_OUTPUT:-}" ]] || fail 'missing workflow output file'
 path="${DEPLOY_PATH#./}"
 [[ -n "$path" && "$path" != /* && "$path" != */ && "$path" != *//* ]] || fail 'require a relative deployment directory'
+# The WebApp manifest is named relative to the deployment directory; empty keeps webapp.yaml.
+manifest="${APP_MANIFEST:-webapp.yaml}"
+[[ "$manifest" != *$'\n'* && "$manifest" != *$'\r'* && "$manifest" != /* && "$manifest" != */ && "$manifest" != *//* ]] ||
+  fail 'require a relative app manifest inside the deployment directory'
+# Walk <path> below the cursor one component at a time; every directory must be a regular source
+# directory and no component may be `.`, `..`, hidden or unusual.
+walk() {
+  local component components
+  IFS=/ read -r -a components <<< "$1"
+  for component in "${components[@]}"; do
+    [[ "$component" =~ ^[A-Za-z0-9_-][A-Za-z0-9_.-]*$ && "$component" != . && "$component" != .. ]] || fail "unsafe $2"
+    cursor="$cursor/$component"
+    [[ -d "$cursor" && ! -L "$cursor" ]] || fail 'deployment directories must be regular source directories'
+  done
+}
 cursor=.
-IFS=/ read -r -a components <<< "$path"
-for component in "${components[@]}"; do
-  [[ "$component" =~ ^[A-Za-z0-9_-][A-Za-z0-9_.-]*$ && "$component" != . && "$component" != .. ]] || fail 'unsafe deployment directory'
-  cursor="$cursor/$component"
-  [[ -d "$cursor" && ! -L "$cursor" ]] || fail 'deployment directories must be regular source directories'
-done
-# A deployment directory split into base/prod/dev overlays keeps the WebApp in base/. Without a
-# base entry the flat layout is unchanged; a flat webapp.yaml beside base/ is ambiguous.
-manifest_dir="$cursor"
-if [[ -e "$cursor/base" || -L "$cursor/base" ]]; then
-  [[ -d "$cursor/base" && ! -L "$cursor/base" ]] || fail 'deployment directories must be regular source directories'
-  [[ ! -e "$cursor/webapp.yaml" && ! -L "$cursor/webapp.yaml" ]] || fail 'ambiguous WebApp manifest: webapp.yaml exists beside base/'
-  manifest_dir="$cursor/base"
-fi
-file="$manifest_dir/webapp.yaml"
-[[ -f "$file" && ! -L "$file" ]] || fail 'require a regular webapp.yaml'
-unsafe="$(find "$cursor" ! -type f ! -type d -print -quit)" || fail 'cannot inspect the complete deployment directory'
+walk "$path" 'deployment directory'
+deploy_dir="$cursor"
+manifest_name="${manifest##*/}"
+[[ "$manifest_name" =~ ^[A-Za-z0-9_-][A-Za-z0-9_.-]*$ ]] || fail 'unsafe app manifest path'
+[[ "$manifest" == "$manifest_name" ]] || walk "${manifest%/*}" 'app manifest path'
+file="$cursor/$manifest_name"
+[[ -f "$file" && ! -L "$file" ]] || fail "require a regular $manifest"
+unsafe="$(find "$deploy_dir" ! -type f ! -type d -print -quit)" || fail 'cannot inspect the complete deployment directory'
 [[ -z "$unsafe" ]] || fail 'deployment artifacts cannot contain linked or special files'
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT

@@ -663,124 +663,115 @@ nothing_pushed "publish-app with an unparsable manifest"
 refused_with "publish-app with an unparsable manifest" "FAILED at 🔍 Validate the deployment manifest"
 echo "ok   publish-app refuses a bad manifest before pushing anything"
 
-# ---- 2b. publish-app: a base/prod/dev overlay layout keeps the app manifest in base/ ------------
+# ---- 2b. publish-app: the app-manifest input names the app manifest inside deploy-path ----------
 
-new_base_app() { # <dir> [deploy dir] — the same app, split into base/prod/dev with the container in base/
-  local deploy="$1/${2:-deploy}"
+new_split_app() { # <dir> <app-manifest> — the same app with its Deployment moved to deploy/<app-manifest>
   new_app "$1"
-  [[ "$deploy" == "$1/deploy" ]] || mv "$1/deploy" "$deploy"
-  mkdir -p "$deploy/base" "$deploy/prod" "$deploy/dev"
-  mv "$deploy/deployment.yaml" "$deploy/base/deployment.yaml"
-  printf 'resources: [deployment.yaml]\n' >"$deploy/base/kustomization.yaml"
-  printf 'resources: [../base]\n' >"$deploy/prod/kustomization.yaml"
-  printf 'resources: [../base]\n' >"$deploy/dev/kustomization.yaml"
-  printf 'resources: [prod]\n' >"$deploy/kustomization.yaml"
+  mkdir -p "$(dirname "$1/deploy/$2")"
+  mv "$1/deploy/deployment.yaml" "$1/deploy/$2"
+  printf 'resources: [prod]\n' >"$1/deploy/kustomization.yaml"
 }
 
-# The flat layout resolves to the same file as before, and validation hands the pin that file.
+# Without the input the flat file is resolved, checked and pinned exactly as before, even beside a
+# base/ directory, and validation hands the pin that file.
 wd="$scratch/app-flat"
 new_app "$wd"
+mkdir -p "$wd/deploy/base"
+cp "$wd/deploy/deployment.yaml" "$wd/deploy/base/deployment.yaml"
 run_job "$app" publish "$wd" tag v1.2.3 app-name=app ||
   fail "publish-app failed a good flat release: $(cat "$log")"
 grep -qxF 'manifest.file=./deploy/deployment.yaml' "$sim_outputs" ||
   fail "publish-app did not resolve the flat manifest; outputs: $(cat "$sim_outputs")"
+[[ "$(yq '.spec.template.spec.containers[] | select(.name == "app") | .image' "$wd/deploy/deployment.yaml")" == \
+  "ghcr.io/devantler-tech/app@$image_digest" ]] || fail "publish-app did not pin the flat manifest by default"
+[[ "$(yq '.spec.template.spec.containers[] | select(.name == "app") | .image' "$wd/deploy/base/deployment.yaml")" == \
+  "ghcr.io/devantler-tech/app:placeholder" ]] || fail "publish-app pinned a base/ manifest nobody named"
 grep -qF "flux push artifact oci://ghcr.io/devantler-tech/app/manifests:default-staging-123-2 --path=./deploy " "$calls" ||
   fail "publish-app no longer pushes the whole flat deploy-path; calls: $(cat "$calls")"
-echo "ok   publish-app resolves a flat layout to deploy-path/deployment.yaml, as before"
+echo "ok   publish-app resolves deploy-path/deployment.yaml without app-manifest, as before"
 
-for deploy in deploy k8s; do
-  wd="$scratch/app-base-$deploy"
-  new_base_app "$wd" "$deploy"
-  passed=(app-name=app)
+for case in "deploy|base/deployment.yaml" "deploy|overlays/base/deployment.yaml" "deploy|app.yaml" "k8s|base/deployment.yaml"; do
+  deploy="${case%%|*}"
+  manifest="${case#*|}"
+  wd="$scratch/app-input-$deploy-${manifest//\//-}"
+  new_split_app "$wd" "$manifest"
+  [[ "$deploy" == deploy ]] || mv "$wd/deploy" "$wd/$deploy"
+  passed=(app-name=app "app-manifest=$manifest")
   [[ "$deploy" == deploy ]] || passed+=("deploy-path=./$deploy")
   run_job "$app" publish "$wd" tag v1.2.3 "${passed[@]}" ||
-    fail "publish-app failed a good base/prod/dev release in ./$deploy: $(cat "$log")"
-  grep -qxF "manifest.file=./$deploy/base/deployment.yaml" "$sim_outputs" ||
-    fail "publish-app did not resolve the base manifest in ./$deploy; outputs: $(cat "$sim_outputs")"
-  pinned="$(yq '.spec.template.spec.containers[] | select(.name == "app") | .image' \
-    "$wd/$deploy/base/deployment.yaml")"
+    fail "publish-app failed a good release with app-manifest=$manifest in ./$deploy: $(cat "$log")"
+  grep -qxF "manifest.file=./$deploy/$manifest" "$sim_outputs" ||
+    fail "publish-app did not resolve ./$deploy/$manifest; outputs: $(cat "$sim_outputs")"
+  pinned="$(yq '.spec.template.spec.containers[] | select(.name == "app") | .image' "$wd/$deploy/$manifest")"
   [[ "$pinned" == "ghcr.io/devantler-tech/app@$image_digest" ]] ||
-    fail "publish-app did not pin the built digest into ./$deploy/base/deployment.yaml; got: $pinned"
-  sidecar="$(yq '.spec.template.spec.containers[] | select(.name == "sidecar") | .image' \
-    "$wd/$deploy/base/deployment.yaml")"
+    fail "publish-app did not pin the built digest into ./$deploy/$manifest; got: $pinned"
+  sidecar="$(yq '.spec.template.spec.containers[] | select(.name == "sidecar") | .image' "$wd/$deploy/$manifest")"
   [[ "$sidecar" == "ghcr.io/devantler-tech/sidecar:1.0.0" ]] || fail "publish-app changed another container: $sidecar"
-  [[ ! -e "$wd/$deploy/deployment.yaml" ]] || fail "publish-app created a flat manifest beside base/"
+  [[ "$manifest" == app.yaml || ! -e "$wd/$deploy/deployment.yaml" ]] || fail "publish-app created a flat manifest"
   grep -qF "flux push artifact oci://ghcr.io/devantler-tech/app/manifests:default-staging-123-2 --path=./$deploy " "$calls" ||
     fail "publish-app did not push the whole ./$deploy directory; calls: $(cat "$calls")"
   [[ "$(head -n 1 "$calls")" == "image push 🐳 Build & push image" ]] ||
-    fail "publish-app's first registry write is not the image push in the base layout"
+    fail "publish-app's first registry write is not the image push with app-manifest=$manifest"
 done
-echo "ok   publish-app pins the app container in deploy-path/base/deployment.yaml and pushes the whole directory"
+echo "ok   publish-app validates and pins the app-manifest it is given and pushes the whole deploy-path"
 
-# Every ambiguous or linked base layout is refused before the first registry write.
-wd="$scratch/app-base-and-flat"
-new_base_app "$wd"
-cp "$wd/deploy/base/deployment.yaml" "$wd/deploy/deployment.yaml"
-if run_job "$app" publish "$wd" tag v1.2.3 app-name=app; then
-  fail "publish-app accepted both a flat and a base app manifest"
-fi
-nothing_pushed "publish-app with both a flat and a base manifest"
-refused_with "publish-app with both a flat and a base manifest" "ambiguous app manifest: ./deploy/deployment.yaml exists beside ./deploy/base"
+# An unsafe, linked or missing app-manifest is refused before the first registry write. Each case
+# keeps a valid Deployment where the path would lead, so only the input check can refuse it.
+plain='app-manifest must be a relative path of plain names inside deploy-path'
+for case in \
+  "../deployment.yaml|$plain" \
+  "/deployment.yaml|$plain" \
+  "base/./deployment.yaml|$plain" \
+  "base/../deployment.yaml|$plain" \
+  "base//deployment.yaml|$plain" \
+  "base/|$plain" \
+  ".hidden/deployment.yaml|$plain" \
+  "linked-dir|app-manifest base/deployment.yaml passes through a link at ./deploy/base" \
+  "linked-file|app-manifest base/deployment.yaml passes through a link at ./deploy/base/deployment.yaml" \
+  "missing|manifest ./deploy/base/deployment.yaml not found"; do
+  manifest="${case%%|*}"
+  expected="${case#*|}"
+  wd="$scratch/app-refused"
+  rm -rf "$wd"
+  new_split_app "$wd" base/deployment.yaml
+  cp "$wd/deploy/base/deployment.yaml" "$wd/deploy/deployment.yaml"
+  cp "$wd/deploy/base/deployment.yaml" "$wd/deployment.yaml"
+  mkdir -p "$wd/deploy/.hidden"
+  cp "$wd/deploy/base/deployment.yaml" "$wd/deploy/.hidden/deployment.yaml"
+  case "$manifest" in
+    linked-dir) mv "$wd/deploy/base" "$wd/outside" && ln -s ../outside "$wd/deploy/base" ;;
+    linked-file) mv "$wd/deploy/base/deployment.yaml" "$wd/outside.yaml" &&
+      ln -s ../../outside.yaml "$wd/deploy/base/deployment.yaml" ;;
+    missing) rm "$wd/deploy/base/deployment.yaml" ;;
+  esac
+  case "$manifest" in linked-dir | linked-file | missing) manifest=base/deployment.yaml ;; esac
+  if run_job "$app" publish "$wd" tag v1.2.3 app-name=app "app-manifest=$manifest"; then
+    fail "publish-app accepted app-manifest '$manifest' ($expected)"
+  fi
+  nothing_pushed "publish-app with app-manifest '$manifest'"
+  refused_with "publish-app with app-manifest '$manifest'" "$expected"
+  refused_with "publish-app with app-manifest '$manifest'" "FAILED at 🔍 Validate the deployment manifest"
+  ! grep -rqF "@$image_digest" "$wd" || fail "publish-app pinned a file for a refused app-manifest '$manifest'"
+done
 
-wd="$scratch/app-flat-and-empty-base"
-new_app "$wd"
-mkdir -p "$wd/deploy/base"
-if run_job "$app" publish "$wd" tag v1.2.3 app-name=app; then
-  fail "publish-app accepted a flat app manifest beside a base directory"
-fi
-nothing_pushed "publish-app with a flat manifest beside base/"
-refused_with "publish-app with a flat manifest beside base/" "ambiguous app manifest"
-
-wd="$scratch/app-base-without-file"
-new_base_app "$wd"
-mv "$wd/deploy/base/deployment.yaml" "$wd/deploy/prod/deployment.yaml"
-if run_job "$app" publish "$wd" tag v1.2.3 app-name=app; then
-  fail "publish-app accepted a base directory without the app manifest"
-fi
-nothing_pushed "publish-app with a base directory that lacks the app manifest"
-refused_with "publish-app with a base directory that lacks the app manifest" "manifest ./deploy/base/deployment.yaml not found"
-
-wd="$scratch/app-linked-base"
-new_base_app "$wd"
-mv "$wd/deploy/base" "$wd/shared-base"
-ln -s ../shared-base "$wd/deploy/base"
-if run_job "$app" publish "$wd" tag v1.2.3 app-name=app; then
-  fail "publish-app accepted a linked base directory"
-fi
-nothing_pushed "publish-app with a linked base directory"
-refused_with "publish-app with a linked base directory" "./deploy/base must be a regular directory, not a link or a file"
-
-wd="$scratch/app-dangling-base"
-new_app "$wd"
-rm "$wd/deploy/deployment.yaml"
-ln -s ../missing "$wd/deploy/base"
-if run_job "$app" publish "$wd" tag v1.2.3 app-name=app; then
-  fail "publish-app accepted a dangling base link"
-fi
-nothing_pushed "publish-app with a dangling base link"
-refused_with "publish-app with a dangling base link" "./deploy/base must be a regular directory"
-
-wd="$scratch/app-base-file"
-new_app "$wd"
-mv "$wd/deploy/deployment.yaml" "$wd/deploy/base"
-if run_job "$app" publish "$wd" tag v1.2.3 app-name=app; then
-  fail "publish-app accepted a base file instead of a directory"
-fi
-nothing_pushed "publish-app with a base file"
-refused_with "publish-app with a base file" "./deploy/base must be a regular directory"
-
-wd="$scratch/app-linked-base-manifest"
-new_base_app "$wd"
-mv "$wd/deploy/base/deployment.yaml" "$wd/deploy/prod/deployment.yaml"
-ln -s ../prod/deployment.yaml "$wd/deploy/base/deployment.yaml"
-if run_job "$app" publish "$wd" tag v1.2.3 app-name=app; then
-  fail "publish-app accepted a linked base app manifest"
-fi
-nothing_pushed "publish-app with a linked base app manifest"
-refused_with "publish-app with a linked base app manifest" "manifest ./deploy/base/deployment.yaml must be a regular file, not a link"
-[[ "$(yq '.spec.template.spec.containers[] | select(.name == "app") | .image' "$wd/deploy/prod/deployment.yaml")" == \
-  "ghcr.io/devantler-tech/app:placeholder" ]] || fail "publish-app changed the target of a linked base manifest"
-echo "ok   publish-app refuses an ambiguous, linked or incomplete base layout before pushing anything"
+# A line break cannot be passed through the simulated caller, so run the shipped validation step on
+# its own: it refuses the input without echoing it, and resolves no manifest for the pin.
+validate="$(yq -r '.jobs.publish.steps[] | select(.id == "manifest") | .run' "$app")"
+[[ -n "$validate" ]] || fail "publish-app has no validation step with id manifest"
+wd="$scratch/app-line-break"
+rm -rf "$wd"
+new_split_app "$wd" base/deployment.yaml
+for manifest in $'base/deployment.yaml\n::error::injected' $'base/deployment.yaml\r' $'\nbase/deployment.yaml'; do
+  : >"$scratch/direct-output"
+  if (cd "$wd" && env -i PATH="$PATH" APP_NAME=app DEPLOY_PATH=./deploy APP_MANIFEST="$manifest" \
+    GITHUB_OUTPUT="$scratch/direct-output" bash --noprofile --norc -e -c "$validate") >"$scratch/direct.log" 2>&1; then
+    fail "publish-app accepted an app-manifest with a line break"
+  fi
+  grep -qF "$plain" "$scratch/direct.log" || fail "line break refused for the wrong reason: $(cat "$scratch/direct.log")"
+  ! grep -qF 'injected' "$scratch/direct.log" || fail "publish-app echoed an unchecked app-manifest"
+  [[ ! -s "$scratch/direct-output" ]] || fail "a refused app-manifest still resolved a manifest for the pin"
+done
+echo "ok   publish-app refuses an unsafe, linked or missing app-manifest before pushing anything"
 
 # ---- 3. both workflows: only a complete semantic-version tag publishes --------------------------
 
