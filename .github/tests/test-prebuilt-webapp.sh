@@ -354,4 +354,54 @@ reset_fixture
 ln -s "$work/run.json" "$work/deploy/unrelated.yaml"
 if invoke none > "$work/log" 2>&1; then fail 'accepted a linked file in the packaged deployment directory'; fi
 [[ ! -s "$work/output" && ! -s "$work/reads" ]] || fail 'linked deployment file reached verification'
+rm "$work/deploy/unrelated.yaml"
+
+# A base/prod/dev overlay layout keeps the WebApp in base/; the flat layout above is unchanged.
+reset_base_fixture() {
+  rm -rf "$work/deploy" "$work/shared-base"
+  mkdir -p "$work/deploy"
+  reset_fixture
+  mkdir -p "$work/deploy/base" "$work/deploy/prod" "$work/deploy/dev"
+  mv "$work/deploy/webapp.yaml" "$work/deploy/base/webapp.yaml"
+  printf 'resources: [webapp.yaml]\n' > "$work/deploy/base/kustomization.yaml"
+  printf 'resources: [../base]\n' > "$work/deploy/prod/kustomization.yaml"
+  printf 'resources: [../base]\n' > "$work/deploy/dev/kustomization.yaml"
+  printf 'resources: [prod]\n' > "$work/deploy/kustomization.yaml"
+}
+reset_base_fixture
+invoke none > "$work/log" 2>&1 || fail "healthy base/prod/dev WebApp refused: $(cat "$work/log")"
+yq -o=json -I=0 '.' "$work/deploy/base/webapp.yaml" | jq -s -e --arg image "ghcr.io/devantler-tech/app@$image_digest" '
+  . == [
+    {apiVersion:"v1",kind:"ConfigMap",metadata:{name:"unrelated"},data:{literal:"keep me"}},
+    {apiVersion:"kro.run/v1alpha1",kind:"WebApp",metadata:{name:"app",namespace:"app"},
+      spec:{name:"app",image:$image,host:"example.invalid"}}
+  ]' > /dev/null || fail 'did not pin only the selected image in base/webapp.yaml'
+[[ ! -e "$work/deploy/webapp.yaml" ]] || fail 'base layout created a flat webapp.yaml'
+grep -qx "digest=$image_digest" "$work/output" || fail 'base layout omitted the verified image output'
+# Each ambiguous, linked or incomplete base layout is refused before any external observation
+# and leaves every manifest unchanged.
+for layout in both flat-beside-empty-base missing-file linked-base dangling-base base-file linked-file; do
+  reset_base_fixture
+  case "$layout" in
+    both) cp "$work/deploy/base/webapp.yaml" "$work/deploy/webapp.yaml" ;;
+    flat-beside-empty-base) mv "$work/deploy/base/webapp.yaml" "$work/deploy/webapp.yaml" ;;
+    missing-file) mv "$work/deploy/base/webapp.yaml" "$work/deploy/prod/webapp.yaml" ;;
+    linked-base) mv "$work/deploy/base" "$work/shared-base" && ln -s ../shared-base "$work/deploy/base" ;;
+    dangling-base) rm -rf "$work/deploy/base" && ln -s ../missing "$work/deploy/base" ;;
+    base-file) rm -rf "$work/deploy/base" && cp "$work/before.yaml" "$work/deploy/base" ;;
+    linked-file) mv "$work/deploy/base/webapp.yaml" "$work/deploy/prod/webapp.yaml" &&
+      ln -s ../prod/webapp.yaml "$work/deploy/base/webapp.yaml" ;;
+  esac
+  find "$work/deploy" -type f -exec shasum {} + | sort > "$work/deploy-before.sums"
+  if invoke none > "$work/log" 2>&1; then fail "accepted base layout: $layout"; fi
+  [[ ! -s "$work/output" && ! -s "$work/reads" ]] || fail "base layout $layout reached verification"
+  case "$layout" in
+    both|flat-beside-empty-base) expected='ambiguous WebApp manifest' ;;
+    linked-base|dangling-base|base-file) expected='deployment directories must be regular source directories' ;;
+    missing-file|linked-file) expected='require a regular webapp.yaml' ;;
+  esac
+  grep -qF "$expected" "$work/log" || fail "base layout $layout refused for the wrong reason: $(grep '::error::' "$work/log")"
+  find "$work/deploy" -type f -exec shasum {} + | sort | cmp -s - "$work/deploy-before.sums" ||
+    fail "refused base layout $layout changed manifests"
+done
 echo 'prebuilt-webapp: real YAML pinning and source/CI/provenance/partial-observation refusals pass'

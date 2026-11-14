@@ -43,7 +43,15 @@ for component in "${components[@]}"; do
   cursor="$cursor/$component"
   [[ -d "$cursor" && ! -L "$cursor" ]] || fail 'deployment directories must be regular source directories'
 done
-file="$cursor/webapp.yaml"
+# A deployment directory split into base/prod/dev overlays keeps the WebApp in base/. Without a
+# base entry the flat layout is unchanged; a flat webapp.yaml beside base/ is ambiguous.
+manifest_dir="$cursor"
+if [[ -e "$cursor/base" || -L "$cursor/base" ]]; then
+  [[ -d "$cursor/base" && ! -L "$cursor/base" ]] || fail 'deployment directories must be regular source directories'
+  [[ ! -e "$cursor/webapp.yaml" && ! -L "$cursor/webapp.yaml" ]] || fail 'ambiguous WebApp manifest: webapp.yaml exists beside base/'
+  manifest_dir="$cursor/base"
+fi
+file="$manifest_dir/webapp.yaml"
 [[ -f "$file" && ! -L "$file" ]] || fail 'require a regular webapp.yaml'
 unsafe="$(find "$cursor" ! -type f ! -type d -print -quit)" || fail 'cannot inspect the complete deployment directory'
 [[ -z "$unsafe" ]] || fail 'deployment artifacts cannot contain linked or special files'

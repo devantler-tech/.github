@@ -663,6 +663,125 @@ nothing_pushed "publish-app with an unparsable manifest"
 refused_with "publish-app with an unparsable manifest" "FAILED at 🔍 Validate the deployment manifest"
 echo "ok   publish-app refuses a bad manifest before pushing anything"
 
+# ---- 2b. publish-app: a base/prod/dev overlay layout keeps the app manifest in base/ ------------
+
+new_base_app() { # <dir> [deploy dir] — the same app, split into base/prod/dev with the container in base/
+  local deploy="$1/${2:-deploy}"
+  new_app "$1"
+  [[ "$deploy" == "$1/deploy" ]] || mv "$1/deploy" "$deploy"
+  mkdir -p "$deploy/base" "$deploy/prod" "$deploy/dev"
+  mv "$deploy/deployment.yaml" "$deploy/base/deployment.yaml"
+  printf 'resources: [deployment.yaml]\n' >"$deploy/base/kustomization.yaml"
+  printf 'resources: [../base]\n' >"$deploy/prod/kustomization.yaml"
+  printf 'resources: [../base]\n' >"$deploy/dev/kustomization.yaml"
+  printf 'resources: [prod]\n' >"$deploy/kustomization.yaml"
+}
+
+# The flat layout resolves to the same file as before, and validation hands the pin that file.
+wd="$scratch/app-flat"
+new_app "$wd"
+run_job "$app" publish "$wd" tag v1.2.3 app-name=app ||
+  fail "publish-app failed a good flat release: $(cat "$log")"
+grep -qxF 'manifest.file=./deploy/deployment.yaml' "$sim_outputs" ||
+  fail "publish-app did not resolve the flat manifest; outputs: $(cat "$sim_outputs")"
+grep -qF "flux push artifact oci://ghcr.io/devantler-tech/app/manifests:default-staging-123-2 --path=./deploy " "$calls" ||
+  fail "publish-app no longer pushes the whole flat deploy-path; calls: $(cat "$calls")"
+echo "ok   publish-app resolves a flat layout to deploy-path/deployment.yaml, as before"
+
+for deploy in deploy k8s; do
+  wd="$scratch/app-base-$deploy"
+  new_base_app "$wd" "$deploy"
+  passed=(app-name=app)
+  [[ "$deploy" == deploy ]] || passed+=("deploy-path=./$deploy")
+  run_job "$app" publish "$wd" tag v1.2.3 "${passed[@]}" ||
+    fail "publish-app failed a good base/prod/dev release in ./$deploy: $(cat "$log")"
+  grep -qxF "manifest.file=./$deploy/base/deployment.yaml" "$sim_outputs" ||
+    fail "publish-app did not resolve the base manifest in ./$deploy; outputs: $(cat "$sim_outputs")"
+  pinned="$(yq '.spec.template.spec.containers[] | select(.name == "app") | .image' \
+    "$wd/$deploy/base/deployment.yaml")"
+  [[ "$pinned" == "ghcr.io/devantler-tech/app@$image_digest" ]] ||
+    fail "publish-app did not pin the built digest into ./$deploy/base/deployment.yaml; got: $pinned"
+  sidecar="$(yq '.spec.template.spec.containers[] | select(.name == "sidecar") | .image' \
+    "$wd/$deploy/base/deployment.yaml")"
+  [[ "$sidecar" == "ghcr.io/devantler-tech/sidecar:1.0.0" ]] || fail "publish-app changed another container: $sidecar"
+  [[ ! -e "$wd/$deploy/deployment.yaml" ]] || fail "publish-app created a flat manifest beside base/"
+  grep -qF "flux push artifact oci://ghcr.io/devantler-tech/app/manifests:default-staging-123-2 --path=./$deploy " "$calls" ||
+    fail "publish-app did not push the whole ./$deploy directory; calls: $(cat "$calls")"
+  [[ "$(head -n 1 "$calls")" == "image push 🐳 Build & push image" ]] ||
+    fail "publish-app's first registry write is not the image push in the base layout"
+done
+echo "ok   publish-app pins the app container in deploy-path/base/deployment.yaml and pushes the whole directory"
+
+# Every ambiguous or linked base layout is refused before the first registry write.
+wd="$scratch/app-base-and-flat"
+new_base_app "$wd"
+cp "$wd/deploy/base/deployment.yaml" "$wd/deploy/deployment.yaml"
+if run_job "$app" publish "$wd" tag v1.2.3 app-name=app; then
+  fail "publish-app accepted both a flat and a base app manifest"
+fi
+nothing_pushed "publish-app with both a flat and a base manifest"
+refused_with "publish-app with both a flat and a base manifest" "ambiguous app manifest: ./deploy/deployment.yaml exists beside ./deploy/base"
+
+wd="$scratch/app-flat-and-empty-base"
+new_app "$wd"
+mkdir -p "$wd/deploy/base"
+if run_job "$app" publish "$wd" tag v1.2.3 app-name=app; then
+  fail "publish-app accepted a flat app manifest beside a base directory"
+fi
+nothing_pushed "publish-app with a flat manifest beside base/"
+refused_with "publish-app with a flat manifest beside base/" "ambiguous app manifest"
+
+wd="$scratch/app-base-without-file"
+new_base_app "$wd"
+mv "$wd/deploy/base/deployment.yaml" "$wd/deploy/prod/deployment.yaml"
+if run_job "$app" publish "$wd" tag v1.2.3 app-name=app; then
+  fail "publish-app accepted a base directory without the app manifest"
+fi
+nothing_pushed "publish-app with a base directory that lacks the app manifest"
+refused_with "publish-app with a base directory that lacks the app manifest" "manifest ./deploy/base/deployment.yaml not found"
+
+wd="$scratch/app-linked-base"
+new_base_app "$wd"
+mv "$wd/deploy/base" "$wd/shared-base"
+ln -s ../shared-base "$wd/deploy/base"
+if run_job "$app" publish "$wd" tag v1.2.3 app-name=app; then
+  fail "publish-app accepted a linked base directory"
+fi
+nothing_pushed "publish-app with a linked base directory"
+refused_with "publish-app with a linked base directory" "./deploy/base must be a regular directory, not a link or a file"
+
+wd="$scratch/app-dangling-base"
+new_app "$wd"
+rm "$wd/deploy/deployment.yaml"
+ln -s ../missing "$wd/deploy/base"
+if run_job "$app" publish "$wd" tag v1.2.3 app-name=app; then
+  fail "publish-app accepted a dangling base link"
+fi
+nothing_pushed "publish-app with a dangling base link"
+refused_with "publish-app with a dangling base link" "./deploy/base must be a regular directory"
+
+wd="$scratch/app-base-file"
+new_app "$wd"
+mv "$wd/deploy/deployment.yaml" "$wd/deploy/base"
+if run_job "$app" publish "$wd" tag v1.2.3 app-name=app; then
+  fail "publish-app accepted a base file instead of a directory"
+fi
+nothing_pushed "publish-app with a base file"
+refused_with "publish-app with a base file" "./deploy/base must be a regular directory"
+
+wd="$scratch/app-linked-base-manifest"
+new_base_app "$wd"
+mv "$wd/deploy/base/deployment.yaml" "$wd/deploy/prod/deployment.yaml"
+ln -s ../prod/deployment.yaml "$wd/deploy/base/deployment.yaml"
+if run_job "$app" publish "$wd" tag v1.2.3 app-name=app; then
+  fail "publish-app accepted a linked base app manifest"
+fi
+nothing_pushed "publish-app with a linked base app manifest"
+refused_with "publish-app with a linked base app manifest" "manifest ./deploy/base/deployment.yaml must be a regular file, not a link"
+[[ "$(yq '.spec.template.spec.containers[] | select(.name == "app") | .image' "$wd/deploy/prod/deployment.yaml")" == \
+  "ghcr.io/devantler-tech/app:placeholder" ]] || fail "publish-app changed the target of a linked base manifest"
+echo "ok   publish-app refuses an ambiguous, linked or incomplete base layout before pushing anything"
+
 # ---- 3. both workflows: only a complete semantic-version tag publishes --------------------------
 
 # tag|published version. SemVer 2.0.0 examples, including its own edge cases.

@@ -633,11 +633,13 @@ jobs:
       packages: write # push image + manifests OCI artifact
       id-token: write # keyless cosign signing
     with:
-      app-name: my-app # container name in deploy/deployment.yaml
+      app-name: my-app # container name in deploy/deployment.yaml (or deploy/base/deployment.yaml)
       deploy-path: ./deploy # optional
 ```
 
-> **Note:** Must be invoked from a complete semantic-version tag (`vMAJOR.MINOR.PATCH`, optionally with `-PRERELEASE` and `+BUILD`) — Docker semver tagging and Flux `OCIRepository` semver selection depend on it. Anything else, such as `v1.2.3garbage` or a version whose numbers exceed 15 digits, is refused before publishing; build metadata is dropped from the published version because an OCI tag cannot carry `+`. The `app-name` container check on `deploy-path/deployment.yaml` also runs before anything is pushed, so a bad manifest leaves the registry untouched. The calling job must grant `packages: write` and `id-token: write` (and `contents: read` for checkout); no secrets are required (auth uses the GHCR-scoped `GITHUB_TOKEN`).
+> **Note:** Must be invoked from a complete semantic-version tag (`vMAJOR.MINOR.PATCH`, optionally with `-PRERELEASE` and `+BUILD`) — Docker semver tagging and Flux `OCIRepository` semver selection depend on it. Anything else, such as `v1.2.3garbage` or a version whose numbers exceed 15 digits, is refused before publishing; build metadata is dropped from the published version because an OCI tag cannot carry `+`. The `app-name` container check on the app manifest also runs before anything is pushed, so a bad manifest leaves the registry untouched. The calling job must grant `packages: write` and `id-token: write` (and `contents: read` for checkout); no secrets are required (auth uses the GHCR-scoped `GITHUB_TOKEN`).
+>
+> **App manifest location:** the app manifest is `deploy-path/deployment.yaml` (`webapp.yaml` in prebuilt WebApp mode). A product that splits `deploy-path` into `base`, `prod` and `dev` kustomize overlays keeps it in `deploy-path/base/` instead: whenever `deploy-path/base` exists, only `base/deployment.yaml` (or `base/webapp.yaml`) is validated and pinned. Publication stops before any registry write when a flat manifest sits beside `base/`, when `base` is a link or a file, when `base/` lacks the manifest, or when that manifest is a link. The whole `deploy-path` directory is still the signed manifests artifact.
 
 #### Secrets and Inputs
 
@@ -664,7 +666,7 @@ jobs:
 
 Enable `enable-prebuilt-webapp`, `enable-caller-pin` and `enable-signed-promotion` together to reuse the caller's tested image without a raw-source build. Supply all four prebuilt evidence inputs. The image must belong to the calling repository, with the same source commit as the release tag. Its original signer must be that repository's exact `.github/workflows/ci.yaml@refs/heads/main` identity. Complete public GitHub observations must establish successful main-push CI at the specified current attempt. Private or unreadable CI is not supported by this mode; it adds no token permissions.
 
-Before any registry content write, Cosign verifies the original signature and SLSA source, subject, build, production-template profile, public digest and CI claims. A regular `webapp.yaml` in the bounded relative deployment directory must contain exactly one `kro.run/v1alpha1` WebApp. Its metadata name, namespace and spec name must equal `app-name`. Only its image is pinned; unrelated document values are preserved. Linked directories, linked files and special files are refused. This validates image selection, not the full Platform schema or controller behavior.
+Before any registry content write, Cosign verifies the original signature and SLSA source, subject, build, production-template profile, public digest and CI claims. A regular `webapp.yaml` in the bounded relative deployment directory (in its regular `base/` subdirectory when one exists) must contain exactly one `kro.run/v1alpha1` WebApp. Its metadata name, namespace and spec name must equal `app-name`. Only its image is pinned; unrelated document values are preserved. Linked directories, linked files and special files are refused. This validates image selection, not the full Platform schema or controller behavior.
 
 The existing signed-promotion path then signs and verifies both unchanged digests with the paired publication claims plus the public digest, profile and original CI/producer binding. Stable/prerelease tag behavior is unchanged. Prebuilt recovery is unsupported: admission rejects the combined inputs, and legacy recovery independently refuses prebuilt-marked signatures even when the mode input is omitted. Original main-CI provenance remains attached to the image. Caller and Platform verifier adoption require a separately reviewed immutable publisher pin; no consumer is activated here. Rollout review and gate retirement are tracked in #684.
 
