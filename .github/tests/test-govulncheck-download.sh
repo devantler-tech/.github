@@ -60,7 +60,7 @@ blocks 'a retried scan' '(.runs.steps[] | select(.id == "scan") | .run) = "bash 
 # The load must cover exactly what the scan reads: the same ./... pattern, without tests.
 script="$root/.github/actions/govulncheck/download.sh"
 retry="$root/.scripts/retry.sh"
-grep -qF '"$scanner" -format=json -scan=symbol ./...)' "$root/.github/actions/govulncheck/scan.sh" ||
+grep -qF '"${scan_command[@]}" -format=json -scan=symbol ./...)' "$root/.github/actions/govulncheck/scan.sh" ||
   fail 'the scan must load ./... without tests, as the download does'
 grep -qF 'bash "$retry" go list -deps ./... >/dev/null' "$script" ||
   fail 'the download must load the packages the scan reads, through the retry helper'

@@ -6,10 +6,44 @@ set -euo pipefail
 scanner="$1" module="$2" allow_file="${3-}" output_file="${4-}"
 script_dir="$(cd "$(dirname "$0")" && pwd)"
 work="$(mktemp -d)"
-trap 'rm -rf "$work"' EXIT
+monitor_pid=''
+stop_monitor() {
+  if [[ -n "$monitor_pid" ]]; then
+    kill "$monitor_pid" 2>/dev/null || true
+    wait "$monitor_pid" 2>/dev/null || true
+    monitor_pid=''
+  fi
+}
+cleanup() {
+  stop_monitor
+  rm -rf "$work"
+}
+trap cleanup EXIT
+
+scan_command=("$scanner")
+if [[ "$(uname -s)" == Linux ]]; then
+  # Stream aggregate host pressure while the scanner is alive: a lost runner
+  # cannot upload an after-the-fact report. Never print processes or environment.
+  echo 'govulncheck-resource sample interval_seconds=30 max_samples=49' >&2
+  if command -v vmstat >/dev/null 2>&1; then
+    vmstat --wide --one-header 30 49 >&2 &
+    monitor_pid=$!
+  else
+    echo '::warning::vmstat is unavailable; live resource samples cannot be collected.' >&2
+  fi
+  if [[ -x /usr/bin/time ]]; then
+    scan_command=(/usr/bin/time --quiet -f 'govulncheck-resource usage elapsed_seconds=%e max_rss_kib=%M user_seconds=%U system_seconds=%S' "$scanner")
+  else
+    echo '::warning::GNU time is unavailable; scanner peak memory cannot be collected.' >&2
+  fi
+fi
 
 rc=0
-(cd "$module" && "$scanner" -format=json -scan=symbol ./...) >"$work/scan.json" || rc=$?
+(cd "$module" && "${scan_command[@]}" -format=json -scan=symbol ./...) >"$work/scan.json" || rc=$?
+stop_monitor
+if [[ "$(uname -s)" == Linux ]]; then
+  printf 'govulncheck-resource scanner_exit=%s\n' "$rc" >&2
+fi
 if [[ -n "$output_file" ]]; then
   cp "$work/scan.json" "$output_file"
 fi
