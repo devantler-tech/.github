@@ -13,6 +13,8 @@ set -euo pipefail
 [[ "$*" == '-format=json -scan=symbol ./...' ]] || exit 90
 [[ "$PWD" == "$EXPECTED_DIR" ]] || exit 91
 cat "$SCAN_FIXTURE"
+sleep "${SCAN_DELAY:-0}"
+if [[ "$SCAN_STATUS" == killed ]]; then kill -KILL "$$"; fi
 exit "$SCAN_STATUS"
 SH
 chmod +x "$work/scanner"
@@ -39,6 +41,27 @@ check() {
     1) grep -qxF 'verdict=blocking' "$GITHUB_OUTPUT" ;;
     *) [[ ! -s "$GITHUB_OUTPUT" ]] ;;
   esac
+  if [[ "$(uname -s)" == Linux ]]; then
+    local scanner_status="$SCAN_STATUS"
+    [[ "$scanner_status" != killed ]] || scanner_status=137
+    [[ "$out" == *'govulncheck-resource sample interval_seconds=30 max_samples=49'* ]] || {
+      echo "FAIL: $label: Linux resource sampling was not announced" >&2
+      exit 1
+    }
+    if [[ -x /usr/bin/time ]]; then
+      [[ "$out" == *'govulncheck-resource usage elapsed_seconds='* &&
+        "$out" == *"govulncheck-resource scanner_exit=$scanner_status"* ]] || {
+        echo "FAIL: $label: resource timing lost the scanner's exit status" >&2
+        exit 1
+      }
+    fi
+    if [[ "${SCAN_DELAY:-0}" == 1 ]]; then
+      [[ "$out" == *'procs'*'memory'*'swap'*'io'*'system'*'cpu'* ]] || {
+        echo "FAIL: $label: native vmstat did not produce a resource sample" >&2
+        exit 1
+      }
+    fi
+  fi
   echo "PASS: $label"
 }
 
@@ -52,8 +75,17 @@ printf '%s\n' "$config" "$uncalled" >"$SCAN_FIXTURE"
 check 'imported but uncalled advisories do not block' 0 'No blocking vulnerabilities'
 printf '%s\n' "$config" >"$SCAN_FIXTURE"
 check 'clean scan passes' 0 'No blocking vulnerabilities'
+if [[ "$(uname -s)" == Linux ]]; then
+  export SCAN_DELAY=1
+  check 'native resource sampler completes with the scanner' 0 'No blocking vulnerabilities'
+  unset SCAN_DELAY
+fi
 export SCAN_STATUS=2
 check 'scanner failure is never interpreted as clean' 2 'operational error' "$work/allow.txt"
+export SCAN_STATUS=137
+check 'scanner termination preserves its status and has no verdict' 137 'operational error' "$work/allow.txt"
+export SCAN_STATUS=killed
+check 'a killed scanner cannot publish a clean verdict' 137 'operational error' "$work/allow.txt"
 export SCAN_STATUS=0
 : >"$SCAN_FIXTURE"
 check 'empty output fails closed' 2 'invalid scan output'
