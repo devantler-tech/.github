@@ -2,12 +2,13 @@
 # Exercise the shipped publication step against an offline registry boundary.
 # Signing/verification failure must not expose an unsigned semantic-version tag.
 set -euo pipefail
-# The live configuration caller must opt in only through a SHA-pinned publisher.
+# The live caller must satisfy its tag-only signing contract. Legacy reusable
+# callers retain independently approved signer and publisher-content checks.
 validate_caller() {
   bash .github/scripts/check-manifests-caller.sh "$1"
 }
 validate_caller .github/workflows/cd.yaml || {
-  echo 'FAIL: configuration publication requires a SHA-pinned, verified-promotion caller' >&2
+  echo 'FAIL: configuration publication requires the verified signing contract' >&2
   exit 1
 }
 bash .github/tests/fixtures/manifests-caller-contract.sh
@@ -162,22 +163,8 @@ run_case none 1.2.3 "$default_mode" '' 123 || fail 'legacy default changed'
 echo 'ok default-off preserves existing callers; opted-in malformed identities fail before writes'
 echo 'ok default manifests latest is signed, stable-only and bound to the produced digest'
 
-# Keep these controls in required CI, using the same predicate as the real caller.
-for mutation in promotion pin moving family revision; do
-  fixture="$scratch/caller-$mutation.yaml"
-  cp .github/workflows/cd.yaml "$fixture"
-  case "$mutation" in
-    promotion) yq -i '.jobs["publish-manifests"].with["enable-signed-promotion"] = false' "$fixture" ;;
-    pin) yq -i '.jobs["publish-manifests"].with["enable-caller-pin"] = false' "$fixture" ;;
-    moving) yq -i '.jobs["publish-manifests"].uses |= sub("@[0-9a-f]{40}$"; "@main")' "$fixture" ;;
-    family) yq -i '.jobs["publish-manifests"].uses |= sub("publish-manifests"; "publish-app")' "$fixture" ;;
-    revision) yq -i '.jobs["publish-manifests"].uses |= sub("@[0-9a-f]{40}$"; "@0000000000000000000000000000000000000000")' "$fixture" ;;
-  esac
-  if validate_caller "$fixture" 2>/dev/null; then
-    fail "configuration caller accepted the $mutation regression"
-  fi
-done
-echo 'ok configuration caller refuses missing controls, moving refs and the wrong workflow family'
+# The caller fixture above covers both signing families, including missing
+# controls, moving refs, the wrong publisher, callable triggers and source swaps.
 
 if [[ "$#" == 0 ]]; then
   for mutation in early-version early-latest prerelease-latest mutable-alias; do
