@@ -57,7 +57,11 @@ make_guard() {
 }
 make_guard "$work/unavailable" "$work/offline.sh"
 make_guard "file://$work/source" "$work/fetching.sh"
-yq -o=json '.' "$root/.github/workflows/cd.yaml" >"$work/baseline.json"
+# The reusable publisher retains its independent legacy admission contract even
+# after this repository switches its live caller to its own release identity.
+cat >"$work/baseline.json" <<'JSON'
+{"on":{"push":{"tags":["v*"]}},"jobs":{"publish-manifests":{"with":{"enable-caller-pin":true,"enable-signed-promotion":true,"oci-name":"devantler-tech/github-config"}}}}
+JSON
 prefix='devantler-tech/.github/.github/workflows/publish-manifests.yaml'
 mutate() {
   jq --arg prefix "$prefix" --arg reviewed "$reviewed" --arg release "$release" \
@@ -114,6 +118,8 @@ zero ref	.jobs["publish-manifests"].uses=$prefix+"@00000000000000000000000000000
 trailing newline	.jobs["publish-manifests"].uses=$prefix+"@"+$reviewed+"\n"	full immutable publisher reference
 lookalike owner	.jobs["publish-manifests"].uses="outside/.github/.github/workflows/publish-manifests.yaml@"+$reviewed	full immutable publisher reference
 lookalike path	.jobs["publish-manifests"].uses="devantler-tech/.github/.github/workflows/publish-manifestsXyaml@"+$reviewed	full immutable publisher reference
+wrong workflow family	.jobs["publish-manifests"].uses="devantler-tech/.github/.github/workflows/publish-app.yaml@"+$reviewed	full immutable publisher reference
+callable legacy caller	.on.workflow_call={}	tag-only own-release signing contract
 missing pin verification	del(.jobs["publish-manifests"].with["enable-caller-pin"])	verified-promotion inputs
 disabled promotion	.jobs["publish-manifests"].with["enable-signed-promotion"]=false	verified-promotion inputs
 wrong artifact	.jobs["publish-manifests"].with["oci-name"]="devantler-tech/other"	verified-promotion inputs
@@ -130,3 +136,4 @@ if run_guard "$work/fetching.sh" "$work/consumer" >"$work/result" 2>&1; then
 fi
 grep -qF 'unreviewed publisher content' "$work/result" || fail 'fetched content refusal had the wrong cause'
 echo 'ok caller requires explicit signer approval and reviewed contents, modes and safe inputs'
+bash "$root/.github/tests/fixtures/manifests-own-caller-contract.sh"
