@@ -28,7 +28,7 @@ if [[ "${1:-}" == --live ]]; then
   # Preserve cleanup even if a native assertion fails.
   trap 'bash "$work/cleanup.sh"; rm -rf "$work"' EXIT
   [[ "$(stat -c %a "$SWAP_FILE")" == 600 ]] || fail 'swap must be private'
-  bytes="$(swapon --show=NAME,SIZE --bytes --json | jq -r --arg p "$SWAP_FILE" '.swapdevices[] | select(.name == $p) | .size')"
+  bytes="$(swapon --show=NAME,SIZE --bytes --noheadings --raw | awk -v p="$SWAP_FILE" '$1 == p { print $2 }')"
   [[ "$bytes" =~ ^[0-9]+$ && "$bytes" -ge 4294963200 ]] || fail 'native kernel did not activate four GiB of swap'
   bash "$work/cleanup.sh"
   [[ ! -e "$SWAP_FILE" ]] || fail 'native cleanup left its file behind'
