@@ -46,7 +46,7 @@ inputs:
 
 outputs:
   version:
-    description: "The published version: the tag without its `v` and build metadata."
+    description: "The published version: the tag without its `v`."
     value: ${{ steps.admit.outputs.version }}
   image-digest:
     description: "The signed image digest (empty in manifests mode)."

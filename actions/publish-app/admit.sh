@@ -49,20 +49,20 @@ check_inputs() {
   fi
 }
 
-# The ref must be refs/tags/v<SemVer 2.0.0>. Keep this identical to the tag step of the reusable
-# publish workflows: Flux and docker/metadata-action must both be able to read and order it.
+# The ref must be refs/tags/v<SemVer 2.0.0> without build metadata: Flux and docker/metadata-action
+# must both be able to read and order it. The tag is part of the signing identity, and the
+# platform verifies that identity with a grammar that has no build suffix. An OCI tag cannot
+# carry `+` either, so v1.2.3+a and v1.2.3+b would both publish as 1.2.3.
 check_release_tag() {
-  local ref="${GITHUB_REF:-}" num pre build semver numbers too_long
+  local ref="${GITHUB_REF:-}" num pre semver numbers too_long
   [[ "$ref" == refs/tags/* ]] || fail 'publish-app must run on a release tag (refs/tags/v<semver>), not a branch or pull request ref'
   tag="${ref#refs/tags/}"
   num='(0|[1-9][0-9]*)'
   pre='(0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*)'
-  build='[0-9A-Za-z-]+'
-  semver="^v${num}\.${num}\.${num}(-${pre}(\.${pre})*)?(\+${build}(\.${build})*)?$"
-  [[ "$tag" =~ $semver ]] || fail 'the release tag must be a complete semantic version vMAJOR.MINOR.PATCH[-PRERELEASE][+BUILD]'
-  # An OCI tag cannot carry `+`, and SemVer ignores build metadata when ordering versions.
+  case "$tag" in *+*) fail "the release tag $tag carries build metadata; tag the release as vMAJOR.MINOR.PATCH[-PRERELEASE] without a +BUILD suffix" ;; esac
+  semver="^v${num}\.${num}\.${num}(-${pre}(\.${pre})*)?$"
+  [[ "$tag" =~ $semver ]] || fail 'the release tag must be a complete semantic version vMAJOR.MINOR.PATCH[-PRERELEASE]'
   version="${tag#v}"
-  version="${version%%+*}"
   numbers=".${version%%-*}."
   case "$version" in *-*) numbers="${numbers}${version#*-}." ;; esac
   too_long='\.[0-9]{16,}\.'
