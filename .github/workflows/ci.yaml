@@ -3653,6 +3653,11 @@ jobs:
       - name: Reject memory override wiring and parser regressions
         run: bash .github/tests/test-go-memory-limit-controls.sh
 
+      - name: Exercise scanner swap preparation and failure controls
+        run: bash .github/tests/test-go-analysis-swap.sh
+      - name: Prove scanner swap activation and cleanup on the native kernel
+        run: bash .github/tests/test-go-analysis-swap.sh --live
+
       - name: 🧪 Assert govulncheck keeps a cold-cache-safe finite timeout + GOMEMLIMIT
         run: bash .github/tests/test-govulncheck-timeout.sh
 
