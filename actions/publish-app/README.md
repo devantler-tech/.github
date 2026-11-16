@@ -15,7 +15,7 @@ every revision of a shared publisher.
 
 1. **Admits the release, before any registry contact.** It refuses unless:
    - the run's ref is `refs/tags/v<semver>` (SemVer 2.0.0; a pre-release is allowed, build
-     metadata is dropped from the published version, and every number has at most 15 digits);
+     metadata such as `+build.5` is refused, and every number has at most 15 digits);
    - the calling workflow ref is this repository's own workflow file on that exact tag;
    - the tagged commit is checked out at the workspace root, without a persisted git credential
      (`persist-credentials: false`; the checkout is also the image build context);
@@ -72,7 +72,7 @@ directory on the way, nor the manifest itself, may be a link. A refused value is
 
 | Name | Description |
 |------|-------------|
-| `version` | The published version: the tag without its `v` and build metadata |
+| `version` | The published version: the tag without its `v` |
 | `image-digest` | The signed image digest (empty in `manifests` mode) |
 | `manifests-digest` | The signed manifests artifact digest |
 

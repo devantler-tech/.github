@@ -562,21 +562,24 @@ for ref in refs/heads/main refs/pull/7/merge refs/heads/v1.2.3 v1.2.3; do
   case_ref "$action_dir" "$ref" 'must run on a release tag' || fail "accepted or misjudged non-tag ref $ref: $(cat "$log")"
 done
 long_pre="$(printf 'a%.0s' $(seq 1 130))"
-long_build="$(printf 'b%.0s' $(seq 1 251))"
-for tag in v1.2.3garbage v1.2.3.4 v1.2 v1 1.2.3 V1.2.3 v01.2.3 v1.02.3 v1.2.03 v1.2.3- v1.2.3+ v1.2.3-01 \
-  v1.2.3-rc..1 v1.2.3-rc.1+ v1.2.3+build..1 v1.2.3_build 'v1.2.3 ' ' v1.2.3' v1.2.3-ünicode; do
+long_tag_pre="$(printf 'c%.0s' $(seq 1 251))"
+for tag in v1.2.3garbage v1.2.3.4 v1.2 v1 1.2.3 V1.2.3 v01.2.3 v1.02.3 v1.2.03 v1.2.3- v1.2.3-01 \
+  v1.2.3-rc..1 v1.2.3_build 'v1.2.3 ' ' v1.2.3' v1.2.3-ünicode; do
   case_ref "$action_dir" "refs/tags/$tag" 'complete semantic version' || fail "accepted or misjudged tag '$tag': $(cat "$log")"
 done
-for tag in v9007199254740992.0.0 v1.0.18446744073709551616 v1.2.3-rc.1000000000000000 "v1.2.3+$long_build"; do
+for tag in v1.2.3+build.5 v1.2.3-rc.1+build.5 v1.2.3+ v1.2.3-rc.1+ v1.2.3+build..1; do
+  case_ref "$action_dir" "refs/tags/$tag" 'carries build metadata' || fail "accepted build metadata in tag '$tag': $(cat "$log")"
+done
+for tag in v9007199254740992.0.0 v1.0.18446744073709551616 v1.2.3-rc.1000000000000000 "v1.2.3-$long_tag_pre"; do
   case_ref "$action_dir" "refs/tags/$tag" 'at most 256 characters with numbers of at most 15 digits' ||
     fail "accepted an unreadable version $tag: $(cat "$log")"
 done
 case_ref "$action_dir" "refs/tags/v1.2.3-$long_pre" 'longer than the 128 characters' || fail 'accepted an over-long OCI version'
-echo 'ok   only a complete v<semver> tag ref is admitted, before any registry contact'
+echo 'ok   only a complete v<semver> tag ref without build metadata is admitted, before any registry contact'
 
 for entry in "v0.0.0|0.0.0|latest" "v10.20.30|10.20.30|latest" "v1.2.3-rc.1|1.2.3-rc.1|" \
-  "v1.0.0-alpha.beta.1|1.0.0-alpha.beta.1|" "v1.0.0-x-y-z.--|1.0.0-x-y-z.--|" "v1.2.3+build.5|1.2.3|latest" \
-  "v1.2.3-rc.1+build.5|1.2.3-rc.1|" "v999999999999999.0.0|999999999999999.0.0|latest"; do
+  "v1.0.0-alpha.beta.1|1.0.0-alpha.beta.1|" "v1.0.0-x-y-z.--|1.0.0-x-y-z.--|" \
+  "v999999999999999.0.0|999999999999999.0.0|latest"; do
   IFS='|' read -r tag version latest <<<"$entry"
   setup_case "$released"
   sim_ref="refs/tags/$tag"
