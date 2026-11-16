@@ -712,10 +712,10 @@ jobs:
     # whose peak grows with the module's dependency graph. On large modules (e.g. ones
     # importing Kubernetes / Flux / Talos clients) it can exhaust the hosted runner's RAM,
     # which the host resolves by killing the runner mid-scan (exit 143 / "runner has
-    # received a shutdown signal") — an opaque, retry-resistant failure. GOMEMLIMIT caps
-    # the Go runtime's heap so the GC reclaims aggressively and stays under the host
-    # ceiling instead of OOM-killing; timeout-minutes bounds the worst case to a clear,
-    # fast failure rather than a hung runner.
+    # received a shutdown signal") — an opaque, retry-resistant failure. GOMEMLIMIT is
+    # a soft GC target: live data can still exceed it. The bounded swap preparation
+    # below provides additional headroom without weakening symbol analysis or the
+    # finding gate. It is a mitigation, not attribution of historical runner losses.
     #
     # The deadline lives on the scan STEP, not only the job (#1097). A job that hits its own
     # timeout-minutes ends `cancelled`, and a cancelled required check is terminal: Dependabot
@@ -726,7 +726,8 @@ jobs:
     # and only a timeout, earns exactly one retry. The job ceiling stays finite but covers two
     # attempts plus checkout and setup-go's post-job cache save (measured 6m07s after that
     # 2026-09-06 scan): 2 × 24 + 10 = 58,
-    # rounded to 60. Below that the job cap would pre-empt the retry and end the run
+    # plus two one-minute swap lifecycle steps = 60. Below that the job cap would
+    # pre-empt the retry and end the run
     # `cancelled` again. Guarded by test-govulncheck-timeout and test-govulncheck-timeout-retry.
     timeout-minutes: 60
     env:
@@ -777,6 +778,36 @@ jobs:
           else
             echo "present=false" >> "$GITHUB_OUTPUT"
           fi
+      # Successful large-module scans already approach the runner's RAM ceiling.
+      # GOMEMLIMIT is soft; extra swap lets live data exceed that target without
+      # competing as sharply with the runner agent. This does not establish the
+      # cause of historical runner losses or change the scanner's verdict rules.
+      - name: Prepare bounded swap headroom for the scanner
+        id: scan-swap
+        timeout-minutes: 1
+        shell: bash
+        run: |
+          set -euo pipefail
+          available_kib=$(df -Pk -- "$RUNNER_TEMP" | awk 'NR == 2 { print $4 }')
+          if [[ ! "$available_kib" =~ ^[0-9]+$ ]] || (( available_kib < 8388608 )); then
+            echo '::error::Insufficient disk for 4 GiB of scanner swap plus 4 GiB of free headroom.'
+            exit 1
+          fi
+          swap_file=$(mktemp "$RUNNER_TEMP/govulncheck-swap.XXXXXX")
+          rollback() {
+            status=$?
+            # The file may not have reached swapon yet. Keep the original failure.
+            sudo swapoff -- "$swap_file" 2>/dev/null || true
+            rm -f -- "$swap_file"
+            exit "$status"
+          }
+          trap rollback ERR
+          chmod 600 "$swap_file"
+          sudo fallocate -l 4294967296 -- "$swap_file"
+          sudo mkswap -- "$swap_file"
+          sudo swapon -- "$swap_file"
+          swapon --show=NAME --noheadings --raw | grep -Fx -- "$swap_file"
+          printf 'path=%s\n' "$swap_file" >> "$GITHUB_OUTPUT"
       # Start of the first scan attempt, so the classifier below can tell a scan that ran out
       # of time from one that failed on its own (see the job's timeout-minutes comment).
       - name: ⏱️ Record vulnerability scan start
@@ -848,6 +879,19 @@ jobs:
           work-dir: ${{ needs.changes.outputs.module-directory }}
           go-version-file: ${{ needs.changes.outputs.module-directory }}/go.mod
           allow-file: ${{ steps.govulncheck-allow.outputs.present == 'true' && format('{0}/.govulncheck-allow.txt', needs.changes.outputs.module-directory) || '' }}
+      - name: Retire only this job's scanner swap
+        id: scan-swap-cleanup
+        if: ${{ always() && steps.scan-swap.outputs.path != '' }}
+        timeout-minutes: 1
+        shell: bash
+        env:
+          SWAP_FILE: ${{ steps.scan-swap.outputs.path }}
+        run: |
+          set -euo pipefail
+          if [[ -e "$SWAP_FILE" ]]; then
+            sudo swapoff -- "$SWAP_FILE"
+            rm -- "$SWAP_FILE"
+          fi
   lint:
     name: "\U0001F9F9 Lint - mega-linter"
     timeout-minutes: 15
