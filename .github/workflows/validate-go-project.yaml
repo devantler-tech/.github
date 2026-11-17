@@ -1157,7 +1157,7 @@ jobs:
     name: 📦 Tidy - apply fixes
     needs: [changes, tidy]
     if: ${{ needs.changes.outputs.signed-fixes == 'true' }}
-    uses: devantler-tech/.github/.github/workflows/apply-signed-fixes.yaml@d70d50665465117f01104313e53057374a96a1a3 # v21.7.2
+    uses: devantler-tech/.github/.github/workflows/apply-signed-fixes.yaml@cc156a3693019fdbe9817c46f1a91cd50a124695 # v21.7.3
     permissions:
       contents: read
     with:
@@ -1172,7 +1172,7 @@ jobs:
     name: 🧹 Lint - golangci-lint - apply fixes
     needs: [changes, golangci-lint, apply-tidy-fixes]
     if: ${{ !cancelled() && needs.changes.outputs.signed-fixes == 'true' && needs.golangci-lint.result == 'success' && (needs.apply-tidy-fixes.result == 'success' || needs.apply-tidy-fixes.result == 'skipped') }}
-    uses: devantler-tech/.github/.github/workflows/apply-signed-fixes.yaml@d70d50665465117f01104313e53057374a96a1a3 # v21.7.2
+    uses: devantler-tech/.github/.github/workflows/apply-signed-fixes.yaml@cc156a3693019fdbe9817c46f1a91cd50a124695 # v21.7.3
     permissions:
       contents: read
     with:
@@ -1187,7 +1187,7 @@ jobs:
     name: 🧹 Lint - apply fixes
     needs: [changes, lint, apply-golangci-lint-fixes]
     if: ${{ !cancelled() && needs.changes.outputs.signed-fixes == 'true' && needs.lint.result == 'success' && (needs.apply-golangci-lint-fixes.result == 'success' || needs.apply-golangci-lint-fixes.result == 'skipped') }}
-    uses: devantler-tech/.github/.github/workflows/apply-signed-fixes.yaml@d70d50665465117f01104313e53057374a96a1a3 # v21.7.2
+    uses: devantler-tech/.github/.github/workflows/apply-signed-fixes.yaml@cc156a3693019fdbe9817c46f1a91cd50a124695 # v21.7.3
     permissions:
       contents: read
     with:
