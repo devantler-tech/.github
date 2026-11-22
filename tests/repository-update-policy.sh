@@ -33,7 +33,7 @@ kubectl kustomize "$repo_root/deploy" >"$render" ||
 # because it fills the spec only after that update was computed. Remove the repository
 # from this list, and return its resource to Observe-only, once GitHub reports it
 # archived.
-archiving_repositories=(go-template dotnet-template)
+archiving_repositories=()
 archive_declared_settings=(
   description homepageUrl topics visibility isTemplate
   hasIssues hasProjects hasWiki hasDiscussions hasDownloads

@@ -22,6 +22,6 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
-  # Retired by ADR 0018 (devantler-tech/monorepo#5062): phase 2, archive pending.
+  # Retired by ADR 0018 (devantler-tech/monorepo#5062): archived, phase 3 (Observe-only).
   - go-template.yaml
   - dotnet-template.yaml

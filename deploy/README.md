@@ -168,8 +168,8 @@ other defaultable setting declared at its live value (the provider would otherwi
 send each omitted one as its default), then return to Observe-only once GitHub
 reports the repository archived. `tests/repository-update-policy.sh` admits that
 update only for the repositories it lists as being archived, bound to their external
-names; `go-template` and `dotnet-template` are being archived (ADR 0018,
-devantler-tech/monorepo#5062).
+names. `go-template` and `dotnet-template` were archived this way and are
+Observe-only mirrors (ADR 0018, devantler-tech/monorepo#5062).
 
 Archived repository mirrors are withdrawn before explicit repository deletion
 ([#679](https://github.com/devantler-tech/.github/issues/679)). Removing a mirror
