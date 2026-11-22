@@ -21,7 +21,7 @@ jq -n --arg prefix "$prefix" --arg head "$head" '
   to_entries | map(.key as $index | .value as $name |
     {id:(100+$index),run_id:23,run_attempt:2,head_sha:$head,name:($prefix+$name),status:"completed",conclusion:"success",steps:
       (if $name == "🔍 Detect Changes" then []
-       elif $name == "🛡️ Vulnerability Scan" then [step("🛡️ Scan for known vulnerabilities")]
+       elif $name == "🛡️ Vulnerability Scan" then [step("Prepare the vulnerability scanner"),step("🛡️ Scan for known vulnerabilities")]
        else [step("Restore Go module cache")] +
          (if $name == "🧪 Test" then [{name:"Save Go module cache",status:"completed",conclusion:"skipped"},{name:"Save Go compilation cache",status:"completed",conclusion:"skipped"}]
           elif $name == "📊 Code Coverage" then [{name:"Save Go compilation cache",status:"completed",conclusion:"skipped"}]
@@ -85,10 +85,10 @@ reject_restore_with_summary '.[0].jobs[1].steps[0] |= (.status="private-response
 # including the scanner whose composite owns its module restore.
 reject_restore_with_summary '.[1].jobs[4].steps = []' \
   '.restore_steps == 0 and .states == []' 108 8
-reject_restore_with_summary '.[1].jobs[4].steps[0].conclusion = "failure"' \
-  '.restore_steps == 1 and .states == [{status:"completed",conclusion:"failure"}]' 108 8
+reject_restore_with_summary '.[1].jobs[4].steps[1].conclusion = "failure"' \
+  '.restore_steps == 2 and .states == [{status:"completed",conclusion:"success"},{status:"completed",conclusion:"failure"}]' 108 8
 reject_restore_with_summary '.[1].jobs[4].steps[0] |= (.status="private-response-sentinel" | .conclusion="private-response-sentinel")' \
-  '.states == [{status:"unrecognized",conclusion:"unrecognized"}]' 108 8
+  '.states == [{status:"unrecognized",conclusion:"unrecognized"},{status:"completed",conclusion:"success"}]' 108 8
 # reject_jobs_with_summary — Require rejected job evidence to produce the expected sanitized job summary.
 reject_jobs_with_summary() {
   reject_jobs "$1"
@@ -159,13 +159,15 @@ for id in 101 102 103 104 105 106 107 108; do
   done
   cp "$scratch/before-outcome.log" "$scratch/logs/$id.log"
 done
-# The scanner's supported timeout retry legitimately restores twice. Both
-# observations must be examined rather than accepting an arbitrary one.
-jq '.[1].jobs[4].steps = [{name:"🛡️ Scan for known vulnerabilities",status:"completed",conclusion:"failure"},{name:"🛡️ Scan for known vulnerabilities (retry after timeout)",status:"completed",conclusion:"success"}]' "$scratch/good-jobs.json" >"$scratch/jobs.json"
-cat "$scratch/good-scan.log" "$scratch/good-scan.log" >"$scratch/logs/108.log"
+# Both attempts use the single archive restored during preparation.
+jq '.[1].jobs[4].steps[1].conclusion = "failure" | .[1].jobs[4].steps += [{name:"🛡️ Scan for known vulnerabilities (retry after timeout)",status:"completed",conclusion:"success"}]' "$scratch/good-jobs.json" >"$scratch/jobs.json"
 check pr >"$scratch/out" 2>"$scratch/error" || fail "legitimate scanner retry was rejected: $(cat "$scratch/error")"
+cat "$scratch/good-scan.log" "$scratch/good-scan.log" >"$scratch/logs/108.log"
+if check pr >"$scratch/out" 2>"$scratch/error"; then fail 'scanner retry restored twice'; fi
 cp "$scratch/good-jobs.json" "$scratch/jobs.json"
 cp "$scratch/good-scan.log" "$scratch/logs/108.log"
+reject_jobs 'del(.[1].jobs[4].steps[0])'
+reject_jobs '.[1].jobs[4].steps[0].conclusion = "failure"'
 jq '.event="push"' "$scratch/run.json" >"$scratch/run-next.json"
 mv "$scratch/run-next.json" "$scratch/run.json"
 jq '.[1].jobs[1].steps[1].conclusion="success"' "$scratch/good-jobs.json" >"$scratch/jobs.json"
@@ -294,6 +296,7 @@ done
 # cache policy; a successful job alone never establishes a successful restore.
 jq 'map(.jobs |= map(.steps = []))' "$scratch/jobs.json" >"$scratch/empty-steps-jobs.json"
 jq '.[1].jobs[4].steps = []' "$scratch/jobs.json" >"$scratch/empty-scanner-jobs.json"
+jq '.[1].jobs[4].steps |= map(select(.name != "Prepare the vulnerability scanner"))' "$scratch/jobs.json" >"$scratch/missing-scanner-prepare.json"
 jq '.[1].jobs[1].steps |= map(select(.name != "Save Go module cache"))' "$scratch/jobs.json" >"$scratch/missing-save-jobs.json"
 jq 'map(.jobs |= map(.steps = [{name:"Set up job",status:"completed",conclusion:"success"}]))' "$scratch/jobs.json" >"$scratch/partial-steps-jobs.json"
 cp "$scratch/run.json" "$scratch/collector-main-run.json"
@@ -302,7 +305,7 @@ for collector_mode in main pr; do
     jq '.event = "pull_request"' "$scratch/collector-main-run.json" >"$scratch/run.json"
     export GITHUB_EVENT_NAME=pull_request GITHUB_REF=refs/pull/37/merge
   fi
-  for evidence in empty-steps-jobs.json empty-scanner-jobs.json missing-save-jobs.json partial-steps-jobs.json; do
+  for evidence in empty-steps-jobs.json empty-scanner-jobs.json missing-scanner-prepare.json missing-save-jobs.json partial-steps-jobs.json; do
     : >"$scratch/calls"
     PATH="$scratch/bin:$PATH" LAG_READS=2 LAG_JOBS="$evidence" bash "$helper" observe >"$scratch/out" 2>"$scratch/error" ||
       fail "collector rejected completed jobs whose step metadata later arrived ($collector_mode, $evidence): $(cat "$scratch/error")"

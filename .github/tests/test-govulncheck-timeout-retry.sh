@@ -7,7 +7,7 @@
 # elapsed time whether the attempt ran out of time. Only a timeout earns exactly one retry; any
 # other failure (a reachable advisory, an operational error) fails the job immediately, so a real
 # finding is never retried away. The job-level ceiling stays finite but sits above two attempts
-# plus the post-job cache save, so it cannot pre-empt the retry and turn the run `cancelled` again.
+# plus job setup and cleanup, so it cannot pre-empt the retry and turn the run `cancelled` again.
 #
 # This script checks that structure on the given workflow and then drives the classifier's own
 # run block through each case. test-govulncheck-timeout-retry-blocks.sh proves each structural
@@ -18,8 +18,7 @@
 set -euo pipefail
 
 workflow="${1:-.github/workflows/validate-go-project.yaml}"
-# Minutes of job time beyond two attempts: checkout/setup plus setup-go's post-job cache save,
-# which measured 6m07s after a passing scan on ksail (#1097, 2026-09-06 comment).
+# Minutes of job time beyond two attempts for preparation, checkout and cleanup.
 overhead_minutes=10
 
 fail() {
@@ -45,17 +44,31 @@ retry_index="$(
 )"
 
 # ── structure ────────────────────────────────────────────────────────────────────────────────
-for id in scan-clock scan scan-timeout; do
+for id in scan-prepare scan-clock scan scan-timeout; do
   [[ -n "$(step_index "$id")" ]] || fail "govulncheck has no step with id '$id'; the timeout retry cannot work without it"
 done
 [[ -n "$retry_index" && "$(grep -c . <<<"$retry_index")" -eq 1 ]] ||
   fail "govulncheck must have exactly one retry step gated on steps.scan-timeout.outputs.retry; found: '${retry_index}'"
 
+prepare_i="$(step_index scan-prepare)"
 clock_i="$(step_index scan-clock)"
 scan_i="$(step_index scan)"
 classify_i="$(step_index scan-timeout)"
-((clock_i < scan_i && scan_i < classify_i && classify_i < retry_index)) ||
-  fail "govulncheck steps must run clock → scan → classifier → retry; got indices ${clock_i}, ${scan_i}, ${classify_i}, ${retry_index}"
+((prepare_i < clock_i && clock_i < scan_i && scan_i < classify_i && classify_i < retry_index)) ||
+  fail "govulncheck steps must run prepare → clock → scan → classifier → retry; got indices ${prepare_i}, ${clock_i}, ${scan_i}, ${classify_i}, ${retry_index}"
+
+[[ "$(step scan-prepare '.uses')" == "$(step scan '.uses')" &&
+  "$(step scan-prepare '.with.phase')" == '"prepare"' &&
+  "$(step scan-prepare '.with | del(.phase)')" == "$(step scan '.with | del(.phase, ."allow-file")')" &&
+  "$(step scan-prepare '.if')" == 'null' &&
+  "$(step scan-prepare '."continue-on-error" // false')" == 'false' ]] ||
+  fail 'the same scanner must prepare the module once before either timed attempt'
+[[ "$(step scan '.with.phase')" == '"scan"' ]] ||
+  fail 'each timed attempt must scan with the prepared module cache'
+prepare_timeout="$(step scan-prepare '."timeout-minutes"')"
+if [[ ! "$prepare_timeout" =~ ^[0-9]+$ ]] || ((prepare_timeout <= 0 || prepare_timeout >= overhead_minutes)); then
+  fail 'scanner preparation must have a finite deadline within the job overhead budget'
+fi
 
 # shellcheck disable=SC2016 # the literal command text the step must contain, never an expansion
 grep -qF 'started=$(date +%s)' <<<"$(step scan-clock '.run')" ||

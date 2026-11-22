@@ -51,7 +51,7 @@ diagnose_restore() {
     if length == 1 then .[0] else error("expected one fixture job") end |
     .name as $name |
     (if $name == ($prefix + "🛡️ Vulnerability Scan")
-     then ["🛡️ Scan for known vulnerabilities", "🛡️ Scan for known vulnerabilities (retry after timeout)"]
+     then ["Prepare the vulnerability scanner", "🛡️ Scan for known vulnerabilities", "🛡️ Scan for known vulnerabilities (retry after timeout)"]
      else ["Restore Go module cache"] end) as $watched |
     [.steps[] | select(.name | IN($watched[]))] as $restore |
     {job_id:$id, fixture_index:($names | index($name | ltrimstr($prefix))),
@@ -98,11 +98,12 @@ validate_jobs() {
 # restore_metadata_pending — Detect missing eligible restore metadata without accepting contradictory evidence.
 restore_metadata_pending() {
   jq -e --arg prefix "$prefix" --argjson names "$fixture_names" --arg mode "$mode" '
+    def prepare: "Prepare the vulnerability scanner";
     def scan: "🛡️ Scan for known vulnerabilities";
     def retry: scan + " (retry after timeout)";
     def required($name):
       if $name == ($prefix + $names[0]) then []
-      elif $name == ($prefix + $names[8]) then [scan]
+      elif $name == ($prefix + $names[8]) then [prepare, scan]
       else ["Restore Go module cache"] +
         (if $name == ($prefix + $names[5]) then ["Save Go module cache", "Save Go compilation cache"]
          elif $name == ($prefix + $names[6]) then ["Save Go compilation cache"]
@@ -118,7 +119,7 @@ restore_metadata_pending() {
            .status == "completed" and
            (if .name == scan and .conclusion == "failure" then
               any($steps[]; .name == retry and .status == "completed" and .conclusion == "success")
-            elif .name == scan or .name == "Restore Go module cache" then .conclusion == "success"
+            elif .name == prepare or .name == scan or .name == "Restore Go module cache" then .conclusion == "success"
             elif .name == retry then (.conclusion | IN("success", "skipped"))
             else (.name | IN($required[])) and
               (if $mode == "pr" then .conclusion == "skipped"
@@ -131,17 +132,17 @@ restore_metadata_pending() {
 normalize_log() {
   sed -E 's/^[0-9]{4}-[0-9T:.+-]+Z //; s/^Cache saved with the key: /Cache saved with key: /' "$1"
 }
-# restore_section — Extract the unique cache-action block for the exact requested key and outcome count.
+# restore_section — Extract the unique cache-action block for the exact requested key.
 restore_section() {
   # Select only the action group with this exact key and its following result.
   # Source echoed inside a shell step cannot impersonate a cache-action result.
-  normalize_log "$1" | awk -v key="$key" -v expected="$2" '
+  normalize_log "$1" | awk -v key="$key" '
     /##\[group\]/ {
       if (wanted) { printf "%s", block; matches++; }
       block=""; wanted=0; restore=($0 ~ /##\[group\]Run actions\/cache\/restore@/)
     }
     restore { block=block $0 "\n"; if ($0 == "  key: " key) wanted=1; }
-    END { if (wanted) { printf "%s", block; matches++; } if (matches != expected) exit 1; }
+    END { if (wanted) { printf "%s", block; matches++; } if (matches != 1) exit 1; }
   '
 }
 # check — Join run, jobs, cache inventory and logs into an exact-source restore and save-policy verdict.
@@ -178,15 +179,20 @@ check() {
         esac
       done <<<"$saved"
     fi
-    restores=1
     if [[ "$name" == "${prefix}🛡️ Vulnerability Scan" ]]; then
-      restores="$(jq -er --argjson id "$id" '
-        [.[].jobs[] | select(.id == $id) | .steps[] | select(.name == "🛡️ Scan for known vulnerabilities" and .status == "completed")] as $first |
-        [.[].jobs[] | select(.id == $id) | .steps[] | select(.name == "🛡️ Scan for known vulnerabilities (retry after timeout)" and .status == "completed")] as $retry |
-        if ($first | length) == 1 and $first[0].conclusion == "success" and (($retry | length) == 0 or (($retry | length) == 1 and $retry[0].conclusion == "skipped")) then 1
-        elif ($first | length) == 1 and ($first[0].conclusion == "failure" or $first[0].conclusion == "success") and ($retry | length) == 1 and $retry[0].conclusion == "success" then 2
-        else error("incomplete scanner execution") end
-      ' "$jobs" 2>/dev/null)" || {
+      jq -e --argjson id "$id" '
+        [.[].jobs[] | select(.id == $id) | .steps[]] as $steps |
+        [$steps[] | select(.name == "Prepare the vulnerability scanner")] as $prepare |
+        [$steps[] | select(.name == "🛡️ Scan for known vulnerabilities")] as $first |
+        [$steps[] | select(.name == "🛡️ Scan for known vulnerabilities (retry after timeout)")] as $retry |
+        ($prepare | length) == 1 and ($prepare[0] | .status == "completed" and .conclusion == "success") and
+        ($first | length) == 1 and $first[0].status == "completed" and
+        (if $first[0].conclusion == "success" then
+          ($retry | length) == 0 or ($retry[0] | .status == "completed" and (.conclusion | IN("skipped", "success")))
+        else
+          $first[0].conclusion == "failure" and ($retry[0] | .status == "completed" and .conclusion == "success")
+        end)
+      ' "$jobs" >/dev/null 2>&1 || {
         diagnose_restore "$id"
         fail 'scanner did not exercise its module restore'
       }
@@ -197,9 +203,9 @@ check() {
         fail 'Go job did not restore its module cache'
       }
     fi
-    section="$(restore_section "$log" "$restores")" || fail 'missing or ambiguous exact module restore action'
+    section="$(restore_section "$log")" || fail 'missing or ambiguous exact module restore action'
     outcomes="$(grep -E '^Cache (restored from key:|not found for input keys:)' <<<"$section" || true)"
-    [[ "$(grep -c . <<<"$outcomes" || true)" == "$restores" ]] || fail 'module restore action has no unique completed outcome'
+    [[ "$(grep -c . <<<"$outcomes" || true)" == 1 ]] || fail 'module restore action has no unique completed outcome'
     # Main lint is read-only, so a compatible archive cannot accumulate into a
     # new cache. The main Test writer and all other main jobs remain exact-only.
     allow_fallback=false

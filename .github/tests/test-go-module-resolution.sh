@@ -196,10 +196,14 @@ const lint = workflow.jobs.lint.steps.find(s => s.id === 'ml');
 assert.equal(lint.env.DEFAULT_WORKSPACE, resolved);
 const golangci = workflow.jobs['golangci-lint'].steps.find(s => s.id === 'golangci-lint');
 assert.equal(golangci.with['working-directory'], resolved);
-for (const step of workflow.jobs.govulncheck.steps.filter(s => s.with?.['work-dir'])) {
+const scannerSteps = workflow.jobs.govulncheck.steps.filter(s => s.with?.['work-dir']);
+assert.deepEqual(scannerSteps.map(s => s.with.phase), ['prepare', 'scan', 'scan']);
+for (const step of scannerSteps) {
   assert.equal(step.with['work-dir'], resolved);
   assert.equal(step.with['go-version-file'], `${resolved}/go.mod`);
-  assert.ok(step.with['allow-file'].includes('needs.changes.outputs.module-directory'));
+  if (step.with.phase === 'scan') {
+    assert.match(step.with['allow-file'], /needs\.changes\.outputs\.module-directory/);
+  }
 }
 assert.equal(workflow.jobs.coverage.steps.find(s => s.with?.label === 'code-coverage/go').with.file,
   `${resolved}/coverage.cobertura.xml`);

@@ -8,7 +8,7 @@ root="$(cd "$(dirname "$0")/../.." && pwd)"
 action="${1:-$root/.github/actions/govulncheck/action.yaml}"
 fail() { echo "FAIL: $*" >&2; exit 1; }
 
-wiring='
+wiring="$(cat <<'JQ'
   .runs.steps as $steps |
   ($steps | map(.id // .name)) as $order |
   ($steps | map(select((.run // "") | contains("download.sh")))) as $download |
@@ -23,11 +23,14 @@ wiring='
   $download[0].env.RETRY_BASE_DELAY == "5" and
   $download[0].env.GOTOOLCHAIN == $scan[0].env.GOTOOLCHAIN and
   ($download[0]["continue-on-error"] // false) == false and
-  ($download[0].if // null) == null and
+  .inputs.phase.default == "all" and
+  $download[0].if == "${{ inputs.phase != 'scan' }}" and
+  $scan[0].if == "${{ inputs.phase != 'prepare' }}" and
   ($scan[0].run | contains("retry") | not)
-'
+JQ
+)"
 yq -o=json . "$action" | jq -e "$wiring" >/dev/null ||
-  fail 'the scan must follow one unconditional, 3-attempt retried module download'
+  fail 'the scan must follow one 3-attempt retried module download during preparation'
 [[ -f "$(dirname "$action")/../../../.scripts/retry.sh" ]] || fail 'the shared retry helper must resolve from the action'
 echo 'PASS: the module download is retried 3 times before a scan that runs once'
 
@@ -54,6 +57,7 @@ blocks 'an unbounded attempt count' '(.runs.steps[] | select((.run // "") | cont
 blocks 'more attempts' '(.runs.steps[] | select((.run // "") | contains("download.sh")) | .env.RETRY_MAX_ATTEMPTS) = "5"'
 blocks 'a download that cannot fail the job' '(.runs.steps[] | select((.run // "") | contains("download.sh")) | .["continue-on-error"]) = true'
 blocks 'a skippable download' '(.runs.steps[] | select((.run // "") | contains("download.sh")) | .if) = "false"'
+blocks 'a skipped scan outside preparation' '(.runs.steps[] | select(.id == "scan") | .if) = "false"'
 blocks 'a different Go toolchain from the scan' '(.runs.steps[] | select((.run // "") | contains("download.sh")) | .env.GOTOOLCHAIN) = "auto"'
 blocks 'a retried scan' '(.runs.steps[] | select(.id == "scan") | .run) = "bash \"$ACTION_PATH/../../../.scripts/retry.sh\" bash \"$ACTION_PATH/scan.sh\""'
 

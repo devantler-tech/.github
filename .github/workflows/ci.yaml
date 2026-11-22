@@ -3517,7 +3517,14 @@ jobs:
           FIXTURE: ${{ matrix.fixture }}
         run: sed -i "s/^go .*/go $GO_VERSION/" ".github/tests/$FIXTURE/go.mod"
 
-      # Mirror validate-go-project.yaml's scan step (same local action + inputs).
+      - name: Prepare the fixture scanner
+        uses: $/.github/actions/govulncheck
+        with:
+          work-dir: .github/tests/${{ matrix.fixture }}
+          go-version-file: .github/tests/${{ matrix.fixture }}/go.mod
+          phase: prepare
+
+      # Mirror validate-go-project.yaml's prepared scan path.
       # The fixture reachably calls a GO-2021-0113 symbol; with that ID listed in
       # .govulncheck-allow.txt the scan MUST pass. Keep this `uses:` in lockstep
       # with validate-go-project.yaml — enforced by test-govulncheck-action-lockstep.
@@ -3528,6 +3535,7 @@ jobs:
           go-version-file: .github/tests/${{ matrix.fixture }}/go.mod
           allow-file: .github/tests/govulncheck-allowlist/.govulncheck-allow.txt
           output-file: govulncheck-allowlisted.json
+          phase: scan
 
       - name: Assert the scan used the caller's Go version
         env:

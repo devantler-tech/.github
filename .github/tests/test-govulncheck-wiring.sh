@@ -8,9 +8,16 @@ fail() { echo "FAIL: $*" >&2; exit 1; }
 gate="$(yq -r '.jobs.govulncheck.steps[] | select(.id == "scan") | .uses' "$workflow")"
 [[ "$gate" == '$/.github/actions/govulncheck' ]] || fail 'scan must use the shared internal implementation'
 for job in test-govulncheck-allowlist-honored test-govulncheck-strict-blocks; do
-  uses="$(yq -r ".jobs.\"$job\".steps[] | select(.with.\"work-dir\" != null) | .uses" "$ci")"
+  uses="$(yq -r ".jobs.\"$job\".steps[] | select(.with.\"work-dir\" != null and .with.phase != \"prepare\") | .uses" "$ci")"
   [[ "$uses" == "$gate" ]] || fail "$job does not exercise the production scanner"
 done
+fixture_steps="$(yq -o=json '.jobs.test-govulncheck-allowlist-honored.steps' "$ci")"
+jq -e --arg action "$gate" '
+  [ .[] | select(.uses == $action) | .with ] as $calls |
+  ($calls | map(.phase)) == ["prepare", "scan"] and
+  $calls[0]["work-dir"] == $calls[1]["work-dir"] and
+  $calls[0]["go-version-file"] == $calls[1]["go-version-file"]
+' <<<"$fixture_steps" >/dev/null || fail 'allowlist fixture must prepare once and then scan the same module'
 checkout="$(yq -o=json '[.jobs.govulncheck.steps[] | select(.with.path == ".devantler-tech-actions")]' "$workflow")"
 jq -e '
   length == 1 and
