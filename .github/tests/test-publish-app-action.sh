@@ -39,6 +39,7 @@ trap 'rm -rf "$scratch"' EXIT
 
 repo=devantler-tech/app
 token=stub-not-a-secret
+ci_token=stub-ci-not-a-secret
 token_header="AUTHORIZATION: basic $(printf 'x-access-token:%s' "$token" | base64 | tr -d '\n')"
 image_digest="sha256:$(printf 'b%.0s' $(seq 1 64))"
 artifact_digest="sha256:$(printf 'a%.0s' $(seq 1 64))"
@@ -134,6 +135,12 @@ done
 case "$url" in
   https://api.github.com/repos/*/actions/runs/*)
     printf 'read %s\n' "$url" >>"$CALLS"
+    if [[ -n "$config" ]]; then
+      [[ -n "$(find "$config" -type f -perm 0600)" ]] || { echo 'CI config is not private' >&2; exit 92; }
+      [[ "$(cat "$config")" == "header = \"Authorization: Bearer $STUB_CI_TOKEN\"" ]] ||
+        { echo 'wrong CI read token' >&2; exit 93; }
+      printf 'read authenticated-ci\n' >>"$CALLS"
+    fi
     [[ -z "$headers" ]] || printf 'HTTP/2 200\r\n\r\n' >"$headers"
     cat "$FIXTURE/run.json" >"$output"
     if "$status"; then printf 200; fi
@@ -351,6 +358,9 @@ resolve_expr() { # <expression> — what GitHub substitutes for ${{ <expression>
   local id name
   case "$1" in
     github.actor) printf bot ;;
+    "inputs.prebuilt-ci-auth-mode == 'job-token' && github.token || ''")
+      if [[ "$(input_value prebuilt-ci-auth-mode)" == job-token ]]; then printf '%s' "$ci_token"; fi
+      ;;
     inputs.*) input_value "${1#inputs.}" ;;
     steps.*.outputs.*)
       id="${1#steps.}"
@@ -401,7 +411,8 @@ run_steps() {
   env_args=(
     "PATH=$scratch/bin:$scratch/tools" "HOME=$scratch/home"
     GIT_CONFIG_NOSYSTEM=1 "GIT_CONFIG_GLOBAL=$sim_git_global" RETRY_BASE_DELAY=0
-    "ARGV_LOG=$argv_log" "REAL_GIT=$real_git" "STUB_TOKEN=$token"
+    "ARGV_LOG=$argv_log" "REAL_GIT=$real_git" "STUB_TOKEN=$token" "STUB_CI_TOKEN=$ci_token"
+    GITHUB_ACTIONS=true RUNNER_ENVIRONMENT=github-hosted
     "GITHUB_REF=$sim_ref" "GITHUB_SHA=$sim_sha" "GITHUB_REPOSITORY=$sim_repository"
     "GITHUB_WORKFLOW_REF=$sim_workflow_ref" "GITHUB_SERVER_URL=$sim_server"
     GITHUB_RUN_ID=123 GITHUB_RUN_ATTEMPT=2 GITHUB_ACTOR=bot
@@ -724,6 +735,14 @@ case_inputs "$action_dir" 'not a valid registry path' mode=manifests app-name oc
 for setting in prebuilt-image-digest=latest prebuilt-public-digest=wrong prebuilt-ci-run-id=0 prebuilt-ci-run-attempt=x; do
   case_inputs "$action_dir" 'prebuilt-' "${prebuilt_ok[@]}" "$setting" || fail "accepted prebuilt input $setting"
 done
+case_inputs "$action_dir" 'prebuilt-ci-auth-mode must be anonymous or job-token' "${prebuilt_ok[@]}" prebuilt-ci-auth-mode=custom ||
+  fail 'accepted an unknown CI authentication mode'
+case_inputs "$action_dir" 'prebuilt-ci-auth-mode must be anonymous or job-token' "${prebuilt_ok[@]}" prebuilt-ci-auth-mode= ||
+  fail 'accepted an empty CI authentication mode'
+case_inputs "$action_dir" 'job-token applies only to prebuilt-webapp mode' prebuilt-ci-auth-mode=job-token ||
+  fail 'accepted a CI read token in deployment mode'
+case_inputs "$action_dir" 'job-token applies only to prebuilt-webapp mode' mode=manifests app-name prebuilt-ci-auth-mode=job-token ||
+  fail 'accepted a CI read token in manifests mode'
 setup_case "$released"
 sim_repository=devantler-tech/.github
 admission_refusal "$action_dir" 'not a valid registry path' || fail "accepted an image name that is not a registry path: $(cat "$log")"
@@ -948,7 +967,14 @@ case_prebuilt() {
   local image=ghcr.io/devantler-tech/app setting
   setup_case "$released"
   for setting in "${prebuilt_ok[@]}"; do set_input "${setting%%=*}" "${setting#*=}"; done
+  [[ -z "${2:-}" ]] || set_input prebuilt-ci-auth-mode "$2"
   published "$1" 1.2.3 latest || return 1
+  if [[ "${2:-}" == job-token ]]; then
+    # The verifier reads the run and attempt, then confirms the current attempt again.
+    [[ "$(grep -cx 'read authenticated-ci' "$calls")" == 3 ]] || return 1
+  else
+    ! grep -qx 'read authenticated-ci' "$calls" || return 1
+  fi
   verified_before_exposed 2 || return 1
   ! grep -q '^image push' "$calls" || return 1
   # The original main-CI signature and provenance are read before the first registry write.
@@ -963,6 +989,11 @@ case_prebuilt() {
 }
 case_prebuilt "$action_dir" || fail "prebuilt-webapp publication changed: $(cat "$calls") $(cat "$log")"
 echo 'ok   prebuilt-webapp mode verifies the main-CI image, pins the WebApp and re-signs it as the caller'
+case_prebuilt "$action_dir" job-token || fail "prebuilt-webapp failed to authenticate all CI evidence reads: $(cat "$log")"
+[[ "$(yq -o=json '.runs.steps' "$action_dir/action.yaml" |
+  jq -c '[.[] | select(.env.PREBUILT_CI_READ_TOKEN != null) | .id]')" == '["prebuilt"]' ]] ||
+  fail 'the CI read token must be scoped to the prebuilt verification step'
+echo 'ok   opt-in CI authentication uses the caller job token for all evidence reads'
 
 case_manifests() { # <action-dir> <oci-name> <artifact>
   setup_case "$tip"
@@ -1010,6 +1041,7 @@ done
 grep -q '^git fetch ' "$argv_all" || fail 'the argv record never saw the default-branch fetch'
 ! grep -qF -- "$token" "$argv_all" || fail "a program received the token as an argument: $(grep -F -- "$token" "$argv_all" | head -n 3)"
 ! grep -qF -- "${token_header#AUTHORIZATION: basic }" "$argv_all" || fail 'a program received the encoded token header as an argument'
+! grep -qF -- "$ci_token" "$argv_all" || fail 'a program received the CI read token as an argument'
 echo 'ok   no program any step ran received the token or its encoded header as an argument'
 
 # ---- 7. mutation controls: every guard must matter ------------------------------------------------

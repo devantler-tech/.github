@@ -62,6 +62,7 @@ version check gives curl its login and bearer token in private config files.
 | `prebuilt-public-digest` | `prebuilt-webapp` mode only: the public artifact SHA-256 recorded by the image producer | In `prebuilt-webapp` mode | `""` |
 | `prebuilt-ci-run-id` | `prebuilt-webapp` mode only: the successful public main-push CI run ID | In `prebuilt-webapp` mode | `""` |
 | `prebuilt-ci-run-attempt` | `prebuilt-webapp` mode only: that run's successful, still current attempt | In `prebuilt-webapp` mode | `""` |
+| `prebuilt-ci-auth-mode` | Authentication for GitHub Actions evidence reads. `job-token` is available in `prebuilt-webapp` mode | No | `anonymous` |
 | `github-token` | Token for the default-branch fetch, registry reads and GHCR writes | No | `${{ github.token }}` |
 
 `deploy-path` and `app-manifest` must be plain names joined by `/` (letters, digits, `.`, `_`
@@ -130,6 +131,11 @@ jobs:
           prebuilt-ci-run-id: "<run-id>"
           prebuilt-ci-run-attempt: "<attempt>"
 ```
+
+To authenticate GitHub Actions evidence reads, set `prebuilt-ci-auth-mode: job-token`.
+Use a GitHub-hosted runner and grant the calling job `actions: read`. The verifier uses
+the caller's GitHub Actions job token for those reads. The separate `github-token` input
+supplies the credentials for the default-branch fetch and registry operations.
 
 ### Publish manifests only
 

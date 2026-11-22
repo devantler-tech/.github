@@ -39,6 +39,10 @@ inputs:
     description: "Prebuilt-webapp mode only: that CI run's successful attempt, which must still be current."
     required: false
     default: ""
+  prebuilt-ci-auth-mode:
+    description: "Use anonymous CI evidence reads, or select job-token in prebuilt-webapp mode on a GitHub-hosted runner with actions: read."
+    required: false
+    default: anonymous
   github-token:
     description: "Token for the default-branch fetch, registry reads and GHCR writes. Needs contents read and packages write."
     required: false
@@ -72,6 +76,7 @@ runs:
         PREBUILT_PUBLIC_DIGEST: ${{ inputs.prebuilt-public-digest }}
         PREBUILT_CI_RUN_ID: ${{ inputs.prebuilt-ci-run-id }}
         PREBUILT_CI_RUN_ATTEMPT: ${{ inputs.prebuilt-ci-run-attempt }}
+        PREBUILT_CI_AUTH_MODE: ${{ inputs.prebuilt-ci-auth-mode }}
         GH_TOKEN: ${{ inputs.github-token }}
       run: bash "$GITHUB_ACTION_PATH/admit.sh"
 
@@ -101,6 +106,8 @@ runs:
         PREBUILT_PUBLIC_DIGEST: ${{ inputs.prebuilt-public-digest }}
         PREBUILT_CI_RUN_ID: ${{ inputs.prebuilt-ci-run-id }}
         PREBUILT_CI_RUN_ATTEMPT: ${{ inputs.prebuilt-ci-run-attempt }}
+        PREBUILT_CI_AUTH_MODE: ${{ inputs.prebuilt-ci-auth-mode }}
+        PREBUILT_CI_READ_TOKEN: ${{ inputs.prebuilt-ci-auth-mode == 'job-token' && github.token || '' }}
       run: REPOSITORY="$GITHUB_REPOSITORY" SOURCE_SHA="$GITHUB_SHA" bash "$GITHUB_ACTION_PATH/../../.github/scripts/prepare-prebuilt-webapp.sh"
 
     - name: 🔒 Refuse an occupied release version
