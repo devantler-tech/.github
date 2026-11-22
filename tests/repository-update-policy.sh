@@ -24,12 +24,23 @@ kubectl kustomize "$repo_root/deploy" >"$render" ||
 # exposed/computed provider field create a permanent diff and retry an update
 # GitHub cannot apply. Keep the steady state strictly Observe-only.
 #
-# The one exception is a repository being archived: its resource carries Observe,
-# Update and LateInitialize for the single archive PATCH, declares nothing but its
-# name and `archived: true`, and so stays outside the shared merge-policy patch
-# (deploy/archived-repositories/kustomization.yaml, phase 2). Remove it from this
-# list, and return its resource to Observe-only, once GitHub reports it archived.
+# The one exception is a repository being archived: its resource carries exactly
+# Observe and Update for the single archive PATCH (deploy/archived-repositories/
+# kustomization.yaml, phase 2), names that repository in its resource name, external
+# name and forProvider.name alike, and declares every setting below. The provider
+# computes the update from the declaration alone and sends an omitted setting as its
+# default, so each one is declared at its live value; LateInitialize cannot help,
+# because it fills the spec only after that update was computed. Remove the repository
+# from this list, and return its resource to Observe-only, once GitHub reports it
+# archived.
 archiving_repositories=(go-template dotnet-template)
+archive_declared_settings=(
+  description homepageUrl topics visibility isTemplate
+  hasIssues hasProjects hasWiki hasDiscussions hasDownloads
+  allowMergeCommit allowSquashMerge allowRebaseMerge allowAutoMerge allowUpdateBranch
+  deleteBranchOnMerge squashMergeCommitTitle squashMergeCommitMessage
+  mergeCommitTitle mergeCommitMessage webCommitSignoffRequired
+)
 is_archiving() {
   local repository
   for repository in ${archiving_repositories[@]+"${archiving_repositories[@]}"}; do
@@ -57,15 +68,23 @@ write_enabled_archived_resources="$(
     ) |
     .metadata.name + "|" +
       ((.spec.managementPolicies // []) | sort | join(",")) + "|" +
+      (.metadata.annotations["crossplane.io/external-name"] // "") + "|" +
+      (.spec.forProvider.name // "") + "|" +
       (.spec.forProvider | keys | sort | join(","))
   ' "$render"
 )"
 write_enabled_archived_repositories=""
-while IFS='|' read -r name policies fields; do
+while IFS='|' read -r name policies external_name provider_name fields; do
   [[ -n "$name" ]] || continue
   if is_archiving "$name"; then
-    [[ "$policies" == "LateInitialize,Observe,Update" && "$fields" == "archived,name" ]] ||
-      fail "$name is being archived: it must carry exactly Observe, Update and LateInitialize and declare only its name and archived: true, outside the shared merge-policy patch (got policies $policies, fields $fields)"
+    [[ "$policies" == "Observe,Update" ]] ||
+      fail "$name is being archived: it must carry exactly Observe and Update (got $policies)"
+    [[ "$external_name" == "$name" && "$provider_name" == "$name" ]] ||
+      fail "$name is being archived: its external name and forProvider.name must both be $name (got $external_name and $provider_name)"
+    for setting in "${archive_declared_settings[@]}"; do
+      [[ ",$fields," == *",$setting,"* ]] ||
+        fail "$name is being archived: it must declare $setting at its live value, or the archive update resets it"
+    done
   else
     write_enabled_archived_repositories="${write_enabled_archived_repositories:+$write_enabled_archived_repositories }$name"
   fi

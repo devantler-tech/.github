@@ -54,12 +54,21 @@ archiving() {
   [[ "$(yq -N 'select(.kind == "Repository" and .metadata.name == "go-template") | .spec.forProvider.archived' "$work/case.yaml")" == true ]] ||
     { echo 'FAIL: the archiving fixture lost go-template' >&2; exit 1; }
 }
-for policies in '["Observe","Create","Update","LateInitialize"]' '["Observe","Update"]' \
-  '["Observe","Update","LateInitialize","Delete"]' '["*"]'; do
+for policies in '["Observe","Update","LateInitialize"]' '["Observe","Create","Update"]' \
+  '["Observe","Update","Delete"]' '["*"]'; do
   archiving .spec.managementPolicies "$policies"
-  check "$work/case.yaml" 1 'go-template is being archived'
+  check "$work/case.yaml" 1 'go-template is being archived: it must carry exactly Observe and Update'
 done
-archiving .spec.forProvider.allowSquashMerge true
-check "$work/case.yaml" 1 'go-template is being archived'
+# The exception is bound to the repository it names, not just to the resource name.
+archiving '.metadata.annotations["crossplane.io/external-name"]' '"platform"'
+check "$work/case.yaml" 1 'go-template is being archived: its external name and forProvider.name must both be go-template'
+archiving .spec.forProvider.name '"platform"'
+check "$work/case.yaml" 1 'go-template is being archived: its external name and forProvider.name must both be go-template'
+# An omitted setting would be sent as its default by the archive update.
+for setting in isTemplate webCommitSignoffRequired hasIssues description topics; do
+  yq "del(select(.kind == \"Repository\" and .metadata.name == \"go-template\") | .spec.forProvider.$setting)" \
+    "$work/current.yaml" >"$work/case.yaml"
+  check "$work/case.yaml" 1 "go-template is being archived: it must declare $setting at its live value"
+done
 POLICY_TEST_RENDER_FAIL=true check "$work/active.yaml" 1 'kubectl kustomize deploy/ failed'
 printf 'PASS: retirement preserves archived-policy refusals and render failure handling\n'

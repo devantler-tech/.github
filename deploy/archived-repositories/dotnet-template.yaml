@@ -1,8 +1,11 @@
 # devantler-tech/dotnet-template retires: the application template now scaffolds Go and .NET
 # applications (ADR 0018, devantler-tech/monorepo#5059), and it never had a consumer.
-# One-time archive phase, see kustomization.yaml: LateInitialize copies the live settings
-# into forProvider first, so the only intended change is `archived: true`. Once GitHub reports
-# the repository archived, a follow-up returns this resource to Observe-only.
+#
+# One-time archive update, see kustomization.yaml. The provider computes the update from
+# this declaration alone and sends every omitted setting as its default, so each setting
+# below is declared at its live value (read 2026-11-22) and the only change is
+# `archived: true`. Once GitHub reports the repository archived, a follow-up returns this
+# resource to Observe-only.
 apiVersion: repo.github.m.upbound.io/v1alpha1
 kind: Repository
 metadata:
@@ -10,10 +13,31 @@ metadata:
   annotations:
     crossplane.io/external-name: dotnet-template
 spec:
-  managementPolicies: ["Observe", "Update", "LateInitialize"]
+  managementPolicies: ["Observe", "Update"]
   forProvider:
     name: dotnet-template
     archived: true
+    description: "A simple .NET template for new projects."
+    homepageUrl: ""
+    topics: ["template"]
+    visibility: public
+    isTemplate: true
+    hasIssues: true
+    hasProjects: true
+    hasWiki: false
+    hasDiscussions: false
+    hasDownloads: false
+    allowMergeCommit: false
+    allowSquashMerge: true
+    allowRebaseMerge: false
+    allowAutoMerge: true
+    allowUpdateBranch: true
+    deleteBranchOnMerge: true
+    squashMergeCommitTitle: COMMIT_OR_PR_TITLE
+    squashMergeCommitMessage: COMMIT_MESSAGES
+    mergeCommitTitle: MERGE_MESSAGE
+    mergeCommitMessage: PR_TITLE
+    webCommitSignoffRequired: true
   providerConfigRef:
     kind: ProviderConfig
     name: default

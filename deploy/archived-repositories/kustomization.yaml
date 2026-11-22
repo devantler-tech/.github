@@ -7,10 +7,13 @@
 #   1. Withdraw the repository's active management in the same change: its labels,
 #      repository permissions, team grants, custom properties and repository rulesets.
 #      None of those resources has Delete, so pruning them never touches live GitHub.
-#   2. Archive once: Observe, Update and LateInitialize with `archived: true`.
-#      LateInitialize backfills the live settings before the update, so the PATCH only
-#      archives. tests/repository-update-policy.sh admits this phase only for the
-#      repositories it names as pending archives.
+#   2. Archive once: Observe and Update with `archived: true`, and every setting the
+#      provider would otherwise send as its default declared at its live value. The
+#      provider computes the update from the declaration alone (LateInitialize fills
+#      the spec only after that), so the declared settings are what keeps the PATCH
+#      from changing anything but `archived`. tests/repository-update-policy.sh admits
+#      this phase only for the repositories it names as being archived, and only with
+#      those settings declared.
 #   3. After GitHub reports `archived: true`, return each resource to Observe-only and
 #      remove it from the pending list. An archived repository rejects settings
 #      updates, and a provider field exposed later could otherwise retry an update

@@ -163,11 +163,13 @@ pinning follow the existing organization policies.
 An archive stays outside the active shared merge-policy patch, in
 `archived-repositories/`, and becomes Observe-only once archived. That directory's
 `kustomization.yaml` documents the three steps: withdraw the repository's active
-management, make one update with Observe, Update and LateInitialize that sets
-`archived: true`, then return to Observe-only once GitHub reports the repository
-archived. `tests/repository-update-policy.sh` admits that update only for the
-repositories it lists as being archived; `go-template` and `dotnet-template` are
-being archived (ADR 0018, devantler-tech/monorepo#5062).
+management, make one Observe and Update change that sets `archived: true` with every
+other defaultable setting declared at its live value (the provider would otherwise
+send each omitted one as its default), then return to Observe-only once GitHub
+reports the repository archived. `tests/repository-update-policy.sh` admits that
+update only for the repositories it lists as being archived, bound to their external
+names; `go-template` and `dotnet-template` are being archived (ADR 0018,
+devantler-tech/monorepo#5062).
 
 Archived repository mirrors are withdrawn before explicit repository deletion
 ([#679](https://github.com/devantler-tech/.github/issues/679)). Removing a mirror
