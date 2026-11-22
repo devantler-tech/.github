@@ -5,12 +5,12 @@ metadata:
   annotations:
     crossplane.io/external-name: platform-tenant-template
 spec:
-  # Provider v0.20.0 embeds terraform-provider-github v6.13.0, which omits an
-  # unchanged organization-enforced signoff field from Repository updates. The
-  # previous compatibility fence is therefore no longer needed.
+  # Observe and Update only while the repository is renamed to
+  # application-template (#956): if the lookup ever misses during the rename,
+  # the sync must report it rather than create a new empty repository. Restore
+  # Create once the rename is verified.
   managementPolicies:
     - Observe
-    - Create
     - Update
   forProvider:
     name: platform-tenant-template

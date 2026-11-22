@@ -72,8 +72,8 @@ active_count="$(printf '%s\n' "$active_repositories" | grep -c . || true)"
 # An active repository is managed with Observe/Create/Update. The one exception is a
 # repository being renamed: without Create, a lookup that misses during the rename is
 # reported instead of creating a new empty repository. Remove it from this list, and
-# restore Create on its resource, once the rename is verified (#597).
-renaming_repositories=()
+# restore Create on its resource, once the rename is verified (#597, #956).
+renaming_repositories=(platform-tenant-template)
 expected_active_policies() {
   local repository
   for repository in ${renaming_repositories[@]+"${renaming_repositories[@]}"}; do
@@ -321,8 +321,8 @@ platform_tenant_management_policies="$(
     join(",")
   ' "$render"
 )"
-[[ "$platform_tenant_management_policies" == "Create,Observe,Update" ]] ||
-  fail "platform-tenant-template must restore Update under provider v0.20.0: $platform_tenant_management_policies"
+[[ "$platform_tenant_management_policies" == "$(expected_active_policies platform-tenant-template)" ]] ||
+  fail "platform-tenant-template must run on $(expected_active_policies platform-tenant-template) under provider v0.20.0: $platform_tenant_management_policies"
 
 # These repositories completed Observe-first adoption. An Observe-only
 # declaration leaves the shared merge policy unapplied while Crossplane still
