@@ -13,7 +13,7 @@ spec:
     - Create
     - Update
   forProvider:
-    name: platform-tenant-template
+    name: application-template
     # Pinned because this resource carries no adopted values: it is the one
     # active repository whose spec holds nothing beyond what the config declares,
     # so an update cannot fall back on a previously observed visibility the way

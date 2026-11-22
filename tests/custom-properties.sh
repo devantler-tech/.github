@@ -6,8 +6,12 @@ work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
 kubectl kustomize "$root/deploy" >"$work/render.yaml"
 yq -N -o=json -I=0 '.' "$work/render.yaml" >"$work/render.jsonl"
-jq -se '
-  [.[] | select(.kind == "Repository" and .spec.forProvider.archived != true) | .spec.forProvider.name] as $repos |
+# A repository renamed in place declares its new name first; its property values keep the old
+# name until the rename is read back, then move with its other dependents (#956). Map each new
+# name to the old one while that is in progress, and leave this empty otherwise.
+renaming='{"application-template":"platform-tenant-template"}'
+jq -se --argjson renaming "$renaming" '
+  [.[] | select(.kind == "Repository" and .spec.forProvider.archived != true) | .spec.forProvider.name | ($renaming[.] // .)] as $repos |
   [.[] | select(.kind == "RepositoryCustomProperty")] as $props |
   ["Type", "EnableAutoMerge", "ScanGitHubActions", "AlwaysValidateGoProject"] as $names |
   ($repos | length) >= 10 and
