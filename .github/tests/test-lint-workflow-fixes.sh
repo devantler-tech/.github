@@ -332,4 +332,48 @@ if run_verify name clean true 0 ACTUAL_ARTIFACT=; then fail 'verify accepted a m
 grep -Fq 'artifact name: expected prepare-fixes-test-name, got <empty>' "$work/verify-name/log" ||
   fail "missing artifact name was not reported: $(cat "$work/verify-name/log")"
 
+# When the hosted download misses an upload the artifact store has not caught up
+# with, the job waits (bounded) for the listing to show it before retrying once,
+# and fails by name if it never appears.
+run_await() {
+  local name="$1" counts="$2" case_dir="$work/await-$1"
+  mkdir -p "$case_dir/runner" "$case_dir/state"
+  env PATH="$work/verify-bin:$PATH" VERIFY_STATE="$case_dir/state" VERIFY_COUNTS="$counts" \
+    SCENARIO=ordinary ARTIFACT="prepare-fixes-test-await-$name" RUNNER_TEMP="$case_dir/runner" \
+    GITHUB_REPOSITORY=example/fixture GITHUB_RUN_ID=1 FIXTURE_ARTIFACT_LIST_DELAY=0 \
+    bash "$runner_fixture" await-upload >"$case_dir/log" 2>&1
+}
+await_calls() { cat "$work/await-$1/state/calls" 2>/dev/null || echo 0; }
+
+run_await listed 1 || fail "await rejected a listed upload: $(cat "$work/await-listed/log")"
+[[ "$(await_calls listed)" == 1 ]] || fail "a listed upload was read $(await_calls listed) times, want 1"
+
+run_await lagging '0 0 1' || fail "await did not re-read a listing that had not caught up: $(cat "$work/await-lagging/log")"
+[[ "$(await_calls lagging)" == 3 ]] || fail "lagging listing read $(await_calls lagging) times, want 3"
+
+if run_await missing 0; then fail 'await accepted an upload that was never listed'; fi
+grep -Fq 'uploaded artifact prepare-fixes-test-await-missing is not listed after the bounded wait' "$work/await-missing/log" ||
+  fail "an unlisted upload was not reported: $(cat "$work/await-missing/log")"
+[[ "$(await_calls missing)" == 6 ]] || fail "an unlisted upload was read $(await_calls missing) times, want the bound of 6"
+
+# The retry stays fail-closed: only the first download may continue on error, the
+# wait and the retry run only after it missed, and the retry downloads exactly
+# what the first download did.
+ci="$root/.github/workflows/ci.yaml"
+step() { yq -o=json -I=0 ".jobs.test-prepare-fixes.steps[] | select(.name == \"$1\")" "$ci"; }
+first="$(step '📥 Download eligible patch')"
+wait_step="$(step '⏳ Wait for the artifact store to show the upload')"
+retry="$(step '📥 Download eligible patch (retry)')"
+jq -e '.id == "download" and .["continue-on-error"] == true' <<<"$first" >/dev/null ||
+  fail 'the first hosted download must be id download and the only one that continues on error'
+for s in "$wait_step" "$retry"; do
+  jq -e '.if == "${{ steps.download.outcome == '"'failure'"' }}" and (has("continue-on-error") | not)' <<<"$s" >/dev/null ||
+    fail "a download wait or retry step must run only after a miss and fail the job: $s"
+done
+jq -e '.run == "bash \"$RUNNER_TEMP/prepare-fixes-runner.sh\" await-upload"' <<<"$wait_step" >/dev/null ||
+  fail 'the download wait must run the bounded await-upload phase'
+[[ "$(jq -c '{uses, with}' <<<"$first")" == "$(jq -c '{uses, with}' <<<"$retry")" ]] ||
+  fail 'the download retry must use the same action and inputs as the first download'
+
 echo 'PASS: hosted verify names failed checks and re-reads a lagging artifact listing'
+echo 'PASS: a missed hosted download waits, bounded, for the artifact listing before its retry'
