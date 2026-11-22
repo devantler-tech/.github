@@ -2,21 +2,22 @@ name: 🚀 CD
 
 # Publishes the org's declarative GitHub state (deploy/) as a cosign-signed OCI
 # artifact consumed by the platform cluster's `github-config` tenant. There is
-# NO container image here — only manifests — so it delegates to the shared
-# manifests-only publish workflow in this repository (the
-# manifests-only sibling of publish-app.yaml).
+# NO container image here, only manifests, so the publish-app action runs in
+# `manifests` mode.
 #
 # The OCI path is `github-config` (not the repo name) because `.github` is an
-# invalid OCI path component (leading dot) — hence the oci-name override.
+# invalid OCI path component (leading dot), hence the oci-name override.
 #
-# Because signing runs INSIDE the reusable workflow, the cosign certificate
-# identity (OIDC subject) is that workflow's path —
-# https://github.com/devantler-tech/.github/.github/workflows/publish-manifests.yaml@<ref>
-# — NOT this repo's cd.yaml. The platform `github-config` OCIRepository's
-# verify.matchOIDCIdentity.subject must match that (see
-# k8s/bases/apps/github-config/oci-repository.yaml in devantler-tech/platform),
-# so this caller uses the canonical revision already accepted by the deployed
-# two-family verifier while the legacy identity remains available to consumers.
+# The action runs directly in this workflow, so the cosign certificate identity
+# (OIDC subject) is this repository's own release workflow on its tag:
+# https://github.com/devantler-tech/.github/.github/workflows/cd.yaml@refs/tags/vX.Y.Z
+# (monorepo ADR 0017). The platform `github-config` OCIRepository accepts exactly
+# that file on a release tag (k8s/bases/apps/github-config/oci-repository.yaml in
+# devantler-tech/platform). This repository also hosts reusable workflows, and a
+# caller of a reusable workflow signs with that workflow's identity, so this file
+# must stay uncallable: .github/scripts/check-manifests-caller.sh admits only this
+# exact tag-only shape. `$/actions/publish-app` is the action at this same tagged
+# commit.
 
 on:
   push:
@@ -28,22 +29,29 @@ permissions: {}
 jobs:
   publish-manifests:
     name: 🗳️ Publish manifests
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    # Serialize this repository's publishers and never cancel or drop a pending release.
+    concurrency:
+      group: publish-verified-devantler-tech/github-config
+      queue: max
+      cancel-in-progress: false
     permissions:
-      contents: read # checkout
+      contents: read # checkout and the default-branch fetch
       packages: write # push the OCI artifact to GHCR
-      id-token: write # keyless cosign signing (Fulcio + Rekor via GitHub OIDC)
-    # Pinned to the released commit SHA (zizmor blanket policy requires a hash;
-    # the SHA must be reachable from a tag, or zizmor flags it as an impostor).
-    # Dependabot manages this pin (.github/dependabot.yml, github-actions
-    # ecosystem, no cooldown for devantler-tech/*).
-    # Keep the exact consumer-approved revision, not merely a 40-hex shape or
-    # byte-identical publisher. CI requires separate signer and content approval;
-    # deploy and read back consumer approval BEFORE changing this identity.
-    uses: devantler-tech/.github/.github/workflows/publish-manifests.yaml@d70d50665465117f01104313e53057374a96a1a3 # v21.7.2
-    with:
-      oci-name: devantler-tech/github-config
-      # The publisher refuses mutable signing refs. Consumer approval of the exact
-      # immutable identity is a separate CI guard, not inferred from this input.
-      enable-caller-pin: true
-      # Promote only after the staged digest has been signed and verified.
-      enable-signed-promotion: true
+      id-token: write # keyless cosign signing as this workflow (Fulcio + Rekor via GitHub OIDC)
+    steps:
+      - name: 🛡️ Harden runner
+        uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
+        with:
+          egress-policy: audit
+      - name: 📑 Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false # required: publish-app refuses a persisted credential
+      - name: 📦 Publish signed manifests
+        uses: $/actions/publish-app
+        with:
+          mode: manifests
+          oci-name: devantler-tech/github-config
