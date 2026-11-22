@@ -52,6 +52,7 @@
   "repositories": {
     ".github": {"type": "Metadata", "auto_merge": true, "scan_actions": true, "always_validate_go": false},
     "agent-plugins": {"type": "Marketplace", "auto_merge": true, "scan_actions": true, "always_validate_go": false},
+    "application-template": {"type": "Application", "auto_merge": true, "scan_actions": true, "always_validate_go": false},
     "ascoachingogvaner": {"type": "Application", "auto_merge": true, "scan_actions": true, "always_validate_go": false},
     "aws": {"type": "Infrastructure", "auto_merge": true, "scan_actions": true, "always_validate_go": false},
     "bookkeeper": {"type": "Application", "auto_merge": true, "scan_actions": true, "always_validate_go": false},
@@ -67,7 +68,6 @@
     "monorepo": {"type": "Metadata", "auto_merge": true, "scan_actions": true, "always_validate_go": false},
     "platform": {"type": "Infrastructure", "auto_merge": true, "scan_actions": true, "always_validate_go": true},
     "platform-template": {"type": "Infrastructure", "auto_merge": true, "scan_actions": true, "always_validate_go": false},
-    "platform-tenant-template": {"type": "Application", "auto_merge": true, "scan_actions": true, "always_validate_go": false},
     "provider-upjet-unifi": {"type": "Library", "auto_merge": true, "scan_actions": true, "always_validate_go": false},
     "setup-agent-skills-action": {"type": "Library", "auto_merge": true, "scan_actions": true, "always_validate_go": false},
     "unifi": {"type": "Infrastructure", "auto_merge": true, "scan_actions": true, "always_validate_go": false},

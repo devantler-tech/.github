@@ -58,7 +58,7 @@ repositories=(
   business-site
   client-orders
   fleet-gitops
-  platform-tenant-template
+  application-template
   homebrew-tap
   ksail
   kyverno-policies

@@ -3,7 +3,7 @@ kind: Repository
 metadata:
   name: platform-tenant-template
   annotations:
-    crossplane.io/external-name: platform-tenant-template
+    crossplane.io/external-name: application-template
 spec:
   # Provider v0.20.0 embeds terraform-provider-github v6.13.0, which omits an
   # unchanged organization-enforced signoff field from Repository updates. The
@@ -13,7 +13,7 @@ spec:
     - Create
     - Update
   forProvider:
-    name: platform-tenant-template
+    name: application-template
     # Pinned because this resource carries no adopted values: it is the one
     # active repository whose spec holds nothing beyond what the config declares,
     # so an update cannot fall back on a previously observed visibility the way
@@ -23,7 +23,7 @@ spec:
     hasIssues: true
     # Matches live state and keeps Projects disabled declaratively.
     hasProjects: false
-    description: "Template for platform tenants on the devantler-tech platform — framework-agnostic CI/CD plumbing kept current via template-sync."
+    description: "Template for new devantler-tech applications — a Go, .NET, SvelteKit or own stack, optionally a platform tenant, kept current via template-sync."
   providerConfigRef:
     kind: ProviderConfig
     name: default

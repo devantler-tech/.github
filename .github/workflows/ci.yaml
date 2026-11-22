@@ -2454,7 +2454,7 @@ jobs:
         run: bash .github/tests/test-template-sync-pin-monotonicity.sh
 
       # A template's new ignore entries must reach callers created before them
-      # (devantler-tech/platform-tenant-template#171).
+      # (devantler-tech/application-template#171).
       - name: 🧩 Check Template Sync merges the template's ignore entries
         shell: bash
         run: bash .github/tests/test-template-sync-ignore-merge.sh
@@ -3458,7 +3458,7 @@ jobs:
       contents: write
       pull-requests: write
     with:
-      source-repo-path: devantler-tech/platform-tenant-template
+      source-repo-path: devantler-tech/application-template
       use-app-token: false
       dry-run: true
 
@@ -3472,7 +3472,7 @@ jobs:
       contents: write
       pull-requests: write
     with:
-      source-repo-path: devantler-tech/platform-tenant-template
+      source-repo-path: devantler-tech/application-template
       use-app-token: false
       merge-template-ignore-entries: true
       dry-run: true
