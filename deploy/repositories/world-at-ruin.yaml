@@ -18,7 +18,7 @@ spec:
   # even when the requested value is true —
   # integrations/terraform-provider-github#2077. Promoting to Update would
   # therefore not apply this repository's merge policy; it would leave a failed
-  # asynchronous update, the state platform-tenant-template already carries and
+  # asynchronous update, the state application-template already carries and
   # that tests/repository-update-policy.sh pins against.
   #
   # The shared merge policy still applies here and the drift check compares it
