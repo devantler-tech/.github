@@ -41,6 +41,7 @@ verb — e.g. `require-pull-request.yaml`). Repo-scoped rulesets live next door 
 | 9 `OrganizationRuleset` files | the imported org rulesets below except the six managed imports in this table | Observe (read-only import) |
 | `require-signed-commits.yaml` | **Require signed commits** (existing, staged) | Observe + Update — enforce on agent branches in monorepo (#929); never create or delete |
 | `require-workflows-go.yaml` | **Require workflows to pass before merging for Go** (existing, adopted) | Observe + Update — preserve the complete observed policy and require the maintained Go workflow; never create or delete |
+| `require-workflows-go-by-property.yaml` | **Require workflows to pass before merging for opted-in Go projects** (net-new) | Managed (Create) — the same Go workflow and policy for repositories that set `AlwaysValidateGoProject`, excluding detected Go repositories; never delete |
 | 3 `require-workflows-*.yaml` imports | **DependencyReview**, **EnableAutoMerge** and **ScanGitHubActions** | Observe + Update — preserve the observed policy and maintained source; never create or delete |
 | `require-workflows-dotnet.yaml` | language-selected **.NET** (retired) | Observe + Update — disabled with one inert rule (no required workflow; the provider requires a rules block) after a complete effective-policy census found no consumers; retain identity and selectors, never create or delete |
 | `protect-release-tags.yaml` | **Protect release tags** (net-new) | Managed (Create) — block tag delete + force-move + require `v<semver>`; no bypass actors |
@@ -152,6 +153,18 @@ Native inherited-rule and qualifying consumer CI readback remain on
 [#645](https://github.com/devantler-tech/.github/issues/645). Source adoption alone
 does not prove a runtime improvement or sustained cache budget. The managed CodeQL
 writer and remaining migration families stay separate under #237/#565.
+
+The language selector alone cannot hold a repository whose Go and Shell byte counts
+are close: GitHub moves it in and out of the rule as ordinary changes land
+([platform#5852](https://github.com/devantler-tech/platform/issues/5852)).
+`require-workflows-go-by-property.yaml` is the opt-in companion. It requires the same
+workflow, with the same enforcement, bypass and creation behaviour, on default branches
+of repositories whose `AlwaysValidateGoProject` custom property is `true`. Repositories
+GitHub detects as Go are excluded, so the language rule stays the only one that applies
+to them and the workflow never runs twice. The property defaults to `false`; only
+`platform` sets it (see [`custom-properties/`](../../custom-properties/README.md)).
+`tests/go-workflow-property-ruleset.sh` pins this policy and its parity with the
+language rule.
 
 ### Organization CodeQL observation
 

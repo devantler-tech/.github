@@ -6,10 +6,14 @@ work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
 kubectl kustomize "$root/deploy" >"$work/render.yaml"
 yq -N -o=json -I=0 '.' "$work/render.yaml" >"$work/render.jsonl"
-jq -se '
-  [.[] | select(.kind == "Repository" and .spec.forProvider.archived != true) | .spec.forProvider.name] as $repos |
+# A repository renamed in place declares its new name first; its property values keep the old
+# name until the rename is read back, then move with its other dependents (#956). Map each new
+# name to the old one while that is in progress, and leave this empty otherwise.
+renaming='{"application-template":"platform-tenant-template"}'
+jq -se --argjson renaming "$renaming" '
+  [.[] | select(.kind == "Repository" and .spec.forProvider.archived != true) | .spec.forProvider.name | ($renaming[.] // .)] as $repos |
   [.[] | select(.kind == "RepositoryCustomProperty")] as $props |
-  ["Type", "EnableAutoMerge", "ScanGitHubActions"] as $names |
+  ["Type", "EnableAutoMerge", "ScanGitHubActions", "AlwaysValidateGoProject"] as $names |
   ($repos | length) >= 10 and
   ($props | length) == (($repos | length) * ($names | length)) and
   ([$props[] | [.spec.forProvider.repository, .spec.forProvider.propertyName]] | unique | length) == ($props | length) and
@@ -31,7 +35,7 @@ jq -se '
       (.spec.forProvider.propertyValue[0] == "true" or .spec.forProvider.propertyValue[0] == "false")
     end))
 ' "$work/render.jsonl" >/dev/null || {
-  echo 'FAIL: every managed repository needs exactly three explicit non-deleting assignments and no retired property' >&2
+  echo 'FAIL: every managed repository needs exactly four explicit non-deleting assignments and no retired property' >&2
   exit 1
 }
 # The catalogue and shell renderer live outside this Go module's cache boundary.

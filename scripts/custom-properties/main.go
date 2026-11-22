@@ -32,6 +32,7 @@ type repository struct {
 	Type        string `json:"type"`
 	AutoMerge   *bool  `json:"auto_merge"`
 	ScanActions *bool  `json:"scan_actions"`
+	ValidateGo  *bool  `json:"always_validate_go"`
 }
 type catalogue struct {
 	Properties   []property            `json:"properties"`
@@ -39,7 +40,10 @@ type catalogue struct {
 	Repositories map[string]repository `json:"repositories"`
 }
 
-var names = []string{"Type", "EnableAutoMerge", "ScanGitHubActions"}
+var names = []string{"Type", "EnableAutoMerge", "ScanGitHubActions", "AlwaysValidateGoProject"}
+
+// Policy switches default to on, except opt-in enrolment that otherwise follows native metadata.
+var switchDefaults = map[string]string{"EnableAutoMerge": "true", "ScanGitHubActions": "true", "AlwaysValidateGoProject": "false"}
 var types = []string{"Application", "Infrastructure", "Library", "Marketplace", "Metadata", "Documentation"}
 
 func load(path string) (catalogue, error) {
@@ -62,7 +66,7 @@ func load(path string) (catalogue, error) {
 
 func validate(c catalogue) error {
 	if len(c.Properties) != len(names) || len(c.Repositories) < 10 || !reflect.DeepEqual(c.Retire, []string{"LintDocumentation", "AutomaticallyRequestCopilotCodeReview"}) {
-		return errors.New("expected three managed properties, both retired switches and the complete portfolio")
+		return errors.New("expected four managed properties, both retired switches and the complete portfolio")
 	}
 	seen := map[string]bool{}
 	for _, p := range c.Properties {
@@ -80,14 +84,14 @@ func validate(c catalogue) error {
 				}
 			}
 		} else {
-			if p.Type != "true_false" || p.Default != "true" || len(p.Allowed) != 0 {
+			if p.Type != "true_false" || p.Default != switchDefaults[p.Name] || len(p.Allowed) != 0 {
 				return errors.New("invalid policy switch definition")
 			}
 		}
 	}
 	validRepo := regexp.MustCompile(`^(\.github|[a-z0-9][a-z0-9-]*)$`)
 	for name, r := range c.Repositories {
-		if !validRepo.MatchString(name) || !slices.Contains(types, r.Type) || r.AutoMerge == nil || r.ScanActions == nil {
+		if !validRepo.MatchString(name) || !slices.Contains(types, r.Type) || r.AutoMerge == nil || r.ScanActions == nil || r.ValidateGo == nil {
 			return fmt.Errorf("missing or invalid explicit values for %q", name)
 		}
 		if !*r.ScanActions {
@@ -423,7 +427,7 @@ func initializeValues(c catalogue, schema []property, api apiFunc) error {
 }
 
 func repositoryValues(c catalogue, r repository, schema []property) []assignment {
-	values := []assignment{{"Type", r.Type}, {"EnableAutoMerge", fmt.Sprint(*r.AutoMerge)}, {"ScanGitHubActions", fmt.Sprint(*r.ScanActions)}}
+	values := []assignment{{"Type", r.Type}, {"EnableAutoMerge", fmt.Sprint(*r.AutoMerge)}, {"ScanGitHubActions", fmt.Sprint(*r.ScanActions)}, {"AlwaysValidateGoProject", fmt.Sprint(*r.ValidateGo)}}
 	for _, p := range schema {
 		if slices.Contains(c.Retire, p.Name) {
 			values = append(values, assignment{p.Name, "false"})
@@ -660,7 +664,7 @@ func reconcile(c catalogue, api apiFunc) error {
 	if err = verifyValues(wanted, api); err != nil {
 		return err
 	}
-	fmt.Println("VERIFIED: three organization properties and complete explicit repository values; both unused properties and their legacy consumer are absent")
+	fmt.Println("VERIFIED: four organization properties and complete explicit repository values; both unused properties and their legacy consumer are absent")
 	return nil
 }
 

@@ -1,6 +1,6 @@
 # Repository custom properties
 
-The catalogue owns three properties. Every active managed repository has an explicit value in
+The catalogue owns four properties. Every active managed repository has an explicit value in
 [`catalogue.json`](catalogue.json), including the deliberate automatic-merge opt-out for the adopted
 private intake repository.
 
@@ -9,6 +9,7 @@ private intake repository.
 | `Type` | Portfolio purpose: application, infrastructure, library, marketplace, metadata or documentation. Existing templates retain their native application/infrastructure classifications so the legacy CodeQL selector continues to cover them. |
 | `EnableAutoMerge` | Select the existing organization automatic-merge workflow policy. This does not grant approval or bypass any readiness, review or branch-protection requirement. |
 | `ScanGitHubActions` | Select the existing organization workflow-vulnerability scanning policy; explicitly enabled everywhere. |
+| `AlwaysValidateGoProject` | Opt in to the organization Go validation workflow whatever language GitHub detects. Off by default, so enrolment otherwise follows the detected language; only `platform` sets it, because its Go and Shell byte counts are close ([platform#5852](https://github.com/devantler-tech/platform/issues/5852)). The [opted-in Go projects ruleset](../deploy/organization-rulesets/README.md#organization-go-workflow-policy) consumes it. |
 
 GitHub already supplies language, visibility, archival and template status. Do not mirror those as
 new custom properties. `LintDocumentation` and `AutomaticallyRequestCopilotCodeReview` are retired
