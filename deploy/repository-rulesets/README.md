@@ -25,7 +25,7 @@ observes.
 | `require-reviewed-admission-on-world-at-ruin.yaml` | `world-at-ruin` | Require reviewed repository admission | Managed, active with the shared runner after native 187-scene positive and tampering-refusal proof; identity, selector and producer unchanged; the old singleton is retired |
 | `require-validation-on-dotnet-template.yaml` | `dotnet-template` | Require local .NET template validation | Managed (net-new; Observe + Create + Update + LateInitialize) |
 | `require-validation-on-go-template.yaml` | `go-template` | Require local Go template validation | Managed (net-new; Observe + Create + Update + LateInitialize) |
-| `require-scaffold-validation-on-platform-tenant-template.yaml` | `platform-tenant-template` | Require scaffold validation | Managed (net-new; Observe + Create + Update + LateInitialize) |
+| `require-scaffold-validation-on-platform-tenant-template.yaml` | `application-template` | Require scaffold validation | Managed (net-new; Observe + Create + Update + LateInitialize) |
 
 The .NET rule requires the three repository-owned `.NET template tests (<runner>)`
 matrix results from GitHub Actions. These names are intentionally distinct from

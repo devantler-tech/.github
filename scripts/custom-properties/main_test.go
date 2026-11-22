@@ -496,7 +496,7 @@ func TestBootstrapBeforeRetirement(t *testing.T) {
 
 func TestTemplateClassificationsPreserveNativeCodeQLCoverage(t *testing.T) {
 	c := fixture(t)
-	for name, want := range map[string]string{"go-template": "Application", "dotnet-template": "Application", "platform-tenant-template": "Application", "platform-template": "Infrastructure"} {
+	for name, want := range map[string]string{"go-template": "Application", "dotnet-template": "Application", "application-template": "Application", "platform-template": "Infrastructure"} {
 		if got := c.Repositories[name].Type; got != want {
 			t.Fatalf("%s classification %q would change existing native policy coverage; want %q", name, got, want)
 		}
