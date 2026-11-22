@@ -10,6 +10,7 @@ set -euo pipefail
 guard=".github/tests/test-govulncheck-timeout-retry.sh"
 workflow=".github/workflows/validate-go-project.yaml"
 scan='.jobs.govulncheck.steps[] | select(.id == "scan")'
+prepare='.jobs.govulncheck.steps[] | select(.id == "scan-prepare")'
 classify='.jobs.govulncheck.steps[] | select(.id == "scan-timeout")'
 retry='.jobs.govulncheck.steps[] | select((.if // "") | test("steps\.scan-timeout\.outputs\.retry"))'
 
@@ -41,6 +42,15 @@ blocks() {
 blocks "scan without continue-on-error" \
   "del(${scan} | .\"continue-on-error\")" \
   "must set continue-on-error: true"
+blocks "preparation that cannot fail the job" \
+  "(${prepare}).\"continue-on-error\" = true" \
+  "must prepare the module once"
+blocks "preparation that consumes the overhead budget" \
+  "(${prepare}).\"timeout-minutes\" = 10" \
+  "a finite deadline within the job overhead budget"
+blocks "timed scan that prepares the cache again" \
+  "(${scan}).with.phase = \"all\"" \
+  "must scan with the prepared module cache"
 blocks "retry step removed" \
   "del(${retry})" \
   "exactly one retry step"

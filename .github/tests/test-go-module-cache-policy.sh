@@ -15,7 +15,7 @@ cat >"$work/policy.jq" <<'JQ'
   def compatible_reader($dir):
     "${{ format('go-mod-v1-{0}-{1}-{2}-', runner.os, runner.arch, " + $dir + ") }}";
   # One restore-only module cache directly behind a setup-go that writes nothing itself.
-  def restores($steps; $dir; $main_reader):
+  def restores($steps; $dir; $main_reader; $condition):
     ($steps | map(.id // .name)) as $order |
     ($steps | map(select((.uses // "") | startswith("actions/setup-go@")))) as $setup |
     ($steps | map(select(.id == "go-mod-cache-path"))) as $path |
@@ -23,7 +23,7 @@ cat >"$work/policy.jq" <<'JQ'
     ($steps | map(select(.id == "validate-go-mod-cache"))) as $guard |
     ($setup|length==1) and ($path|length==1) and ($restore|length==1) and ($guard|length==1) and
     ($setup[0].with.cache == false) and ($setup[0].with["cache-dependency-path"] == null) and
-    ($path[0].if == null and $restore[0].if == null) and
+    ($path[0].if == $condition and $restore[0].if == $condition) and
     ($path[0].shell == "bash") and
     ($path[0].run | contains("cache_path=\"$(go env GOMODCACHE)\"")) and
     ($path[0].run | contains("[[ \"$cache_path\" == /* && \"$cache_path\" != *$'\\n'* ]]")) and
@@ -35,7 +35,7 @@ cat >"$work/policy.jq" <<'JQ'
     ($restore[0].with["restore-keys"] ==
       (if $main_reader then compatible_reader($dir) else pull_request_only($dir) end)) and
     ($guard[0].uses == "$/.github/actions/guard-go-module-cache") and
-    ($guard[0].if == null) and
+    ($guard[0].if == $condition) and
     ($guard[0].with.path == $restore[0].with.path) and
     ($guard[0].with["primary-key"] == "${{ steps.go-mod-cache.outputs.cache-primary-key }}") and
     ($guard[0].with["matched-key"] == "${{ steps.go-mod-cache.outputs.cache-matched-key }}") and
@@ -75,9 +75,9 @@ cat >"$work/policy.jq" <<'JQ'
   ([ $workflow[0].jobs | to_entries[]
      | select(any((.value.steps // [])[];(.uses // "") | startswith("actions/setup-go@"))) | .key ] | sort) as $go_jobs |
   ($go_jobs == ["build","coverage","deadcode","golangci-lint","lint","test","tidy"]) and
-  all($go_jobs[]; . as $id | restores($workflow[0].jobs[$id].steps; "needs.changes.outputs.module-directory"; $id == "golangci-lint")) and
+  all($go_jobs[]; . as $id | restores($workflow[0].jobs[$id].steps; "needs.changes.outputs.module-directory"; $id == "golangci-lint"; null)) and
   all($go_jobs[]; downloads($workflow[0].jobs[.].steps; "needs.changes.outputs.module-directory")) and
-  restores($action[0].runs.steps; "inputs.work-dir"; false) and
+  restores($action[0].runs.steps; "inputs.work-dir"; false; "${{ inputs.phase != 'scan' }}") and
   shares_with_megalinter($workflow[0].jobs.lint.steps) and
   # The scanner is the eighth Go setup: it must stay behind the composite action checked above.
   ([ $workflow[0].jobs.govulncheck.steps[] | select((.uses // "") | endswith("/.github/actions/govulncheck")) ] | length >= 1) and
@@ -140,6 +140,7 @@ reject workflow '(.jobs["golangci-lint"].steps[] | select(.id == "go-mod-cache")
 reject workflow '(.jobs["golangci-lint"].steps[] | select(.id == "go-mod-cache") | .with["restore-keys"]) = "go-mod-v1-"'
 reject workflow '(.jobs.test.steps[] | select(.id == "go-mod-cache") | .with["restore-keys"]) = (.jobs["golangci-lint"].steps[] | select(.id == "go-mod-cache") | .with["restore-keys"])'
 reject action '.runs.steps |= map(select(.id != "go-mod-cache"))'
+reject action '(.runs.steps[] | select(.id == "go-mod-cache") | .if) = null'
 reject action '(.runs.steps[] | select(.id == "go-mod-cache") | .with.key) |= sub("go-mod-v1"; "go-mod-v2")'
 # Every consumer rejects incompatible archives before any tool or saver can use them.
 reject workflow '.jobs.build.steps |= map(select(.id != "validate-go-mod-cache"))'
