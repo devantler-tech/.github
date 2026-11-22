@@ -23,6 +23,13 @@ check_inputs() {
     deployment | prebuilt-webapp | manifests) ;;
     *) fail "mode must be deployment, prebuilt-webapp or manifests" ;;
   esac
+  case "${PREBUILT_CI_AUTH_MODE-anonymous}" in
+    anonymous) ;;
+    job-token)
+      [[ "$MODE" == prebuilt-webapp ]] || fail 'prebuilt-ci-auth-mode job-token applies only to prebuilt-webapp mode'
+      ;;
+    *) fail 'prebuilt-ci-auth-mode must be anonymous or job-token' ;;
+  esac
   [[ -n "${GITHUB_OUTPUT:-}" ]] || fail 'missing step output file'
   [[ "${GITHUB_RUN_ID:-}" =~ ^[1-9][0-9]{0,19}$ && "${GITHUB_RUN_ATTEMPT:-}" =~ ^[1-9][0-9]{0,5}$ ]] ||
     fail 'require a numeric workflow run ID and attempt'
