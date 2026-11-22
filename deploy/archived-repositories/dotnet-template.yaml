@@ -1,0 +1,19 @@
+# devantler-tech/dotnet-template retires: the application template now scaffolds Go and .NET
+# applications (ADR 0018, devantler-tech/monorepo#5059), and it never had a consumer.
+# One-time archive phase, see kustomization.yaml: LateInitialize copies the live settings
+# into forProvider first, so the only intended change is `archived: true`. Once GitHub reports
+# the repository archived, a follow-up returns this resource to Observe-only.
+apiVersion: repo.github.m.upbound.io/v1alpha1
+kind: Repository
+metadata:
+  name: dotnet-template
+  annotations:
+    crossplane.io/external-name: dotnet-template
+spec:
+  managementPolicies: ["Observe", "Update", "LateInitialize"]
+  forProvider:
+    name: dotnet-template
+    archived: true
+  providerConfigRef:
+    kind: ProviderConfig
+    name: default

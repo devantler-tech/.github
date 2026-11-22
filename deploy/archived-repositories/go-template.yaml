@@ -1,0 +1,20 @@
+# devantler-tech/go-template retires: the application template now scaffolds Go and .NET
+# applications (ADR 0018, devantler-tech/monorepo#5059), and its two consumers, KHoist and
+# Bookkeeper, now sync from the application template.
+# One-time archive phase, see kustomization.yaml: LateInitialize copies the live settings
+# into forProvider first, so the only intended change is `archived: true`. Once GitHub reports
+# the repository archived, a follow-up returns this resource to Observe-only.
+apiVersion: repo.github.m.upbound.io/v1alpha1
+kind: Repository
+metadata:
+  name: go-template
+  annotations:
+    crossplane.io/external-name: go-template
+spec:
+  managementPolicies: ["Observe", "Update", "LateInitialize"]
+  forProvider:
+    name: go-template
+    archived: true
+  providerConfigRef:
+    kind: ProviderConfig
+    name: default

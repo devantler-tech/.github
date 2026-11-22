@@ -19,10 +19,24 @@ kubectl kustomize "$repo_root/deploy" >"$render" ||
   fail "kubectl kustomize deploy/ failed"
 [[ -s "$render" ]] || fail "rendered output is empty"
 
-# Archived repositories are read-only in GitHub. Their one-time archive update
-# has already landed, so retaining Update or LateInitialize would let a newly
+# Archived repositories are read-only in GitHub. Once their one-time archive update
+# has landed, retaining Update or LateInitialize would let a newly
 # exposed/computed provider field create a permanent diff and retry an update
 # GitHub cannot apply. Keep the steady state strictly Observe-only.
+#
+# The one exception is a repository being archived: its resource carries Observe,
+# Update and LateInitialize for the single archive PATCH, declares nothing but its
+# name and `archived: true`, and so stays outside the shared merge-policy patch
+# (deploy/archived-repositories/kustomization.yaml, phase 2). Remove it from this
+# list, and return its resource to Observe-only, once GitHub reports it archived.
+archiving_repositories=(go-template dotnet-template)
+is_archiving() {
+  local repository
+  for repository in ${archiving_repositories[@]+"${archiving_repositories[@]}"}; do
+    [[ "$1" == "$repository" ]] && return 0
+  done
+  return 1
+}
 archived_repositories="$(
   yq -N '
     select(.kind == "Repository" and .spec.forProvider.archived == true) |
@@ -34,16 +48,28 @@ archived_count="$(printf '%s\n' "$archived_repositories" | grep -c . || true)"
 # rejects an empty/collapsed render. The retirement regression executes this
 # guard with zero, one and unsafe synthetic archived repositories.
 
-write_enabled_archived_repositories="$(
+write_enabled_archived_resources="$(
   yq -N '
     select(
       .kind == "Repository" and
       .spec.forProvider.archived == true and
       (((.spec.managementPolicies // []) | sort | join(",")) != "Observe")
     ) |
-    .metadata.name
+    .metadata.name + "|" +
+      ((.spec.managementPolicies // []) | sort | join(",")) + "|" +
+      (.spec.forProvider | keys | sort | join(","))
   ' "$render"
 )"
+write_enabled_archived_repositories=""
+while IFS='|' read -r name policies fields; do
+  [[ -n "$name" ]] || continue
+  if is_archiving "$name"; then
+    [[ "$policies" == "LateInitialize,Observe,Update" && "$fields" == "archived,name" ]] ||
+      fail "$name is being archived: it must carry exactly Observe, Update and LateInitialize and declare only its name and archived: true, outside the shared merge-policy patch (got policies $policies, fields $fields)"
+  else
+    write_enabled_archived_repositories="${write_enabled_archived_repositories:+$write_enabled_archived_repositories }$name"
+  fi
+done <<<"$write_enabled_archived_resources"
 [[ -z "$write_enabled_archived_repositories" ]] ||
   fail "archived Repository resources must be Observe-only after the archive update lands: $write_enabled_archived_repositories"
 
@@ -380,4 +406,5 @@ private_repository_preservation="$(
 [[ "$private_repository_preservation" == "true" ]] ||
   fail "client-orders must preserve its identity, privacy, Issues and externally owned description"
 
-echo "repository-update-policy: OK — $archived_count archived repositories are Observe-only; $active_count active repositories declare safe update policy"
+archiving_count="$(printf '%s\n' "$write_enabled_archived_resources" | grep -c . || true)"
+echo "repository-update-policy: OK — $archived_count archived repositories are Observe-only or in their one archive update ($archiving_count); $active_count active repositories declare safe update policy"

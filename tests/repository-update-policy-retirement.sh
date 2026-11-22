@@ -46,5 +46,20 @@ for policies in '["Observe","Update"]' '["Observe","LateInitialize"]' \
   fixture "$policies"
   check "$work/case.yaml" 1 'archived Repository resources must be Observe-only'
 done
+check "$work/current.yaml" 0 'the archive update is admitted for the repositories being archived'
+# A repository the guard lists as being archived gets no more than its one archive update.
+archiving() {
+  yq "(select(.kind == \"Repository\" and .metadata.name == \"go-template\") | $1) = $2" \
+    "$work/current.yaml" >"$work/case.yaml"
+  [[ "$(yq -N 'select(.kind == "Repository" and .metadata.name == "go-template") | .spec.forProvider.archived' "$work/case.yaml")" == true ]] ||
+    { echo 'FAIL: the archiving fixture lost go-template' >&2; exit 1; }
+}
+for policies in '["Observe","Create","Update","LateInitialize"]' '["Observe","Update"]' \
+  '["Observe","Update","LateInitialize","Delete"]' '["*"]'; do
+  archiving .spec.managementPolicies "$policies"
+  check "$work/case.yaml" 1 'go-template is being archived'
+done
+archiving .spec.forProvider.allowSquashMerge true
+check "$work/case.yaml" 1 'go-template is being archived'
 POLICY_TEST_RENDER_FAIL=true check "$work/active.yaml" 1 'kubectl kustomize deploy/ failed'
 printf 'PASS: retirement preserves archived-policy refusals and render failure handling\n'

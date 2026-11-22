@@ -13,8 +13,6 @@ resources:
   - grant-maintainers-on-guard-installed-skill-edits-action.yaml
   - grant-admins-on-guard-installed-skill-edits-action.yaml
   # Observe-adopted (access already existed).
-  - grant-maintainers-on-dotnet-template.yaml
-  - grant-maintainers-on-go-template.yaml
   - grant-maintainers-on-ksail.yaml
   - grant-maintainers-on-monorepo.yaml
   - grant-maintainers-on-platform.yaml
@@ -41,10 +39,8 @@ resources:
   - grant-admins-on-agent-plugins.yaml
   - grant-admins-on-ascoachingogvaner.yaml
   - grant-admins-on-aws.yaml
-  - grant-admins-on-dotnet-template.yaml
   - grant-admins-on-fleet-gitops.yaml
   - grant-admins-on-platform-tenant-template.yaml
-  - grant-admins-on-go-template.yaml
   - grant-admins-on-homebrew-tap.yaml
   - grant-admins-on-ksail.yaml
   - grant-admins-on-kyverno-policies.yaml
