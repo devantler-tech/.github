@@ -48,6 +48,7 @@ dimensions=(
   'property-type:select(.kind=="RepositoryCustomProperty" and .spec.forProvider.propertyName=="Type")|.spec.forProvider.repository'
   'property-auto-merge:select(.kind=="RepositoryCustomProperty" and .spec.forProvider.propertyName=="EnableAutoMerge")|.spec.forProvider.repository'
   'property-workflow-scan:select(.kind=="RepositoryCustomProperty" and .spec.forProvider.propertyName=="ScanGitHubActions")|.spec.forProvider.repository'
+  'property-go-validation:select(.kind=="RepositoryCustomProperty" and .spec.forProvider.propertyName=="AlwaysValidateGoProject")|.spec.forProvider.repository'
 )
 
 # Deliberate omissions, as "<dimension>/<repo>".

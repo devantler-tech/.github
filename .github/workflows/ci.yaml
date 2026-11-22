@@ -5158,6 +5158,9 @@ jobs:
       - name: 🧪 Test organization Go workflow observation
         run: bash tests/go-workflow-observation.sh
 
+      - name: 🧪 Test opted-in Go projects ruleset
+        run: bash tests/go-workflow-property-ruleset.sh
+
       - name: 🧪 Test complete legacy workflow source migration
         run: bash tests/legacy-workflow-observation.sh
 

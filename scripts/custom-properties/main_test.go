@@ -51,7 +51,6 @@ const legacyReviewPolicyFixture = `{"id":14426508,"name":"Automatically request 
 
 func TestUnusedPropertiesAndDisabledConsumerAreFullyRetired(t *testing.T) {
 	c := fixture(t)
-	c.Properties = c.Properties[:3]
 	c.Retire = []string{"LintDocumentation", "AutomaticallyRequestCopilotCodeReview"}
 	f := &fakeAPI{schema: append([]property{}, c.Properties...)}
 	for i := range f.schema {
@@ -89,7 +88,7 @@ func TestUnusedPropertiesAndDisabledConsumerAreFullyRetired(t *testing.T) {
 	if err := reconcile(c, api); err != nil {
 		t.Fatal(err)
 	}
-	if deleted != 1 || len(f.schema) != 3 {
+	if deleted != 1 || len(f.schema) != len(names) {
 		t.Fatalf("legacy state retained: policy deletes=%d schema=%v", deleted, f.schema)
 	}
 	for _, p := range f.schema {
@@ -217,7 +216,7 @@ func TestFinalPortfolioReadbackCannotBeSkippedAfterRetirement(t *testing.T) {
 	}
 	finalRead := false
 	api := func(method, path string, body []byte) ([]byte, error) {
-		if method == "GET" && strings.HasPrefix(path, "orgs/devantler-tech/properties/values?") && len(f.schema) == 3 {
+		if method == "GET" && strings.HasPrefix(path, "orgs/devantler-tech/properties/values?") && len(f.schema) == len(names) {
 			finalRead = true
 			return []byte(`[]`), nil
 		}
@@ -234,8 +233,8 @@ func TestRenderExplicitAssignments(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got, want := strings.Count(out, "kind: RepositoryCustomProperty\n"), 3*len(c.Repositories); got != want {
-		t.Fatalf("expected %d repositories with three assignments (%d total), got %d", len(c.Repositories), want, got)
+	if got, want := strings.Count(out, "kind: RepositoryCustomProperty\n"), len(names)*len(c.Repositories); got != want {
+		t.Fatalf("expected %d repositories with %d assignments each (%d total), got %d", len(c.Repositories), len(names), want, got)
 	}
 	for _, forbidden := range []string{"crossplane.io/external-name", "LateInitialize", "- Delete", "LintDocumentation", "AutomaticallyRequestCopilotCodeReview"} {
 		if strings.Contains(out, forbidden) {
@@ -251,6 +250,9 @@ func TestCatalogueRejectsMissingAndUnknownValues(t *testing.T) {
 	for _, mutation := range []func(*catalogue){
 		func(c *catalogue) { r := c.Repositories["ksail"]; r.AutoMerge = nil; c.Repositories["ksail"] = r },
 		func(c *catalogue) { r := c.Repositories["ksail"]; r.Type = "Unknown"; c.Repositories["ksail"] = r },
+		func(c *catalogue) { r := c.Repositories["ksail"]; r.ValidateGo = nil; c.Repositories["ksail"] = r },
+		func(c *catalogue) { c.Properties[3].Default = "true" },
+		func(c *catalogue) { c.Properties[1].Default = "false" },
 		func(c *catalogue) { c.Properties[0].Explicit = true },
 		func(c *catalogue) { c.Properties = append(c.Properties, c.Properties[0]) },
 		func(c *catalogue) { c.Retire = append(c.Retire, "EnableAutoMerge") },
@@ -776,5 +778,26 @@ func TestInstallationListingMustBeComplete(t *testing.T) {
 				t.Fatalf("wrote before proving the listing: %v", f.writes)
 			}
 		})
+	}
+}
+
+// Go validation enrolment is opt-in: the language-selected organization rule
+// stays the default, and only platform always runs it (platform#5852).
+func TestGoValidationIsOptInAndPlatformAlwaysValidates(t *testing.T) {
+	c := fixture(t)
+	if p := c.Properties[3]; p.Name != "AlwaysValidateGoProject" || p.Default != "false" {
+		t.Fatalf("Go validation enrolment must default to the detected language, got %+v", p)
+	}
+	for name, r := range c.Repositories {
+		if want := name == "platform"; *r.ValidateGo != want {
+			t.Fatalf("%s AlwaysValidateGoProject = %v, want %v", name, *r.ValidateGo, want)
+		}
+	}
+	got := map[string]string{}
+	for _, a := range repositoryValues(c, c.Repositories["platform"], c.Properties) {
+		got[a.Name] = a.Value
+	}
+	if got["AlwaysValidateGoProject"] != "true" || len(got) != len(names) {
+		t.Fatalf("platform must initialize every managed value with Go validation on, got %v", got)
 	}
 }
