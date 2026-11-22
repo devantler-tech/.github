@@ -19,7 +19,7 @@ resources:
   - grant-maintainers-on-monorepo.yaml
   - grant-maintainers-on-platform.yaml
   # Created (grant did not exist yet).
-  - grant-maintainers-on-platform-tenant-template.yaml
+  - grant-maintainers-on-application-template.yaml
   - grant-maintainers-on-platform-template.yaml
   - grant-maintainers-on-unifi.yaml
   - grant-maintainers-on-homebrew-tap.yaml
@@ -43,7 +43,7 @@ resources:
   - grant-admins-on-aws.yaml
   - grant-admins-on-dotnet-template.yaml
   - grant-admins-on-fleet-gitops.yaml
-  - grant-admins-on-platform-tenant-template.yaml
+  - grant-admins-on-application-template.yaml
   - grant-admins-on-go-template.yaml
   - grant-admins-on-homebrew-tap.yaml
   - grant-admins-on-ksail.yaml

@@ -55,7 +55,7 @@ on:
           caller's own entries are kept, and a caller line `!<entry>` keeps that
           one template entry out. The merged list is part of the sync PR.
           Release flag, default `false`
-          (devantler-tech/platform-tenant-template#171).
+          (devantler-tech/application-template#171).
         required: false
         default: false
         type: boolean
