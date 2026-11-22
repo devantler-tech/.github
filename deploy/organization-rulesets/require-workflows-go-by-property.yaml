@@ -1,0 +1,56 @@
+# Opt-in companion to require-workflows-go.yaml (platform#5852). That rule selects
+# repositories only by GitHub's detected language, so a repository near the
+# Go/Shell line falls in and out of it as its byte counts shift. A repository that
+# sets AlwaysValidateGoProject keeps the same required workflow whatever language
+# is detected. Detected Go repositories are excluded here because the language
+# rule already requires the workflow, so it never runs twice.
+# The policy mirrors the language rule: active, default branch, OrganizationAdmin
+# bypass, doNotEnforceOnCreate and the maintained catalogue source.
+# Managed Observe + Create + Update + LateInitialize; no Delete.
+apiVersion: enterprise.github.m.upbound.io/v1alpha1
+kind: OrganizationRuleset
+metadata:
+  name: require-workflows-go-by-property
+spec:
+  managementPolicies:
+    - Observe
+    - Create
+    - Update
+    - LateInitialize
+  forProvider:
+    name: Require workflows to pass before merging for opted-in Go projects
+    target: branch
+    enforcement: active
+    bypassActors:
+      # OrganizationAdmin is ID-less, as in require-workflows-go.yaml.
+      - actorType: OrganizationAdmin
+        bypassMode: always
+    conditions:
+      - refName:
+          - include: ["~DEFAULT_BRANCH"]
+            exclude: []
+        repositoryProperty:
+          - include:
+              - name: AlwaysValidateGoProject
+                propertyValues: ["true"]
+                source: custom
+            exclude:
+              - name: language
+                propertyValues: [Go]
+                source: system
+    rules:
+      - creation: false
+        deletion: false
+        nonFastForward: false
+        requiredLinearHistory: false
+        requiredSignatures: false
+        requiredWorkflows:
+          - doNotEnforceOnCreate: true
+            requiredWorkflow:
+              - path: .github/workflows/validate-go-project.yaml
+                ref: refs/heads/main
+                repositoryId: 933213756
+        update: false
+  providerConfigRef:
+    kind: ProviderConfig
+    name: default
