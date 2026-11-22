@@ -220,19 +220,24 @@ printf '%s\n' "$*" >>"$OBSERVER_FIXTURE/calls"
 case "$*" in
   'api --help')
     [[ "${FAIL_HELP_READ:-false}" != true ]] || exit 1
-    if [[ "${MODERN_CLI:-false}" == true ]]; then printf '      --allow-escape-sequences   Allow printing terminal escape sequences\n'; else printf '      --include   Include HTTP response status line\n'; fi ;;
+    case "${MODERN_CLI:-false}" in
+      true) printf '      --allow-escape-sequences   Allow printing terminal escape sequences\n' ;;
+      # gh 2.104.0 (pflag 1.1.0) prints a bool flag with its explicit value syntax.
+      explicit-bool) printf '      --allow-escape-sequences[=true|false]   Allow printing terminal escape sequences\n' ;;
+      *) printf '      --include   Include HTTP response status line\n' ;;
+    esac ;;
   'api repos/devantler-tech/.github/actions/runs/23/attempts/2') cat "$OBSERVER_FIXTURE/run.json" ;;
   'api --paginate --slurp repos/devantler-tech/.github/actions/runs/23/attempts/2/jobs?per_page=50')
     [[ "${FAIL_JOB_READ:-false}" != true ]] || exit 1
     reads="$(grep -c "/jobs?per_page=50\$" "$OBSERVER_FIXTURE/calls")"
     if (( reads <= ${LAG_READS:-0} )); then cat "$OBSERVER_FIXTURE/${LAG_JOBS:-lagging-jobs.json}"; else cat "$OBSERVER_FIXTURE/jobs.json"; fi ;;
   'api repos/devantler-tech/.github/actions/jobs/'*'/logs')
-    [[ "${MODERN_CLI:-false}" != true ]] || exit 1
+    [[ "${MODERN_CLI:-false}" == false ]] || exit 1
     id="${*: -1}"; id="${id%/logs}"; id="${id##*/}"
     [[ "$id" =~ ^10[1-8]$ ]] || exit 99
     cat "$OBSERVER_FIXTURE/logs/$id.log" ;;
   'api --allow-escape-sequences repos/devantler-tech/.github/actions/jobs/'*'/logs')
-    [[ "${MODERN_CLI:-false}" == true ]] || exit 1
+    [[ "${MODERN_CLI:-false}" != false ]] || exit 1
     id="${*: -1}"; id="${id%/logs}"; id="${id##*/}"
     [[ "$id" =~ ^10[1-8]$ ]] || exit 99
     cat "$OBSERVER_FIXTURE/logs/$id.log" ;;
@@ -258,6 +263,7 @@ export GITHUB_EVENT_NAME=push GITHUB_REF=refs/heads/main
 PATH="$scratch/bin:$PATH" bash "$helper" observe >"$scratch/out" 2>"$scratch/error" || fail "native collector rejected complete evidence: $(cat "$scratch/error")"
 [[ "$(grep -c '^api repos/devantler-tech/.github/actions/jobs/' "$scratch/calls")" == 8 ]] || fail 'collector did not read all eight Go logs'
 PATH="$scratch/bin:$PATH" MODERN_CLI=true bash "$helper" observe >"$scratch/out" 2>"$scratch/error" || fail "modern CLI raw-log collector rejected complete evidence: $(cat "$scratch/error")"
+PATH="$scratch/bin:$PATH" MODERN_CLI=explicit-bool bash "$helper" observe >"$scratch/out" 2>"$scratch/error" || fail "explicit bool-syntax CLI raw-log collector rejected complete evidence: $(cat "$scratch/error")"
 if PATH="$scratch/bin:$PATH" FAIL_HELP_READ=true bash "$helper" observe >"$scratch/out" 2>"$scratch/error"; then fail 'unknown CLI download capability passed'; fi
 [[ ! -s "$scratch/out" ]] || fail 'unknown CLI capability published success'
 if PATH="$scratch/bin:$PATH" FAIL_JOB_READ=true bash "$helper" observe >"$scratch/out" 2>"$scratch/error"; then fail 'failed paginated job read passed'; fi
