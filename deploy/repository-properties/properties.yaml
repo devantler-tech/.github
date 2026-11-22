@@ -544,66 +544,6 @@ spec:
 apiVersion: repo.github.m.upbound.io/v1alpha1
 kind: RepositoryCustomProperty
 metadata:
-  name: dotnet-template-type
-spec:
-  managementPolicies: [Observe, Create, Update]
-  forProvider:
-    repository: "dotnet-template"
-    propertyName: Type
-    propertyType: single_select
-    propertyValue: ["Application"]
-  providerConfigRef:
-    kind: ProviderConfig
-    name: default
----
-apiVersion: repo.github.m.upbound.io/v1alpha1
-kind: RepositoryCustomProperty
-metadata:
-  name: dotnet-template-enableautomerge
-spec:
-  managementPolicies: [Observe, Create, Update]
-  forProvider:
-    repository: "dotnet-template"
-    propertyName: EnableAutoMerge
-    propertyType: true_false
-    propertyValue: ["true"]
-  providerConfigRef:
-    kind: ProviderConfig
-    name: default
----
-apiVersion: repo.github.m.upbound.io/v1alpha1
-kind: RepositoryCustomProperty
-metadata:
-  name: dotnet-template-scangithubactions
-spec:
-  managementPolicies: [Observe, Create, Update]
-  forProvider:
-    repository: "dotnet-template"
-    propertyName: ScanGitHubActions
-    propertyType: true_false
-    propertyValue: ["true"]
-  providerConfigRef:
-    kind: ProviderConfig
-    name: default
----
-apiVersion: repo.github.m.upbound.io/v1alpha1
-kind: RepositoryCustomProperty
-metadata:
-  name: dotnet-template-alwaysvalidategoproject
-spec:
-  managementPolicies: [Observe, Create, Update]
-  forProvider:
-    repository: "dotnet-template"
-    propertyName: AlwaysValidateGoProject
-    propertyType: true_false
-    propertyValue: ["false"]
-  providerConfigRef:
-    kind: ProviderConfig
-    name: default
----
-apiVersion: repo.github.m.upbound.io/v1alpha1
-kind: RepositoryCustomProperty
-metadata:
   name: fleet-gitops-type
 spec:
   managementPolicies: [Observe, Create, Update]
@@ -654,66 +594,6 @@ spec:
   managementPolicies: [Observe, Create, Update]
   forProvider:
     repository: "fleet-gitops"
-    propertyName: AlwaysValidateGoProject
-    propertyType: true_false
-    propertyValue: ["false"]
-  providerConfigRef:
-    kind: ProviderConfig
-    name: default
----
-apiVersion: repo.github.m.upbound.io/v1alpha1
-kind: RepositoryCustomProperty
-metadata:
-  name: go-template-type
-spec:
-  managementPolicies: [Observe, Create, Update]
-  forProvider:
-    repository: "go-template"
-    propertyName: Type
-    propertyType: single_select
-    propertyValue: ["Application"]
-  providerConfigRef:
-    kind: ProviderConfig
-    name: default
----
-apiVersion: repo.github.m.upbound.io/v1alpha1
-kind: RepositoryCustomProperty
-metadata:
-  name: go-template-enableautomerge
-spec:
-  managementPolicies: [Observe, Create, Update]
-  forProvider:
-    repository: "go-template"
-    propertyName: EnableAutoMerge
-    propertyType: true_false
-    propertyValue: ["true"]
-  providerConfigRef:
-    kind: ProviderConfig
-    name: default
----
-apiVersion: repo.github.m.upbound.io/v1alpha1
-kind: RepositoryCustomProperty
-metadata:
-  name: go-template-scangithubactions
-spec:
-  managementPolicies: [Observe, Create, Update]
-  forProvider:
-    repository: "go-template"
-    propertyName: ScanGitHubActions
-    propertyType: true_false
-    propertyValue: ["true"]
-  providerConfigRef:
-    kind: ProviderConfig
-    name: default
----
-apiVersion: repo.github.m.upbound.io/v1alpha1
-kind: RepositoryCustomProperty
-metadata:
-  name: go-template-alwaysvalidategoproject
-spec:
-  managementPolicies: [Observe, Create, Update]
-  forProvider:
-    repository: "go-template"
     propertyName: AlwaysValidateGoProject
     propertyType: true_false
     propertyValue: ["false"]

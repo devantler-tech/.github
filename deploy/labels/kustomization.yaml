@@ -38,8 +38,6 @@ resources:
   - kyverno-policies.yaml
   - application-template.yaml
   - platform-template.yaml
-  - go-template.yaml
-  - dotnet-template.yaml
   - homebrew-tap.yaml
   - cloudflare.yaml
   - khoist.yaml

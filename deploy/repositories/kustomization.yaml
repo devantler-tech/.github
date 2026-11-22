@@ -24,8 +24,6 @@ resources:
   - kyverno-policies.yaml
   - platform-tenant-template.yaml
   - platform-template.yaml
-  - go-template.yaml
-  - dotnet-template.yaml
   - homebrew-tap.yaml
   - fleet-gitops.yaml
   - cloudflare.yaml

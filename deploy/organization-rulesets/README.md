@@ -92,11 +92,11 @@ passed all three native platforms and then blocked on an intentional Windows
 assertion failure (the unchanged fail-fast matrix cancelled its other two legs).
 Neither control was merged.
 
-`go-template-require-validation` requires the native `CI - Required Checks` aggregate.
-`dotnet-template-require-validation` separately requires `.NET template tests`
-for `ubuntu-latest`, `windows-latest` and `macos-latest`. Both remain active,
-default-branch-only, without bypasses and bound to GitHub Actions integration `15368`.
-The disabled organization resources retain their managed identities, complete selectors
+The repository rulesets that replaced them, `go-template-require-validation` (the native
+`CI - Required Checks` aggregate) and `dotnet-template-require-validation` (`.NET template tests`
+on three runners), were withdrawn when both templates retired and were archived (ADR 0018,
+devantler-tech/monorepo#5062). Their resources omit `Delete`, so withdrawing them changed nothing
+on GitHub. The disabled organization resources retain their managed identities, complete selectors
 and non-deleting lifecycle. The Go source remains genuinely shared. Both former .NET
 policies now declare one inert rule each, removing obsolete workflow associations before wrapper
 retirement. The language-selected policy has no consumer in a complete fresh effective-policy

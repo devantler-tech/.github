@@ -1,0 +1,27 @@
+# Archived repositories, kept OUTSIDE ../repositories/ on purpose: that kustomization's
+# shared merge-policy patch targets every Repository it renders, and GitHub makes an
+# archived repository read-only for settings, so each patched reconcile would 422.
+# Resources here get no shared patch and carry only what an archived repository holds.
+#
+# Lifecycle:
+#   1. Withdraw the repository's active management in the same change: its labels,
+#      repository permissions, team grants, custom properties and repository rulesets.
+#      None of those resources has Delete, so pruning them never touches live GitHub.
+#   2. Archive once: Observe and Update with `archived: true`, and every setting the
+#      provider would otherwise send as its default declared at its live value. The
+#      provider computes the update from the declaration alone (LateInitialize fills
+#      the spec only after that), so the declared settings are what keeps the PATCH
+#      from changing anything but `archived`. tests/repository-update-policy.sh admits
+#      this phase only for the repositories it names as being archived, and only with
+#      those settings declared.
+#   3. After GitHub reports `archived: true`, return each resource to Observe-only and
+#      remove it from the pending list. An archived repository rejects settings
+#      updates, and a provider field exposed later could otherwise retry an update
+#      GitHub can never apply.
+# Delete is omitted everywhere, so a Flux prune can never delete a real repository.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  # Retired by ADR 0018 (devantler-tech/monorepo#5062): phase 2, archive pending.
+  - go-template.yaml
+  - dotnet-template.yaml

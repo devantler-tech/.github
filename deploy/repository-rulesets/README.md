@@ -23,22 +23,12 @@ observes.
 | `require-reviewed-admission-on-monorepo.yaml` | `monorepo` | Require reviewed repository admission | Managed, active; exact GitHub Actions executed result, default branch only, no bypass or Delete |
 | `require-reviewed-admission-on-dotgithub.yaml` | `.github` | Require reviewed repository admission | Managed, active; exact GitHub Actions executed result, default branch only, no bypass or Delete |
 | `require-reviewed-admission-on-world-at-ruin.yaml` | `world-at-ruin` | Require reviewed repository admission | Managed, active with the shared runner after native 187-scene positive and tampering-refusal proof; identity, selector and producer unchanged; the old singleton is retired |
-| `require-validation-on-dotnet-template.yaml` | `dotnet-template` | Require local .NET template validation | Managed (net-new; Observe + Create + Update + LateInitialize) |
-| `require-validation-on-go-template.yaml` | `go-template` | Require local Go template validation | Managed (net-new; Observe + Create + Update + LateInitialize) |
 | `require-scaffold-validation-on-platform-tenant-template.yaml` | `application-template` | Require scaffold validation | Managed (net-new; Observe + Create + Update + LateInitialize) |
 
-The .NET rule requires the three repository-owned `.NET template tests (<runner>)`
-matrix results from GitHub Actions. These names are intentionally distinct from
-the old injected `test (<runner>)` results, which must not satisfy the new rule.
-The temporary organization-required source remains active during rollout. Before
-retiring it, verify the repository rule through the native API and an ordinary
-consumer pull request with all three local platform jobs completed. A rendered
-manifest or an old organization-run check does not establish that overlap.
-The Go template rule requires its repository-owned `CI - Required Checks` aggregate from
-GitHub Actions. The native caller must be merged before the old organization-required Go
-validator is retired. Verify the repository rule natively and use an ordinary consumer PR
-plus refusal controls during that overlap; a rendered policy is not live enforcement proof.
-The producer binding does not authenticate the immutable workflow source.
+The `go-template` and `dotnet-template` validation rules were withdrawn when both templates
+retired and were archived (ADR 0018, devantler-tech/monorepo#5062). Their resources omit
+`Delete`, so the withdrawal changed nothing on GitHub. A producer binding does not authenticate
+the immutable workflow source.
 
 The platform tenant template rule requires the three jobs of its `🧱 Validate Scaffold` workflow:
 `Validate Scaffold`, `Platform Admissibility` and `Pod Security and tenant RBAC`. Every tenant

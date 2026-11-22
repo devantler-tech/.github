@@ -33,8 +33,6 @@ resources:
   - unifi.yaml
   - platform-tenant-template.yaml
   - platform-template.yaml
-  - go-template.yaml
-  - dotnet-template.yaml
   - homebrew-tap.yaml
   - world-at-ruin.yaml
   - monorepo.yaml

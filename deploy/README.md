@@ -20,6 +20,8 @@ out-of-band changes made in the GitHub UI.
   it (no `source`, and a `cname` only where one is set). Any difference would
   retry a Pages update forever
   ([#232](https://github.com/devantler-tech/.github/issues/232)).
+- `archived-repositories/` — one `Repository` per archived (or archival-bound)
+  repo, outside the shared merge-policy patch; see the archive lifecycle below.
 - `teams/` — one `Team` per file. `maintainers` is Observe-adopted; the
   separate `admins` policy actively manages explicit repository-admin grants.
 - `team-memberships/` — one `TeamMembership` per file (`add-<user>-to-<team>.yaml`).
@@ -158,12 +160,22 @@ cannot initialize a replacement repository or copy private values into the
 configuration. Labels remain Observe-only; team ownership and Actions SHA
 pinning follow the existing organization policies.
 
+An archive stays outside the active shared merge-policy patch, in
+`archived-repositories/`, and becomes Observe-only once archived. That directory's
+`kustomization.yaml` documents the three steps: withdraw the repository's active
+management, make one Observe and Update change that sets `archived: true` with every
+other defaultable setting declared at its live value (the provider would otherwise
+send each omitted one as its default), then return to Observe-only once GitHub
+reports the repository archived. `tests/repository-update-policy.sh` admits that
+update only for the repositories it lists as being archived, bound to their external
+names; `go-template` and `dotnet-template` are being archived (ADR 0018,
+devantler-tech/monorepo#5062).
+
 Archived repository mirrors are withdrawn before explicit repository deletion
 ([#679](https://github.com/devantler-tech/.github/issues/679)). Removing a mirror
 does not delete its GitHub repository: its management policy excludes `Delete`.
-Any future archive must stay outside the active shared merge-policy patch and
-become Observe-only once archived. Required CI exercises both that refusal
-boundary and the legitimate zero-archive state.
+Required CI exercises the refusal boundary, the archive exception and the
+legitimate zero-archive state.
 
 The active policy is fully declarative and omits both `Delete` management and
 external names, so it cannot delete teams, memberships, or grants. Validate the

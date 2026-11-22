@@ -19,10 +19,35 @@ kubectl kustomize "$repo_root/deploy" >"$render" ||
   fail "kubectl kustomize deploy/ failed"
 [[ -s "$render" ]] || fail "rendered output is empty"
 
-# Archived repositories are read-only in GitHub. Their one-time archive update
-# has already landed, so retaining Update or LateInitialize would let a newly
+# Archived repositories are read-only in GitHub. Once their one-time archive update
+# has landed, retaining Update or LateInitialize would let a newly
 # exposed/computed provider field create a permanent diff and retry an update
 # GitHub cannot apply. Keep the steady state strictly Observe-only.
+#
+# The one exception is a repository being archived: its resource carries exactly
+# Observe and Update for the single archive PATCH (deploy/archived-repositories/
+# kustomization.yaml, phase 2), names that repository in its resource name, external
+# name and forProvider.name alike, and declares every setting below. The provider
+# computes the update from the declaration alone and sends an omitted setting as its
+# default, so each one is declared at its live value; LateInitialize cannot help,
+# because it fills the spec only after that update was computed. Remove the repository
+# from this list, and return its resource to Observe-only, once GitHub reports it
+# archived.
+archiving_repositories=(go-template dotnet-template)
+archive_declared_settings=(
+  description homepageUrl topics visibility isTemplate
+  hasIssues hasProjects hasWiki hasDiscussions hasDownloads
+  allowMergeCommit allowSquashMerge allowRebaseMerge allowAutoMerge allowUpdateBranch
+  deleteBranchOnMerge squashMergeCommitTitle squashMergeCommitMessage
+  mergeCommitTitle mergeCommitMessage webCommitSignoffRequired
+)
+is_archiving() {
+  local repository
+  for repository in ${archiving_repositories[@]+"${archiving_repositories[@]}"}; do
+    [[ "$1" == "$repository" ]] && return 0
+  done
+  return 1
+}
 archived_repositories="$(
   yq -N '
     select(.kind == "Repository" and .spec.forProvider.archived == true) |
@@ -34,16 +59,36 @@ archived_count="$(printf '%s\n' "$archived_repositories" | grep -c . || true)"
 # rejects an empty/collapsed render. The retirement regression executes this
 # guard with zero, one and unsafe synthetic archived repositories.
 
-write_enabled_archived_repositories="$(
+write_enabled_archived_resources="$(
   yq -N '
     select(
       .kind == "Repository" and
       .spec.forProvider.archived == true and
       (((.spec.managementPolicies // []) | sort | join(",")) != "Observe")
     ) |
-    .metadata.name
+    .metadata.name + "|" +
+      ((.spec.managementPolicies // []) | sort | join(",")) + "|" +
+      (.metadata.annotations["crossplane.io/external-name"] // "") + "|" +
+      (.spec.forProvider.name // "") + "|" +
+      (.spec.forProvider | keys | sort | join(","))
   ' "$render"
 )"
+write_enabled_archived_repositories=""
+while IFS='|' read -r name policies external_name provider_name fields; do
+  [[ -n "$name" ]] || continue
+  if is_archiving "$name"; then
+    [[ "$policies" == "Observe,Update" ]] ||
+      fail "$name is being archived: it must carry exactly Observe and Update (got $policies)"
+    [[ "$external_name" == "$name" && "$provider_name" == "$name" ]] ||
+      fail "$name is being archived: its external name and forProvider.name must both be $name (got $external_name and $provider_name)"
+    for setting in "${archive_declared_settings[@]}"; do
+      [[ ",$fields," == *",$setting,"* ]] ||
+        fail "$name is being archived: it must declare $setting at its live value, or the archive update resets it"
+    done
+  else
+    write_enabled_archived_repositories="${write_enabled_archived_repositories:+$write_enabled_archived_repositories }$name"
+  fi
+done <<<"$write_enabled_archived_resources"
 [[ -z "$write_enabled_archived_repositories" ]] ||
   fail "archived Repository resources must be Observe-only after the archive update lands: $write_enabled_archived_repositories"
 
@@ -375,4 +420,5 @@ private_repository_preservation="$(
 [[ "$private_repository_preservation" == "true" ]] ||
   fail "client-orders must preserve its identity, privacy, Issues and externally owned description"
 
-echo "repository-update-policy: OK — $archived_count archived repositories are Observe-only; $active_count active repositories declare safe update policy"
+archiving_count="$(printf '%s\n' "$write_enabled_archived_resources" | grep -c . || true)"
+echo "repository-update-policy: OK — $archived_count archived repositories are Observe-only or in their one archive update ($archiving_count); $active_count active repositories declare safe update policy"
