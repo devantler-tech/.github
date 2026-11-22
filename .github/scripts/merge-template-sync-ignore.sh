@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 # Merge the template's ignore entries into the target's ignore file before template sync
-# (devantler-tech/platform-tenant-template#171).
+# (devantler-tech/application-template#171).
 #
 # actions-template-sync restores the target's ignore file to its committed copy after pulling the
 # template, and only that copy decides which paths are dropped. An entry the template adds later

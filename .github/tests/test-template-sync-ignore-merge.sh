@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 # A template's new ignore entries must reach targets created before them
-# (devantler-tech/platform-tenant-template#171).
+# (devantler-tech/application-template#171).
 #
 # actions-template-sync squash-pulls the template, then restores the target's ignore file to its
 # committed copy and drops the paths that copy lists. The template's own list never decides
@@ -264,7 +264,7 @@ in_tree() {
 fixture="$(make_fixture flag-off)"
 replay_template_sync "$fixture"
 in_tree "$fixture" HEAD scripts/template-only.test.sh ||
-  fail "control: the replayed sync no longer reproduces platform-tenant-template#171"
+  fail "control: the replayed sync no longer reproduces application-template#171"
 [[ "$(git -C "$fixture/target" show HEAD:AGENTS.md)" == "target agents" ]] ||
   fail "control: the replayed sync overwrote a file the target's list owns"
 

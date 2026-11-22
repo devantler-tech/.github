@@ -911,7 +911,7 @@ jobs:
       contents: write
       pull-requests: write
     with:
-      source-repo-path: devantler-tech/platform-tenant-template
+      source-repo-path: devantler-tech/application-template
 ```
 
 By default the sync PR is opened with `GITHUB_TOKEN`, so GitHub does not trigger
@@ -938,7 +938,7 @@ jobs:
       contents: write
       pull-requests: write
     with:
-      source-repo-path: devantler-tech/platform-tenant-template
+      source-repo-path: devantler-tech/application-template
       use-app-token: true
     secrets:
       APP_PRIVATE_KEY: ${{ secrets.APP_PRIVATE_KEY }}
