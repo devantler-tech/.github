@@ -60,19 +60,6 @@ exemptions=(
   # fleet-gitops is private; the Maintainers team deliberately stays off it
   # (maintainer decision on #115, 2026-09-25).
   "team-maintainers/fleet-gitops"
-  # The platform tenant template is renamed to application-template in place
-  # (#956): the Repository declares the new name first, and its labels, team
-  # grants, Actions permissions and property values keep the old name until the
-  # rename is read back, then move together (#956 step c), which removes these
-  # eight entries.
-  "repositories/platform-tenant-template"
-  "labels/application-template"
-  "team-admins/application-template"
-  "team-maintainers/application-template"
-  "repository-permissions/application-template"
-  "property-type/application-template"
-  "property-auto-merge/application-template"
-  "property-workflow-scan/application-template"
 )
 
 is_exempt() {

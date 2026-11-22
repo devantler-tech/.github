@@ -59,7 +59,7 @@ repositories=(
   client-orders
   dotnet-template
   fleet-gitops
-  platform-tenant-template
+  application-template
   go-template
   homebrew-tap
   ksail
