@@ -291,9 +291,10 @@ observe() {
   validate_jobs
   # Older gh versions print log bytes directly and do not accept this option.
   # Newer versions refuse escape-bearing action logs without the explicit flag.
+  # gh 2.104.0 (pflag 1.1.0) prints boolean flags as `--name[=true|false]`.
   gh api --help >"$scratch/gh-api-help" || fail 'cannot determine supported log download interface'
   log_args=()
-  if grep -Eq '^[[:space:]]+--allow-escape-sequences([[:space:]]|$)' "$scratch/gh-api-help"; then
+  if grep -Eq '^[[:space:]]+--allow-escape-sequences(\[=true\|false\])?([[:space:]]|$)' "$scratch/gh-api-help"; then
     log_args+=(--allow-escape-sequences)
   fi
   while IFS= read -r id; do

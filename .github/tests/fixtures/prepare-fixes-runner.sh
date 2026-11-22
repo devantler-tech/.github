@@ -1,6 +1,29 @@
 #!/usr/bin/env bash
 # GitHub runner integration fixture, copied outside the helper before it is removed.
 set -euo pipefail
+
+# The run's artifact listing can lag a finished upload by a few seconds, so it is
+# re-read (bounded) while it shows fewer artifacts named $ARTIFACT than wanted.
+# These only wait; each caller still checks the count it ends with.
+list_artifacts() {
+  gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/artifacts" --paginate > "$RUNNER_TEMP/artifacts.json"
+}
+count_artifacts() {
+  jq -s --arg name "$ARTIFACT" '[.[].artifacts[] | select(.name == $name)] | length' "$RUNNER_TEMP/artifacts.json"
+}
+# await_listing <wanted> — set $count to the listed number after at most six reads.
+await_listing() {
+  local attempts=6 delay="${FIXTURE_ARTIFACT_LIST_DELAY:-5}" attempt=1
+  list_artifacts
+  count="$(count_artifacts)"
+  while [ "$count" -lt "$1" ] && [ "$attempt" -lt "$attempts" ]; do
+    sleep "$delay"
+    attempt=$((attempt + 1))
+    list_artifacts
+    count="$(count_artifacts)"
+  done
+}
+
 case "$1" in
   setup)
     git init --quiet
@@ -78,29 +101,24 @@ GIT
       expect 'replayed tree' "$(cat "$RUNNER_TEMP/expected-tree")" "$(git -C "$RUNNER_TEMP/replay" write-tree)"
     fi
     # Check real artifact absence as well as successful transfers. A skipped
-    # download alone cannot establish that the upload was suppressed. The run's
-    # artifact listing can lag a finished upload by a few seconds, so re-read it
-    # (bounded) while it shows fewer than expected; the count must still match
-    # exactly, so a missing or extra artifact fails.
-    list_artifacts() {
-      gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/artifacts" --paginate > "$RUNNER_TEMP/artifacts.json"
-    }
-    count_artifacts() {
-      jq -s --arg name "$ARTIFACT" '[.[].artifacts[] | select(.name == $name)] | length' "$RUNNER_TEMP/artifacts.json"
-    }
-    attempts=6
-    delay="${FIXTURE_ARTIFACT_LIST_DELAY:-5}"
-    attempt=1
-    list_artifacts
-    count="$(count_artifacts)"
-    while [ "$count" -lt "$expected_artifacts" ] && [ "$attempt" -lt "$attempts" ]; do
-      sleep "$delay"
-      attempt=$((attempt + 1))
-      list_artifacts
-      count="$(count_artifacts)"
-    done
+    # download alone cannot establish that the upload was suppressed. The count
+    # must match exactly, so a missing or extra artifact fails.
+    await_listing "$expected_artifacts"
     expect 'artifact count' "$expected_artifacts" "$count"
     printf 'PASS hosted fix exporter: %s; artifact count=%s; outcome=%s\n' "$SCENARIO" "$count" "$ACTUAL_OUTCOME"
+    ;;
+  await-upload)
+    # Runs only after the first download missed. Wait until the listing shows the
+    # upload, then once more, because the store's own lookups can still disagree
+    # just after it appears; an upload that never appears fails here by name.
+    await_listing 1
+    if [ "$count" -lt 1 ]; then
+      printf 'FAIL hosted fix exporter (%s): uploaded artifact %s is not listed after the bounded wait\n' \
+        "$SCENARIO" "$ARTIFACT" >&2
+      exit 1
+    fi
+    sleep "${FIXTURE_ARTIFACT_LIST_DELAY:-5}"
+    printf 'hosted fix exporter: %s; uploaded artifact listed, retrying the download\n' "$SCENARIO"
     ;;
   *) echo 'unknown fixture phase' >&2; exit 1 ;;
 esac

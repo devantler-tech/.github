@@ -33,3 +33,4 @@ resources:
   - require-dotnet-template-tests.yaml
   - require-metadata-code-scanning-results.yaml
   - require-repository-pr-admission.yaml
+  - require-workflows-go-by-property.yaml # Opt-in companion to require-workflows-go.yaml.
