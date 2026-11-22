@@ -18,33 +18,53 @@ check_rule() {
     fail 'unreadable render'
     return 1
   }
-  jq -e '
+  # Print the name of every assertion that does not hold; none printed means the policy matches.
+  local failed
+  failed="$(jq -r '
     [.[] | select(.kind == "OrganizationRuleset" and .metadata.name == "require-workflows-go")] as $language |
     [.[] | select(.kind == "OrganizationRuleset" and
       (.metadata.name == "require-workflows-go-by-property" or
         .spec.forProvider.name == "Require workflows to pass before merging for opted-in Go projects"))] as $opt_in |
-    ($language | length) == 1 and ($opt_in | length) == 1 and
-    $language[0].spec.forProvider as $l | $opt_in[0] as $r | $r.spec.forProvider as $p |
-    $r.apiVersion == "enterprise.github.m.upbound.io/v1alpha1" and
-    $r.metadata.name == "require-workflows-go-by-property" and
-    ($r.metadata | has("namespace") | not) and
-    ($r.metadata.annotations["crossplane.io/external-name"] // "") == "" and
-    $r.spec.managementPolicies == ["Observe", "Create", "Update", "LateInitialize"] and
-    $r.spec.providerConfigRef == {kind: "ProviderConfig", name: "default"} and
-    ($r.spec | keys | sort) == ["forProvider", "managementPolicies", "providerConfigRef"] and
-    ($p | keys | sort) == ["bypassActors", "conditions", "enforcement", "name", "rules", "target"] and
-    $p.name == "Require workflows to pass before merging for opted-in Go projects" and
-    $p.target == $l.target and $p.enforcement == "active" and $p.enforcement == $l.enforcement and
-    $p.bypassActors == $l.bypassActors and $p.rules == $l.rules and
-    ($p.conditions | length) == 1 and ($p.conditions[0] | keys | sort) == ["refName", "repositoryProperty"] and
-    $p.conditions[0].refName == $l.conditions[0].refName and
-    ($p.conditions[0].repositoryProperty | length) == 1 and
-    $p.conditions[0].repositoryProperty[0].include ==
-      [{name: "AlwaysValidateGoProject", propertyValues: ["true"], source: "custom"}] and
-    $p.conditions[0].repositoryProperty[0].exclude == $l.conditions[0].repositoryProperty[0].include and
-    $l.conditions[0].repositoryProperty[0].include == [{name: "language", propertyValues: ["Go"], source: "system"}]
-  ' <<<"$rendered" >/dev/null || {
-    fail 'unexpected opted-in Go projects policy'
+    if ($language | length) != 1 then "one language rule"
+    elif ($opt_in | length) != 1 then "one opt-in rule"
+    else
+      $language[0].spec.forProvider as $l |
+      $opt_in[0] as $r |
+      ($r.spec.forProvider // {}) as $p |
+      ($p.conditions[0] // {}) as $c |
+      try (
+        [
+          ["apiVersion", $r.apiVersion == "enterprise.github.m.upbound.io/v1alpha1"],
+          ["name", $r.metadata.name == "require-workflows-go-by-property"],
+          ["cluster scope", ($r.metadata | has("namespace") | not)],
+          ["no external name", (($r.metadata.annotations // {})["crossplane.io/external-name"] // "") == ""],
+          ["management policies", $r.spec.managementPolicies == ["Observe", "Create", "Update", "LateInitialize"]],
+          ["provider config", $r.spec.providerConfigRef == {kind: "ProviderConfig", name: "default"}],
+          ["spec fields", ($r.spec | keys) == ["forProvider", "managementPolicies", "providerConfigRef"]],
+          ["forProvider fields", ($p | keys) == ["bypassActors", "conditions", "enforcement", "name", "rules", "target"]],
+          ["ruleset name", $p.name == "Require workflows to pass before merging for opted-in Go projects"],
+          ["target", $p.target == $l.target],
+          ["active", $p.enforcement == "active" and $p.enforcement == $l.enforcement],
+          ["bypass parity", $p.bypassActors == $l.bypassActors],
+          ["rules parity", $p.rules == $l.rules],
+          ["one condition", ($p.conditions | length) == 1],
+          ["condition fields", ($c | keys) == ["refName", "repositoryProperty"]],
+          ["ref parity", $c.refName == $l.conditions[0].refName],
+          ["one property selector", ($c.repositoryProperty | length) == 1],
+          ["opt-in selector", $c.repositoryProperty[0].include ==
+            [{name: "AlwaysValidateGoProject", propertyValues: ["true"], source: "custom"}]],
+          ["language exclusion", $c.repositoryProperty[0].exclude == $l.conditions[0].repositoryProperty[0].include],
+          ["language selector", $l.conditions[0].repositoryProperty[0].include ==
+            [{name: "language", propertyValues: ["Go"], source: "system"}]]
+        ] | .[] | select(.[1] != true) | .[0]
+      ) catch "unevaluable policy (\(.))"
+    end
+  ' <<<"$rendered")" || {
+    fail 'unreadable render'
+    return 1
+  }
+  [[ -z "$failed" ]] || {
+    fail "unexpected opted-in Go projects policy: ${failed//$'\n'/, }"
     return 1
   }
 }
