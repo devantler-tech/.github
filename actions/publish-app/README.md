@@ -148,7 +148,6 @@ supplies the credentials for the default-branch fetch and registry operations.
 
 ## Not covered
 
-- **Recovery** of a release whose version tags were lost after signing is not part of this action
-  yet; the reusable workflows keep their recovery modes until a follow-up carries it over.
-- The reusable `publish-app.yaml` and `publish-manifests.yaml` workflows are unchanged and keep
-  their shared-publisher identity until every consumer has moved.
+- **Recovery** of a release whose version tags were lost after signing is not part of this action.
+  The retired reusable `publish-app.yaml` and `publish-manifests.yaml` workflows carried it; their
+  signatures stay valid, because removing the workflow files changes no published artifact.

@@ -28,8 +28,6 @@ The following limits replace the six-hour default. Existing deadcode (15 minutes
 | `create-release` | release: 15; offline-test: 10 | Offline fixture maximum 56 seconds. A [KSail release](https://github.com/devantler-tech/ksail/actions/runs/40248945111) executed for 72 seconds after 428 seconds queued. |
 | `dependency-review` | dependency-review: 10 | Two native fixture jobs; maximum 19 seconds. |
 | `enable-auto-merge` | dry-run, eligibility, disarm-untrusted-update, auto-merge: 5 each | Dry-run maximum 26 seconds; authenticated mutation paths have no successful observation in this sample. |
-| `publish-app` | publish: 60 | Conservative initial bound; production publication was not measured by these fixtures. |
-| `publish-manifests` | publish-manifests: 60 | Conservative initial bound; production publication was not measured by these fixtures. |
 | `scan-for-todo-comments` | dry-run: 5; todos: 60 | Generated offline fixture maxima 38–46 seconds; authenticated scanning and issue publication remain unmeasured. |
 | `scan-for-workflow-vulnerabilities` | eligibility: 5; zizmor: 15 | Native fixture maxima 16 and 32 seconds respectively. |
 | `template-sync` | template-sync: 60 | Conservative initial bound; repository count and authenticated updates were not measured. |
@@ -116,7 +114,6 @@ The portfolio's whole-PR fifteen-minute objective remains [#654](https://github.
 | `test-enable-auto-merge-pentad-gate` | 3 | 27 | 5 |
 | `test-create-release-config` | 3 | 190 | 10 |
 | `test-release-please-semantics` | 3 | 19 | 5 |
-| `test-publish-caller-pin-live` | 1 | 14 | 5 |
 | `test-govulncheck-allowlist-honored` | 18 | 60 | 5 |
 | `test-govulncheck-strict-blocks` | 18 | 66 | 5 |
 | `test-govulncheck-action-lockstep` | 3 | 18 | 5 |

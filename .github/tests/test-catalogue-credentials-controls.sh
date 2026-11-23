@@ -59,8 +59,6 @@ removed template dry run	.github/workflows/ci.yaml	del(.jobs["test-template-sync
 restored template writer	.github/workflows/template-sync.yaml	del(.jobs["template-sync"].if)	1	write authority
 restored auto merge	.github/workflows/enable-auto-merge.yaml	.jobs["disarm-untrusted-update"].if="${{ always() }}"	1	write authority
 restored test package writer	.github/workflows/ci.yaml	.jobs["test-run-dotnet-tests-workflow"].permissions.packages="write"	1	write authority
-restored application writer	.github/workflows/publish-app.yaml	del(.jobs.publish.if)	1	write authority
-restored manifest writer	.github/workflows/publish-manifests.yaml	del(.jobs["publish-manifests"].if)	1	write authority
 unknown condition on new writer	.github/workflows/ci.yaml	.jobs.new={"if":"${{ vars.MAYBE }}",permissions:{issues:"write"},steps:[{run:"echo fixture"}]}	1	write authority
 nested composite secret	.github/actions/prepare-fixes/action.yaml	.runs.steps += [{run:"echo fixture",shell:"bash",env:{EXTRA:"${{ secrets.TOKEN }}"}}]	1	external secret
 mixed bulk secret	.github/workflows/ci.yaml	.jobs.new={permissions:{contents:"read"},env:{EXTRA:"${{ secrets.GITHUB_TOKEN && toJSON(secrets) }}"},steps:[{run:"echo fixture"}]}	1	external secret
@@ -88,5 +86,5 @@ format replacement identity	.github/workflows/ci.yaml	.jobs.new={"if":"${{ forma
 unverified recovery helper	.github/workflows/validate-go-project-readonly.yaml	(.jobs.lint.steps[]|select(.id == "fixes")).uses="./.devantler-tech-actions/.github/actions/prepare-fixes" | (.jobs.lint.steps[]|select(.id == "fixes")).if |= sub("steps.fix-exporter.outcome == 'success' && ";"")	2	UNKNOWN successful local action checkout
 unverified best-effort helper	.github/workflows/validate-go-project-readonly.yaml	(.jobs.coverage.steps[]|select((.uses // "")|endswith("/actions/upload-coverage"))).uses="./.devantler-tech-actions/actions/upload-coverage" | del(.jobs.coverage.steps[]|select((.uses // "")|endswith("/actions/upload-coverage"))|.if)	2	UNKNOWN successful local action checkout
 CASES
-[[ "$controls" == 43 ]] || { echo 'FAIL: incomplete control set' >&2; exit 1; }
+[[ "$controls" == 41 ]] || { echo 'FAIL: incomplete control set' >&2; exit 1; }
 echo "PASS: complete source graph rejects $controls real-source credential regressions"

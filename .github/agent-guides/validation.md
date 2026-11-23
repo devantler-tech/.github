@@ -36,41 +36,28 @@ fixture retains the production defaults and native conditional routing, with onl
 offline dependencies. Keep both its compatibility caller and missing-token control
 required; this fixture never proves live token generation or project association.
 
-**Verified publication:** Every normal publisher authenticates and establishes normalized version absence before its first write and again before promotion. Preserve structured missing-version evidence, fail-closed authentication/read errors, both application targets, immutable helper checkout and removal before the image build. Default publication stages and signs produced digests before exposing version and source-SHA image tags or moving stable `latest`, preserves `latest` for prereleases, and never exposes release tags through builder metadata. Opt-in verified publication additionally checks exact signature identities and signed claims. Serialize default, opted-in and recovery publishers for the same target within a caller repository with a shared concurrency group, queue:max and no cancellation. Keep `.github/tests/test-unpublished-version.sh`, promotion controls and the native disposable-registry proof in required CI. Other writers can race the final check; registry tag writes are not atomic across repositories. #371 owns consumer rollout of verified publication.
+**Configuration caller guard:** The platform trusts exactly this repository's `cd.yaml` on a release
+tag as the `github-config` signer, and a caller of a reusable workflow signs with that workflow's
+identity. `.github/scripts/check-manifests-caller.sh` therefore admits only the exact tag-only,
+uncallable `cd.yaml` shape that runs `actions/publish-app` in manifests mode. Keep
+`.github/tests/test-manifests-caller.sh`, which checks the shipped `cd.yaml` and every refusal
+mutation, in required CI.
 
-**Explicit manifests recovery:** Default-off `enable-signed-recovery` requests only the original version alias, with signed promotion and caller pinning required before any legacy write. Verify the original catalogue identity and all original source/version/run claims, restore only authenticated missing versions, treat matching versions as no-ops, refuse contradictory or ambiguous reads, and always preserve `latest`. Keep recovery boundary, interruption/readback controls and native Flux/registry/cryptographic tests in required CI. The native key fixture proves signed claims and registry bytes, not production OIDC. Cross-repository publisher identity migration remains #242; complete recovery rollout remains #425.
-
-The configuration caller guard separately requires the exact consumer-approved signing revision
-and the publisher workflow/helper Git blobs and regular-file modes. Even an unrelated release with
-unchanged publisher contents changes its certificate identity. Deploy and independently read back
-consumer approval before changing the guard's recorded revision and the caller; never treat content
-equivalence as that approval. Changed contents also require review before updating the recorded
-blobs. Missing commits are read through a disposable object store. The promotion suite rejects an
-unapproved byte-identical release and exercises an explicitly approved release, changed helpers,
-modes and unsafe inputs. CI's record does not replace the deployed verifier's exact-revision gate.
-
-**Explicit application recovery:** The same default-off mode verifies both original signatures with all nine paired publication claims before reading both version aliases. Any conflict or unknown read prevents all writes; only missing aliases are restored, with digest readback and matching retries producing no writes. Keep `.github/tests/test-app-recovery.sh` and the native single-platform Buildx/Flux proof required. Never rebuild, re-sign or move `latest` during recovery. Registry writes have no compare-and-set or cross-repository transaction; the shared queue and final readback cannot fence unrelated writers.
-
-**Prebuilt WebApp publication:** Default-off `enable-prebuilt-webapp` requires
-caller pinning and signed promotion, and cannot combine with recovery. Before
-any registry write, verify the original caller-owned public main-push CI attempt,
-image signature and complete production-template SLSA statement against the
-tagged source, public artifact digest and fixed caller CI identity. A private,
-incomplete, failed or changed attempt is unsupported. Do not accept an arbitrary
-image repository, signer or caller-provided source identity. Pin only the image
-of one source-owned WebApp whose name, namespace and spec name match the caller;
-reject linked/special deployment files. In both modes the optional
-`app-manifest` input names the app manifest relative to `deploy-path`; empty
-keeps `deployment.yaml` / `webapp.yaml`. A named path must be plain components
-(no leading `/`, empty, `.`, `..` or hidden component, no line break) reached
-through regular directories to a regular file, checked once before any registry
-write; Deployment mode pins the path its validation step resolved. This is not complete controller schema
-validation. Sign and verify both promoted digests with all fourteen paired
-claims, retaining the original image provenance. Keep helper refusal/pinning,
-promotion mutation, native cryptographic and workflow-interface controls in
-required CI. Legacy recovery must refuse prebuilt-marked evidence even when the
-new mode input is omitted. Caller/verifier adoption remains separate; #684 owns
-the finite rollout gate review and retirement.
+**Prebuilt WebApp publication:** `actions/publish-app`'s `prebuilt-webapp` mode reuses the
+caller's tested image without a raw-source build. Before any registry write, verify the original
+caller-owned public main-push CI attempt, image signature and complete production-template SLSA
+statement against the tagged source, public artifact digest and fixed caller CI identity. A
+private, incomplete, failed or changed attempt is unsupported. Do not accept an arbitrary image
+repository, signer or caller-provided source identity. Pin only the image of one source-owned
+WebApp whose name, namespace and spec name match the caller; reject linked/special deployment
+files. In both modes the optional `app-manifest` input names the app manifest relative to
+`deploy-path`; empty keeps `deployment.yaml` / `webapp.yaml`. A named path must be plain components
+(no leading `/`, empty, `.`, `..` or hidden component, no line break) reached through regular
+directories to a regular file, checked once before any registry write; Deployment mode pins the
+path its validation step resolved. This is not complete controller schema validation. Sign and
+verify both promoted digests with all fourteen paired claims, retaining the original image
+provenance. Keep `.github/tests/test-prebuilt-webapp.sh` helper refusal/pinning controls in
+required CI.
 
 **Caller-signed publication (`actions/publish-app`):** The composite signs as the
 calling workflow, so its admission is the boundary. Before any registry contact it
@@ -82,11 +69,10 @@ holds only regular files equal to the tagged source. It keeps the occupied-versi
 guard before the first write and twice more, signs by digest, and verifies both
 digests against `https://github.com/$GITHUB_WORKFLOW_REF` before exposing version or
 stable `latest`. No credential reaches any argv: flux uses the docker login and the
-action's own version check gives curl private config files (the retiring workflows'
-shared guard and `--creds` stay unchanged). The prebuilt mode reuses
+action's own version check gives curl private config files. The prebuilt mode reuses
 `prepare-prebuilt-webapp.sh`. Keep `.github/tests/test-publish-app-action.sh`, its
 composite simulation, argv record and mutation controls in required CI. Recovery is
-not carried yet.
+not carried; signatures from the retired reusable publishers stay valid.
 
 Normal publication's public CI evidence reads remain credential-free. The standalone
 verifier additionally supports explicit `PREBUILT_CI_AUTH_MODE=job-token` for

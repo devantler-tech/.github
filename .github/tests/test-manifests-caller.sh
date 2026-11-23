@@ -1,14 +1,19 @@
 #!/usr/bin/env bash
-# Exercise the configuration publisher's own-release authority boundary.
+# The platform trusts exactly cd.yaml on a release tag as github-config's signer, and a caller of a
+# reusable workflow signs with that workflow's identity. Keep cd.yaml tag-only and uncallable.
 # shellcheck disable=SC2016 # Literal GitHub expressions and jq variables.
 set -euo pipefail
-root="$(cd "$(dirname "$0")/../../.." && pwd)"
+root="$(cd "$(dirname "$0")/../.." && pwd)"
 guard="$root/.github/scripts/check-manifests-caller.sh"
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
 fail() {
   echo "FAIL: own configuration caller: $*" >&2
   exit 1
+}
+bash "$guard" "$root/.github/workflows/cd.yaml" >"$work/result" 2>&1 || {
+  cat "$work/result" >&2
+  fail 'the shipped cd.yaml breaks the tag-only own-release signing contract'
 }
 cat >"$work/own.yaml" <<'YAML'
 name: Configuration release
