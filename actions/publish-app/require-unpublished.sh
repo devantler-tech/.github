@@ -2,9 +2,8 @@
 # Refuse a release version that already exists in any repository this release writes to. Only an
 # authenticated, definitive absence passes.
 #
-# The same contract as .github/scripts/require-unpublished-version.sh, which the retiring reusable
-# workflows keep unchanged, except that no credential ever reaches a command line: curl reads the
-# registry login and the bearer token from private config files that are removed on exit.
+# No credential ever reaches a command line: curl reads the registry login and the bearer token
+# from private config files that are removed on exit.
 set +x
 set -euo pipefail
 umask 077

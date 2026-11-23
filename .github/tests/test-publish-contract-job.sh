@@ -9,12 +9,7 @@ yq -o=json . "${1:-$root/.github/workflows/ci.yaml}" >"$work/ci.json"
 # shellcheck disable=SC2016 # Literal GitHub expressions, not Bash interpolation.
 cat >"$work/check.jq" <<'JQ'
   .jobs["test-publish-contracts"] as $j |
-  ["test-publish-caller-pin", "test-publish-app-signs-by-digest",
-   "test-publish-preflight", "test-unpublished-version",
-   "test-manifests-recovery", "test-app-recovery",
-   "test-unpublished-version-native", "test-app-signed-promotion",
-   "test-prebuilt-webapp",
-   "test-publish-manifests-promotion", "test-publish-app-action"] as $tests |
+  ["test-manifests-caller", "test-prebuilt-webapp", "test-publish-app-action"] as $tests |
   ($j != null) and
   ($j.needs == null) and
   ($j.if == "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}") and
@@ -31,11 +26,7 @@ cat >"$work/check.jq" <<'JQ'
   ([$j.steps[] | ."continue-on-error"] | all(. == null or . == false)) and
   ([$j.steps[] | .shell] | all(. == null or . == "bash")) and
   ([$j.steps[] | ."working-directory"] | all(. == null or . == ".")) and
-  ([$j.steps[] | select(.uses != null) | .uses] | length == 4) and
-  ([$j.steps | to_entries[] | select((.value.uses // "") | startswith("sigstore/cosign-installer@")) | .key][0] as $c |
-   [$j.steps | to_entries[] | select((.value.uses // "") | startswith("fluxcd/flux2/action@")) | .key][0] as $f |
-   [$j.steps | to_entries[] | select(.value.run == "bash .github/tests/test-unpublished-version-native.sh") | .key][0] as $n |
-   $c != null and $f != null and $c < $n and $f < $n) and
+  ([$j.steps[] | select(.uses != null) | .uses] | length == 2) and
   (.jobs["ci-required-checks"].needs | index("test-publish-contracts") != null) and
   ([.jobs["ci-required-checks"].steps[]?.env.JOB_RESULTS // ""] | join("\n") |
     contains("${{ needs.test-publish-contracts.result }}"))
@@ -57,7 +48,8 @@ for mutation in \
   '.jobs["test-publish-contracts"]."continue-on-error" = true' \
   '.jobs["test-publish-contracts"].defaults.run."working-directory" = "fixture"' \
   '.jobs["test-publish-contracts"].steps[1].with."persist-credentials" = true' \
-  '.jobs["test-publish-contracts"].steps |= map(select((.uses // "" | startswith("sigstore/cosign-installer@")) | not))' \
+  '.jobs["test-publish-contracts"].steps |= map(select(.run != "bash .github/tests/test-manifests-caller.sh"))' \
+  '.jobs["test-publish-contracts"].steps += [{"uses":"sigstore/cosign-installer@v4"}]' \
   '.jobs["ci-required-checks"].needs |= map(select(. != "test-publish-contracts"))' \
   '(.jobs["ci-required-checks"].steps[] | select(.env.JOB_RESULTS != null) | .env.JOB_RESULTS) |= gsub("\\$\\{\\{ needs.test-publish-contracts.result \\}\\}"; "")'; do
   jq "$mutation" "$work/ci.json" >"$work/mutated.json"

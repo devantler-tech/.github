@@ -7,37 +7,6 @@ fail() {
   echo "prebuilt-webapp: $*" >&2
   exit 1
 }
-workflow="$root/.github/workflows/publish-app.yaml"
-yq -o=json '.' "$workflow" | jq -e '
-  .on.workflow_call.inputs["enable-prebuilt-webapp"].default == false
-' > /dev/null || fail 'missing default-off prebuilt WebApp capability'
-yq -o=json '.' "$workflow" | jq -e '
-  .jobs.publish as $job | $job.steps as $steps |
-  .permissions == {} and
-  $job.permissions == {contents:"read",packages:"write","id-token":"write"} and
-  $job.concurrency["cancel-in-progress"] == false and
-  ([.on.workflow_call.inputs | to_entries[] |
-    select(.key | startswith("prebuilt-")) |
-    .value | .type == "string" and .default == "" and .required == false] | length == 4 and all(.[]; .)) and
-  ($steps | map(select(.id == "prebuilt")) | length) == 1 and
-  ($steps | map(select(.id == "prebuilt"))[0] |
-    .if == "${{ inputs.enable-prebuilt-webapp }}" and
-    .run == "bash \"$RUNNER_TEMP/prepare-prebuilt-webapp.sh\"" and
-    .env == {
-      REPOSITORY:"${{ github.repository }}",SOURCE_SHA:"${{ github.sha }}",
-      APP_NAME:"${{ inputs.app-name }}",DEPLOY_PATH:"${{ inputs.deploy-path }}",
-      APP_MANIFEST:"${{ inputs.app-manifest }}",
-      PREBUILT_IMAGE_DIGEST:"${{ inputs.prebuilt-image-digest }}",
-      PREBUILT_PUBLIC_DIGEST:"${{ inputs.prebuilt-public-digest }}",
-      PREBUILT_CI_RUN_ID:"${{ inputs.prebuilt-ci-run-id }}",
-      PREBUILT_CI_RUN_ATTEMPT:"${{ inputs.prebuilt-ci-run-attempt }}"} and
-    (has("continue-on-error") | not)) and
-  ($steps | map(select(.id == "build"))[0].if ==
-    "${{ !inputs.enable-signed-recovery && !inputs.enable-prebuilt-webapp }}") and
-  ($steps | to_entries | map(select(.value.id == "prebuilt"))[0].key) <
-    ($steps | to_entries | map(select(.value.id == "build"))[0].key) and
-  ([ $steps[] | select(.run? | strings | contains("prepare-prebuilt-webapp.sh")) ] | length) == 2
-' > /dev/null || fail 'prebuilt mode authority, input forwarding or verification order changed'
 
 mkdir -p "$work/bin" "$work/deploy"
 image_digest="sha256:$(printf 'a%.0s' {1..64})"

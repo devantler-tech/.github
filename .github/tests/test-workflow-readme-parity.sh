@@ -232,8 +232,8 @@ expect 'repository missing-row ablation' 1 "validate-go-project.yaml: input 'tes
 # Exercise the actual catalogue navigation independently of input-table parity.
 navigation() {
   local document=$1 anchor count
-  for anchor in create-release dependency-review enable-auto-merge publish-app \
-    publish-manifests scan-todos scan-workflows template-sync validate-go \
+  for anchor in create-release dependency-review enable-auto-merge scan-todos \
+    scan-workflows template-sync validate-go \
     repository-admission deploy-guards applied-fixes todos-readonly \
     todos-fixture go-readonly inspect-recovery publish-recovery recovery-fixture; do
     count=$(grep -Fc "<a name=\"workflow-$anchor\"></a>" "$document" || true)

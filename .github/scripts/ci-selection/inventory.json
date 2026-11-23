@@ -45,12 +45,7 @@
     "test-dependency-review": {"if": "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && startsWith(github.event_name, 'pull_request') && needs.select-ci-tests.outputs.catalogue == 'true' }}", "needs": "select-ci-tests"},
     "test-enable-auto-merge-on-pr": {"if": "github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') && startsWith(github.event_name, 'pull_request') && (\n  github.event.pull_request.user.login == 'dependabot[bot]' ||\n  github.event.pull_request.user.login == 'renovate[bot]' ||\n  github.event.pull_request.user.login == 'botantler[bot]' ||\n  github.event.pull_request.user.login == 'devantler'\n)"},
     "test-zizmor": {"if": "${{ github.event_name == 'push' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"},
-    "test-run-dotnet-tests-workflow-authenticated": {"if": "${{\n  github.event_name != 'merge_group' &&\n  !startsWith(github.event.head_commit.message, 'chore(main): release ') &&\n  github.event_name == 'pull_request' &&\n  github.event.pull_request.head.repo.full_name == github.repository &&\n  github.event.pull_request.user.login == 'devantler'\n}}"},
-    "test-publish-app-workflow": {"if": "${{ github.event_name == 'push' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"},
-    "test-publish-app-caller-pin": {"if": "${{ github.event_name == 'push' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"},
-    "test-publish-caller-pin-live": {"if": "${{ github.event_name == 'push' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"},
-    "test-publish-manifests": {"if": "${{ github.event_name == 'push' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"},
-    "test-publish-manifests-caller-pin": {"if": "${{ github.event_name == 'push' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"}
+    "test-run-dotnet-tests-workflow-authenticated": {"if": "${{\n  github.event_name != 'merge_group' &&\n  !startsWith(github.event.head_commit.message, 'chore(main): release ') &&\n  github.event_name == 'pull_request' &&\n  github.event.pull_request.head.repo.full_name == github.repository &&\n  github.event.pull_request.user.login == 'devantler'\n}}"}
   },
   "jobs": {
     "test-triage-stale-issues": ["actions/triage-stale-issues/"],
@@ -119,11 +114,6 @@
     "test-publish-release-recovery-disabled": [],
     "test-create-release-config": [],
     "test-release-please-semantics": [],
-    "test-publish-app-workflow": [],
-    "test-publish-app-caller-pin": [],
-    "test-publish-caller-pin-live": [],
-    "test-publish-manifests": [],
-    "test-publish-manifests-caller-pin": [],
     "test-scan-for-todo-comments": ["actions/create-issues-from-todos/"],
     "test-scan-for-todo-comments-no-project": ["actions/create-issues-from-todos/"],
     "test-scan-for-todo-comments-default": ["actions/create-issues-from-todos/"],
