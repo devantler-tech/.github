@@ -561,6 +561,15 @@ jobs:
       - name: 🧹 Run golangci-lint
         id: golangci-lint
         uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
+        # A cold-cache analysis of a large module loads every package's types and facts at
+        # once. KSail's reached a ~18 GB peak footprint on 2026-11-23, above the 16 GB a
+        # public repository's ubuntu-latest has, and the host killed the runner mid-lint
+        # ("runner has received a shutdown signal"), an opaque failure that retrying does
+        # not fix. The soft Go heap target makes the GC reclaim before that ceiling
+        # (measured: ~8.9 GB, same findings). It is a literal, not the go-memory-limit
+        # input, so this step needs no input preflight. Guarded by test-go-memory-limit.
+        env:
+          GOMEMLIMIT: 8GiB
         with:
           version: v2.14.0
           working-directory: ${{ needs.changes.outputs.module-directory }}

@@ -26,6 +26,8 @@ reject 'over-ceiling default' '.on.workflow_call.inputs.go-memory-limit.default 
 reject 'empty candidate' '.jobs.deadcode.env.GO_MEMORY_LIMIT = ""'
 reject 'unknown candidate expression' '.jobs.govulncheck.env.GO_MEMORY_LIMIT = "unknown"'
 reject 'missing cap' 'del(.jobs.govulncheck.env.GOMEMLIMIT)'
+reject 'missing lint cap' 'del(.jobs["golangci-lint"].steps[] | select(.id == "golangci-lint") | .env)'
+reject 'raised lint cap' '(.jobs["golangci-lint"].steps[] | select(.id == "golangci-lint")).env.GOMEMLIMIT = "12GiB"'
 reject 'missing preflight' 'del(.jobs.deadcode.steps[] | select(.id == "memory-limit"))'
 reject 'disabled preflight' '(.jobs.deadcode.steps[] | select(.id == "memory-limit")).if = "false"'
 reject 'ignored preflight failure' '(.jobs.govulncheck.steps[] | select(.id == "memory-limit")).continue-on-error = true'
@@ -60,4 +62,4 @@ if bash "$work/fixture/.github/tests/test-go-memory-limit.sh" >"$work/output" 2>
   fail 'raised runtime ceiling was accepted'
 fi
 grep -q 'accepted unsafe input' "$work/output" || fail 'ceiling control failed for another reason'
-echo 'PASS: 14 independent wiring controls and 3 runtime controls'
+echo 'PASS: 16 independent wiring controls and 3 runtime controls'
