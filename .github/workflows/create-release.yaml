@@ -774,9 +774,8 @@ jobs:
             }
           done
           if [[ "$BLOCK_EGRESS" == true ]]; then
-            # The refusal counts only when curl's connection is rejected (exit 7) and harden-runner's
-            # agent log, which its post step reads from this path, records denying example.com after
-            # this attempt began. Anything else cannot be attributed to the policy and fails the probe.
+            # A blocked connection can be refused (exit 7) or time out (exit 28).
+            # Either result needs a fresh denial for example.com from harden-runner.
             agent_log=/home/agent/agent.log
             [[ -r "$agent_log" ]] || {
               echo "::error::harden-runner's agent log $agent_log is unreadable, so a refusal cannot be attributed to the policy" >&2
@@ -790,9 +789,9 @@ jobs:
                 echo '::error::block mode reached unlisted host example.com' >&2
                 exit 1
                 ;;
-              7) ;;
+              7|28) ;;
               *)
-                echo "::error::the example.com probe failed with curl exit $status, not a refused connection, so it proves nothing about the policy" >&2
+                echo "::error::the example.com probe failed with unexpected curl exit $status" >&2
                 exit 1
                 ;;
             esac
@@ -805,7 +804,7 @@ jobs:
               sleep 1
             done
             [[ "$denied" == true ]] || {
-              echo '::error::curl was refused, but harden-runner recorded no denial of example.com for this attempt' >&2
+              echo '::error::harden-runner recorded no denial of example.com for this failed connection' >&2
               exit 1
             }
             echo 'Block mode reached every listed host, and harden-runner denied the connection to example.com.'
