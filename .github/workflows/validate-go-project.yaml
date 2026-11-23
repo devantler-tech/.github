@@ -41,7 +41,7 @@ on:
         required: false
         type: string
         default: "8GiB"
-        description: "Soft Go heap limit for golangci-lint, deadcode and vulnerability analysis. Lower it for smaller runners; decimal Go units are bounded to 8GiB. It does not cap total runner memory."
+        description: "Soft Go heap limit for deadcode and vulnerability analysis. Lower it for smaller runners; decimal Go units are bounded to 8GiB. It does not cap total runner memory."
       minimum-free-disk-gib:
         required: false
         type: number
@@ -502,16 +502,6 @@ jobs:
       # holds no credential that can write to the branch. The commit is made on a fresh
       # runner by apply-signed-fixes.yaml.
       contents: read
-    # A cold-cache analysis of a large module loads every package's types and facts at
-    # once. KSail's reached a ~18 GB peak footprint on 2026-11-23, above the 16 GB a
-    # public repository's ubuntu-latest has, and the host killed the runner mid-lint
-    # ("runner has received a shutdown signal") — an opaque, retry-resistant failure, not
-    # a lint finding. GOMEMLIMIT is the same soft Go heap target, input and preflight as
-    # deadcode and govulncheck below, so the GC reclaims before the host ceiling.
-    # Guarded by test-go-memory-limit.
-    env:
-      GOMEMLIMIT: 8GiB
-      GO_MEMORY_LIMIT: ${{ toJSON(inputs) == '{}' && '8GiB' || inputs.go-memory-limit }}
     steps:
       - name: 🛡️ Harden runner
         uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
@@ -522,28 +512,6 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-
-      - name: Checkout the analysis helper at this workflow commit
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          repository: ${{ job.workflow_repository }}
-          ref: ${{ job.workflow_sha }}
-          path: .devantler-tech-actions
-          persist-credentials: false
-
-      - name: Validate the Go analysis memory limit
-        id: memory-limit
-        shell: bash
-        run: |
-          set -euo pipefail
-          bash "$GITHUB_WORKSPACE/.devantler-tech-actions/.github/scripts/validate-go-memory-limit.sh" "$GO_MEMORY_LIMIT" 8
-          printf 'GOMEMLIMIT=%s\n' "$GO_MEMORY_LIMIT" >> "$GITHUB_ENV"
-
-      # The fixes step below stages every workspace change, and its own helper cleanup
-      # only applies when it was loaded from this checkout, so remove the tree here.
-      - name: Remove the analysis helper before linting
-        shell: bash
-        run: rm -rf -- "$GITHUB_WORKSPACE/.devantler-tech-actions"
 
       - name: ⚙️ Setup Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
@@ -592,6 +560,15 @@ jobs:
       - name: 🧹 Run golangci-lint
         id: golangci-lint
         uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
+        # A cold-cache analysis of a large module loads every package's types and facts at
+        # once. KSail's reached a ~18 GB peak footprint on 2026-11-23, above the 16 GB a
+        # public repository's ubuntu-latest has, and the host killed the runner mid-lint
+        # ("runner has received a shutdown signal"), an opaque failure that retrying does
+        # not fix. The soft Go heap target makes the GC reclaim before that ceiling
+        # (measured: ~8.9 GB, same findings). It is a literal, not the go-memory-limit
+        # input, so this step needs no input preflight. Guarded by test-go-memory-limit.
+        env:
+          GOMEMLIMIT: 8GiB
         with:
           version: v2.14.0
           working-directory: ${{ needs.changes.outputs.module-directory }}

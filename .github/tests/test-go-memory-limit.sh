@@ -15,7 +15,7 @@ cat >"$work/contract.jq" <<'JQ'
  .on.workflow_call.inputs["go-memory-limit"].default == "8GiB" and
  (.concurrency.group | contains("inputs.go-memory-limit")) and
  ([.jobs | to_entries[] | select(.value.env.GOMEMLIMIT != null)] as $jobs |
-  (["golangci-lint", "deadcode", "govulncheck"] - [$jobs[].key] | length) == 0 and all($jobs[];
+  (["deadcode", "govulncheck"] - [$jobs[].key] | length) == 0 and all($jobs[];
     .value.env.GOMEMLIMIT == "8GiB" and
     .value.env.GO_MEMORY_LIMIT == "${{ toJSON(inputs) == '{}' && '8GiB' || inputs.go-memory-limit }}" and
     (.value.steps as $steps |
@@ -33,6 +33,9 @@ cat >"$work/contract.jq" <<'JQ'
         then [range(0; $steps|length) | select($steps[.].id == "memory-limit")][0] < $i else true end))))
 JQ
 jq -e -f "$work/contract.jq" "$work/workflow.json" >/dev/null || fail 'Go memory override interface or preflight wiring'
+# golangci-lint takes no caller value, so its cap is a literal on the lint step itself.
+jq -e '[.jobs["golangci-lint"].steps[] | select(.uses // "" | startswith("golangci/golangci-lint-action@")) | .env.GOMEMLIMIT] == ["8GiB"]' "$work/workflow.json" >/dev/null ||
+  fail 'Go memory override interface or preflight wiring: golangci-lint step must set GOMEMLIMIT 8GiB'
 
 # Exercise the shipped preflight and actual Go runtime, never a second parser.
 cat >"$work/probe.go" <<'GO'
@@ -41,7 +44,7 @@ import ("fmt"; "runtime/debug")
 func main() { fmt.Print(debug.SetMemoryLimit(-1)) }
 GO
 go build -o "$work/probe" "$work/probe.go"
-for job in golangci-lint deadcode govulncheck; do
+for job in deadcode govulncheck; do
   yq -r ".jobs[\"$job\"].steps[] | select(.id == \"memory-limit\") | .run" "$workflow" >"$work/preflight"
   mkdir -p "$work/workspace/.devantler-tech-actions/.github/scripts"
   cp "$root/.github/scripts/validate-go-memory-limit.sh" "$work/workspace/.devantler-tech-actions/.github/scripts/"
@@ -61,4 +64,4 @@ for job in golangci-lint deadcode govulncheck; do
     [[ ! -s "$work/env" ]] || fail "$job exported an invalid limit"
   done
 done
-echo 'PASS: memory override wiring, 24 native Go observations and 27 rejected invalid overrides'
+echo 'PASS: memory override wiring, literal lint cap, 16 native Go observations and 18 rejected invalid overrides'

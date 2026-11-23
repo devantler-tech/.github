@@ -1022,7 +1022,7 @@ jobs:
 | `enable-postgresql-fixture` | Input (boolean) | `false` | No | Opt in to the module-local PostgreSQL 17 fixture declaration; input-free required runs use only an explicit tracked declaration. No production endpoints or credentials are accepted. |
 | `enable-test-parallelism` | Input (boolean) | `false` | No | Opt in to bounded Go test workers in both Test and race/atomic Coverage. |
 | `test-parallelism` | Input (number) | `8` | No | Worker count from 1 through 8; used only when the parallelism opt-in is true. |
-| `go-memory-limit` | Input (string) | `8GiB` | No | Soft Go heap limit for golangci-lint, deadcode and vulnerability analysis; lower it for smaller runners. Decimal Go units are accepted up to 8GiB; total runner memory is not capped. |
+| `go-memory-limit` | Input (string) | `8GiB` | No | Soft Go heap limit for deadcode and vulnerability analysis; lower it for smaller runners. Decimal Go units are accepted up to 8GiB; total runner memory is not capped. |
 | `minimum-free-disk-gib` | Input (number) | `0` | No | Opt in to retaining toolchains when a complete root-filesystem observation meets a measured whole-number GiB budget (1–1024). Zero and unknown capacity retain cleanup. |
 | `measure-disk-usage` | Input (boolean) | `false` | No | Record sampled filesystem headroom around cleanup and during build, test and race coverage; cleanup and Go results stay unchanged. |
 | `manual-workflow-fixes` | Input (boolean) | `false` | No | Opt in to complete workflow-file patches for manual application, including after lint errors; existing upload eligibility still applies |
