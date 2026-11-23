@@ -476,7 +476,7 @@ check_block_egress() {
   [[ "$(yq -o=json -I=0 '.jobs."egress-probe".steps[1] | [(.if // "none"), (."continue-on-error" // false)]' "$wf")" == \
     '["none",false]' ]] || return 1
   probe_run="$(yq -r '.jobs."egress-probe".steps[1].run' "$wf")"
-  # Block mode accepts only a refused connection (curl exit 7) with harden-runner's denial record.
+  # A refusal or timeout still needs a fresh matching denial from harden-runner.
   refusal="$(
     cat <<'EOF_REFUSAL'
   agent_log=/home/agent/agent.log
@@ -492,9 +492,9 @@ check_block_egress() {
       echo '::error::block mode reached unlisted host example.com' >&2
       exit 1
       ;;
-    7) ;;
+    7|28) ;;
     *)
-      echo "::error::the example.com probe failed with curl exit $status, not a refused connection, so it proves nothing about the policy" >&2
+      echo "::error::the example.com probe failed with unexpected curl exit $status" >&2
       exit 1
       ;;
   esac
@@ -507,7 +507,7 @@ check_block_egress() {
     sleep 1
   done
   [[ "$denied" == true ]] || {
-    echo '::error::curl was refused, but harden-runner recorded no denial of example.com for this attempt' >&2
+    echo '::error::harden-runner recorded no denial of example.com for this failed connection' >&2
     exit 1
   }
   echo 'Block mode reached every listed host, and harden-runner denied the connection to example.com.'
@@ -524,6 +524,46 @@ if ! check_block_egress "$workflow" "$ci"; then
   echo "create-release must block egress only when opted in, with one measured allow-list in both release jobs" >&2
   exit 1
 fi
+
+# Execute the workflow step with the two inputs supplied by the runner under test control.
+probe_run="$(yq -r '.jobs."egress-probe".steps[1].run' "$workflow")"
+probe_run="${probe_run/\/home\/agent\/agent.log/\$PROBE_LOG}"
+cat >"$tmp_dir/bin/curl" <<'EOF_PROBE_CURL'
+#!/usr/bin/env bash
+set -euo pipefail
+[[ "${!#}" == https://example.com/ ]] || exit 0
+fixture_dir="${0%/*}"
+read -r curl_exit denial <"$fixture_dir/probe-result"
+if [[ "$denial" == fresh ]]; then
+  echo 'domain not allowed: example.com.' >>"$fixture_dir/probe-agent.log"
+fi
+exit "$curl_exit"
+EOF_PROBE_CURL
+chmod +x "$tmp_dir/bin/curl"
+
+check_egress_result() (
+  local curl_exit="$1" denial="$2" expected="$3" output actual=pass
+  export BLOCK_EGRESS=true PROBE_LOG="$tmp_dir/bin/probe-agent.log"
+  printf '%s %s\n' "$curl_exit" "$denial" >"$tmp_dir/bin/probe-result"
+  : >"$PROBE_LOG"
+  if [[ "$denial" == stale ]]; then
+    echo 'domain not allowed: example.com.' >>"$PROBE_LOG"
+  fi
+  if ! output="$(PATH="$tmp_dir/bin:$PATH" bash -e -o pipefail -c "$probe_run" 2>&1)"; then
+    actual=fail
+  fi
+  if [[ "$actual" != "$expected" ]]; then
+    printf 'Egress probe with curl exit %s and %s denial: expected %s, got %s\n%s\n' \
+      "$curl_exit" "$denial" "$expected" "$actual" "$output" >&2
+    return 1
+  fi
+)
+check_egress_result 7 fresh pass
+check_egress_result 28 fresh pass
+check_egress_result 28 absent fail
+check_egress_result 28 stale fail
+check_egress_result 60 fresh fail
+check_egress_result 0 fresh fail
 
 # Controls: the check must refuse each regression below.
 while IFS='|' read -r label target expression; do
@@ -544,7 +584,7 @@ probe allow-list drifts from the release jobs|workflow|.jobs["egress-probe"].ste
 probe drops the audit-mode reachability control|workflow|.jobs["egress-probe"].if = "inputs.offline-test && inputs.block-egress"
 probe ignores the input|workflow|del(.jobs["egress-probe"].steps[1].env)
 probe audit mode tolerates an unreachable host|workflow|.jobs["egress-probe"].steps[1].run |= sub("  probe example.com [|][|] [{]"; "  true || {")
-probe treats any failure as a refusal|workflow|.jobs["egress-probe"].steps[1].run |= sub("    7[)] ;;"; "    *) ;;")
+probe treats any failure as a refusal|workflow|.jobs["egress-probe"].steps[1].run |= sub("    7[|]28[)] ;;"; "    *) ;;")
 probe skips the denial record|workflow|.jobs["egress-probe"].steps[1].run |= sub("  denied=false"; "  denied=true")
 probe skips a listed host|workflow|.jobs["egress-probe"].steps[1].run |= sub(" registry.npmjs.org; do"; "; do")
 probe failure tolerated|workflow|.jobs["egress-probe"]."continue-on-error" = true
