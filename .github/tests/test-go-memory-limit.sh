@@ -15,7 +15,7 @@ cat >"$work/contract.jq" <<'JQ'
  .on.workflow_call.inputs["go-memory-limit"].default == "8GiB" and
  (.concurrency.group | contains("inputs.go-memory-limit")) and
  ([.jobs | to_entries[] | select(.value.env.GOMEMLIMIT != null)] as $jobs |
-  ($jobs | length) >= 2 and all($jobs[];
+  (["golangci-lint", "deadcode", "govulncheck"] - [$jobs[].key] | length) == 0 and all($jobs[];
     .value.env.GOMEMLIMIT == "8GiB" and
     .value.env.GO_MEMORY_LIMIT == "${{ toJSON(inputs) == '{}' && '8GiB' || inputs.go-memory-limit }}" and
     (.value.steps as $steps |
@@ -41,8 +41,8 @@ import ("fmt"; "runtime/debug")
 func main() { fmt.Print(debug.SetMemoryLimit(-1)) }
 GO
 go build -o "$work/probe" "$work/probe.go"
-for job in deadcode govulncheck; do
-  yq -r ".jobs.$job.steps[] | select(.id == \"memory-limit\") | .run" "$workflow" >"$work/preflight"
+for job in golangci-lint deadcode govulncheck; do
+  yq -r ".jobs[\"$job\"].steps[] | select(.id == \"memory-limit\") | .run" "$workflow" >"$work/preflight"
   mkdir -p "$work/workspace/.devantler-tech-actions/.github/scripts"
   cp "$root/.github/scripts/validate-go-memory-limit.sh" "$work/workspace/.devantler-tech-actions/.github/scripts/"
   for value in 4GiB 8GiB 08GiB 8589934592 8589934592B 8388608KiB 8192MiB 000000000000000000008GiB; do
@@ -61,4 +61,4 @@ for job in deadcode govulncheck; do
     [[ ! -s "$work/env" ]] || fail "$job exported an invalid limit"
   done
 done
-echo 'PASS: memory override wiring, 16 native Go observations and 18 rejected invalid overrides'
+echo 'PASS: memory override wiring, 24 native Go observations and 27 rejected invalid overrides'
