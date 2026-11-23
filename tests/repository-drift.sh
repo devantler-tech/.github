@@ -293,18 +293,22 @@ expect_status "$work/pages-two-owners" 2 "both managed and bootstrap-only Pages 
 transport="$work/transport"
 build_fixture "$transport"
 mkdir -p "$transport/bin" "$transport/graphql"
-yq '.spec.forProvider *= {"allowAutoMerge": true, "allowRebaseMerge": false, "allowUpdateBranch": true, "deleteBranchOnMerge": true}' \
+yq '.spec.forProvider *= {"allowAutoMerge": true, "allowRebaseMerge": false, "allowUpdateBranch": true, "deleteBranchOnMerge": true,
+  "mergeCommitTitle": "MERGE_MESSAGE", "mergeCommitMessage": "PR_TITLE",
+  "squashMergeCommitTitle": "COMMIT_OR_PR_TITLE", "squashMergeCommitMessage": "COMMIT_MESSAGES"}' \
   "$transport/render.yaml" >"$transport/render.new"
 mv "$transport/render.new" "$transport/render.yaml"
 for file in "$transport"/live/*.json; do
   jq '. + {node_id: ("R_" + .name), full_name: ("devantler-tech/" + .name),
     allow_auto_merge: true, allow_rebase_merge: false, allow_update_branch: true,
-    delete_branch_on_merge: true}' "$file" >"$file.new"
+    delete_branch_on_merge: true, merge_commit_title: "MERGE_MESSAGE", merge_commit_message: "PR_TITLE",
+    squash_merge_commit_title: "COMMIT_OR_PR_TITLE", squash_merge_commit_message: "COMMIT_MESSAGES"}' "$file" >"$file.new"
   mv "$file.new" "$file"
   jq '{data: {repository: {
     id: .node_id, nameWithOwner: .full_name, isPrivate: .private,
     allow_auto_merge, allow_squash_merge, allow_merge_commit, allow_rebase_merge,
-    allow_update_branch, delete_branch_on_merge, web_commit_signoff_required
+    allow_update_branch, delete_branch_on_merge, web_commit_signoff_required,
+    merge_commit_title, merge_commit_message, squash_merge_commit_title, squash_merge_commit_message
   }}}' "$file" >"$transport/graphql/$(basename "$file")"
 done
 cat >"$transport/bin/gh" <<'EOF'
@@ -327,6 +331,10 @@ if [[ "$2" == graphql ]]; then
   [[ "$owner" == devantler-tech && "$name" == fixture-repo-* ]] || exit 94
   for field in autoMergeAllowed squashMergeAllowed mergeCommitAllowed rebaseMergeAllowed \
     allowUpdateBranch deleteBranchOnMerge webCommitSignoffRequired nameWithOwner isPrivate; do
+    [[ "$query" == *"$field"* ]] || exit 95
+  done
+  for field in 'merge_commit_title: mergeCommitTitle' 'merge_commit_message: mergeCommitMessage' \
+    'squash_merge_commit_title: squashMergeCommitTitle' 'squash_merge_commit_message: squashMergeCommitMessage'; do
     [[ "$query" == *"$field"* ]] || exit 95
   done
   echo "$name" >>"$DRIFT_GH_FIXTURES/graphql-calls"
@@ -353,6 +361,30 @@ expect_transport_status() {
 
 expect_transport_status "$transport" 0 "complete REST response"
 [[ ! -e "$transport/graphql-calls" ]] || fail "complete REST data must not query GraphQL"
+
+merge_defaults="$work/missing-merge-defaults"
+cp -R "$transport" "$merge_defaults"
+jq 'del(.merge_commit_message, .merge_commit_title, .squash_merge_commit_message, .squash_merge_commit_title)' \
+  "$merge_defaults/live/fixture-repo-1.json" >"$merge_defaults/rest.json"
+mv "$merge_defaults/rest.json" "$merge_defaults/live/fixture-repo-1.json"
+expect_transport_status "$merge_defaults" 0 "REST omits merge defaults while all booleans are present"
+[[ "$(cat "$merge_defaults/graphql-calls")" == fixture-repo-1 ]] ||
+  fail "omitted merge defaults must trigger one scoped GraphQL read"
+
+dir="$work/graphql-merge-default-drift"
+cp -R "$merge_defaults" "$dir"
+jq '.data.repository.merge_commit_message = "PR_BODY"' "$dir/graphql/fixture-repo-1.json" >"$dir/changed.json"
+mv "$dir/changed.json" "$dir/graphql/fixture-repo-1.json"
+expect_transport_status "$dir" 1 "GraphQL merge message differs from the declaration"
+grep -Fq 'DRIFT fixture-repo-1.mergeCommitMessage:' "$dir/stdout" ||
+  fail "the drift check must compare the recovered value"
+
+dir="$work/graphql-merge-default-invalid"
+cp -R "$merge_defaults" "$dir"
+jq '.data.repository.merge_commit_message = "COMMIT_MESSAGES"' \
+  "$dir/graphql/fixture-repo-1.json" >"$dir/changed.json"
+mv "$dir/changed.json" "$dir/graphql/fixture-repo-1.json"
+expect_transport_status "$dir" 2 "GraphQL returns an invalid value for the merge message"
 
 missing_settings="$work/missing-settings"
 cp -R "$transport" "$missing_settings"

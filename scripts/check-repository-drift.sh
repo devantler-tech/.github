@@ -93,11 +93,27 @@ readonly KEY_PROGRAM='
 '
 
 # GraphQL exposes these settings even when the REST repository object omits
-# them. Only fill missing declared settings; an existing REST value, including
-# false, remains authoritative for this read.
-readonly SETTINGS_KEYS='["allow_auto_merge", "allow_squash_merge", "allow_merge_commit",
-  "allow_rebase_merge", "allow_update_branch", "delete_branch_on_merge",
-  "web_commit_signoff_required"]'
+# them. Only fill missing declared settings; a present, valid REST value
+# remains authoritative for this read.
+readonly SETTINGS_PROGRAM='
+  def setting_types: {
+    allow_auto_merge: "boolean",
+    allow_squash_merge: "boolean",
+    allow_merge_commit: "boolean",
+    allow_rebase_merge: "boolean",
+    allow_update_branch: "boolean",
+    delete_branch_on_merge: "boolean",
+    web_commit_signoff_required: "boolean",
+    merge_commit_title: ["MERGE_MESSAGE", "PR_TITLE"],
+    merge_commit_message: ["BLANK", "PR_BODY", "PR_TITLE"],
+    squash_merge_commit_title: ["COMMIT_OR_PR_TITLE", "PR_TITLE"],
+    squash_merge_commit_message: ["BLANK", "COMMIT_MESSAGES", "PR_BODY"]
+  };
+  def valid_setting($key):
+    . as $value | setting_types[$key] as $expected
+    | if $expected == "boolean" then type == "boolean"
+      else ($value | type == "string") and ($expected | index($value)) != null end;
+'
 SETTINGS_QUERY=$(cat <<'GRAPHQL'
 query RepositorySettings($owner: String!, $name: String!) {
   repository(owner: $owner, name: $name) {
@@ -109,6 +125,10 @@ query RepositorySettings($owner: String!, $name: String!) {
     allow_update_branch: allowUpdateBranch
     delete_branch_on_merge: deleteBranchOnMerge
     web_commit_signoff_required: webCommitSignoffRequired
+    merge_commit_title: mergeCommitTitle
+    merge_commit_message: mergeCommitMessage
+    squash_merge_commit_title: squashMergeCommitTitle
+    squash_merge_commit_message: squashMergeCommitMessage
   }
 }
 GRAPHQL
@@ -117,14 +137,15 @@ readonly SETTINGS_QUERY
 
 complete_repository_settings() {
   local entry="$1" live="$2" repo="$3" declared_settings missing settings
-  declared_settings="$(jq -c --argjson keys "$SETTINGS_KEYS" "$KEY_PROGRAM"'
+  declared_settings="$(jq -c "$KEY_PROGRAM$SETTINGS_PROGRAM"'
+    (setting_types | keys) as $keys |
     [.declared | keys[] | api_key | select(. as $key | $keys | index($key))]
   ' <<<"$entry")" || abort "failed to identify declared settings for '$repo'"
 
-  jq -e --argjson keys "$declared_settings" '
+  jq -e --argjson keys "$declared_settings" "$SETTINGS_PROGRAM"'
     . as $live | all($keys[]; . as $key |
-      ($live | has($key) | not) or ($live[$key] | type == "boolean"))
-  ' >/dev/null <<<"$live" || abort "live repository settings for '$repo' are not booleans"
+      ($live | has($key) | not) or ($live[$key] | valid_setting($key)))
+  ' >/dev/null <<<"$live" || abort "live repository settings for '$repo' contain an invalid value"
   missing="$(jq -c --argjson keys "$declared_settings" '
     . as $live | [$keys[] | select(. as $key | $live | has($key) | not)]
   ' <<<"$live")" || abort "failed to identify missing settings for '$repo'"
@@ -146,13 +167,14 @@ complete_repository_settings() {
   # Bind both reads to the same immutable repository and canonical name, also
   # rejecting a visibility change before any values could enter public logs.
   # Partial GraphQL data must never conceal an API error or a missing setting.
-  jq -e --argjson live "$live" --argjson keys "$SETTINGS_KEYS" '
+  jq -e --argjson live "$live" "$SETTINGS_PROGRAM"'
+    (setting_types | keys) as $keys |
     ((has("errors") | not) or .errors == null or .errors == []) and
     (.data.repository | type == "object") and
     (.data.repository.id == $live.node_id) and
     (.data.repository.nameWithOwner == $live.full_name) and
     (.data.repository.isPrivate == $live.private) and
-    (.data.repository as $settings | all($keys[]; $settings[.] | type == "boolean"))
+    (.data.repository as $settings | all($keys[]; . as $key | $settings[$key] | valid_setting($key)))
   ' >/dev/null <<<"$settings" || abort "GraphQL repository settings for '$repo' are incomplete or mismatched"
   jq -c --argjson settings "$settings" --argjson missing "$missing" '
     reduce $missing[] as $key (. ; .[$key] = $settings.data.repository[$key])
