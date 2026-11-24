@@ -17,6 +17,10 @@ every revision of a shared publisher.
    - the run's ref is `refs/tags/v<semver>` (SemVer 2.0.0; a pre-release is allowed, build
      metadata such as `+build.5` is refused, and every number has at most 15 digits);
    - the calling workflow ref is this repository's own workflow file on that exact tag;
+   - the job runs directly in that workflow, not inside a reusable workflow: it reads
+     `job_workflow_ref` from the job's own OIDC token (so the job needs `id-token: write`) and
+     refuses unless it is the calling workflow ref, because a reusable workflow would sign as
+     itself, under its host repository's identity;
    - the tagged commit is checked out at the workspace root, without a persisted git credential
      (`persist-credentials: false`; the checkout is also the image build context);
    - the tagged commit is an ancestor of the repository's default branch, which it fetches
@@ -82,7 +86,7 @@ directory on the way, nor the manifest itself, may be a link. A refused value is
 The calling job must grant `contents: read`, `packages: write` and `id-token: write`, check out
 the tagged commit at the workspace root with `persist-credentials: false` (required), and call the action **directly in the product's release
 workflow**. Called from inside a reusable workflow, the certificate would name that workflow
-instead, and verification would refuse to expose the release. Serialize publishers of one
+instead, so admission refuses before anything is signed. Serialize publishers of one
 repository with a job concurrency group that never cancels.
 
 ### Build and publish an app

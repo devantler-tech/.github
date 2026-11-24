@@ -6,6 +6,9 @@
 #     credential), the default-branch ancestry (including when it cannot be determined), the
 #     inputs, deploy-path (links, special files, anything that differs from the tagged commit) and
 #     app-manifest happens before ANY registry contact: no login, no read, no write.
+#   - A job running inside a reusable workflow (its OIDC token's job_workflow_ref is not the
+#     calling workflow), or one that cannot read that claim, is refused before any registry
+#     contact, so no callable workflow lends its host's release identity (platform#6306).
 #   - An occupied version is refused before the first registry write.
 #   - Both digests are signed and then verified against https://github.com/<GITHUB_WORKFLOW_REF>
 #     before the version (and, for stable releases, latest) is exposed; any verification,
@@ -40,6 +43,8 @@ trap 'rm -rf "$scratch"' EXIT
 repo=devantler-tech/app
 token=stub-not-a-secret
 ci_token=stub-ci-not-a-secret
+oidc_request_token=stub-oidc-request-not-a-secret
+oidc_request_url='https://oidc.invalid/token?api-version=2.0'
 token_header="AUTHORIZATION: basic $(printf 'x-access-token:%s' "$token" | base64 | tr -d '\n')"
 image_digest="sha256:$(printf 'b%.0s' $(seq 1 64))"
 artifact_digest="sha256:$(printf 'a%.0s' $(seq 1 64))"
@@ -116,7 +121,7 @@ cat >"$scratch/bin/curl" <<'EOF'
 set -euo pipefail
 printf 'curl %s\n' "$*" >>"$ARGV_LOG"
 url="${*: -1}"
-output='' headers='' config='' user='' status=false
+output='' headers='' config='' user='' header='' status=false
 [[ "${1:-}" == -q ]] || { echo 'curl must ignore ambient .curlrc files' >&2; exit 90; }
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -125,8 +130,9 @@ while [[ $# -gt 0 ]]; do
     --config) config="$2"; shift 2 ;;
     # Accepted so that the argv record, not this stub, is what catches a credential argument.
     --user) user="$2"; shift 2 ;;
+    --header | -H) header="$2"; shift 2 ;;
     --write-out) status=true; shift 2 ;;
-    --header | -H | --data-urlencode | --proto | --connect-timeout | --max-time | --max-filesize) shift 2 ;;
+    --data-urlencode | --proto | --connect-timeout | --max-time | --max-filesize) shift 2 ;;
     -q | --fail | --silent | --show-error | --tlsv1.2 | --get) shift ;;
     https://*) shift ;;
     *) echo "unmodelled curl argument $1" >&2; exit 91 ;;
@@ -177,6 +183,23 @@ case "$url" in
       printf '{"errors":[{"code":"MANIFEST_UNKNOWN"}]}' >"$output"
       printf 404
     fi
+    ;;
+  "$STUB_OIDC_REQUEST_URL&audience=sigstore")
+    # The job's OIDC token, as GitHub returns it: a JWT whose payload names the signing workflow.
+    # Not a registry contact, so it is recorded apart from $CALLS.
+    printf 'oidc %s\n' "$url" >>"$STATE/oidc"
+    auth="$header"
+    if [[ -n "$config" ]]; then
+      [[ -n "$(find "$config" -type f -perm 0600)" ]] || { echo 'OIDC config is not private' >&2; exit 92; }
+      auth="$(sed -n 's/^header = "\(.*\)"$/\1/p' "$config")"
+    fi
+    [[ "$auth" == "Authorization: Bearer $STUB_OIDC_REQUEST_TOKEN" ]] || { echo 'wrong OIDC request token' >&2; exit 93; }
+    [[ "$FAULT" != oidc-unavailable ]] || { echo 'stub: the OIDC service is unavailable' >&2; exit 22; }
+    payload="$(jq -nc --arg r "$STUB_JOB_WORKFLOW_REF" '{iss:"https://token.actions.githubusercontent.com",job_workflow_ref:$r}' |
+      base64 | tr -d '\n=' | tr '+/' '-_')"
+    jwt="eyJhbGciOiJSUzI1NiJ9.$payload.c2lnbmF0dXJl"
+    [[ "$FAULT" != oidc-garbage ]] || jwt='not-a-jwt'
+    jq -nc --arg v "$jwt" '{count:1,value:$v}' >"$output"
     ;;
   *) echo "unmodelled curl $url" >&2; exit 1 ;;
 esac
@@ -333,6 +356,8 @@ setup_case() {
   sim_repository="$repo"
   sim_server="file://$server"
   sim_git_global=/dev/null
+  sim_job_workflow_ref='' # the workflow the job's OIDC token names; empty means the caller's own
+  sim_id_token=true       # whether the job may request an OIDC token (id-token: write)
   FAULT=none
   set_input app-name app
 }
@@ -419,7 +444,12 @@ run_steps() {
     "GITHUB_ACTION_PATH=$dir" "RUNNER_TEMP=$scratch/runner-temp"
     "CALLS=$calls" "STATE=$state" "FAULT=$FAULT" "FIXTURE=$scratch/fixture"
     "STUB_ARTIFACT_DIGEST=$artifact_digest" "STUB_IMAGE_DIGEST=$image_digest" "STUB_OTHER_DIGEST=$other_digest"
+    "STUB_OIDC_REQUEST_URL=$oidc_request_url" "STUB_OIDC_REQUEST_TOKEN=$oidc_request_token"
+    "STUB_JOB_WORKFLOW_REF=${sim_job_workflow_ref:-$sim_workflow_ref}"
   )
+  if "$sim_id_token"; then
+    env_args+=("ACTIONS_ID_TOKEN_REQUEST_URL=$oidc_request_url" "ACTIONS_ID_TOKEN_REQUEST_TOKEN=$oidc_request_token")
+  fi
   count="$(jq '.runs.steps | length' "$sim_json")"
   for ((i = 0; i < count; i++)); do
     step="$(step_json "$i")"
@@ -525,13 +555,16 @@ no_credential_in_argv() {
   [[ -s "$argv_log" ]] || return 1
   ! grep -qF -- "$token" "$argv_log" || return 1
   ! grep -qF -- "${token_header#AUTHORIZATION: basic }" "$argv_log" || return 1
-  ! grep -qE -- "^flux .*--creds" "$argv_log"
+  ! grep -qE -- "^flux .*--creds" "$argv_log" || return 1
+  ! grep -qF -- "$oidc_request_token" "$argv_log"
 }
 
 # published <action-dir> <version> [latest] — a complete publication of <version>.
 published() {
   run_action "$1" || return 1
   no_credential_in_argv || return 1
+  # Admission asked the job's own token which workflow signs, exactly once.
+  [[ "$(cat "$state/oidc")" == "oidc $oidc_request_url&audience=sigstore" ]] || return 1
   [[ "$(action_output version)" == "$2" ]] || return 1
   [[ "$(action_output manifests-digest)" == "$artifact_digest" ]] || return 1
   local pointers
@@ -616,6 +649,39 @@ for workflow_ref in \
     fail "accepted or misjudged signer identity ${workflow_ref%%|*}: $(cat "$log")"
 done
 echo "ok   the signer identity must be the caller's own workflow at the release tag"
+
+# Inside a reusable workflow the token (and so the certificate) names the called file, under its
+# host's identity, while GITHUB_WORKFLOW_REF still names the caller: refuse before signing.
+called='this job runs in a reusable workflow'
+case_called() { # <action-dir> <job workflow ref> <reason>
+  setup_case "$released"
+  sim_job_workflow_ref="$2"
+  admission_refusal "$1" "$3"
+}
+for job_ref in \
+  devantler-tech/host/.github/workflows/cd.yaml@refs/tags/v1.2.3 \
+  devantler-tech/host/.github/workflows/release.yaml@refs/tags/v1.2.3 \
+  devantler-tech/app/.github/workflows/publish.yaml@refs/tags/v1.2.3 \
+  devantler-tech/app/.github/workflows/release.yaml@refs/heads/main \
+  devantler-tech/.github/.github/workflows/publish-app.yaml@refs/tags/v1.2.3; do
+  case_called "$action_dir" "$job_ref" "$called" || fail "admitted a job running in reusable workflow $job_ref: $(cat "$log")"
+done
+case_no_id_token() {
+  setup_case "$released"
+  sim_id_token=false
+  admission_refusal "$1" 'grant the job id-token: write'
+}
+case_no_id_token "$action_dir" || fail "admitted a job that cannot read its signing workflow: $(cat "$log")"
+case_oidc_fault() { # <action-dir> <fault> <reason>
+  setup_case "$released"
+  FAULT="$2"
+  admission_refusal "$1" "$3"
+}
+case_oidc_fault "$action_dir" oidc-unavailable 'the OIDC token request failed' ||
+  fail "admitted a release whose signing workflow could not be read: $(cat "$log")"
+case_oidc_fault "$action_dir" oidc-garbage 'cannot read the signing workflow from the OIDC token' ||
+  fail "admitted a release with an unreadable OIDC token: $(cat "$log")"
+echo 'ok   a job running inside a reusable workflow, or one that cannot read its signing workflow, is refused before any registry contact'
 
 # ---- 2. the checkout and the default branch ---------------------------------------------------
 
@@ -1078,6 +1144,9 @@ for edit in 'admit.sh|s/^set -euo pipefail$/set -euo pipefail # control/' \
     case_ref "$copy_dir" refs/tags/v1.2.3garbage 'complete semantic version' &&
     case_ref "$copy_dir" refs/tags/v9007199254740992.0.0 'numbers of at most 15 digits' &&
     case_identity "$copy_dir" "devantler-tech/app/.github/workflows/release.yaml@refs/heads/main" "$belong" &&
+    case_called "$copy_dir" devantler-tech/host/.github/workflows/cd.yaml@refs/tags/v1.2.3 "$called" &&
+    case_no_id_token "$copy_dir" && case_oidc_fault "$copy_dir" oidc-unavailable 'the OIDC token request failed' &&
+    case_oidc_fault "$copy_dir" oidc-garbage 'cannot read the signing workflow from the OIDC token' &&
     case_head_moved "$copy_dir" && case_outer "$copy_dir" && case_persisted "$copy_dir" direct &&
     case_persisted "$copy_dir" any-host &&
     case_not_on_default "$copy_dir" && case_undeterminable "$copy_dir" "file://$scratch/nowhere" &&
@@ -1116,6 +1185,18 @@ must_catch 'unreadable version numbers admitted' admit.sh 's/ || "\$numbers" =~ 
   case_ref refs/tags/v9007199254740992.0.0 'numbers of at most 15 digits'
 must_catch 'a foreign signer identity admitted' admit.sh 's/^check_signer_identity$/:/' \
   case_identity "devantler-tech/app/.github/workflows/release.yaml@refs/heads/main" "$belong"
+must_catch 'the reusable-workflow check removed' admit.sh 's/^check_not_called$/:/' \
+  case_called devantler-tech/host/.github/workflows/cd.yaml@refs/tags/v1.2.3 "$called"
+must_catch 'a reusable workflow admitted' admit.sh 's/\[\[ "\$job_ref" == "\$GITHUB_WORKFLOW_REF" \]\] ||/true ||/' \
+  case_called devantler-tech/app/.github/workflows/publish.yaml@refs/tags/v1.2.3 "$called"
+must_catch 'a job without id-token: write passing the precondition' admit.sh \
+  "s/^    fail 'cannot read the signing workflow: grant the job id-token: write'$/    :/" case_no_id_token
+must_catch 'a failed OIDC token request ignored' admit.sh \
+  's/^  \[\[ "\$status" == 0 \]\] || { rm -rf "\$work"; fail .*/  :/' case_oidc_fault oidc-unavailable 'the OIDC token request failed'
+must_catch 'an unreadable OIDC token ignored' admit.sh 's/\[\[ "\$status" == 0 && -n "\$job_ref" \]\] || fail/true || fail/' \
+  case_oidc_fault oidc-garbage 'cannot read the signing workflow from the OIDC token'
+must_catch 'the OIDC request token on the curl arguments' admit.sh \
+  's/--config "\$work\/oidc.curlrc"/--header "Authorization: Bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN"/' case_deployment
 must_catch 'a different checkout admitted' admit.sh 's/^check_checkout$/:/' case_head_moved
 must_catch 'a checkout below the workspace root admitted' admit.sh 's/\[\[ "\$(git rev-parse --show-toplevel 2>\/dev\/null)" -ef \. \]\] ||/true ||/' \
   case_outer

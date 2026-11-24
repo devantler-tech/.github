@@ -91,6 +91,32 @@ check_signer_identity() {
   [[ "$file" =~ ^${name}$ ]] || fail 'the calling workflow must be a file directly in .github/workflows'
 }
 
+# The certificate names the workflow file whose job signs (the OIDC token's job_workflow_ref).
+# Inside a reusable workflow that is the called file, under its host repository's identity, not
+# the caller. Read the claim from the job's own token and refuse unless it is the calling
+# workflow, so no workflow another repository can call lends its release identity to the
+# caller's build (platform#6306). The request token travels in a private config file.
+check_not_called() {
+  local work job_ref status=0
+  [[ -n "${ACTIONS_ID_TOKEN_REQUEST_URL:-}" && "$ACTIONS_ID_TOKEN_REQUEST_URL" == https://* &&
+    -n "${ACTIONS_ID_TOKEN_REQUEST_TOKEN:-}" && "$ACTIONS_ID_TOKEN_REQUEST_TOKEN" != *[!A-Za-z0-9._~+/=-]* ]] ||
+    fail 'cannot read the signing workflow: grant the job id-token: write'
+  work="$(mktemp -d)"
+  printf 'header = "Authorization: Bearer %s"\n' "$ACTIONS_ID_TOKEN_REQUEST_TOKEN" >"$work/oidc.curlrc"
+  curl -q --fail --silent --show-error --proto '=https' --tlsv1.2 \
+    --connect-timeout 10 --max-time 30 --max-filesize 65536 --output "$work/oidc.json" \
+    --config "$work/oidc.curlrc" "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=sigstore" || status=$?
+  rm -f "$work/oidc.curlrc"
+  [[ "$status" == 0 ]] || { rm -rf "$work"; fail 'cannot read the signing workflow: the OIDC token request failed'; }
+  job_ref="$(jq -er '.value | split(".") | select(length == 3) | .[1] | gsub("-"; "+") | gsub("_"; "/") |
+    . + ("==="[0:((4 - length % 4) % 4)]) | @base64d | fromjson | .job_workflow_ref | select(type == "string")' \
+    "$work/oidc.json" 2>/dev/null)" || status=$?
+  rm -rf "$work"
+  [[ "$status" == 0 && -n "$job_ref" ]] || fail 'cannot read the signing workflow from the OIDC token'
+  [[ "$job_ref" == "$GITHUB_WORKFLOW_REF" ]] ||
+    fail 'this job runs in a reusable workflow, which would sign as that workflow and not as the caller; call publish-app directly in the release workflow'
+}
+
 check_checkout() {
   local head status=0
   head="$(git rev-parse --verify --quiet 'HEAD^{commit}')" ||
@@ -200,6 +226,7 @@ check_deploy_source() {
 check_inputs
 check_release_tag
 check_signer_identity
+check_not_called
 check_checkout
 check_default_branch
 resolve_manifest
