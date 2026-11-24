@@ -541,7 +541,7 @@ jobs:
           persist-credentials: false
 
       - name: 🔧 Setup Go
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         with:
           go-version-file: .github/tests/todo-scanner/go.mod
           cache: false
@@ -593,7 +593,7 @@ jobs:
           persist-credentials: false
 
       - name: Setup TODO supervisor compiler
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         with:
           go-version-file: .scripts/todo-guard/go.mod
           cache: false
@@ -1040,7 +1040,7 @@ jobs:
           test -z "$VALIDATED"
           test -z "$RECEIPT"
       - name: Set up offline test toolchain
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         with:
           go-version-file: .github/scripts/check-ci-run-budget/go.mod
           cache: false
@@ -2344,7 +2344,7 @@ jobs:
           persist-credentials: false
 
       - name: 🧰 Set up Go for the catalogue credential graph
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         with:
           go-version-file: tests/catalogue-credentials/go.mod
           cache-dependency-path: tests/catalogue-credentials/go.sum
@@ -2364,7 +2364,7 @@ jobs:
         run: bash .github/tests/test-dotnet-native-fixtures.sh
 
       - name: Set up the declared validator Go toolchain
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         with:
           go-version-file: actions/validate-retired-repo-links/go.mod
           cache: false
@@ -2519,7 +2519,7 @@ jobs:
         run: bash .github/tests/test-go-postgresql-fixture.sh
 
       - name: Set up the native PostgreSQL fixture's declared Go toolchain
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         with:
           go-version-file: tests/go-postgresql-fixture/go.mod
           cache: false
@@ -3158,7 +3158,7 @@ jobs:
       - name: 🧪 Verify issue side effects stay disabled
         run: bash .github/tests/test-create-release-config.sh
       - name: 📦 Setup Go for read-only release inspection
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         with:
           go-version: "1.26.9"
           cache: false
@@ -4010,7 +4010,7 @@ jobs:
         run: bash .github/tests/test-go-maintenance-default-branch.sh
 
       - name: ⚙️ Setup Go for maintenance fixtures
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         with:
           go-version-file: .github/tests/go-valid-fixture/go.mod
           cache: false
@@ -4188,7 +4188,7 @@ jobs:
           persist-credentials: false
 
       - name: ⚙️ Setup Go
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         with:
           go-version-file: .github/tests/golangci-lint-fixture/go.mod
 
@@ -4252,7 +4252,7 @@ jobs:
           persist-credentials: false
 
       - name: ⚙️ Setup Go
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         with:
           go-version-file: .github/tests/go-test-fixture/go.mod
 
