@@ -33,12 +33,48 @@
     "eligible": true
   },
   {
-    "name": "KSail bot",
+    "name": "botantler-1",
+    "event_name": "pull_request",
+    "draft": false,
+    "login": "botantler-1[bot]",
+    "actor": "botantler-1[bot]",
+    "eligible": true
+  },
+  {
+    "name": "botantler-2",
+    "event_name": "pull_request",
+    "draft": false,
+    "login": "botantler-2[bot]",
+    "actor": "botantler-2[bot]",
+    "eligible": true
+  },
+  {
+    "name": "botantler-1 updates a trusted bot PR",
+    "event_name": "pull_request",
+    "action": "synchronize",
+    "draft": false,
+    "login": "dependabot[bot]",
+    "actor": "botantler-1[bot]",
+    "eligible": true
+  },
+  {
+    "name": "deleted KSail bot is no longer a trusted author",
     "event_name": "pull_request",
     "draft": false,
     "login": "ksail-bot[bot]",
     "actor": "ksail-bot[bot]",
-    "eligible": true
+    "eligible": false
+  },
+  {
+    "name": "deleted KSail bot updates a trusted bot PR",
+    "event_name": "pull_request",
+    "action": "synchronize",
+    "draft": false,
+    "login": "dependabot[bot]",
+    "actor": "ksail-bot[bot]",
+    "enforce": true,
+    "disarm": true,
+    "eligible": false
   },
   {
     "name": "CodeRabbit",
