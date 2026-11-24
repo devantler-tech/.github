@@ -16,7 +16,6 @@ organization="$(jq -cn --argjson lifecycle "$lifecycle" --argjson refs "$refs" -
     name: "Restrict release tag creation", target: "tag", enforcement: "active",
     bypassActors: [
       {actorType: "Integration", actorId: 1025824, bypassMode: "always"},
-      {actorType: "Integration", actorId: 2880167, bypassMode: "always"},
       {actorType: "OrganizationAdmin", bypassMode: "always"}
     ],
     conditions: [{refName: $refs, repositoryName: [{include: ["~ALL"], exclude: []}]}],
@@ -70,8 +69,10 @@ mutations=(
   "${organization_selector}|.spec.forProvider.bypassActors += [{\"actorType\":\"RepositoryRole\",\"actorId\":5,\"bypassMode\":\"always\"}]"
   "${organization_selector}|.spec.forProvider.bypassActors += [{\"actorType\":\"DeployKey\",\"bypassMode\":\"always\"}]"
   "${organization_selector}|.spec.forProvider.bypassActors[0].actorId = 4126012"
-  "${organization_selector}|.spec.forProvider.bypassActors[1].bypassMode = \"exempt\""
-  "${organization_selector}|del(.spec.forProvider.bypassActors[2])"
+  "${organization_selector}|.spec.forProvider.bypassActors[1].actorType = \"RepositoryRole\""
+  "${organization_selector}|del(.spec.forProvider.bypassActors[1])"
+  "${organization_selector}|.spec.forProvider.bypassActors[0].bypassMode = \"exempt\""
+  "${organization_selector}|.spec.forProvider.bypassActors += [{\"actorType\":\"Integration\",\"actorId\":2880167,\"bypassMode\":\"always\"}]"
   "${organization_selector}|.spec.forProvider.bypassActors += [{\"actorType\":\"Integration\",\"actorId\":5498800,\"bypassMode\":\"always\"}]"
   "${organization_selector}|.spec.forProvider.conditions[0].refName[0].include = [\"refs/tags/v*\"]"
   "${organization_selector}|.spec.forProvider.conditions[0].refName[0].include = [\"refs/tags/v1*\",\"refs/tags/v*/**/*\"]"
