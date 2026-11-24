@@ -354,19 +354,19 @@ jobs:
 |------------------------------|-----------------|---------|----------|---------------------------------------------------------------------------|
 | `APP_CLIENT_ID`              | Variable        | -       | Yes      | GitHub App client ID used to mint the release token                       |
 | `APP_PRIVATE_KEY`            | Secret          | -       | No       | GitHub App private key; required for consumer releases and previews, omitted for offline tests |
-| `RELEASE_APP_PRIVATE_KEY`    | Secret          | -       | No       | Explicit named binding for the protected release environment secret; keep its value only in that environment |
+| `RELEASE_APP_PRIVATE_KEY`    | Secret          | -       | No       | Retired ([#933](https://github.com/devantler-tech/.github/issues/933)): unused; pass `APP_PRIVATE_KEY` |
 | `disable-issue-side-effects` | Input (boolean) | `false` | No       | Disable success/fail hooks and omit issue/pull-request token permissions  |
 | `warn-missing-breaking-bang` | Input (boolean) | `false` | No       | Warn about missing explicit breaking-header handling in supported JSON configurations |
 | `dry-run`                    | Input (boolean) | `false` | No       | Run semantic-release in dry-run mode (no tags or publishes)               |
 | `offline-test`               | Input (boolean) | `false` | No       | Run secret-free catalogue release-decision fixtures; requires dry-run     |
-| `protected-release`          | Input (boolean) | `false` | No       | Use the caller's protected `release` environment and dedicated App credentials; see [setup and acceptance](.github/agent-guides/protected-releases.md) |
+| `protected-release`          | Input (boolean) | `false` | No       | Retired ([#933](https://github.com/devantler-tech/.github/issues/933)) with its dedicated release App; `true` fails the run |
 | `block-egress`               | Input (boolean) | `false` | No       | Refuse every outbound host from the release job except `github.com`, `api.github.com` and `registry.npmjs.org`, the hosts it was measured to reach ([#912](https://github.com/devantler-tech/.github/issues/912)) |
 
-The protected mode obtains `RELEASE_APP_CLIENT_ID` and `RELEASE_APP_PRIVATE_KEY` from the
-caller's `release` environment. Explicitly bind `RELEASE_APP_PRIVATE_KEY` in the caller's
-`secrets` block as shown in the setup guide; keep its value only in the environment. Environment protection
-and removal of alternative publishing credentials are prerequisites, verified separately from
-workflow syntax and offline tests. The default preserves existing consumer releases.
+Releases mint their token with the organization App (`APP_CLIENT_ID`, `APP_PRIVATE_KEY`). The
+protected mode and its dedicated release App were retired in
+[#933](https://github.com/devantler-tech/.github/issues/933); its input and secret stay declared
+so older callers still parse, and `protected-release: true` fails the run instead of skipping the
+release.
 
 </details>
 

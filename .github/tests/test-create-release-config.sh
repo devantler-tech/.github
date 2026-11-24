@@ -428,41 +428,20 @@ if (
   exit 1
 fi
 
-protected_source_guard="$(yq -r '.jobs."release-protected".steps[] | select(.name == "Verify protected release source") | .run' "$workflow")"
-while IFS='|' read -r protected_ref protected_default protected_state protected_expected; do
-  protected_actual=0
-  env SOURCE_REF="$protected_ref" DEFAULT_BRANCH="$protected_default" REF_PROTECTED="$protected_state" \
-    bash -c "$protected_source_guard" >"$tmp_dir/protected-source-result" 2>&1 || protected_actual=$?
-  if [[ "$protected_expected" == pass && "$protected_actual" != 0 ]] ||
-    [[ "$protected_expected" == fail && "$protected_actual" == 0 ]]; then
-    cat "$tmp_dir/protected-source-result" >&2
-    echo "unexpected protected-source result for $protected_ref" >&2
-    exit 1
-  fi
-done <<'EOF'
-refs/heads/main|main|true|pass
-refs/heads/topic|main|true|fail
-refs/tags/main|main|true|fail
-refs/heads/main|main|false|fail
-refs/heads/main||true|fail
-EOF
-
-# Opt-in egress blocking (#912). Both release jobs select block mode only through block-egress and
-# share one measured allow-list (#628); the credential-free offline fixture job keeps plain audit.
+# Opt-in egress blocking (#912). The release job selects block mode only through block-egress and
+# keeps one measured allow-list (#628); the credential-free offline fixture job keeps plain audit.
 # The CI fixtures exercise the default and the opted-in input state.
 check_block_egress() {
-  local wf="$1" ci_file="$2" job policy endpoints probe_run refusal
+  local wf="$1" ci_file="$2" policy endpoints probe_run refusal
   local expected_policy="\${{ inputs.block-egress && 'block' || 'audit' }}"
   local expected_endpoints='api.github.com:443 github.com:443 registry.npmjs.org:443'
   [[ "$(yq -r '.on.workflow_call.inputs."block-egress" | [.type, .default] | join(" ")' "$wf")" == "boolean false" ]] ||
     return 1
-  for job in release release-protected; do
-    policy="$(JOB="$job" yq -r '.jobs[strenv(JOB)].steps[0].with."egress-policy" // ""' "$wf")"
-    endpoints="$(JOB="$job" yq -r '.jobs[strenv(JOB)].steps[0].with."allowed-endpoints" // ""' "$wf")"
-    [[ "$policy" == "$expected_policy" && "$endpoints" == "$expected_endpoints" ]] || return 1
-  done
+  policy="$(yq -r '.jobs.release.steps[0].with."egress-policy" // ""' "$wf")"
+  endpoints="$(yq -r '.jobs.release.steps[0].with."allowed-endpoints" // ""' "$wf")"
+  [[ "$policy" == "$expected_policy" && "$endpoints" == "$expected_endpoints" ]] || return 1
   [[ "$(yq -o=json -I=0 '.jobs."offline-test".steps[0].with' "$wf")" == '{"egress-policy":"audit"}' ]] || return 1
-  # The fixture-mode probe executes both states: the release jobs' exact hardening step, a fatal
+  # The fixture-mode probe executes both states: the release job's exact hardening step, a fatal
   # check of every listed host, a refused connection to an unlisted one in block mode and the same
   # host reached in audit mode, so the refusal is attributable to the policy, and no credentials.
   local hardening='.steps[0] | {"uses": .uses, "with": .with}' hosts="${expected_endpoints//:443/}"
@@ -576,7 +555,6 @@ while IFS='|' read -r label target expression; do
   fi
 done <<'EOF_CONTROLS'
 block mode unconditional|workflow|.jobs.release.steps[0].with."egress-policy" = "block"
-extra host in the protected job only|workflow|.jobs["release-protected"].steps[0].with."allowed-endpoints" += " example.com:443"
 input defaults to on|workflow|.on.workflow_call.inputs."block-egress".default = true
 offline fixture job blocks too|workflow|.jobs["offline-test"].steps[0].with."egress-policy" = "block"
 opted-in CI state removed|ci|del(.jobs["test-create-release-no-issue-side-effects"].with."block-egress")
@@ -591,5 +569,4 @@ probe failure tolerated|workflow|.jobs["egress-probe"]."continue-on-error" = tru
 EOF_CONTROLS
 
 echo "semantic-release issue side effects are opt-in disabled at least privilege"
-echo "protected-source guard accepts the protected default branch and rejects four invalid contexts"
-echo "release egress blocking is opt-in, probed in both states by an executed job and rejects thirteen regressions"
+echo "release egress blocking is opt-in, probed in both states by an executed job and rejects twelve regressions"
