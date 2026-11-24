@@ -315,8 +315,7 @@ Actions integration as a bypass actor in an organization ruleset.
 
 | Who may create a `v*` tag | How each one creates it today |
 |---|---|
-| botantler-1 (App `1025824`) | `create-release.yaml` with the organization's `APP_CLIENT_ID`, and agent-plugins' `release-please.yaml` |
-| ksail-bot (App `2880167`) | `create-release.yaml` in ksail, whose `APP_CLIENT_ID` variable names ksail-bot |
+| botantler-1 (App `1025824`) | `create-release.yaml` with the organization's `APP_CLIENT_ID` in every repository (ksail included since ksail-bot was deleted), and agent-plugins' `release-please.yaml` |
 | Organization admins | A release cut by hand |
 
 Other tag names that existing workflows create are not release tags and are not restricted.
