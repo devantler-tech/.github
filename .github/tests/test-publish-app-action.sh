@@ -195,7 +195,12 @@ case "$url" in
     fi
     [[ "$auth" == "Authorization: Bearer $STUB_OIDC_REQUEST_TOKEN" ]] || { echo 'wrong OIDC request token' >&2; exit 93; }
     [[ "$FAULT" != oidc-unavailable ]] || { echo 'stub: the OIDC service is unavailable' >&2; exit 22; }
-    payload="$(jq -nc --arg r "$STUB_JOB_WORKFLOW_REF" '{iss:"https://token.actions.githubusercontent.com",job_workflow_ref:$r}' |
+    # A real token names the calling workflow (workflow_ref) and the file whose job runs
+    # (job_workflow_ref); GitHub sets both for a direct job too, where they are equal: Fulcio
+    # fills the certificate's SAN and Build Signer URI from job_workflow_ref.
+    payload="$(jq -nc --arg r "$STUB_JOB_WORKFLOW_REF" --arg w "$GITHUB_WORKFLOW_REF" --arg f "$FAULT" '
+      {iss:"https://token.actions.githubusercontent.com",workflow_ref:$w,job_workflow_ref:$r} |
+      if $f == "oidc-no-job-ref" then del(.job_workflow_ref) else . end' |
       base64 | tr -d '\n=' | tr '+/' '-_')"
     jwt="eyJhbGciOiJSUzI1NiJ9.$payload.c2lnbmF0dXJl"
     [[ "$FAULT" != oidc-garbage ]] || jwt='not-a-jwt'
@@ -681,6 +686,9 @@ case_oidc_fault "$action_dir" oidc-unavailable 'the OIDC token request failed' |
   fail "admitted a release whose signing workflow could not be read: $(cat "$log")"
 case_oidc_fault "$action_dir" oidc-garbage 'cannot read the signing workflow from the OIDC token' ||
   fail "admitted a release with an unreadable OIDC token: $(cat "$log")"
+# Without the claim the signer is unknown: never fall back to workflow_ref, which names the caller.
+case_oidc_fault "$action_dir" oidc-no-job-ref 'cannot read the signing workflow from the OIDC token' ||
+  fail "admitted a token that does not name its signing workflow: $(cat "$log")"
 echo 'ok   a job running inside a reusable workflow, or one that cannot read its signing workflow, is refused before any registry contact'
 
 # ---- 2. the checkout and the default branch ---------------------------------------------------
