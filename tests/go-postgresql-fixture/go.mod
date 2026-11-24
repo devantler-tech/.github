@@ -2,7 +2,7 @@ module github.com/devantler-tech/shared-go-postgresql-fixture
 
 go 1.26.9
 
-require github.com/jackc/pgx/v5 v5.12.0
+require github.com/jackc/pgx/v5 v5.13.0
 
 require (
 	github.com/jackc/pgpassfile v1.0.0 // indirect
