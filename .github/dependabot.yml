@@ -27,6 +27,13 @@ updates:
         group-by: dependency-name
         patterns:
           - "actions/upload-code-coverage"
+      # .github/actions/test-todo-default-fixture mirrors actions/create-issues-from-todos step for
+      # step (test-todo-default-action), so their setup-go pins must move in one PR; group-by
+      # keeps every directory's setup-go bump together (devantler-tech/.github#984, #987).
+      setup-go-lockstep:
+        group-by: dependency-name
+        patterns:
+          - "actions/setup-go"
   # Scope each runnable module's update job separately; advisory fixtures below stay frozen.
   - package-ecosystem: gomod
     directory: /actions/validate-naming
