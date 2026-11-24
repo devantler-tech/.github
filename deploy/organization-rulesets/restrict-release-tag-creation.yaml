@@ -16,12 +16,11 @@
 # Actions integration as a bypass actor in an organization ruleset (HTTP 422). agent-plugins
 # creates its tag with botantler-1 since devantler-tech/agent-plugins#711.
 #
-# Bypass actors are the identities that create release tags today (census on #924):
+# Bypass actors are the identities that create release tags today (census on #924; the
+# dedicated botantler-marketplace-releases App was retired in #933):
 #   - 1025824 botantler-1: the organization's release App, used by create-release.yaml and by
 #     agent-plugins' release-please.yaml.
 #   - 2880167 ksail-bot: ksail's own release App (its APP_CLIENT_ID repository variable).
-#   - 5498800 botantler-marketplace-releases: the protected-release App whose key lives only in
-#     the main-only `release` environment of the three skill action repositories.
 #   - OrganizationAdmin: lets the maintainer cut a release by hand. ID-less, so no actorId.
 #
 # Managed like protect-release-tags.yaml: Create, Update and LateInitialize (so the created
@@ -46,9 +45,6 @@ spec:
         bypassMode: always
       - actorType: Integration
         actorId: 2880167 # ksail-bot
-        bypassMode: always
-      - actorType: Integration
-        actorId: 5498800 # botantler-marketplace-releases
         bypassMode: always
       - actorType: OrganizationAdmin
         bypassMode: always

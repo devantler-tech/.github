@@ -317,7 +317,6 @@ Actions integration as a bypass actor in an organization ruleset.
 |---|---|
 | botantler-1 (App `1025824`) | `create-release.yaml` with the organization's `APP_CLIENT_ID`, and agent-plugins' `release-please.yaml` |
 | ksail-bot (App `2880167`) | `create-release.yaml` in ksail, whose `APP_CLIENT_ID` variable names ksail-bot |
-| botantler-marketplace-releases (App `5498800`) | `create-release.yaml` with `protected-release: true`, its key only in a main-only `release` environment |
 | Organization admins | A release cut by hand |
 
 Other tag names that existing workflows create are not release tags and are not restricted.
@@ -334,10 +333,10 @@ workflow creates the release itself.
 release App whose key is an ordinary Actions secret can be used by a workflow on any branch,
 and a GitHub Actions bypass applies to every job that has `contents: write`. The second
 layer is the signing check in [#925](https://github.com/devantler-tech/.github/issues/925),
-which refuses a tag whose commit is not on the default branch. The stronger end state is the
-pattern the three skill action repositories already use: one dedicated release App whose key
-lives only in a `release` environment limited to `main` (`deploy/release-environments/`),
-and that App as the only App in the bypass list.
+which refuses a tag whose commit is not on the default branch. A dedicated release App with its
+key in `main`-only `release` environments was tried and retired
+([#933](https://github.com/devantler-tech/.github/issues/933)): the maintainer trusts the
+organization Apps, and App tokens are to come from a hosted token service with its own guards.
 
 `tests/release-tag-creation-ruleset.sh` pins both rulesets and the empty bypass list of
 `protect-release-tags.yaml`.
