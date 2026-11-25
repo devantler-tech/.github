@@ -37,7 +37,7 @@
       },
       "secrets": {
         "APP_PRIVATE_KEY": {
-          "description": "Required for production project integration; unused in dry-run",
+          "description": "Retired and unused: the project token comes from the GitHub token broker. Still declared so callers that pass it keep working.",
           "required": false
         }
       }
@@ -96,8 +96,6 @@
           "name": "📝 Create issues from TODOs",
           "uses": "$/.github/actions/test-todo-default-fixture",
           "with": {
-            "client-id": "${{ vars.APP_CLIENT_ID }}",
-            "app-private-key": "${{ secrets.APP_PRIVATE_KEY }}",
             "project": "${{ inputs.project }}",
             "ignore": "${{ inputs.ignore }}",
             "optional-project-auth": "${{ inputs.optional-project-auth }}",

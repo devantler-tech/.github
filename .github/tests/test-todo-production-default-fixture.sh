@@ -61,7 +61,7 @@ guard() {
 }
 guard "$work/fixture.json" "$work/ci.json" || fail 'default-off replay lost its native routing or read-only boundary'
 # The two fixture steps and invocation bookkeeping are the only behavioral edits.
-jq -S 'del(.name, .jobs["dry-run"], .jobs.todos.permissions.issues)' "$work/source.json" >"$work/expected.json"
+jq -S 'del(.name, .jobs["dry-run"], .jobs.todos.permissions.issues, .jobs.todos.permissions["id-token"])' "$work/source.json" >"$work/expected.json"
 jq -S '
   del(.name, .on.workflow_call.inputs["fixture-skip-app-token"]) |
   .jobs.todos.steps |= map(select(.name != "Prepare default-path offline dependencies" and
