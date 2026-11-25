@@ -3275,11 +3275,11 @@ jobs:
       ignore: '^\.github/tests/'
 
   # Template sync's job asks for id-token: write so it can reach the GitHub token
-  # broker, and a caller must grant at least that or the run fails at startup. A
-  # pull request can edit the called file, so its dry-run gate is no boundary and
-  # these callers run only on push, after it has merged (test-ci-idtoken-boundary.sh).
-  # On a pull request the file is still linted and its behaviour is tested offline
-  # by the test-template-sync-*.sh suites in lint-ci-coverage-parity.
+  # broker, and a caller must grant at least that or the run fails at startup.
+  # GitHub checks that cap when it loads the run, even for a caller whose condition
+  # is false, so a pull request still proves this interface loads. A pull request
+  # can edit the called file, so its dry-run gate is no boundary, and these callers
+  # run only on push, after it has merged (test-ci-idtoken-boundary.sh).
   test-template-sync:
     if: "${{ github.event_name == 'push' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
     name: "[Test] Template Sync - Dry Run"
