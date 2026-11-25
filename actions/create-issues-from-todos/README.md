@@ -1,19 +1,16 @@
 # Create Issues from TODOs
 
-Scan code for TODO comments and automatically create corresponding GitHub issues using the workflow's GitHub token. Project integration uses a separate GitHub App token. The calling job needs `contents: read` and `issues: write`.
+Scan code for TODO comments and automatically create corresponding GitHub issues using the workflow's GitHub token. Project integration uses a separate token from the GitHub token broker ([ADR 0020](https://github.com/devantler-tech/monorepo/blob/main/docs/adr/0020-one-github-token-broker.md)), under devantler-tech/.github's `scan-for-todo-comments` trust policy: organization projects write only, on botantler-2. No App key is passed or read. The calling job needs `contents: read`, `issues: write` and, for project integration, `id-token: write`.
 
 ## Inputs
 
 | Name                    | Description                                                                           | Required | Default   |
 | ----------------------- | ------------------------------------------------------------------------------------- | -------- | --------- |
-| `client-id`             | GitHub App Client ID for project integration (preferred over the deprecated `app-id`) | ❌¹      | -         |
-| `app-id`                | GitHub App ID. **Deprecated** — use `client-id` instead                               | ❌¹      | -         |
-| `app-private-key`       | GitHub App Private Key                                                                | ❌¹      | -         |
-| `optional-project-auth` | Opt in to generating an App token only when a project is configured                   | ❌       | `"false"` |
+| `optional-project-auth` | Opt in to getting a project token only when a project is configured                   | ❌       | `"false"` |
 | `project`               | GitHub Project to add issues to                                                       | ❌       | -         |
 | `ignore`                | Regular expression matching repository-relative paths to ignore                       | ❌       | `""`      |
 
-¹ By default, provide `app-private-key` and one of `client-id` or `app-id`, preserving existing callers' App authentication. Prefer `client-id`; `app-id` is deprecated. With `optional-project-auth: 'true'`, App authentication is only needed for a configured project; invalid project credentials fail before checkout or scanning. Without a project, this opt-in skips App-token generation and needs no App inputs.
+By default the action gets a project token, preserving existing callers' project integration. With `optional-project-auth: 'true'`, it gets one only for a configured project. Without a project, this opt-in skips the token and needs no OIDC grant. The broker admits only the shared `scan-for-todo-comments.yaml` workflow on a devantler-tech repository's `main`, so the action called from anywhere else gets no project token.
 
 ## What counts as a TODO
 
@@ -48,16 +45,17 @@ steps:
   - name: Create issues from TODOs
     uses: devantler-tech/.github/actions/create-issues-from-todos@<full-commit-sha> # vX.Y.Z
     with:
-      client-id: ${{ vars.APP_CLIENT_ID }}
-      app-private-key: ${{ secrets.APP_PRIVATE_KEY }}
       project: "organization/devantler-tech/1"
 ```
+
+The containing job also needs `id-token: write`, and the broker serves this only to the shared
+`scan-for-todo-comments.yaml` workflow.
 
 Replace `<full-commit-sha>` with the immutable commit of a reviewed catalogue release.
 
 ## Testing
 
-The catalogue's action smoke opts in to optional project authentication and runs with contents-read permission against an offline Docker stand-in, without App credentials or live tracker updates. The actual action wrapper is exercised, including exact Docker arguments, environment forwarding and the preserved retry helper. Offline cases cover both input states and retain the default path's App-token forwarding; structural guards bind the authentication conditions and existing App inputs. Independent mutations verify that missing forwarding, retry bypasses, swallowed failures, live credentials and omitted required checks fail CI.
+The catalogue's action smoke opts in to optional project authentication and runs with contents-read permission against an offline Docker stand-in, without any token or live tracker updates. The actual action wrapper is exercised, including exact Docker arguments, environment forwarding and the preserved retry helper. Offline cases cover both input states and retain the default path's project-token forwarding; structural guards bind the broker step, its condition and its exact inputs. Independent mutations verify that missing forwarding, retry bypasses, swallowed failures, live credentials and omitted required checks fail CI.
 
 Run from the catalogue root:
 
@@ -92,7 +90,7 @@ duplicate cursors, contradictory page targets and incomplete chains fail before 
 Project selectors accept `organization/owner/number` or `user/owner/number`, resolved by
 the actual project number, and existing title selectors, resolved across all pages.
 Missing or ambiguous projects, incomplete GraphQL data and rejected additions fail.
-Issue writes use the workflow token; project operations use the separate App token.
+Issue writes use the workflow token; project operations use the separate broker token.
 No additional permissions are requested.
 
 Image downloads may retry. The two unauthenticated language-rule downloads may retry
