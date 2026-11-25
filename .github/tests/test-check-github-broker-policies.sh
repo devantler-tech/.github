@@ -67,7 +67,7 @@ expect 1 'must pin claim_pattern.repository_owner_id' 'another organization' \
 expect 1 'must pin claim_pattern.repository_owner_id' 'any owner' "$(policy "$issuer" '  repository_owner_id: ".*"' "$read_only")"
 expect 1 'must pin claim_pattern.repository_owner_id' 'an owner pattern wider than the ID' \
   "$(policy "$issuer" '  repository_owner_id: "178524219|1"' "$read_only")"
-expect 1 'must pin claim_pattern.repository_owner_id' 'the owner ID as a number' \
+expect 1 'claim_pattern must map claim names to strings' 'the owner ID as a number' \
   "$(policy "$issuer" '  repository_owner_id: 178524219' "$read_only")"
 expect 1 'must pin claim_pattern.repository_owner_id' 'an unlisted repository ID instead of the owner' \
   "$(policy "$issuer" '  repository_id: "494599576"' "$read_only")"
@@ -95,6 +95,26 @@ expect 1 'grants administration' 'organization administration' \
 expect 1 'holds 2 YAML documents' 'a second document' \
   "$(policy "$issuer" "$owner" "$read_only"; policy 'issuer: https://issuer.example.com' '' "$read_only")"
 expect 1 'is not valid YAML' 'invalid YAML' 'issuer: [unclosed'
+# The broker decodes through JSON with case-insensitive field matching, so any
+# spelling but the exact one could set a field unseen.
+expect 1 'does not define in this exact spelling: App' 'a capitalised App pin' \
+  "$(policy "$issuer" "$owner" "$writes" 'App: botantler-1')"
+expect 1 'does not define in this exact spelling: Permissions' 'capitalised permissions' \
+  "$(policy "$issuer" "$owner" $'Permissions:\n  contents: write' 'app: botantler-2')"
+expect 1 'does not define in this exact spelling: ſubject' 'a field spelled with a Unicode case fold' \
+  "$(policy "$issuer" "$owner" "$read_only" 'ſubject: repo:other/repo:ref:refs/heads/main')"
+expect 1 'permissions must use the canonical lowercase names' 'a capitalised permission name' \
+  "$(policy "$issuer" "$owner" $'permissions:\n  Contents: write' 'app: botantler-2')"
+expect 1 'permissions must use the canonical lowercase names' 'a capitalised permission value' \
+  "$(policy "$issuer" "$owner" $'permissions:\n  contents: Write')"
+# Where two YAML readers can disagree about a value, the policy is refused.
+expect 1 'uses YAML anchors, aliases, merge keys or duplicate keys' 'a merge key hiding the App' \
+  "$(policy "$issuer" "$owner" "$writes" $'app: botantler-1\nbase: &b {app: botantler-2}\n<<: *b')"
+expect 1 'uses YAML anchors, aliases, merge keys or duplicate keys' 'an alias' \
+  "$(policy "$issuer" "$owner" "$read_only" $'audience: &a sts.example.test\naudience_pattern: *a')"
+expect 1 'uses YAML anchors, aliases, merge keys or duplicate keys' 'a duplicate key' \
+  "$(policy "$issuer" "$owner" "$writes" $'app: botantler-2\napp: botantler-1')"
+expect 1 'is not a mapping' 'a list instead of a policy' $'---\n- issuer: https://token.actions.githubusercontent.com'
 
 # Every policy in a repository is checked, not just the first.
 rm -rf "$tmp/repo"
@@ -107,6 +127,19 @@ if [[ "$status" != 1 ]] || ! grep -Fq 'file=.github/chainguard/b.sts.yaml' "$tmp
   ! grep -Fq '1 problem(s) in 2 broker trust policies' "$tmp/out"; then
   cat "$tmp/out" >&2
   fail 'a bad policy after a good one must still fail'
+fi
+cases=$((cases + 1))
+
+
+# A policy whose identity starts with a dot is still read by the broker, so it is checked.
+rm -rf "$tmp/repo"
+mkdir -p "$tmp/repo/.github/chainguard"
+policy "$issuer" "$owner" "$writes" 'app: botantler-1' >"$tmp/repo/.github/chainguard/.unchecked.sts.yaml"
+status=0
+(cd "$tmp/repo" && bash "$tmp/check.sh") >"$tmp/out" 2>&1 || status=$?
+if [[ "$status" != 1 ]] || ! grep -Fq 'file=.github/chainguard/.unchecked.sts.yaml' "$tmp/out"; then
+  cat "$tmp/out" >&2
+  fail 'a dot-prefixed policy must be checked'
 fi
 cases=$((cases + 1))
 

@@ -54,10 +54,18 @@ jobs:
             'devantler-tech/\.github/\.github/workflows/create-release\.yaml@[0-9a-f]{40}'
             'devantler-tech/\.github/\.github/workflows/create-release\.yaml@refs/heads/main'
           )
-          command -v yq >/dev/null || { echo '::error::yq is not installed'; exit 2; }
-          shopt -s nullglob
+          # The broker decodes a policy through JSON with Go's case-insensitive
+          # field matching (sigs.k8s.io/yaml), so only the exact field names it
+          # defines are allowed: any other spelling could set a field unseen here.
+          readonly fields='["issuer","issuer_pattern","subject","subject_pattern","audience","audience_pattern","claim_pattern","permissions","app","app_pattern","caller_repository","repositories","repository_ids"]'
+          for tool in yq jq; do
+            command -v "${tool}" >/dev/null || { echo "::error::${tool} is not installed"; exit 2; }
+          done
+          # The broker reads <identity>.sts.yaml for any identity, including one
+          # that starts with a dot.
+          shopt -s nullglob dotglob
           policies=(.github/chainguard/*.sts.yaml)
-          shopt -u nullglob
+          shopt -u nullglob dotglob
           failures=0
           fail() {
             echo "::error file=$1::$2"
@@ -72,34 +80,51 @@ jobs:
               fail "${policy}" "holds ${documents} YAML documents, not one"
               continue
             fi
-            if [[ "$(yq 'has("issuer_pattern") or has("app_pattern")' "${policy}")" != false ]]; then
+            # Anchors, aliases, merge keys and duplicate keys are where this
+            # check's YAML reader and the broker's can disagree about a value.
+            ambiguous="$(yq '[.. | select((anchor != "") or (kind == "alias"))] | length' "${policy}")"
+            ambiguous=$((ambiguous + $(yq '[.. | select(tag == "!!map") | keys[] | select(. == "<<")] | length' "${policy}")))
+            if [[ "${ambiguous}" != 0 || "$(yq '[.. | select(tag == "!!map") | (keys | length) != (keys | unique | length)] | any' "${policy}")" != false ]]; then
+              fail "${policy}" 'uses YAML anchors, aliases, merge keys or duplicate keys, which the broker may read differently'
+              continue
+            fi
+            json="$(yq -o=json -I=0 '.' "${policy}")"
+            if [[ "$(jq -r 'type' <<<"${json}")" != object ]]; then
+              fail "${policy}" 'is not a mapping'
+              continue
+            fi
+            unknown="$(jq -r --argjson fields "${fields}" '[keys[] | select(. as $k | $fields | index($k) | not)] | join(", ")' <<<"${json}")"
+            [[ -z "${unknown}" ]] || fail "${policy}" "uses fields the broker does not define in this exact spelling: ${unknown}"
+            if [[ "$(jq 'has("issuer_pattern") or has("app_pattern")' <<<"${json}")" != false ]]; then
               fail "${policy}" 'uses issuer_pattern or app_pattern; name the issuer and App exactly'
             fi
-            if [[ "$(yq '.issuer // ""' "${policy}")" != "${actions_issuer}" ]]; then
+            if [[ "$(jq -r 'if (.issuer | type) == "string" then .issuer else "" end' <<<"${json}")" != "${actions_issuer}" ]]; then
               fail "${policy}" "must accept exactly the GitHub Actions issuer ${actions_issuer}"
             fi
-            owner="$(yq '.claim_pattern.repository_owner_id // ""' "${policy}")"
-            owner_tag="$(yq '.claim_pattern.repository_owner_id | tag' "${policy}")"
-            repository="$(yq '.claim_pattern.repository_id // ""' "${policy}")"
-            repository_tag="$(yq '.claim_pattern.repository_id | tag' "${policy}")"
-            caller=false
-            if [[ "${owner}" == "${org_id}" && "${owner_tag}" == '!!str' ]]; then
-              caller=true
+            if [[ "$(jq '(.claim_pattern // {}) | type == "object" and all(.[]; type == "string")' <<<"${json}")" != true ]]; then
+              fail "${policy}" 'claim_pattern must map claim names to strings'
+              continue
             fi
+            owner="$(jq -r '.claim_pattern.repository_owner_id // ""' <<<"${json}")"
+            repository="$(jq -r '.claim_pattern.repository_id // ""' <<<"${json}")"
+            caller=false
+            [[ "${owner}" != "${org_id}" ]] || caller=true
             for id in ${customer_repository_ids[@]+"${customer_repository_ids[@]}"}; do
-              if [[ "${repository}" == "${id}" && "${repository_tag}" == '!!str' ]]; then
-                caller=true
-              fi
+              [[ "${repository}" != "${id}" ]] || caller=true
             done
             if [[ "${caller}" != true ]]; then
               fail "${policy}" "must pin claim_pattern.repository_owner_id to the string \"${org_id}\" (devantler-tech), or repository_id to a listed customer repository"
             fi
-            if [[ "$(yq '.permissions // {} | (has("administration") or has("organization_administration"))' "${policy}")" != false ]]; then
+            if [[ "$(jq '(.permissions // {}) | type == "object" and all(to_entries[]; (.key | test("^[a-z_]+$")) and (.value | IN("read", "write", "admin")))' <<<"${json}")" != true ]]; then
+              fail "${policy}" 'permissions must use the canonical lowercase names, each read, write or admin'
+              continue
+            fi
+            if [[ "$(jq '(.permissions // {}) | has("administration") or has("organization_administration")' <<<"${json}")" != false ]]; then
               fail "${policy}" 'grants administration; only a reviewed platform workload policy may, once one exists'
             fi
-            writes="$(yq '[.permissions // {} | .[] | select(. == "write" or . == "admin")] | length' "${policy}")"
-            app="$(yq '.app // ""' "${policy}")"
-            workflow="$(yq '.claim_pattern.job_workflow_ref // ""' "${policy}")"
+            writes="$(jq '[(.permissions // {})[] | select(. == "write" or . == "admin")] | length' <<<"${json}")"
+            app="$(jq -r 'if (.app | type) == "string" then .app elif has("app") then "?" else "" end' <<<"${json}")"
+            workflow="$(jq -r '.claim_pattern.job_workflow_ref // ""' <<<"${json}")"
             case "${app}" in
               botantler-1)
                 release=false
