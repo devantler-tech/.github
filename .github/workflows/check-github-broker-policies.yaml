@@ -178,8 +178,9 @@ jobs:
                 "$(jq 'has("subject")' <<<"${json}")" == false &&
                 "${caller_scoped}" == true && "${app}" == botantler-2 ]]; then
                 for name in $(jq -r 'keys[]' <<<"${cross_repository_grants}"); do
+                  # The whole permission set must be the listed one, not just its privileged part.
                   [[ "${workflow}" == "devantler-tech/\\.github/\\.github/workflows/${name}\\.yaml@([0-9a-f]{40}|refs/heads/main)" ]] || continue
-                  listed="$(jq --arg name "${name}" --argjson grants "${cross_repository_grants}" --argjson asked "${privileged}" \
+                  listed="$(jq --arg name "${name}" --argjson grants "${cross_repository_grants}" --argjson asked "$(jq -c '.permissions' <<<"${json}")" \
                     '($grants[$name] // []) | any(. == $asked)' <<<'null')"
                 done
               fi
@@ -237,9 +238,10 @@ jobs:
           for tool in yq gh; do
             command -v "${tool}" >/dev/null || { echo "::error::${tool} is not installed"; exit 2; }
           done
-          shopt -s nullglob
+          # Dot-prefixed workflow files count too: nothing in the workflow contract excludes them.
+          shopt -s nullglob dotglob
           workflows=(.github/workflows/*.yaml .github/workflows/*.yml)
-          shopt -u nullglob
+          shopt -u nullglob dotglob
           pins=()
           for workflow in "${workflows[@]}"; do
             if ! calls="$(yq -r '(.jobs // {}) | .[] | .uses // ""' "${workflow}" 2>/dev/null)"; then

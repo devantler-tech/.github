@@ -196,6 +196,8 @@ repository=devantler-tech/.github expect 1 'outside the reviewed allowlist' 'an 
   "$(shared template-sync "$projects_write")"
 repository=devantler-tech/.github expect 1 'outside the reviewed allowlist' 'more than the listed set' \
   "$(shared scan-for-todo-comments $'  organization_projects: write\n  organization_administration: write')"
+repository=devantler-tech/.github expect 1 'outside the reviewed allowlist' 'the listed set plus a non-privileged write' \
+  "$(shared scan-for-todo-comments $'  organization_projects: write\n  contents: write')"
 repository=devantler-tech/.github expect 1 'outside the reviewed allowlist' 'the release App' \
   "$(shared scan-for-todo-comments "$projects_write" $'caller_repository: true\napp: botantler-1')"
 repository=devantler-tech/.github expect 1 'outside the reviewed allowlist' 'a token for every repository' \
@@ -293,6 +295,7 @@ pins_expect 1 'which is not a commit on its main branch (ahead)' 'a commit ahead
 pins_expect 1 'which is not a commit on its main branch (missing)' 'a commit GitHub does not know' \
   "release.yaml=$(caller "$shared_ref@$(sha c)")"
 pins_expect 1 'not a commit on its main branch' 'a pin in a .yml file' "release.yml=$(caller "$shared_ref@$(sha b)")"
+pins_expect 1 'not a commit on its main branch' 'a pin in a dot-prefixed workflow' ".release.yaml=$(caller "$shared_ref@$(sha b)")"
 pins_expect 1 'not a commit on its main branch' 'a pin hidden by letter case' \
   "release.yaml=$(caller "Devantler-Tech/.GitHub/.github/workflows/create-release.yaml@$(sha B)")"
 pins_expect 1 'not a commit on its main branch' 'a pin hidden by a YAML escape' \

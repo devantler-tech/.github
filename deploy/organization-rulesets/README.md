@@ -365,7 +365,7 @@ It also refuses a pull request whose workflows pin a `devantler-tech/.github` sh
 commit (`…@<sha>`) that is not on this repository's `main`. Callers pin shared workflows by commit,
 so their policies admit pinned commits, and GitHub would otherwise also resolve an unmerged commit or
 one pushed to a fork (an impostor commit). Calls are read through YAML and matched regardless of
-case, and a commit it cannot look up fails the check.
+case, and a commit it cannot look up fails the check. It reads only each repository's own direct calls (`jobs.*.uses`): a third-party reusable workflow that itself calls a `devantler-tech/.github` workflow at an unmerged commit is outside what it can see.
 
 The rules live in the workflow on this repository's `main` branch, so the pull request under review
 cannot change them. The broker's own caller gate refuses outside callers at run time; this check keeps
