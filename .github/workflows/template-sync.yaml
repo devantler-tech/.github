@@ -6,11 +6,9 @@ on:
       source-repo-path:
         description: >-
           The `owner/repo` path of the upstream template repository to sync from
-          (passed to `actions-template-sync` as `source_repo_path`). When
-          `use-app-token` is set, the App token is auto-scoped to read this repo
-          as well, so a PRIVATE template under the same owner works out of the
-          box; a cross-owner private template needs a custom token with read
-          access to it.
+          (passed to `actions-template-sync` as `source_repo_path`). The template
+          must be public: the sync token is scoped to the calling repository only,
+          and reads a public template like anyone can.
         required: true
         type: string
       upstream-branch:
@@ -67,7 +65,7 @@ on:
       use-app-token:
         description: >-
           When `true`, open the sync PR with a botantler App token from the
-          GitHub token broker (the caller job must grant `id-token: write`)
+          GitHub token broker (every caller job grants `id-token: write`)
           instead of the default `GITHUB_TOKEN`. A PR opened with `GITHUB_TOKEN`
           does NOT trigger the caller's `on: pull_request`/`push` CI runs. Only
           opt in after ensuring CI treats template-sync PR content as untrusted.

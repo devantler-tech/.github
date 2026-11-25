@@ -792,16 +792,22 @@ jobs:
     permissions:
       contents: write
       pull-requests: write
+      id-token: write
     with:
       source-repo-path: devantler-tech/application-template
 ```
+
+Every caller grants `id-token: write`, with or without `use-app-token`. GitHub checks a called
+job's permissions when it loads the run, even when the job never asks for a token, so a caller
+that grants less fails at startup. The template must be public: the sync token reaches only the
+calling repository.
 
 By default the sync PR is opened with `GITHUB_TOKEN`, so GitHub does not trigger
 `on: pull_request` or `on: push` workflows for the resulting branch or PR. This
 prevents content copied from a compromised or malicious template from reaching a
 caller's CI trust boundary before review.
 
-Set `use-app-token: true`, and grant the caller job `id-token: write`, only when CI must run before
+Set `use-app-token: true` only when CI must run before
 the sync PR is reviewed. This opt-in gets a write-scoped botantler App token from the GitHub token
 broker ([ADR 0020](https://github.com/devantler-tech/monorepo/blob/main/docs/adr/0020-one-github-token-broker.md)),
 scoped to the calling repository, and permits
@@ -812,8 +818,7 @@ template-controlled PR content to trigger caller CI. Callers that opt in must
 treat the PR as untrusted: do not expose secrets or write-scoped tokens to jobs
 that check out or execute its content, including local actions and scripts.
 
-An opt-in caller must set the input and grant `id-token: write`. A reusable job that asks for more than
-its caller grants fails at startup:
+An opt-in caller sets the input:
 
 ```yaml
 jobs:
