@@ -20,4 +20,3 @@ permissions:
   contents: write
   pull_requests: write
   workflows: write
-app: botantler-2

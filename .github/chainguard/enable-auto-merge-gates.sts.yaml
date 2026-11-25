@@ -18,6 +18,5 @@ claim_pattern:
 caller_repository: true
 permissions:
   actions: read
-  checks: read
   contents: read
   pull_requests: read

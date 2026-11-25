@@ -466,7 +466,7 @@ receive only read access. `dry-run` defaults to `false`.
 
 Every App token comes from the GitHub token broker
 ([ADR 0020](https://github.com/devantler-tech/monorepo/blob/main/docs/adr/0020-one-github-token-broker.md))
-on botantler-2, scoped to the pull request's repository. Three trust policies admit only this
+from either botantler App, scoped to the pull request's repository. Three trust policies admit only this
 workflow from devantler-tech/.github `main`, which is where the required-workflow ruleset runs it:
 [`enable-auto-merge`](.github/chainguard/enable-auto-merge.sts.yaml) (contents, pull requests and
 workflows write),

@@ -485,7 +485,7 @@ jobs:
       # .github/workflows/ can be armed — GitHub treats
       # enablePullRequestAutoMerge as updating the workflow and refuses it
       # without that scope (actions#559). Every token here comes from the GitHub
-      # token broker (devantler-tech/monorepo ADR 0020) on botantler-2, scoped to
+      # token broker (devantler-tech/monorepo ADR 0020), from either botantler App, scoped to
       # the pull request's repository, through devantler-tech/.github trust
       # policies that admit only this workflow on main. No App key is read, and
       # each action's post step revokes its token. This one is
