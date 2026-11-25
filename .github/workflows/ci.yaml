@@ -3110,7 +3110,7 @@ jobs:
   test-create-release:
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
     name: "[Test] Create Release - Dry Run"
-    uses: $/.github/workflows/create-release.yaml
+    uses: $/.github/workflows/create-release-offline.yaml
     permissions: {}
     with:
       dry-run: true
@@ -3119,7 +3119,7 @@ jobs:
   test-create-release-no-issue-side-effects:
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
     name: "[Test] Create Release - No Issue Side Effects"
-    uses: $/.github/workflows/create-release.yaml
+    uses: $/.github/workflows/create-release-offline.yaml
     permissions: {}
     with:
       disable-issue-side-effects: true
@@ -3188,6 +3188,9 @@ jobs:
 
       - name: 🧪 Verify offline release credential boundary
         run: bash .github/tests/test-create-release-offline.sh
+
+      - name: 🧪 Verify the release CI projection holds no broker grant
+        run: bash .github/tests/test-create-release-offline-projection.sh
 
       - name: 📦 Setup Node.js for release-decision controls
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0

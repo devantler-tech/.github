@@ -1,0 +1,21 @@
+---
+# Organization trust policy for the shared release workflow
+# (.github/workflows/create-release.yaml), served by the GitHub token broker
+# (devantler-tech/monorepo ADR 0020, #1001). Any devantler-tech repository's main
+# branch may use it, but only while running that workflow on main or at a commit it
+# pins. The broker policy check proves every such pin is a commit on this
+# repository's main. It pins botantler-1, the one App the release-tag ruleset lets
+# create tags, and its token reaches the calling repository alone. It grants
+# contents, issues and pull requests write, the default, which keeps
+# semantic-release's success and fail notification hooks working.
+issuer: https://token.actions.githubusercontent.com
+subject_pattern: repo:devantler-tech/[A-Za-z0-9._-]+:ref:refs/heads/main
+claim_pattern:
+  repository_owner_id: "178524219"
+  job_workflow_ref: devantler-tech/\.github/\.github/workflows/create-release\.yaml@([0-9a-f]{40}|refs/heads/main)
+caller_repository: true
+permissions:
+  contents: write
+  issues: write
+  pull_requests: write
+app: botantler-1
