@@ -352,9 +352,10 @@ The check reads each `.github/chainguard/*.sts.yaml` and refuses a policy that:
 - does not pin its callers to the devantler-tech organization ID (`repository_owner_id`); no other
   caller is ever admitted, customers included;
 - names no permissions (GitHub can read an empty set as every permission the App holds);
-- names an App other than botantler-1 or botantler-2. A policy names no App at all: the two are
-  interchangeable, so the broker mints from whichever has more rate limit left. A pin written before
-  they were made equal still passes until its policy drops it;
+- names an App. The two botantler Apps are interchangeable, so the broker mints from whichever has
+  more rate limit left. Only a listed workflow in this repository may pin the one App that holds a
+  permission it needs: today `apply-custom-properties`, on botantler-1, the only App with custom
+  properties;
 - grants a privileged permission (`administration`, `members` or any `organization_*`) unless it is
   one of this repository's own policies, for a listed workflow on `main`, or a listed shared
   workflow's caller policy (any devantler-tech `main`, scoped to the caller, naming no App), with

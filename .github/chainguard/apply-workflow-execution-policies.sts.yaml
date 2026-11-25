@@ -6,7 +6,7 @@
 # organization administration write, which manages Actions policies, scoped to
 # this repository. organization_administration is a privileged permission, so
 # the broker policy check allows it only as this workflow's reviewed grant. It
-# writes, so it pins botantler-2.
+# names no App, so the broker mints from either botantler App.
 issuer: https://token.actions.githubusercontent.com
 subject: repo:devantler-tech/.github:ref:refs/heads/main
 claim_pattern:
@@ -16,4 +16,3 @@ repositories:
   - .github
 permissions:
   organization_administration: write
-app: botantler-2
