@@ -5,7 +5,7 @@
 # repository's main branch, may exchange its Actions OIDC token. Every parked
 # pull request in the organization is in scope, so it gets metadata read and
 # contents and pull request write, organization-wide, to revoke their pending
-# merges. It writes, so it pins botantler-2, which cannot create release tags.
+# merges. It names no App, so the broker mints from either botantler App.
 issuer: https://token.actions.githubusercontent.com
 subject: repo:devantler-tech/.github:ref:refs/heads/main
 claim_pattern:
@@ -15,4 +15,3 @@ permissions:
   metadata: read
   contents: write
   pull_requests: write
-app: botantler-2
