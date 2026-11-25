@@ -1,0 +1,16 @@
+---
+# Organization trust policy for the monthly stale repository report
+# (.github/workflows/stale-repository-identifier.yaml), served by the GitHub token
+# broker (devantler-tech/monorepo ADR 0020, #1001). Only that workflow, on this
+# repository's main branch, may exchange its Actions OIDC token. It gets a
+# read-only token across the organization's repositories: the report reads
+# repository, pull request and release activity, and writes its issue with the
+# workflow's own token. Read-only, so it may come from either botantler App.
+issuer: https://token.actions.githubusercontent.com
+subject: repo:devantler-tech/.github:ref:refs/heads/main
+claim_pattern:
+  repository_owner_id: "178524219"
+  job_workflow_ref: devantler-tech/\.github/\.github/workflows/stale-repository-identifier\.yaml@refs/heads/main
+permissions:
+  contents: read
+  pull_requests: read
