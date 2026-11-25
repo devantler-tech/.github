@@ -1,0 +1,14 @@
+---
+# Organization trust policy for .github/workflows/inspect-release-recovery.yaml, served by the
+# GitHub token broker (devantler-tech/monorepo ADR 0020, #1001). Only that workflow, dispatched on
+# this repository's main branch, may exchange its Actions OIDC token. It diagnoses one recovery in
+# any portfolio repository the operator names, and a policy cannot narrow its scope per run, so it
+# grants actions and contents read across the organization: read-only, so it may use either App.
+issuer: https://token.actions.githubusercontent.com
+subject: repo:devantler-tech/.github:ref:refs/heads/main
+claim_pattern:
+  repository_owner_id: "178524219"
+  job_workflow_ref: devantler-tech/\.github/\.github/workflows/inspect-release-recovery\.yaml@refs/heads/main
+permissions:
+  actions: read
+  contents: read

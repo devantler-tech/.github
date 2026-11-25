@@ -1072,10 +1072,12 @@ changed and conflicting observations. It makes no live GitHub requests and publi
 
 To inspect a real incident, run this repository-owned workflow manually from the default branch
 after supplying the original identities. It is not a reusable workflow. Explicitly set
-`enable-inspection: true`. The App identified by `APP_CLIENT_ID` must be installed on the target
-repository with Contents and Actions read access, and `APP_PRIVATE_KEY` must be available to the
-repository. The workflow requests a token for that one repository, builds its own immutable inspector
-before obtaining the token, then prints one JSON diagnosis. Omitted enablement skips
+`enable-inspection: true`. Its read-only token comes from the GitHub token broker
+([ADR 0020](https://github.com/devantler-tech/monorepo/blob/main/docs/adr/0020-one-github-token-broker.md))
+through [`release-recovery-inspect`](.github/chainguard/release-recovery-inspect.sts.yaml): Contents
+and Actions read across the organization, because a policy cannot narrow to the one repository
+named per run. No App key is read. The workflow builds its own immutable inspector before obtaining
+the token, then prints one JSON diagnosis. Omitted enablement skips
 inspection; a skipped job is not an inspected release.
 
 This first version accepts only public active `devantler-tech` repositories, stable `vX.Y.Z` tags,
@@ -1102,7 +1104,7 @@ the independently checked tag remains authoritative for the source in both cases
 | `run-id` | Input (string) | — | Yes | Original failed release run ID |
 | `run-attempt` | Input (string) | — | Yes | Original failed run attempt |
 | `producer-ref` | Input (string) | — | Yes | Original catalogue workflow path at its full commit SHA |
-| `APP_PRIVATE_KEY` | Secret | — | When enabled | App key used only for a repository-scoped read-only token |
+| `id-token: write` | Job permission | — | When enabled | Proves the job to the GitHub token broker for its read-only token; no App key is read |
 
 The manual job prints the JSON diagnosis. Failed or ambiguous reads fail the job and produce
 no successful diagnosis. No tags, release records, channel notes or aliases are written.
@@ -1166,7 +1168,7 @@ Any future extraction requires real repeated production use and protected rollou
 | `run-id` | Input (string) | — | Yes | Original failed release run ID |
 | `run-attempt` | Input (string) | — | Yes | Original failed run attempt |
 | `producer-ref` | Input (string) | — | Yes | Original catalogue workflow path at its full commit SHA |
-| `APP_PRIVATE_KEY` | Repository secret | — | When enabled | Existing App key for the two repository-scoped tokens; not a dispatch input |
+| `id-token: write` | Job permission | — | When enabled | Proves the job to the GitHub token broker for its two tokens, both scoped to this repository: [`release-recovery-read`](.github/chainguard/release-recovery-read.sts.yaml) (read) and [`release-recovery-publish`](.github/chainguard/release-recovery-publish.sts.yaml) (contents write, on botantler-2); no App key is read |
 
 Run `bash .github/tests/test-publish-release-recovery.sh` after changing the workflow. It checks the
 consent, scope, immutable-source and read-before-write boundaries with negative controls, verifies

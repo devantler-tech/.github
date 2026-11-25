@@ -15,7 +15,7 @@ jq -n --slurpfile w "$work/workflow.json" --slurpfile c "$work/ci.json" '{w:$w[0
 cat > "$work/guard.jq" <<'JQ'
   .w as $w | .c as $c | $w.jobs.inspect as $j | $j.steps as $s |
   def ordinary: .if == null and .["continue-on-error"] == null;
-  ($w.permissions == {} and $j.permissions == {} and $j.if == "inputs.enable-inspection" and $j.needs == null and $j["continue-on-error"] == null) and
+  ($w.permissions == {} and $j.permissions == {"id-token":"write"} and $j.if == "inputs.enable-inspection" and $j.needs == null and $j["continue-on-error"] == null) and
   ($w.on | keys) == ["workflow_dispatch"] and
   $w.on.workflow_dispatch.inputs["enable-inspection"].default == false and
   $w.on.workflow_dispatch.inputs["enable-inspection"].type == "boolean" and
@@ -39,9 +39,9 @@ cat > "$work/guard.jq" <<'JQ'
   $s[4].id == "build" and
   $s[4].env == {GOWORK:"off",GOFLAGS:"",GOTOOLCHAIN:"local",CGO_ENABLED:"0"} and
   $s[4].run == "go -C .devantler-tech-inspector/.github/scripts/inspect-release-recovery build -trimpath -o \"$RUNNER_TEMP/inspect-release-recovery\" ." and
-  ($s[5].uses | test("^actions/create-github-app-token@[a-f0-9]{40}$")) and
+  ($s[5].uses | test("^octo-sts/action@[a-f0-9]{40}$")) and
   $s[5].id == "read-token" and
-  $s[5].with == {"client-id":"${{ vars.APP_CLIENT_ID }}","private-key":"${{ secrets.APP_PRIVATE_KEY }}",owner:"devantler-tech",repositories:"${{ steps.admit.outputs.name }}","permission-contents":"read","permission-actions":"read"} and
+  $s[5].with == {domain:"sts.platform.devantler.tech",scope:"devantler-tech",identity:"release-recovery-inspect"} and
   $s[6].id == "diagnosis" and
   $s[6].env == {GH_TOKEN:"${{ steps.read-token.outputs.token }}",REPOSITORY:"${{ inputs.repository }}",TAG:"${{ inputs.tag }}",SOURCE_SHA:"${{ inputs.source-sha }}",RUN_ID:"${{ inputs.run-id }}",RUN_ATTEMPT:"${{ inputs.run-attempt }}",PRODUCER_REF:"${{ inputs.producer-ref }}"} and
   ($s[6].run | contains("\"$RUNNER_TEMP/inspect-release-recovery\"")) and

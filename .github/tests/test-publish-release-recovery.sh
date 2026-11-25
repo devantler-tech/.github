@@ -28,7 +28,9 @@ cat > "$work/guard.jq" <<'JQ'
   def build: .env == {GOWORK:"off",GOFLAGS:"",GOTOOLCHAIN:"local",CGO_ENABLED:"0"} and
     (.run | contains("build -trimpath -o \"$RUNNER_TEMP/publish-release-recovery\" ./cmd/publish-release-recovery"));
   def incident: {REPOSITORY:"${{ github.repository }}",TAG:"${{ inputs.tag }}",SOURCE_SHA:"${{ inputs.source-sha }}",RUN_ID:"${{ inputs.run-id }}",RUN_ATTEMPT:"${{ inputs.run-attempt }}",PRODUCER_REF:"${{ inputs.producer-ref }}"};
-  def token($contents): {"client-id":"${{ vars.APP_CLIENT_ID }}","private-key":"${{ secrets.APP_PRIVATE_KEY }}",owner:"devantler-tech",repositories:"${{ steps.admit.outputs.name }}","permission-contents":$contents,"permission-actions":"read"};
+  # Both tokens come from the GitHub token broker (devantler-tech/monorepo ADR 0020); their grants live
+  # in the trust policy each identity names.
+  def token($identity): {domain:"sts.platform.devantler.tech",scope:"devantler-tech",identity:$identity};
   ($w.on | keys) == ["workflow_dispatch"] and $w.permissions == {} and
   ($w.on.workflow_dispatch.inputs | has("enable-recovery") | not) and
   $w.on.workflow_dispatch.inputs["confirm-publication"].type == "boolean" and $w.on.workflow_dispatch.inputs["confirm-publication"].default == false and
@@ -36,7 +38,7 @@ cat > "$work/guard.jq" <<'JQ'
   ($w.on.workflow_dispatch.inputs | has("repository") | not) and
   $w.on.workflow_dispatch.secrets == null and
   ($w.jobs | keys) == ["offline-test","recover"] and
-  $j.if == "inputs.confirm-publication && !inputs.offline-test" and $j.permissions == {} and $j.needs == null and
+  $j.if == "inputs.confirm-publication && !inputs.offline-test" and $j.permissions == {"id-token":"write"} and $j.needs == null and
   $j.concurrency == {group:"create-release-${{ github.repository }}-${{ github.ref }}","cancel-in-progress":false,queue:"max"} and
   ($s | length == 9) and ($s[0:7] | all(ordinary)) and ($s[7:9] | all(writer)) and
   ($s[0].uses | test("^step-security/harden-runner@[a-f0-9]{40}$")) and $s[0].with["egress-policy"] == "audit" and
@@ -45,10 +47,10 @@ cat > "$work/guard.jq" <<'JQ'
   ($s[2] | source) and
   ($s[3].uses | test("^actions/setup-go@[a-f0-9]{40}$")) and $s[3].with.cache == false and
   ($s[4] | build) and
-  ($s[5].uses | test("^actions/create-github-app-token@[a-f0-9]{40}$")) and $s[5].id == "read-token" and $s[5].with == token("read") and
+  ($s[5].uses | test("^octo-sts/action@[a-f0-9]{40}$")) and $s[5].id == "read-token" and $s[5].with == token("release-recovery-read") and
   $s[6].id == "read-admission" and $s[6].env == ({GH_TOKEN:"${{ steps.read-token.outputs.token }}"} + incident) and
   ($s[6].run | contains("\"$RUNNER_TEMP/inspect-release-recovery\"")) and
-  ($s[7].uses | test("^actions/create-github-app-token@[a-f0-9]{40}$")) and $s[7].id == "write-token" and $s[7].with == token("write") and
+  ($s[7].uses | test("^octo-sts/action@[a-f0-9]{40}$")) and $s[7].id == "write-token" and $s[7].with == token("release-recovery-publish") and
   $s[8].id == "publish" and $s[8].env == ({GH_TOKEN:"${{ steps.write-token.outputs.token }}"} + incident) and
   ($s[8].run | contains("\"$RUNNER_TEMP/publish-release-recovery\"")) and
   ([$s[] | select(.env.GH_TOKEN != null) | .id] == ["read-admission","publish"]) and
