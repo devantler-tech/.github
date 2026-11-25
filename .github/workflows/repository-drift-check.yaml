@@ -33,54 +33,36 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read # checkout
+      id-token: write # proves this workflow's identity to the GitHub token broker
     steps:
       - name: 📑 Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
-      # The token has to reach every repository the check reads, and no more.
-      # Deriving the list from deploy/ — the same source the check itself reads
-      # — is what keeps those two in step; a hand-maintained list here would be
-      # one more declaration that can silently go stale, which is the very thing
-      # this workflow exists to catch.
-      - name: 🎯 Resolve the repositories to read
-        id: targets
-        run: |
-          # Without pipefail a failed render still exits 0 through the pipe, and
-          # the emptiness guard below would be the only thing standing between
-          # that and a token scoped to nothing.
-          set -euo pipefail
-          targets="$(
-            kubectl kustomize deploy |
-              yq -N '
-                select(.kind == "Repository") |
-                (.metadata.annotations["crossplane.io/external-name"] // .metadata.name)
-              ' | paste -sd, -
-          )"
-          [ -n "$targets" ] || { echo "deploy/ declares no repositories" >&2; exit 1; }
-          echo "list=$targets" >>"$GITHUB_OUTPUT"
-
-      - name: 🔑 Get GitHub App Token
-        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+      # The GitHub token broker (devantler-tech/monorepo ADR 0020) exchanges this
+      # workflow's OIDC token for a read-only organization token, as granted by
+      # .github/chainguard/repository-drift-check.sts.yaml: metadata and Pages
+      # read, nothing else. No App key is read here, and the action's post step
+      # revokes the token. The workflow's own GITHUB_TOKEN cannot be used instead:
+      # it reaches this repository alone, and the org has a private repository it
+      # could not see either way.
+      #
+      # The broker grants per reviewed policy, not per run, so the token covers
+      # every organization repository rather than only the ones deploy/ declares.
+      # The check still reads only the declared repositories.
+      #
+      # An installation token's REST response can omit merge-policy fields
+      # even with administrative read. The comparison fills only missing
+      # declared settings from GraphQL and verifies both reads identify the
+      # same repository before comparing them.
+      - name: 🔑 Get a read-only organization token from the token broker
+        uses: octo-sts/action@f603d3be9d8dd9871a265776e625a27b00effe05 # v1.1.1
         id: app-token
         with:
-          app-id: ${{ vars.APP_ID }}
-          private-key: ${{ secrets.APP_PRIVATE_KEY }}
-          # Least-privilege scope (zizmor github-app): read-only, and only over
-          # the declared repositories. The workflow's own GITHUB_TOKEN cannot be
-          # used instead — it reaches this repository alone, and the org has a
-          # private repository it could not see either way.
-          #
-          # An installation token's REST response can omit merge-policy fields
-          # even with administrative read. The comparison fills only missing
-          # declared settings from GraphQL and verifies both reads identify the
-          # same repository before comparing them.
-          owner: ${{ github.repository_owner }}
-          repositories: ${{ steps.targets.outputs.list }}
-          permission-metadata: read
-          # Read-only access to the Pages sites that Repository resources declare.
-          permission-pages: read
+          domain: sts.platform.devantler.tech
+          scope: devantler-tech
+          identity: repository-drift-check
 
       - name: 🔍 Compare declared and live repository settings
         env:
