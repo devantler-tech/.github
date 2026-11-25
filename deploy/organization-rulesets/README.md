@@ -351,6 +351,7 @@ The check reads each `.github/chainguard/*.sts.yaml` and refuses a policy that:
 - names any issuer but GitHub Actions, or uses `issuer_pattern` or `app_pattern`;
 - does not pin its callers to the devantler-tech organization ID (`repository_owner_id`) or a listed
   customer `repository_id`;
+- names no permissions (GitHub can read an empty set as every permission the App holds);
 - grants write access without an App pin, or pins botantler-1 (the one App that can create release
   tags) with `contents: write` outside the shared release workflow's reviewed revision on `main`;
 - grants a privileged permission (`administration`, `members` or any `organization_*`) unless it is

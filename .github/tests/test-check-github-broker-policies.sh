@@ -117,6 +117,9 @@ expect 1 'uses YAML anchors, aliases, merge keys or duplicate keys' 'an alias' \
 expect 1 'uses YAML anchors, aliases, merge keys or duplicate keys' 'a duplicate key' \
   "$(policy "$issuer" "$owner" "$writes" $'app: botantler-2\napp: botantler-1')"
 expect 1 'is not a mapping' 'a list instead of a policy' $'---\n- issuer: https://token.actions.githubusercontent.com'
+expect 1 'must name at least one permission' 'no permissions at all' "$(policy "$issuer" "$owner" '')"
+expect 1 'must name at least one permission' 'an empty permission set' "$(policy "$issuer" "$owner" 'permissions: {}')"
+expect 1 'must name at least one permission' 'permissions that are not a mapping' "$(policy "$issuer" "$owner" 'permissions: read-all')"
 
 
 # Privileged permissions: only devantler-tech/.github's own policies, for a

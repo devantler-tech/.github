@@ -134,7 +134,14 @@ jobs:
             if [[ "${caller}" != true ]]; then
               fail "${policy}" "must pin claim_pattern.repository_owner_id to the string \"${org_id}\" (devantler-tech), or repository_id to a listed customer repository"
             fi
-            if [[ "$(jq '(.permissions // {}) | type == "object" and all(to_entries[]; (.key | test("^[a-z_]+$")) and (.value | IN("read", "write", "admin")))' <<<"${json}")" != true ]]; then
+            # The broker passes the policy's permissions to GitHub as given, and
+            # GitHub can read an empty set as every permission the installation
+            # holds. So every policy must name its permissions.
+            if [[ "$(jq '(.permissions | type) == "object" and (.permissions | length) > 0' <<<"${json}")" != true ]]; then
+              fail "${policy}" 'must name at least one permission; an empty set can mean every permission the App has'
+              continue
+            fi
+            if [[ "$(jq '.permissions | all(to_entries[]; (.key | test("^[a-z_]+$")) and (.value | IN("read", "write", "admin")))' <<<"${json}")" != true ]]; then
               fail "${policy}" 'permissions must use the canonical lowercase names, each read, write or admin'
               continue
             fi
