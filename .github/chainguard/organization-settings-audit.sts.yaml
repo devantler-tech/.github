@@ -1,0 +1,18 @@
+---
+# Organization trust policy for the opt-in organization settings audit
+# (.github/workflows/organization-settings-audit.yaml), served by the GitHub token
+# broker (devantler-tech/monorepo ADR 0020, #1001). Only that workflow, on this
+# repository's main branch, may exchange its Actions OIDC token. It gets read
+# authority only: organization administration and metadata read, scoped to this
+# repository. organization_administration is a privileged permission, so the
+# broker policy check allows it only as this workflow's reviewed grant.
+issuer: https://token.actions.githubusercontent.com
+subject: repo:devantler-tech/.github:ref:refs/heads/main
+claim_pattern:
+  repository_owner_id: "178524219"
+  job_workflow_ref: devantler-tech/\.github/\.github/workflows/organization-settings-audit\.yaml@refs/heads/main
+repositories:
+  - .github
+permissions:
+  metadata: read
+  organization_administration: read

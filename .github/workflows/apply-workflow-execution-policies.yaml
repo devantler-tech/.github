@@ -38,25 +38,27 @@ jobs:
     if: github.ref == 'refs/heads/main'
     permissions:
       contents: read # checkout
+      id-token: write # proves this workflow's identity to the GitHub token broker
     steps:
       - name: 📑 Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
-      - name: 🔑 Get GitHub App Token
-        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+      # The GitHub token broker (devantler-tech/monorepo ADR 0020) grants this
+      # write authority through
+      # .github/chainguard/apply-workflow-execution-policies.sts.yaml: organization
+      # administration write, which is what manages Actions policies, scoped to
+      # this repository because nothing here touches another. The policy pins
+      # botantler-2. No App key is read, and the action's post step revokes the
+      # token.
+      - name: 🔑 Get an organization administration token from the token broker
+        uses: octo-sts/action@f603d3be9d8dd9871a265776e625a27b00effe05 # v1.1.1
         id: app-token
         with:
-          client-id: ${{ vars.APP_CLIENT_ID }}
-          private-key: ${{ secrets.APP_PRIVATE_KEY }}
-          owner: ${{ github.repository_owner }}
-          # Least privilege (zizmor github-app): organization administration is
-          # what manages Actions policies, and nothing here touches a
-          # repository, so the token reaches only this one. Minting fails when
-          # the App lacks the permission, rather than falling back to all of it.
-          repositories: .github
-          permission-organization-administration: write
+          domain: sts.platform.devantler.tech
+          scope: devantler-tech
+          identity: apply-workflow-execution-policies
 
       - name: 🛡️ Apply the policies
         env:

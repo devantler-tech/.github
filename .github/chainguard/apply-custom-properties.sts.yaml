@@ -1,0 +1,22 @@
+---
+# Organization trust policy for the custom property schema reconciler's write
+# token (.github/workflows/apply-custom-properties.yaml, step `token`), served by
+# the GitHub token broker (devantler-tech/monorepo ADR 0020, #1001). Only that
+# workflow, on this repository's main branch, may exchange its Actions OIDC
+# token. It gets organization administration write, which GitHub requires even
+# to read organization rulesets and Actions policies, and custom properties
+# admin, scoped to this repository. Both are privileged, so the broker policy
+# check allows them only as this workflow's reviewed grant. It pins botantler-1,
+# the only App with organization custom properties; it grants no contents write,
+# so it cannot create release tags.
+issuer: https://token.actions.githubusercontent.com
+subject: repo:devantler-tech/.github:ref:refs/heads/main
+claim_pattern:
+  repository_owner_id: "178524219"
+  job_workflow_ref: devantler-tech/\.github/\.github/workflows/apply-custom-properties\.yaml@refs/heads/main
+repositories:
+  - .github
+permissions:
+  organization_administration: write
+  organization_custom_properties: admin
+app: botantler-1

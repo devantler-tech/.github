@@ -1,0 +1,19 @@
+---
+# Organization trust policy for the workflow execution policy applier
+# (.github/workflows/apply-workflow-execution-policies.yaml), served by the GitHub
+# token broker (devantler-tech/monorepo ADR 0020, #1001). Only that workflow, on
+# this repository's main branch, may exchange its Actions OIDC token. It gets
+# organization administration write, which manages Actions policies, scoped to
+# this repository. organization_administration is a privileged permission, so
+# the broker policy check allows it only as this workflow's reviewed grant. It
+# writes, so it pins botantler-2.
+issuer: https://token.actions.githubusercontent.com
+subject: repo:devantler-tech/.github:ref:refs/heads/main
+claim_pattern:
+  repository_owner_id: "178524219"
+  job_workflow_ref: devantler-tech/\.github/\.github/workflows/apply-workflow-execution-policies\.yaml@refs/heads/main
+repositories:
+  - .github
+permissions:
+  organization_administration: write
+app: botantler-2

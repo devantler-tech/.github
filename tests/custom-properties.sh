@@ -45,19 +45,19 @@ yq -o=json '.' "$root/.github/workflows/apply-custom-properties.yaml" >"$work/wo
 jq -e '
   .permissions == {} and (.on | keys | sort) == ["push","schedule","workflow_dispatch"] and
   .on.push.branches == ["main"] and
-  .jobs.apply.permissions == {contents:"read"} and
+  .jobs.apply.permissions == {contents:"read","id-token":"write"} and
   (.jobs.apply.if | contains("github.ref == '\''refs/heads/main'\''")) and
   ([.jobs.apply.steps[] | select(.uses? | strings | startswith("actions/checkout@"))] |
     length == 1 and .[0].with.ref == "${{ github.workflow_sha }}" and .[0].with."persist-credentials" == false) and
+  # Both tokens come from the GitHub token broker; their authority is pinned in
+  # the two trust policies checked below, never by an App key here.
+  ([.jobs.apply.steps[] | select(((.uses? // "") | test("create-github-app-token")) or ((.with? // {}) | has("private-key")))] | length == 0) and
   ([.jobs.apply.steps[] | select(.id? == "token")] | length == 1 and
-    .[0].with."permission-organization-administration" == "write" and
-    .[0].with."permission-organization-custom-properties" == "admin" and
-    .[0].with.repositories == ".github") and
+    (.[0].uses | test("^octo-sts/action@[0-9a-f]{40}$")) and
+    .[0].with == {domain:"sts.platform.devantler.tech", scope:"devantler-tech", identity:"apply-custom-properties"}) and
   ([.jobs.apply.steps[] | select(.id? == "readback-token")] | length == 1 and
-    (.[0].with | keys | sort) == ["client-id","owner","permission-metadata","permission-organization-custom-properties","private-key"] and
-    .[0].with.owner == "devantler-tech" and
-    .[0].with."permission-organization-custom-properties" == "read" and
-    .[0].with."permission-metadata" == "read") and
+    (.[0].uses | test("^octo-sts/action@[0-9a-f]{40}$")) and
+    .[0].with == {domain:"sts.platform.devantler.tech", scope:"devantler-tech", identity:"apply-custom-properties-readback"}) and
   ([.jobs.apply.steps[] | select(.run? | strings | endswith("--apply-schema"))] | length == 1 and
     .[0].env.GH_PROPERTY_READBACK_TOKEN == "${{ steps.readback-token.outputs.token }}") and
   ([.jobs.apply.steps | to_entries[] | select(.value.run? | strings | endswith("--check")) | .key][0] <
@@ -65,4 +65,18 @@ jq -e '
   ([.jobs.apply.steps | to_entries[] | select(.value.run? | strings | endswith("--check")) | .key][0] <
     [.jobs.apply.steps | to_entries[] | select(.value.id? == "readback-token") | .key][0])
 ' "$work/workflow.json" >/dev/null
+# The write token: organization administration write and custom properties admin,
+# scoped to this repository, to exactly this workflow on main, on botantler-1.
+# The read-back token: custom property values and metadata read, organization-wide.
+policy_claims='{repository_owner_id:"178524219", job_workflow_ref:"devantler-tech/\\.github/\\.github/workflows/apply-custom-properties\\.yaml@refs/heads/main"}'
+yq -o=json '.' "$root/.github/chainguard/apply-custom-properties.sts.yaml" | jq -e "
+  . == {issuer:\"https://token.actions.githubusercontent.com\", subject:\"repo:devantler-tech/.github:ref:refs/heads/main\",
+    claim_pattern:${policy_claims}, repositories:[\".github\"],
+    permissions:{organization_administration:\"write\", organization_custom_properties:\"admin\"}, app:\"botantler-1\"}
+" >/dev/null || { echo 'FAIL: the property write policy must grant only its reviewed authority' >&2; exit 1; }
+yq -o=json '.' "$root/.github/chainguard/apply-custom-properties-readback.sts.yaml" | jq -e "
+  . == {issuer:\"https://token.actions.githubusercontent.com\", subject:\"repo:devantler-tech/.github:ref:refs/heads/main\",
+    claim_pattern:${policy_claims},
+    permissions:{metadata:\"read\", organization_custom_properties:\"read\"}, app:\"botantler-1\"}
+" >/dev/null || { echo 'FAIL: the property read-back policy must grant only read authority' >&2; exit 1; }
 echo 'PASS: rendered property coverage, native generator and schema refusal controls'
