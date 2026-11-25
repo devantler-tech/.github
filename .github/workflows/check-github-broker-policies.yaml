@@ -57,9 +57,10 @@ jobs:
           # tags (the organization ruleset restrict-release-tag-creation), so a policy
           # names no App and the broker mints from whichever has more rate limit left.
           # A policy may pin an App only while just that App holds a permission the
-          # policy needs, listed here by this repository's workflow with the App.
-          # Only botantler-1 holds organization_custom_properties.
-          readonly app_pins='{"apply-custom-properties.yaml": "botantler-1"}'
+          # policy needs: listed here by this repository's workflow, with the App and
+          # that permission, which the policy must request. Only botantler-1 holds
+          # organization_custom_properties.
+          readonly app_pins='{"apply-custom-properties.yaml": {"app": "botantler-1", "permission": "organization_custom_properties"}}'
           # Privileged permissions (administration, members and any
           # organization_* permission) are granted only to this repository's own
           # workflows, on main, each with exactly a reviewed set. A policy that
@@ -184,10 +185,11 @@ jobs:
               if [[ "${GITHUB_REPOSITORY:-}" == devantler-tech/.github &&
                 "$(jq -r '.subject // ""' <<<"${json}")" == "${dotgithub_subject}" &&
                 "${workflow}" =~ ${dotgithub_workflow_re} ]]; then
-                pinned="$(jq -r --arg file "${BASH_REMATCH[1]}.yaml" --argjson pins "${app_pins}" '$pins[$file] // ""' <<<'null')"
+                pinned="$(jq -r --arg file "${BASH_REMATCH[1]}.yaml" --argjson pins "${app_pins}" \
+                  '$pins[$file] as $pin | if $pin != null and ((.permissions // {}) | has($pin.permission)) then $pin.app else "" end' <<<"${json}")"
               fi
               [[ "${app}" == "${pinned}" ]] ||
-                fail "${policy}" "pins App ${app}; name no App, so the broker mints from botantler-1 or botantler-2. Only a listed workflow may pin the one App that holds a permission it needs"
+                fail "${policy}" "pins App ${app}; name no App, so the broker mints from botantler-1 or botantler-2. Only a listed workflow that requests its listed permission may pin the one App that holds it"
             fi
           done
           if ((failures > 0)); then

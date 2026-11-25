@@ -129,6 +129,8 @@ repository=devantler-tech/.github expect 0 '' 'custom properties admin on botant
   "$(dotgithub apply-custom-properties $'  organization_administration: write\n  organization_custom_properties: admin' 'app: botantler-1')"
 repository=devantler-tech/.github expect 1 'pins App botantler-2' 'custom properties admin on botantler-2' \
   "$(dotgithub apply-custom-properties $'  organization_administration: write\n  organization_custom_properties: admin' 'app: botantler-2')"
+repository=devantler-tech/.github expect 1 'pins App botantler-1' 'a pin on the listed workflow without its permission' \
+  "$(dotgithub apply-custom-properties '  contents: read' 'app: botantler-1')"
 repository=devantler-tech/.github expect 1 'pins App botantler-1' 'a botantler-1 pin on an unlisted workflow' \
   "$(dotgithub governance-audits "$audit_read" 'app: botantler-1')"
 repository=devantler-tech/.github expect 0 '' 'the coverage check with organization administration read' \
