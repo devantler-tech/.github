@@ -818,7 +818,9 @@ template-controlled PR content to trigger caller CI. Callers that opt in must
 treat the PR as untrusted: do not expose secrets or write-scoped tokens to jobs
 that check out or execute its content, including local actions and scripts.
 
-An opt-in caller sets the input:
+The broker admits the opt-in only from a devantler-tech repository's `main` branch, running this
+workflow on `main` or at a commit on its `main`. A run on another branch, or from another
+organization, gets no token, and the sync fails. An opt-in caller sets the input:
 
 ```yaml
 jobs:
