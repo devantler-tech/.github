@@ -46,15 +46,21 @@ jobs:
           readonly actions_issuer=https://token.actions.githubusercontent.com
           readonly org_id=178524219
           readonly customer_repository_ids=()
+          # A shared workflow called from another repository runs on that
+          # repository's main branch, so its policy admits exactly this subject
+          # pattern: any devantler-tech repository, main only.
+          readonly caller_subject_pattern='repo:devantler-tech/[A-Za-z0-9._-]+:ref:refs/heads/main'
           # botantler-1 is the one App that can create release tags, which takes
           # contents: write. So a botantler-1 policy that grants contents write
-          # must be the shared release workflow's reviewed revision on main. A
-          # commit-SHA pattern would admit any revision, including an unmerged
-          # one, so pinned-commit release policies need a check that the commit
-          # is merged (#1001). The pattern is compared as a string, so no regex
-          # alternative can widen it.
+          # must be the shared release workflow, on main or at the commit its
+          # caller pins, and its token must reach the calling repository alone.
+          # A commit pattern alone would also admit a commit that never merged.
+          # The pin check below proves every pin of a devantler-tech/.github
+          # workflow is a commit on its main branch (#1001). The patterns are
+          # compared as strings, so no regex alternative can widen them.
           readonly release_workflow_patterns=(
             'devantler-tech/\.github/\.github/workflows/create-release\.yaml@refs/heads/main'
+            'devantler-tech/\.github/\.github/workflows/create-release\.yaml@([0-9a-f]{40}|refs/heads/main)'
           )
           # Privileged permissions (administration, members and any
           # organization_* permission) are granted only to this repository's own
@@ -72,6 +78,14 @@ jobs:
             "governance-audits.yaml": [{"administration": "read"}],
             "organization-settings-audit.yaml": [{"organization_administration": "read"}],
             "repository-admin-team-audit.yaml": [{"administration": "read"}]
+          }'
+          # A shared workflow that needs a privileged permission in every caller
+          # is listed here instead. Its policy must live in devantler-tech/.github,
+          # admit exactly caller_subject_pattern, name the workflow on main or at
+          # a pinned commit, scope the token to the caller, pin botantler-2, and
+          # request exactly one listed set.
+          readonly cross_repository_grants='{
+            "scan-for-todo-comments": [{"organization_projects": "write"}]
           }'
           # The broker decodes a policy through JSON with Go's case-insensitive
           # field matching (sigs.k8s.io/yaml), so only the exact field names it
@@ -148,6 +162,7 @@ jobs:
             writes="$(jq '[(.permissions // {})[] | select(. == "write" or . == "admin")] | length' <<<"${json}")"
             app="$(jq -r 'if (.app | type) == "string" then .app elif has("app") then "?" else "" end' <<<"${json}")"
             workflow="$(jq -r '.claim_pattern.job_workflow_ref // ""' <<<"${json}")"
+            caller_scoped="$(jq '.caller_repository == true and (has("repositories") | not) and (has("repository_ids") | not)' <<<"${json}")"
             privileged="$(jq -c '(.permissions // {}) | with_entries(select(.key == "administration" or .key == "members" or (.key | startswith("organization_"))))' <<<"${json}")"
             if [[ "${privileged}" != '{}' ]]; then
               listed=false
@@ -158,8 +173,18 @@ jobs:
                 listed="$(jq --arg file "${BASH_REMATCH[1]}.yaml" --argjson grants "${privileged_grants}" --argjson asked "${privileged}" \
                   '($grants[$file] // []) | any(. == $asked)' <<<'null')"
               fi
+              if [[ "${listed}" != true && "${GITHUB_REPOSITORY:-}" == devantler-tech/.github &&
+                "$(jq -r '.subject_pattern // ""' <<<"${json}")" == "${caller_subject_pattern}" &&
+                "$(jq 'has("subject")' <<<"${json}")" == false &&
+                "${caller_scoped}" == true && "${app}" == botantler-2 ]]; then
+                for name in $(jq -r 'keys[]' <<<"${cross_repository_grants}"); do
+                  [[ "${workflow}" == "devantler-tech/\\.github/\\.github/workflows/${name}\\.yaml@([0-9a-f]{40}|refs/heads/main)" ]] || continue
+                  listed="$(jq --arg name "${name}" --argjson grants "${cross_repository_grants}" --argjson asked "${privileged}" \
+                    '($grants[$name] // []) | any(. == $asked)' <<<'null')"
+                done
+              fi
               [[ "${listed}" == true ]] ||
-                fail "${policy}" "grants privileged permissions $(jq -r 'keys | join(", ")' <<<"${privileged}") outside the reviewed allowlist: only devantler-tech/.github's own policies, for a listed workflow on main, with exactly its listed set"
+                fail "${policy}" "grants privileged permissions $(jq -r 'keys | join(", ")' <<<"${privileged}") outside the reviewed allowlist: only devantler-tech/.github's own policies, for a listed workflow on main or a listed shared workflow's caller policy, with exactly its listed set"
             fi
             case "${app}" in
               botantler-1)
@@ -170,6 +195,13 @@ jobs:
                   done
                   [[ "${release}" == true ]] ||
                     fail "${policy}" 'pins botantler-1 with contents write, which can create release tags; only the shared release workflow may use it'
+                  [[ "${caller_scoped}" == true ]] ||
+                    fail "${policy}" 'pins botantler-1 with contents write, so its token must reach only the calling repository: set caller_repository: true, with no repositories or repository_ids'
+                  subject="$(jq -r 'if has("subject") and has("subject_pattern") then "" else (.subject // "") end' <<<"${json}")"
+                  if [[ "$(jq -r 'if has("subject") then "" else (.subject_pattern // "") end' <<<"${json}")" != "${caller_subject_pattern}" &&
+                    ! "${subject}" =~ ^repo:devantler-tech/[A-Za-z0-9._-]+:ref:refs/heads/main$ ]]; then
+                    fail "${policy}" "pins botantler-1 with contents write, so it must admit only a devantler-tech repository's main branch: subject repo:devantler-tech/<name>:ref:refs/heads/main, or subject_pattern ${caller_subject_pattern}"
+                  fi
                 fi
                 ;;
               botantler-2) ;;
@@ -187,3 +219,81 @@ jobs:
             exit 1
           fi
           echo "${#policies[@]} broker trust policies admit only reviewed callers and pin their App"
+
+      # Callers pin devantler-tech/.github's shared workflows by commit, so their
+      # broker policies admit job_workflow_ref …@<commit>. GitHub resolves such a
+      # commit even when it never merged: an unmerged branch, or a commit pushed
+      # to a fork of this repository (an impostor commit). So every pinned call
+      # must name a commit on this repository's main branch. Calls are read
+      # through YAML, so quoting and escapes cannot hide one, and matched without
+      # regard to case, as GitHub matches repository names.
+      - name: 🔗 Check shared workflow pins are merged
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          readonly source=devantler-tech/.github
+          for tool in yq gh; do
+            command -v "${tool}" >/dev/null || { echo "::error::${tool} is not installed"; exit 2; }
+          done
+          shopt -s nullglob
+          workflows=(.github/workflows/*.yaml .github/workflows/*.yml)
+          shopt -u nullglob
+          pins=()
+          for workflow in "${workflows[@]}"; do
+            if ! calls="$(yq -r '(.jobs // {}) | .[] | .uses // ""' "${workflow}" 2>/dev/null)"; then
+              echo "::error file=${workflow}::is not valid YAML, so its shared workflow pins cannot be checked"
+              exit 2
+            fi
+            while IFS= read -r call; do
+              shopt -s nocasematch
+              if [[ "${call}" =~ ^devantler-tech/\.github/\.github/workflows/[^@]+@([0-9a-f]{40})$ ]]; then
+                pins+=("${workflow}|$(tr '[:upper:]' '[:lower:]' <<<"${BASH_REMATCH[1]}")")
+              fi
+              shopt -u nocasematch
+            done <<<"${calls}"
+          done
+          declare -A verdict=()
+          failures=0
+          unknown=0
+          for entry in ${pins[@]+"${pins[@]}"}; do
+            workflow="${entry%%|*}"
+            commit="${entry#*|}"
+            if [[ -z "${verdict[${commit}]:-}" ]]; then
+              status=unknown
+              for attempt in 1 2 3; do
+                # main...<commit> is "behind" or "identical" exactly when the commit
+                # is in main's history, and then lists no commits or files.
+                if out="$(gh api "repos/${source}/compare/main...${commit}" --jq .status 2>&1)"; then
+                  status="${out}"
+                  break
+                fi
+                if grep -qE 'HTTP 404|HTTP 422' <<<"${out}"; then
+                  status=missing
+                  break
+                fi
+                sleep $((attempt * 5))
+              done
+              verdict[${commit}]="${status}"
+            fi
+            case "${verdict[${commit}]}" in
+              behind | identical) ;;
+              unknown)
+                echo "::error file=${workflow}::could not check whether ${commit} is on ${source} main"
+                unknown=$((unknown + 1))
+                ;;
+              *)
+                echo "::error file=${workflow}::pins ${source} at ${commit}, which is not a commit on its main branch (${verdict[${commit}]})"
+                failures=$((failures + 1))
+                ;;
+            esac
+          done
+          if ((failures > 0)); then
+            echo "::error::${failures} shared workflow pin(s) name a commit that is not on ${source} main"
+            exit 1
+          fi
+          if ((unknown > 0)); then
+            exit 2
+          fi
+          echo "${#pins[@]} pinned shared workflow call(s) name commits on ${source} main"

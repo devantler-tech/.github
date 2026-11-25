@@ -353,10 +353,19 @@ The check reads each `.github/chainguard/*.sts.yaml` and refuses a policy that:
   customer `repository_id`;
 - names no permissions (GitHub can read an empty set as every permission the App holds);
 - grants write access without an App pin, or pins botantler-1 (the one App that can create release
-  tags) with `contents: write` outside the shared release workflow's reviewed revision on `main`;
+  tags) with `contents: write` for anything but the shared release workflow, on `main` or at the
+  commit its caller pins, admitted only from a devantler-tech repository's `main` and scoped to that
+  caller (`caller_repository: true`);
 - grants a privileged permission (`administration`, `members` or any `organization_*`) unless it is
-  one of this repository's own policies, for a listed workflow on `main`, with exactly that
-  workflow's reviewed set.
+  one of this repository's own policies, for a listed workflow on `main`, or a listed shared
+  workflow's caller policy (any devantler-tech `main`, scoped to the caller, on botantler-2), with
+  exactly that workflow's reviewed set.
+
+It also refuses a pull request whose workflows pin a `devantler-tech/.github` shared workflow at a
+commit (`…@<sha>`) that is not on this repository's `main`. Callers pin shared workflows by commit,
+so their policies admit pinned commits, and GitHub would otherwise also resolve an unmerged commit or
+one pushed to a fork (an impostor commit). Calls are read through YAML and matched regardless of
+case, and a commit it cannot look up fails the check.
 
 The rules live in the workflow on this repository's `main` branch, so the pull request under review
 cannot change them. The broker's own caller gate refuses outside callers at run time; this check keeps

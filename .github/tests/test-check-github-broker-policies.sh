@@ -59,7 +59,33 @@ expect 0 '1 broker trust policies admit only reviewed callers' 'a read-only deva
   "$(policy "$issuer" "$owner" "$read_only")"
 expect 0 '' 'a write policy pinned to botantler-2' "$(policy "$issuer" "$owner" "$writes" 'app: botantler-2')"
 expect 0 '' 'the shared release workflow pinned to botantler-1' \
-  "$(policy "$issuer" "$owner"$'\n'"$release_workflow" "$writes" 'app: botantler-1')"
+  "$(policy "$issuer" "$owner"$'\n'"$release_workflow" "$writes" $'app: botantler-1\ncaller_repository: true')"
+# A release caller pins the shared workflow by commit; the pin check proves it merged.
+readonly pinned_release='  job_workflow_ref: devantler-tech/\.github/\.github/workflows/create-release\.yaml@([0-9a-f]{40}|refs/heads/main)'
+readonly any_caller='subject_pattern: repo:devantler-tech/[A-Za-z0-9._-]+:ref:refs/heads/main'
+# release_policy <subject line> <extra lines>
+release_policy() {
+  printf '%s\n' '---' "$issuer" "$1" 'claim_pattern:' "$owner" "$pinned_release" "$writes" 'app: botantler-1' "${2:-}"
+}
+expect 0 '' 'the release workflow at a pinned commit, from any devantler-tech main' \
+  "$(release_policy "$any_caller" 'caller_repository: true')"
+expect 0 '' 'the release workflow at a pinned commit, for one repository' \
+  "$(release_policy 'subject: repo:devantler-tech/ksail:ref:refs/heads/main' 'caller_repository: true')"
+expect 1 'must reach only the calling repository' 'a release token for every repository' "$(release_policy "$any_caller")"
+expect 1 'must reach only the calling repository' 'a release token for a named repository list' \
+  "$(release_policy "$any_caller" $'caller_repository: true\nrepositories:\n  - platform')"
+expect 1 'must reach only the calling repository' 'a release token for repository IDs' \
+  "$(release_policy "$any_caller" $'caller_repository: true\nrepository_ids:\n  - 1')"
+expect 1 "must admit only a devantler-tech repository's main branch" 'a release caller on any branch' \
+  "$(release_policy 'subject_pattern: repo:devantler-tech/[A-Za-z0-9._-]+:ref:.*' 'caller_repository: true')"
+expect 1 "must admit only a devantler-tech repository's main branch" 'a release caller from pull requests' \
+  "$(release_policy 'subject: repo:devantler-tech/ksail:pull_request' 'caller_repository: true')"
+expect 1 "must admit only a devantler-tech repository's main branch" 'a release caller from another organization' \
+  "$(release_policy 'subject_pattern: repo:[A-Za-z0-9._-]+/[A-Za-z0-9._-]+:ref:refs/heads/main' 'caller_repository: true')"
+expect 1 "must admit only a devantler-tech repository's main branch" 'a subject beside the subject pattern' \
+  "$(release_policy "$any_caller" $'caller_repository: true\nsubject: repo:devantler-tech/ksail:ref:refs/heads/main')"
+expect 1 "must admit only a devantler-tech repository's main branch" 'no subject at all' \
+  "$(release_policy '' 'caller_repository: true')"
 
 expect 1 'must pin claim_pattern.repository_owner_id' 'no caller pin' "$(policy "$issuer" '  ref: refs/heads/main' "$read_only")"
 expect 1 'must pin claim_pattern.repository_owner_id' 'another organization' \
@@ -153,6 +179,39 @@ repository=devantler-tech/.github expect 1 'outside the reviewed allowlist' 'a w
   "$(dotgithub governance-audits "$audit_read" | sed 's|yaml@refs/heads/main|yaml@refs/heads/main\|.*|')"
 repository=devantler-tech/.github expect 1 'outside the reviewed allowlist' 'a workflow from another repository' \
   "$(dotgithub governance-audits "$audit_read" | sed 's|devantler-tech/\\.github/\\.github/workflows|devantler-tech/platform/\\.github/workflows|')"
+# A listed shared workflow's callers may hold its privileged permission, from
+# this repository only, for any devantler-tech main, scoped to the caller, on botantler-2.
+# shared <workflow stem> <permission lines> [extra lines]; ref_suffix overrides the ref.
+readonly shared_ref_default='([0-9a-f]{40}|refs/heads/main)'
+shared() {
+  printf '%s\n' '---' "$issuer" "$any_caller" 'claim_pattern:' "$owner" \
+    "  job_workflow_ref: devantler-tech/\\.github/\\.github/workflows/$1\\.yaml@${ref_suffix:-${shared_ref_default}}" \
+    'permissions:' "$2" "${3-$'caller_repository: true\napp: botantler-2'}"
+}
+readonly projects_write='  organization_projects: write'
+repository=devantler-tech/.github expect 0 '' 'the to-do scanner caller policy' "$(shared scan-for-todo-comments "$projects_write")"
+expect 1 'outside the reviewed allowlist' 'the to-do scanner caller policy in another repository' \
+  "$(shared scan-for-todo-comments "$projects_write")"
+repository=devantler-tech/.github expect 1 'outside the reviewed allowlist' 'an unlisted shared workflow' \
+  "$(shared template-sync "$projects_write")"
+repository=devantler-tech/.github expect 1 'outside the reviewed allowlist' 'more than the listed set' \
+  "$(shared scan-for-todo-comments $'  organization_projects: write\n  organization_administration: write')"
+repository=devantler-tech/.github expect 1 'outside the reviewed allowlist' 'the release App' \
+  "$(shared scan-for-todo-comments "$projects_write" $'caller_repository: true\napp: botantler-1')"
+repository=devantler-tech/.github expect 1 'outside the reviewed allowlist' 'a token for every repository' \
+  "$(shared scan-for-todo-comments "$projects_write" 'app: botantler-2')"
+repository=devantler-tech/.github expect 1 'outside the reviewed allowlist' 'a token for a repository list' \
+  "$(shared scan-for-todo-comments "$projects_write" $'caller_repository: true\nrepositories:\n  - platform\napp: botantler-2')"
+repository=devantler-tech/.github expect 1 'outside the reviewed allowlist' 'callers on any branch' \
+  "$(shared scan-for-todo-comments "$projects_write" | sed 's|:ref:refs/heads/main$|:ref:.*|')"
+repository=devantler-tech/.github expect 1 'outside the reviewed allowlist' 'a subject beside the pattern' \
+  "$(shared scan-for-todo-comments "$projects_write" $'caller_repository: true\napp: botantler-2\nsubject: repo:devantler-tech/ksail:ref:refs/heads/main')"
+repository=devantler-tech/.github expect 1 'outside the reviewed allowlist' 'the workflow at any ref' \
+  "$(ref_suffix='.*' shared scan-for-todo-comments "$projects_write")"
+repository=devantler-tech/.github expect 1 'outside the reviewed allowlist' 'the workflow at any commit, merged or not' \
+  "$(ref_suffix='[0-9a-f]{40}' shared scan-for-todo-comments "$projects_write")"
+repository=devantler-tech/.github expect 1 'outside the reviewed allowlist' 'the workflow widened by an alternative' \
+  "$(ref_suffix='([0-9a-f]{40}|refs/heads/main|.*)' shared scan-for-todo-comments "$projects_write")"
 # botantler-1 is only refused where it could create release tags.
 expect 0 '' 'botantler-1 read-only outside the release workflow' "$(policy "$issuer" "$owner" "$read_only" 'app: botantler-1')"
 
@@ -182,5 +241,69 @@ if [[ "$status" != 1 ]] || ! grep -Fq 'file=.github/chainguard/.unchecked.sts.ya
   fail 'a dot-prefixed policy must be checked'
 fi
 cases=$((cases + 1))
+
+# --- Shared workflow pins must be commits on devantler-tech/.github main --------
+yq '.jobs.check.steps[] | select(.name == "🔗 Check shared workflow pins are merged") | .run' "$workflow" >"$tmp/pins.sh"
+[[ -s "$tmp/pins.sh" ]] || fail 'the pin check step has no script'
+[[ "$(yq '.jobs.check.steps[] | select(.name == "🔗 Check shared workflow pins are merged") | .env.GH_TOKEN' "$workflow")" == '${{ github.token }}' ]] ||
+  fail 'the pin check reads the public repository with the job token only'
+# A stand-in for gh: the commit's first character picks GitHub's answer.
+mkdir -p "$tmp/bin"
+cat >"$tmp/bin/gh" <<'STUB'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >>"$GH_CALLS"
+[[ "$1" == api && "$2" == repos/devantler-tech/.github/compare/main...* && "$3" == --jq && "$4" == .status ]] || { echo "unexpected gh call: $*" >&2; exit 9; }
+case "${2##*...}" in
+  a*) echo behind ;;
+  e*) echo identical ;;
+  b*) echo diverged ;;
+  f*) echo ahead ;;
+  c*) echo 'gh: Not Found (HTTP 404)' >&2; exit 1 ;;
+  *) echo 'connection reset by peer' >&2; exit 1 ;;
+esac
+STUB
+printf '#!/usr/bin/env bash\nexit 0\n' >"$tmp/bin/sleep"
+chmod +x "$tmp/bin/gh" "$tmp/bin/sleep"
+sha() { printf "$1"'%.0s' {1..40}; }
+readonly shared_ref='devantler-tech/.github/.github/workflows/create-release.yaml'
+# caller <uses value>: a one-job caller of that reusable workflow.
+caller() { printf 'on: push\njobs:\n  call:\n    uses: %s\n' "$1"; }
+# pins_expect <exit status> <message substring or empty> <case> <file>=<content>...
+pins_expect() {
+  local want="$1" message="$2" name="$3" status=0 spec
+  shift 3
+  rm -rf "$tmp/repo"
+  mkdir -p "$tmp/repo/.github/workflows"
+  for spec in "$@"; do printf '%s\n' "${spec#*=}" >"$tmp/repo/.github/workflows/${spec%%=*}"; done
+  : >"$tmp/gh-calls"
+  (cd "$tmp/repo" && PATH="$tmp/bin:$PATH" GH_CALLS="$tmp/gh-calls" bash "$tmp/pins.sh") >"$tmp/out" 2>&1 || status=$?
+  [[ "$status" == "$want" ]] || { cat "$tmp/out" >&2; fail "pins: $name: expected exit $want, got $status"; }
+  [[ -z "$message" ]] || grep -Fq -- "$message" "$tmp/out" || { cat "$tmp/out" >&2; fail "pins: $name: missing '$message'"; }
+  cases=$((cases + 1))
+}
+pins_expect 0 '0 pinned shared workflow call(s)' 'a repository without workflows'
+pins_expect 0 '1 pinned shared workflow call(s)' 'a merged pin beside unpinned and local calls' \
+  "release.yaml=$(caller "$shared_ref@$(sha a)")" "ci.yaml=$(caller "$shared_ref@main")" \
+  "local.yaml=$(caller ./.github/workflows/x.yaml)" "other.yaml=$(caller "octo/other/.github/workflows/x.yaml@$(sha b)")"
+pins_expect 0 '' 'a pin at main itself' "release.yaml=$(caller "$shared_ref@$(sha e)")"
+pins_expect 1 'which is not a commit on its main branch (diverged)' 'an unmerged or impostor commit' \
+  "release.yaml=$(caller "$shared_ref@$(sha b)")"
+pins_expect 1 'which is not a commit on its main branch (ahead)' 'a commit ahead of main' \
+  "release.yaml=$(caller "$shared_ref@$(sha f)")"
+pins_expect 1 'which is not a commit on its main branch (missing)' 'a commit GitHub does not know' \
+  "release.yaml=$(caller "$shared_ref@$(sha c)")"
+pins_expect 1 'not a commit on its main branch' 'a pin in a .yml file' "release.yml=$(caller "$shared_ref@$(sha b)")"
+pins_expect 1 'not a commit on its main branch' 'a pin hidden by letter case' \
+  "release.yaml=$(caller "Devantler-Tech/.GitHub/.github/workflows/create-release.yaml@$(sha B)")"
+pins_expect 1 'not a commit on its main branch' 'a pin hidden by a YAML escape' \
+  "release.yaml=$(caller '"devantler-tech/\x2egithub/.github/workflows/create-release.yaml@'"$(sha b)"'"')"
+pins_expect 1 '1 shared workflow pin(s)' 'a bad pin after a good one' \
+  "a.yaml=$(caller "$shared_ref@$(sha a)")" "b.yaml=$(caller "$shared_ref@$(sha b)")"
+pins_expect 2 'could not check whether' 'GitHub unreachable after retries' "release.yaml=$(caller "$shared_ref@$(sha d)")"
+[[ "$(wc -l <"$tmp/gh-calls")" -eq 3 ]] || fail 'pins: an unreachable GitHub is retried exactly three times'
+pins_expect 2 'is not valid YAML' 'a workflow that cannot be read' 'broken.yaml=jobs: [unclosed'
+pins_expect 0 '2 pinned shared workflow call(s)' 'the same commit pinned twice' \
+  "a.yaml=$(caller "$shared_ref@$(sha a)")" "b.yaml=$(caller "$shared_ref@$(sha a)")"
+[[ "$(wc -l <"$tmp/gh-calls")" -eq 1 ]] || fail 'pins: one commit is looked up once'
 
 printf 'test-check-github-broker-policies: %d cases passed\n' "$cases"
