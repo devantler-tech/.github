@@ -56,11 +56,12 @@ jobs:
           # botantler-1 and botantler-2 are interchangeable: both may create release
           # tags (the organization ruleset restrict-release-tag-creation), so a policy
           # names no App and the broker mints from whichever has more rate limit left.
-          # A policy may pin an App only while just that App holds a permission the
-          # policy needs: listed here by this repository's workflow, with the App and
-          # that permission, which the policy must request. Only botantler-1 holds
-          # organization_custom_properties.
-          readonly app_pins='{"apply-custom-properties.yaml": {"app": "botantler-1", "permission": "organization_custom_properties"}}'
+          # A policy may pin an App only while just that App can serve it: listed
+          # here by this repository's workflow, with the App and the permission that
+          # needs it, which the policy must request. Both Apps hold the same
+          # permissions, so nothing is listed. A policy that writes check runs would
+          # be listed here (ADR 0020).
+          readonly app_pins='{}'
           # Privileged permissions (administration, members and any
           # organization_* permission) are granted only to this repository's own
           # workflows, on main, each with exactly a reviewed set. A policy that
