@@ -300,7 +300,9 @@ normalized_policy="$(tr '\n' ' ' <<<"$job_if" | tr -s ' ' | sed 's/^ *//;s/ *$//
 #     fail differently: an unpinned or local ref (`uses: ./...`) runs a definition out of the
 #     untrusted tree, which is exactly the shape the alert was raised for, while a tag or
 #     branch ref lets an audited identity's contents change with no edit here at all.
-audited_actions=$'step-security/harden-runner\nactions/create-github-app-token\nactions/checkout\nactions/download-artifact'
+# octo-sts/action mints the signing token from the GitHub token broker (devantler-tech/monorepo
+# ADR 0020). It runs before the checkout and executes nothing from the checked-out tree.
+audited_actions=$'step-security/harden-runner\nocto-sts/action\nactions/checkout\nactions/download-artifact'
 # Captured rather than piped from a process substitution: a yq failure inside `< <(...)` is
 # invisible to both `set -e` and `pipefail`, so it would read as an empty step list and this
 # assertion would pass having checked nothing.
@@ -377,7 +379,11 @@ structure_digest="$(printf '%s' "$job_structure" | sha256_of)"
 # #749 adds only the literal five-minute runner deadline. The complete job,
 # workflow defaults and environment otherwise match the previously audited
 # structure; the separate run-text digest remains unchanged.
-audited_structure_digest="1f309fc5920ebf77324b81198dbfd23fb56833714a543a99a855a3d24b999b96"
+# The GitHub token broker move (devantler-tech/monorepo ADR 0020) changes only the job's permissions
+# (adding id-token: write) and the token step (octo-sts/action with domain, scope and identity in
+# place of the App key inputs). That step still runs before the checkout and executes nothing from
+# the checked-out tree; every run block is unchanged.
+audited_structure_digest="9d034de1ef5c80b20146a9bc75484a728f1c4b673c5e289547aa21889757b006"
 [[ "$structure_digest" == "$audited_structure_digest" ]] ||
   fail "apply-fixes' job structure changed (found ${structure_digest}, audited ${audited_structure_digest}). Something other than the run text moved -- a step's or the job's \`env\` (BASH_ENV executes a file before the script), \`shell\`, \`working-directory\`, \`defaults.run\`, or a key this guard has never seen. Confirm it cannot execute code from the checked-out tree, then set audited_structure_digest to the value above. Dependency bumps of the pinned actions do NOT reach here."
 

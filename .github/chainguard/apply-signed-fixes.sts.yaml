@@ -1,0 +1,21 @@
+---
+# Organization trust policy for the shared signed-fix workflow
+# (.github/workflows/apply-signed-fixes.yaml), served by the GitHub token broker
+# (devantler-tech/monorepo ADR 0020, #1001). It runs on a pull request in the calling
+# repository, where the shared Go validation calls it at a commit it pins; the pin lives
+# in this repository, so the broker policy check proves it is a commit on this
+# repository's main. Only a same-repository pull_request run of that workflow may
+# exchange its token (fork and Dependabot runs never reach the signing step). It grants
+# contents write, scoped to the calling repository, so the signing commit API can commit
+# the applied fixes as botantler-2. botantler-2 bypasses no ruleset, so the token cannot
+# push to a protected branch or create a release tag.
+issuer: https://token.actions.githubusercontent.com
+subject_pattern: repo:devantler-tech/[A-Za-z0-9._-]+:pull_request
+claim_pattern:
+  repository_owner_id: "178524219"
+  event_name: pull_request
+  job_workflow_ref: devantler-tech/\.github/\.github/workflows/apply-signed-fixes\.yaml@([0-9a-f]{40}|refs/heads/main)
+caller_repository: true
+permissions:
+  contents: write
+app: botantler-2
