@@ -57,13 +57,13 @@ expect() {
 expect 0 '0 broker trust policies' 'a repository without policies' ''
 expect 0 '1 broker trust policies admit only reviewed callers' 'a read-only devantler-tech policy without an App pin' \
   "$(policy "$issuer" "$owner" "$read_only")"
-# botantler-1 and botantler-2 are interchangeable, so a policy names no App. A pin to one of
-# them still passes until each policy drops its own; any other App never does.
+# botantler-1 and botantler-2 are interchangeable, so a policy names no App. Only a listed workflow
+# in devantler-tech/.github may pin the one App that holds a permission it needs.
 expect 0 '' 'a write policy with no App, for either App to mint' "$(policy "$issuer" "$owner" "$writes")"
 expect 0 '' 'the shared release workflow with no App' \
   "$(policy "$issuer" "$owner"$'\n'"$release_workflow" "$writes" 'caller_repository: true')"
-expect 0 '' 'a write policy still pinned to botantler-2' "$(policy "$issuer" "$owner" "$writes" 'app: botantler-2')"
-expect 0 '' 'a write policy still pinned to botantler-1' "$(policy "$issuer" "$owner" "$writes" 'app: botantler-1')"
+expect 1 'pins App botantler-2' 'a write policy pinned to botantler-2' "$(policy "$issuer" "$owner" "$writes" 'app: botantler-2')"
+expect 1 'pins App botantler-1' 'a write policy pinned to botantler-1' "$(policy "$issuer" "$owner" "$writes" 'app: botantler-1')"
 # Both subject forms a devantler-tech repository can issue: name-only, and the immutable form with
 # the owner and repository IDs.
 readonly any_caller='subject_pattern: repo:devantler-tech(/[A-Za-z0-9._-]+|@178524219/[A-Za-z0-9._-]+@[0-9]+):ref:refs/heads/main'
@@ -83,7 +83,7 @@ expect 1 'name the issuer and App exactly' 'an issuer pattern' \
 expect 1 'must accept exactly the GitHub Actions issuer' 'another issuer' \
   "$(policy 'issuer: https://issuer.example.com' "$owner" "$read_only")"
 expect 1 'name the issuer and App exactly' 'an App pattern' "$(policy "$issuer" "$owner" "$writes" 'app_pattern: botantler-.*')"
-expect 1 'pins unknown App' 'an unknown App' "$(policy "$issuer" "$owner" "$writes" 'app: devantler-tech-engineering')"
+expect 1 'pins App devantler-tech-engineering' 'an unknown App' "$(policy "$issuer" "$owner" "$writes" 'app: devantler-tech-engineering')"
 expect 1 'outside the reviewed allowlist' 'repository administration outside devantler-tech/.github' \
   "$(policy "$issuer" "$owner" $'permissions:\n  administration: read' 'app: botantler-2')"
 expect 1 'outside the reviewed allowlist' 'organization administration outside devantler-tech/.github' \
@@ -123,10 +123,16 @@ dotgithub() {
   printf '%s\n' '---' "$issuer" 'subject: repo:devantler-tech/.github:ref:refs/heads/main' 'claim_pattern:' "$owner" \
     "  job_workflow_ref: devantler-tech/\\.github/\\.github/workflows/$1\\.yaml@refs/heads/main" 'permissions:' "$2" "${3:-}"
 }
-readonly audit_read=$'  metadata: read\n  administration: read'
+readonly audit_read=$'  metadata: read\n  administration: read\n  organization_administration: read'
 repository=devantler-tech/.github expect 0 '' 'a listed audit with administration read' "$(dotgithub governance-audits "$audit_read")"
 repository=devantler-tech/.github expect 0 '' 'custom properties admin on botantler-1' \
   "$(dotgithub apply-custom-properties $'  organization_administration: write\n  organization_custom_properties: admin' 'app: botantler-1')"
+repository=devantler-tech/.github expect 1 'pins App botantler-2' 'custom properties admin on botantler-2' \
+  "$(dotgithub apply-custom-properties $'  organization_administration: write\n  organization_custom_properties: admin' 'app: botantler-2')"
+repository=devantler-tech/.github expect 1 'pins App botantler-1' 'a botantler-1 pin on an unlisted workflow' \
+  "$(dotgithub governance-audits "$audit_read" 'app: botantler-1')"
+repository=devantler-tech/.github expect 0 '' 'the coverage check with organization administration read' \
+  "$(dotgithub repository-coverage-check $'  metadata: read\n  organization_administration: read')"
 repository=devantler-tech/.github expect 0 '' 'the custom properties read-back on botantler-1' \
   "$(dotgithub apply-custom-properties $'  metadata: read\n  organization_custom_properties: read' 'app: botantler-1')"
 expect 1 'outside the reviewed allowlist' 'a listed grant in another repository' "$(dotgithub governance-audits "$audit_read")"

@@ -53,11 +53,13 @@ jobs:
           # repo:devantler-tech@<owner ID>/<name>@<repository ID>. Both are
           # admitted, so no caller is refused for its repository's age.
           readonly caller_subject_pattern='repo:devantler-tech(/[A-Za-z0-9._-]+|@178524219/[A-Za-z0-9._-]+@[0-9]+):ref:refs/heads/main'
-          # botantler-1 and botantler-2 are interchangeable: they hold the same
-          # permissions and may both create release tags (the organization ruleset
-          # restrict-release-tag-creation), so a policy names no App and the broker
-          # mints from whichever has more rate limit left. Pins written before the
-          # Apps were made equal still pass until each policy drops its own.
+          # botantler-1 and botantler-2 are interchangeable: both may create release
+          # tags (the organization ruleset restrict-release-tag-creation), so a policy
+          # names no App and the broker mints from whichever has more rate limit left.
+          # A policy may pin an App only while just that App holds a permission the
+          # policy needs, listed here by this repository's workflow with the App.
+          # Only botantler-1 holds organization_custom_properties.
+          readonly app_pins='{"apply-custom-properties.yaml": "botantler-1"}'
           # Privileged permissions (administration, members and any
           # organization_* permission) are granted only to this repository's own
           # workflows, on main, each with exactly a reviewed set. A policy that
@@ -71,9 +73,10 @@ jobs:
               {"organization_custom_properties": "read"}
             ],
             "apply-workflow-execution-policies.yaml": [{"organization_administration": "write"}],
-            "governance-audits.yaml": [{"administration": "read"}],
+            "governance-audits.yaml": [{"administration": "read", "organization_administration": "read"}],
             "organization-settings-audit.yaml": [{"organization_administration": "read"}],
-            "repository-admin-team-audit.yaml": [{"administration": "read"}]
+            "repository-admin-team-audit.yaml": [{"administration": "read", "organization_administration": "read"}],
+            "repository-coverage-check.yaml": [{"organization_administration": "read"}]
           }'
           # A shared workflow that needs a privileged permission in every caller
           # is listed here instead. Its policy must live in devantler-tech/.github,
@@ -176,12 +179,16 @@ jobs:
               [[ "${listed}" == true ]] ||
                 fail "${policy}" "grants privileged permissions $(jq -r 'keys | join(", ")' <<<"${privileged}") outside the reviewed allowlist: only devantler-tech/.github's own policies, for a listed workflow on main or a listed shared workflow's caller policy, with exactly its listed set"
             fi
-            case "${app}" in
-              "" | botantler-1 | botantler-2) ;;
-              *)
-                fail "${policy}" "pins unknown App ${app}; name no App, so the broker can mint from botantler-1 or botantler-2"
-                ;;
-            esac
+            if [[ -n "${app}" ]]; then
+              pinned=""
+              if [[ "${GITHUB_REPOSITORY:-}" == devantler-tech/.github &&
+                "$(jq -r '.subject // ""' <<<"${json}")" == "${dotgithub_subject}" &&
+                "${workflow}" =~ ${dotgithub_workflow_re} ]]; then
+                pinned="$(jq -r --arg file "${BASH_REMATCH[1]}.yaml" --argjson pins "${app_pins}" '$pins[$file] // ""' <<<'null')"
+              fi
+              [[ "${app}" == "${pinned}" ]] ||
+                fail "${policy}" "pins App ${app}; name no App, so the broker mints from botantler-1 or botantler-2. Only a listed workflow may pin the one App that holds a permission it needs"
+            fi
           done
           if ((failures > 0)); then
             echo "::error::${failures} problem(s) in ${#policies[@]} broker trust policies"
