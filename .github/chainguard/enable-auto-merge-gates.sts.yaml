@@ -1,0 +1,21 @@
+---
+# Organization trust policy for the organization-required auto-merge workflow
+# (.github/workflows/enable-auto-merge.yaml), served by the GitHub token broker
+# (devantler-tech/monorepo ADR 0020, #1001). It admits only that workflow from
+# this repository's main branch, which is where the required-workflow ruleset runs
+# it. So the code that holds the token is always the reviewed main revision,
+# whatever pull request, review or comment triggered it. The subject may be any
+# devantler-tech repository's pull request or main branch, and the token reaches
+# that repository alone. It grants read access only, for the enforced review and pre-merge gate
+# lookups; it is read-only, so the broker may route it to either App.
+issuer: https://token.actions.githubusercontent.com
+subject_pattern: repo:devantler-tech/[A-Za-z0-9._-]+:(pull_request|ref:refs/heads/main|ref:refs/pull/[0-9]+/merge)
+claim_pattern:
+  repository_owner_id: "178524219"
+  job_workflow_ref: devantler-tech/\.github/\.github/workflows/enable-auto-merge\.yaml@refs/heads/main
+caller_repository: true
+permissions:
+  actions: read
+  checks: read
+  contents: read
+  pull_requests: read

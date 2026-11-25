@@ -2973,7 +2973,7 @@ jobs:
   test-enable-auto-merge:
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
     name: "[Test] Enable Auto-Merge"
-    uses: $/.github/workflows/enable-auto-merge.yaml
+    uses: $/.github/workflows/enable-auto-merge-dry-run.yaml
     # Static caller ceiling for the production callee. Dry-run excludes both
     # write jobs, so executed jobs receive at most contents:read.
     with:
@@ -2988,7 +2988,7 @@ jobs:
   test-enable-auto-merge-actor-trust:
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
     name: "[Test] Enable Auto-Merge - Actor Trust Enabled"
-    uses: $/.github/workflows/enable-auto-merge.yaml
+    uses: $/.github/workflows/enable-auto-merge-dry-run.yaml
     with:
       concurrency-key: actor-trust-self-test
       dry-run: true
@@ -3002,7 +3002,7 @@ jobs:
   test-enable-auto-merge-queued:
     if: "${{ github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ') }}"
     name: "[Test] Enable Auto-Merge - Pending Queue Enabled"
-    uses: $/.github/workflows/enable-auto-merge.yaml
+    uses: $/.github/workflows/enable-auto-merge-dry-run.yaml
     with:
       concurrency-key: queued-self-test
       dry-run: true
@@ -3033,6 +3033,9 @@ jobs:
 
       - name: 🧪 Verify non-mutating workflow boundary
         run: bash .github/tests/test-auto-merge-dry-run.sh
+
+      - name: 🧪 Verify the auto-merge CI projection holds no broker grant
+        run: bash .github/tests/test-enable-auto-merge-dry-run-projection.sh
 
       - name: 🧪 Execute offline approval and arming decisions
         run: bash .github/tests/test-auto-merge-fixture.sh

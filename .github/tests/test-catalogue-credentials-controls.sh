@@ -57,7 +57,7 @@ missing native callee	.github/workflows/ci.yaml	.jobs["test-template-sync"].uses
 mutable native callee	.github/workflows/ci.yaml	.jobs["test-template-sync"].uses="$/.github/workflows/template-sync.yaml@main"	2	UNKNOWN
 removed template dry run	.github/workflows/ci.yaml	del(.jobs["test-template-sync"].with["dry-run"])	1	write authority
 restored template writer	.github/workflows/template-sync.yaml	del(.jobs["template-sync"].if)	1	write authority
-restored auto merge	.github/workflows/enable-auto-merge.yaml	.jobs["disarm-untrusted-update"].if="${{ always() }}"	1	write authority
+restored auto merge	.github/workflows/enable-auto-merge-dry-run.yaml	.jobs["disarm-untrusted-update"].if="${{ always() }}"	1	write authority
 restored test package writer	.github/workflows/ci.yaml	.jobs["test-run-dotnet-tests-workflow"].permissions.packages="write"	1	write authority
 unknown condition on new writer	.github/workflows/ci.yaml	.jobs.new={"if":"${{ vars.MAYBE }}",permissions:{issues:"write"},steps:[{run:"echo fixture"}]}	1	write authority
 nested composite secret	.github/actions/prepare-fixes/action.yaml	.runs.steps += [{run:"echo fixture",shell:"bash",env:{EXTRA:"${{ secrets.TOKEN }}"}}]	1	external secret

@@ -195,6 +195,7 @@ do not establish a product need for a shared workflow.
 | Reference | Description | Source |
 |---|---|---|
 | [Applied-fix signing](#workflow-applied-fixes) | Isolated, shared signer for eligible fixer artifacts | [apply-signed-fixes.yaml](.github/workflows/apply-signed-fixes.yaml) |
+| [Auto-merge dry-run CI](#workflow-enable-auto-merge-dry-run) | Generated broker-free projection for the auto-merge self-tests | [enable-auto-merge-dry-run.yaml](.github/workflows/enable-auto-merge-dry-run.yaml) |
 | [TODO read-only smoke](#workflow-todos-readonly) | Generated projection for credential-free scanner tests | [scan-for-todo-comments-readonly.yaml](.github/workflows/scan-for-todo-comments-readonly.yaml) |
 | [TODO default fixture](#workflow-todos-fixture) | Offline dependencies for testing the production defaults | [scan-for-todo-comments-default-fixture.yaml](.github/workflows/scan-for-todo-comments-default-fixture.yaml) |
 | [Release-recovery offline fixture](#workflow-recovery-fixture) | Generated complete offline build/refusal job, with no publisher or secret interface | [release-recovery-offline-fixture.yaml](.github/workflows/release-recovery-offline-fixture.yaml) |
@@ -452,16 +453,28 @@ requests opened by an allowlist of trusted single-author bots, so routine bot PR
 click.
 
 Use `dry-run: true` to exercise the workflow without changing a pull request.
-This path runs offline decision fixtures with `contents: read`, forwards no App
-secret, and has a separate concurrency lane so it cannot cancel live evaluations.
-The catalogue tests use it for default, actor-trust and pending-queue calls.
+This path runs offline decision fixtures with `contents: read`, needs no token,
+and has a separate concurrency lane so it cannot cancel live evaluations.
+The catalogue tests use it for default, actor-trust and pending-queue calls, through the
+generated [broker-free projection](#workflow-enable-auto-merge-dry-run).
 Offline mode starts only the fixture runner and skips live eligibility classification.
 Omitted or false inputs retain the unprivileged classifier and explicit successful
 reporting for ineligible live and required-workflow events.
 Caller permissions still declare the production workflow's static write ceiling,
 which GitHub validates even when those jobs are skipped; executed dry-run jobs
-receive only read access. `dry-run` defaults to `false`, and live mutations require
-`APP_PRIVATE_KEY`.
+receive only read access. `dry-run` defaults to `false`.
+
+Every App token comes from the GitHub token broker
+([ADR 0020](https://github.com/devantler-tech/monorepo/blob/main/docs/adr/0020-one-github-token-broker.md))
+on botantler-2, scoped to the pull request's repository. Three trust policies admit only this
+workflow from devantler-tech/.github `main`, which is where the required-workflow ruleset runs it:
+[`enable-auto-merge`](.github/chainguard/enable-auto-merge.sts.yaml) (contents, pull requests and
+workflows write),
+[`enable-auto-merge-base`](.github/chainguard/enable-auto-merge-base.sts.yaml) (the fallback,
+without workflows), and
+[`enable-auto-merge-gates`](.github/chainguard/enable-auto-merge-gates.sts.yaml) (read-only gate
+lookups). No App key is read. The `auto-merge` job asks for `id-token: write`, so a
+`workflow_call` consumer must grant it too.
 
 Cursor Automation PRs are eligible by the exact `cursor[bot]` author identity (`app/cursor` in the
 GitHub UI). This author check reads the pull request author; a `cursor[bot]` Bugbot comment or review
@@ -568,11 +581,10 @@ jobs:
       actions: read
       pull-requests: write
       contents: write
+      id-token: write # every App token comes from the GitHub token broker
     with:
       enforce-actor-trust: false # default; enable after validating trusted trigger actors
       enforce-review-gates: false # default; flip after the repo's review lanes are validated
-    secrets:
-      APP_PRIVATE_KEY: ${{ secrets.APP_PRIVATE_KEY }}
 ```
 
 > **Actor-trust note:** Callers that enable actor trust must grant `actions: read`,
@@ -585,13 +597,13 @@ jobs:
 > reauthorize or supersede it.
 > Both the original and rerun-triggering actors must be trusted for every privileged event. The
 > read scope binds stale-revocation decisions to the rejected run attempt's durable start time; the
-> write scopes revoke classic auto-merge or merge-queue state. Rejected events never receive the
-> App private key. Missing lookup or revoke authority fails the required workflow closed.
+> write scopes revoke classic auto-merge or merge-queue state. Rejected events never receive an App
+> token. Missing lookup or revoke authority fails the required workflow closed.
 >
 > **Note:** The caller grants the documented minimum above with or without enforcement.
 > Actor trust uses its caller `Actions: read` scope only to bind stale revocation to the
-> rejected run attempt's start time. Review enforcement uses a separate App token and additionally
-> requires the GitHub App installation to grant **Actions: read**, **Checks: read**, and
+> rejected run attempt's start time. Review enforcement uses a separate read-only broker token and
+> additionally requires the App installation to grant **Actions: read**, **Checks: read**, and
 > **Contents: read**. If a required scope is missing, the workflow fails closed rather than
 > approving or arming on unproven evidence.
 
@@ -599,12 +611,46 @@ jobs:
 
 | Key                    | Type   | Default | Required | Description                                                               |
 |------------------------|--------|---------|----------|---------------------------------------------------------------------------|
-| `APP_PRIVATE_KEY`      | Secret | -       | No       | GitHub App private key; required for live mutations, omitted for dry-run   |
+| `APP_PRIVATE_KEY`      | Secret | -       | No       | Retired and unused: every token comes from the GitHub token broker; still declared so callers keep working |
 | `dry-run`              | Input  | `false` | No       | Run read-only offline decision fixtures without changing a pull request  |
 | `enforce-actor-trust`  | Input  | `false` | No       | Opt-in trusted-trigger enforcement with fail-closed revocation            |
 | `enforce-review-gates` | Input  | `false` | No       | Opt-in fail-closed gate before approval; agent arms after live pentad     |
 | `queue-pending-evaluations` | Input | `false` | No | Deprecated and ignored: every run retains pending evaluations |
 | `concurrency-key`      | Input  | `""`    | No       | Recommended with actor trust; omitted calls share a safe fallback lane    |
+
+</details>
+
+<a name="workflow-enable-auto-merge-dry-run"></a>
+
+### 🔀 Enable Auto-Merge (Dry-Run CI)
+
+<details>
+<summary>Purpose, interface and usage</summary>
+
+[.github/workflows/enable-auto-merge-dry-run.yaml](.github/workflows/enable-auto-merge-dry-run.yaml)
+is the internal catalogue CI entrypoint for the auto-merge self-tests. Generate it with
+`bash .github/scripts/generate-enable-auto-merge-dry-run.sh`. It is the complete production
+workflow with three changes: its display name; only its `workflow_call` trigger, so it never runs on
+its own; and the `auto-merge` job's `id-token` grant removed. So it can never reach the GitHub
+token broker.
+
+Pull-request CI may not grant an OIDC token (`test-ci-idtoken-boundary.sh`). GitHub also refuses a
+call whose caller grants less than a called job asks for, even when that job never runs. So the
+three CI auto-merge jobs call this projection with `dry-run: true`, and it runs production's
+dry-run job unchanged. `test-enable-auto-merge-dry-run-projection.sh` compares it with production
+independently. It rejects a restored grant or trigger, changed jobs, and any CI call of the
+production file. Consumers and the required-workflow ruleset use `enable-auto-merge.yaml`.
+
+#### Secrets and Inputs
+
+| Key                    | Type   | Default | Required | Description |
+|------------------------|--------|---------|----------|-------------|
+| `APP_PRIVATE_KEY`      | Secret | -       | No       | Preserved production interface; retired and unused |
+| `dry-run`              | Input  | `false` | No       | CI callers set it to run the offline decision fixtures |
+| `enforce-actor-trust`  | Input  | `false` | No       | Preserved production input; one CI caller enables it |
+| `enforce-review-gates` | Input  | `false` | No       | Preserved production input |
+| `queue-pending-evaluations` | Input | `false` | No | Preserved deprecated input; one CI caller sets it |
+| `concurrency-key`      | Input  | `""`    | No       | Preserved production input; each CI caller sets its own |
 
 </details>
 

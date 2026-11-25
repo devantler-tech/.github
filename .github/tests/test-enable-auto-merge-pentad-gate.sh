@@ -31,19 +31,28 @@ fi
 
 # Backward compatibility for workflow_call consumers: a called workflow's
 # GITHUB_TOKEN permissions can only be downgraded by callers' grants, so the
-# job must never request more than the legacy documented minimum (the
-# enforced path's extra read scopes come from the gate-lookup App token).
+# job must never request more than the legacy documented minimum plus the
+# id-token grant its GitHub token broker exchanges need (the enforced path's
+# extra read scopes come from the gate-lookup token).
 job_permissions="$(yq -r '.jobs."auto-merge".permissions | keys | sort | join(",")' "$workflow")"
-if [[ "$job_permissions" != "contents,pull-requests" ]]; then
-  echo "::error file=$workflow::auto-merge job permissions must stay at the legacy caller minimum (contents, pull-requests); got: $job_permissions"
+if [[ "$job_permissions" != "contents,id-token,pull-requests" ]]; then
+  echo "::error file=$workflow::auto-merge job permissions must stay at the legacy caller minimum (contents, pull-requests) plus id-token; got: $job_permissions"
   status=1
 fi
 
-gate_contents_permission="$(yq -r '
-  [.jobs."auto-merge".steps[]
-   | select(.id == "gate-token")
-   | .with."permission-contents" // ""]
-  | join("\n")' "$workflow")"
+# Every App token now comes from the GitHub token broker (devantler-tech/monorepo
+# ADR 0020), so a step's scopes live in the trust policy its identity names.
+# policy_permission <step id> <permission>: that policy's grant, or empty.
+policy_permission() {
+  local identity policy
+  identity="$(yq -r "[.jobs.\"auto-merge\".steps[] | select(.id == \"$1\") | .with.identity // \"\"] | join(\"\n\")" "$workflow")"
+  [[ "$identity" =~ ^[a-z0-9-]+$ ]] || return 0
+  policy="$(dirname "$workflow")/../chainguard/$identity.sts.yaml"
+  [[ -f "$policy" ]] || return 0
+  yq -r ".permissions.$2 // \"\"" "$policy"
+}
+
+gate_contents_permission="$(policy_permission gate-token contents)"
 if [[ "$gate_contents_permission" != "read" ]]; then
   echo "::error file=$workflow::the enforced gate token needs Contents: read to resolve abbreviated Codex commit IDs uniquely"
   status=1
@@ -249,11 +258,7 @@ fi
 # enablePullRequestAutoMerge as updating the workflow). The arming App token
 # must request that scope so workflow-touching PRs can be armed on installations
 # that grant it (actions#559).
-app_token_workflows="$(yq -r '
-  [.jobs."auto-merge".steps[]
-   | select(.id == "app-token")
-   | .with."permission-workflows" // ""]
-  | join("\n")' "$workflow")"
+app_token_workflows="$(policy_permission app-token workflows)"
 if [[ "$app_token_workflows" != "write" ]]; then
   echo "::error file=$workflow::the arming App token must request Workflows: write so auto-merge can be armed on PRs that modify .github/workflows/ (actions#559)"
   status=1
@@ -276,11 +281,9 @@ if [[ "$app_token_coe" != "true" ]]; then
 fi
 fallback_count="$(yq -r '
   [.jobs."auto-merge".steps[] | select(.id == "app-token-base")] | length' "$workflow")"
-fallback_workflows="$(yq -r '
-  [.jobs."auto-merge".steps[]
-   | select(.id == "app-token-base")
-   | .with."permission-workflows" // "ABSENT"]
-  | join("\n")' "$workflow")"
+fallback_workflows="$(policy_permission app-token-base workflows)"
+fallback_workflows="${fallback_workflows:-ABSENT}"
+[[ -n "$(policy_permission app-token-base contents)" ]] || fallback_workflows=UNREADABLE
 fallback_if="$(yq -r '
   [.jobs."auto-merge".steps[]
    | select(.id == "app-token-base")
