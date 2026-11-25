@@ -1,0 +1,18 @@
+---
+# Organization trust policy for the parked-merge reconciler
+# (.github/workflows/reconcile-parked-merges.yaml), served by the GitHub token
+# broker (devantler-tech/monorepo ADR 0020, #1001). Only that workflow, on this
+# repository's main branch, may exchange its Actions OIDC token. Every parked
+# pull request in the organization is in scope, so it gets metadata read and
+# contents and pull request write, organization-wide, to revoke their pending
+# merges. It writes, so it pins botantler-2, which cannot create release tags.
+issuer: https://token.actions.githubusercontent.com
+subject: repo:devantler-tech/.github:ref:refs/heads/main
+claim_pattern:
+  repository_owner_id: "178524219"
+  job_workflow_ref: devantler-tech/\.github/\.github/workflows/reconcile-parked-merges\.yaml@refs/heads/main
+permissions:
+  metadata: read
+  contents: write
+  pull_requests: write
+app: botantler-2

@@ -219,12 +219,11 @@ verify_workflow() {
     (.jobs | keys == ["reconcile"]) and
     (.jobs.reconcile.if | gsub("\\s+";" ") | sub(" $";"")) ==
       "github.repository == '\''devantler-tech/.github'\'' && github.ref == '\''refs/heads/main'\'' && github.event_name == '\''schedule'\''" and
-    .jobs.reconcile.permissions == {contents:"read"} and
+    .jobs.reconcile.permissions == {contents:"read","id-token":"write"} and
     .jobs.reconcile.steps[1].with == {ref:"${{ github.workflow_sha }}","persist-credentials":false} and
+    (.jobs.reconcile.steps[2].uses | test("^octo-sts/action@[0-9a-f]{40}$")) and
     .jobs.reconcile.steps[2].with == {
-      "client-id":"${{ vars.APP_CLIENT_ID }}","private-key":"${{ secrets.APP_PRIVATE_KEY }}",
-      owner:"devantler-tech","permission-metadata":"read",
-      "permission-contents":"write","permission-pull-requests":"write"} and
+      domain:"sts.platform.devantler.tech",scope:"devantler-tech",identity:"reconcile-parked-merges"} and
     .jobs.reconcile.steps[3].env == {GH_TOKEN:"${{ steps.app-token.outputs.token }}"} and
     .jobs.reconcile.steps[3].run == "bash scripts/reconcile-parked-merges.sh" and
     .jobs.reconcile["continue-on-error"] == null and
@@ -252,4 +251,39 @@ any branch	.jobs.reconcile.if="github.repository == 'devantler-tech/.github'"
 a skipped reconciliation	.jobs.reconcile.steps[3].if="false"
 an ignored step failure	.jobs.reconcile.steps[3]["continue-on-error"]=true
 an ignored job failure	.jobs.reconcile["continue-on-error"]=true
+a restored App key	.jobs.reconcile.steps[2].with["private-key"]="${{ secrets.APP_PRIVATE_KEY }}"
+another broker identity	.jobs.reconcile.steps[2].with.identity="stale-repository-identifier"
+another broker	.jobs.reconcile.steps[2].with.domain="sts.example.com"
+a mutable broker action	.jobs.reconcile.steps[2].uses="octo-sts/action@main"
+MUTATIONS
+# The token's authority lives in the broker trust policy: organization-wide
+# metadata read and contents and pull request write, for exactly this workflow
+# on main, pinned to botantler-2, which cannot create release tags.
+verify_policy() {
+  jq -e '. == {
+    issuer:"https://token.actions.githubusercontent.com",
+    subject:"repo:devantler-tech/.github:ref:refs/heads/main",
+    claim_pattern:{
+      repository_owner_id:"178524219",
+      job_workflow_ref:"devantler-tech/\\.github/\\.github/workflows/reconcile-parked-merges\\.yaml@refs/heads/main"},
+    permissions:{metadata:"read",contents:"write",pull_requests:"write"},
+    app:"botantler-2"}' "$1" >/dev/null
+}
+yq -o=json '.' "$root/.github/chainguard/reconcile-parked-merges.sts.yaml" >"$work/policy.json"
+verify_policy "$work/policy.json" || fail 'broker policy changed'
+echo 'PASS: broker policy'
+while IFS=$'\t' read -r name mutation; do
+  jq "$mutation" "$work/policy.json" >"$work/mutated.json"
+  if verify_policy "$work/mutated.json"; then
+    fail "broker policy accepted $name"
+  fi
+  echo "PASS: broker policy refuses $name"
+done <<'MUTATIONS'
+wider token scope	.permissions.workflows="write"
+administration	.permissions.administration="read"
+the release-capable App	.app="botantler-1"
+no App pin	del(.app)
+another branch	.subject="repo:devantler-tech/.github:ref:refs/heads/other"
+another workflow	.claim_pattern.job_workflow_ref="devantler-tech/\\.github/\\.github/workflows/stale-repository-identifier\\.yaml@refs/heads/main"
+no owner pin	del(.claim_pattern.repository_owner_id)
 MUTATIONS
