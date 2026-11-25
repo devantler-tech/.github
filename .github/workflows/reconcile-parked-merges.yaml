@@ -23,7 +23,7 @@ jobs:
       id-token: write # proves this workflow's identity to the GitHub token broker
     steps:
       - name: Harden runner
-        uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
+        uses: step-security/harden-runner@aebdcf6156ab6691adf63218240e476564a1ed4c # v2.23.0
         with:
           egress-policy: audit
       - name: Checkout reviewed workflow source
@@ -34,8 +34,8 @@ jobs:
       # The GitHub token broker (devantler-tech/monorepo ADR 0020) grants this
       # authority through .github/chainguard/reconcile-parked-merges.sts.yaml:
       # every parked pull request in the organization is in scope, so metadata
-      # read and contents and pull request write, organization-wide. The policy
-      # pins botantler-2, which cannot create release tags. No App key is read,
+      # read and contents and pull request write, organization-wide, from either
+      # botantler App. No App key is read,
       # and the action's post step revokes the token.
       - name: Get organization-wide revocation token
         id: app-token
