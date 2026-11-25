@@ -802,7 +802,7 @@ prevents content copied from a compromised or malicious template from reaching a
 caller's CI trust boundary before review.
 
 Set `use-app-token: true`, and grant the caller job `id-token: write`, only when CI must run before
-the sync PR is reviewed. This opt-in gets a write-scoped botantler-2 App token from the GitHub token
+the sync PR is reviewed. This opt-in gets a write-scoped botantler App token from the GitHub token
 broker ([ADR 0020](https://github.com/devantler-tech/monorepo/blob/main/docs/adr/0020-one-github-token-broker.md)),
 scoped to the calling repository, and permits
 workflow-file updates. The workflow replaces the action's Git-created commit

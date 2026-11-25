@@ -5,8 +5,8 @@
 # main-branch run of that workflow, at a pinned commit or on this repository's
 # main, may exchange its Actions OIDC token. The token is scoped to the calling
 # repository only (caller_repository), with what the sync needs: push the sync
-# branch, including workflow files, and open its pull request. It writes, so it
-# pins botantler-2, which cannot create release tags.
+# branch, including workflow files, and open its pull request. It names no App,
+# so the broker mints from botantler-1 or botantler-2.
 issuer: https://token.actions.githubusercontent.com
 # Both GitHub subject forms are admitted: repo:devantler-tech/<name>, and the immutable
 # repo:devantler-tech@<owner ID>/<name>@<repository ID> form (use_immutable_subject).
@@ -19,4 +19,3 @@ permissions:
   contents: write
   pull_requests: write
   workflows: write
-app: botantler-2

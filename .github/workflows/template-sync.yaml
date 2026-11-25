@@ -66,7 +66,7 @@ on:
         type: boolean
       use-app-token:
         description: >-
-          When `true`, open the sync PR with a botantler-2 App token from the
+          When `true`, open the sync PR with a botantler App token from the
           GitHub token broker (the caller job must grant `id-token: write`)
           instead of the default `GITHUB_TOKEN`. A PR opened with `GITHUB_TOKEN`
           does NOT trigger the caller's `on: pull_request`/`push` CI runs. Only
@@ -106,7 +106,7 @@ jobs:
       # The GitHub token broker (devantler-tech/monorepo ADR 0020) grants this token
       # through the organization policy .github/chainguard/template-sync.sts.yaml:
       # contents, pull request and workflow write, scoped to the calling repository
-      # only (caller_repository), on botantler-2. No App key is read, and the
+      # only (caller_repository), from either botantler App. No App key is read, and the
       # action's post step revokes the token.
       #
       # `workflows: write` is what lets the sync push a template change under
