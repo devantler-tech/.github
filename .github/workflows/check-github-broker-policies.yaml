@@ -46,15 +46,33 @@ jobs:
           readonly actions_issuer=https://token.actions.githubusercontent.com
           readonly org_id=178524219
           readonly customer_repository_ids=()
-          # Only the shared release workflow may use botantler-1, the one App
-          # that can create release tags, and only its reviewed revision on
-          # main. A commit-SHA pattern would admit any revision, including an
-          # unmerged one, so pinned-commit release policies need a check that
-          # the commit is merged (#1001). The pattern is compared as a string,
-          # so no regex alternative can widen it.
+          # botantler-1 is the one App that can create release tags, which takes
+          # contents: write. So a botantler-1 policy that grants contents write
+          # must be the shared release workflow's reviewed revision on main. A
+          # commit-SHA pattern would admit any revision, including an unmerged
+          # one, so pinned-commit release policies need a check that the commit
+          # is merged (#1001). The pattern is compared as a string, so no regex
+          # alternative can widen it.
           readonly release_workflow_patterns=(
             'devantler-tech/\.github/\.github/workflows/create-release\.yaml@refs/heads/main'
           )
+          # Privileged permissions (administration, members and any
+          # organization_* permission) are granted only to this repository's own
+          # workflows, on main, each with exactly a reviewed set. A policy that
+          # asks for one must live in devantler-tech/.github, name that exact
+          # subject and workflow, and request exactly one listed set.
+          readonly dotgithub_subject='repo:devantler-tech/.github:ref:refs/heads/main'
+          readonly dotgithub_workflow_re='^devantler-tech/\\\.github/\\\.github/workflows/([a-z0-9-]+)\\\.yaml@refs/heads/main$'
+          readonly privileged_grants='{
+            "apply-custom-properties.yaml": [
+              {"organization_administration": "write", "organization_custom_properties": "admin"},
+              {"organization_custom_properties": "read"}
+            ],
+            "apply-workflow-execution-policies.yaml": [{"organization_administration": "write"}],
+            "governance-audits.yaml": [{"administration": "read"}],
+            "organization-settings-audit.yaml": [{"organization_administration": "read"}],
+            "repository-admin-team-audit.yaml": [{"administration": "read"}]
+          }'
           # The broker decodes a policy through JSON with Go's case-insensitive
           # field matching (sigs.k8s.io/yaml), so only the exact field names it
           # defines are allowed: any other spelling could set a field unseen here.
@@ -120,20 +138,32 @@ jobs:
               fail "${policy}" 'permissions must use the canonical lowercase names, each read, write or admin'
               continue
             fi
-            if [[ "$(jq '(.permissions // {}) | has("administration") or has("organization_administration")' <<<"${json}")" != false ]]; then
-              fail "${policy}" 'grants administration; only a reviewed platform workload policy may, once one exists'
-            fi
             writes="$(jq '[(.permissions // {})[] | select(. == "write" or . == "admin")] | length' <<<"${json}")"
             app="$(jq -r 'if (.app | type) == "string" then .app elif has("app") then "?" else "" end' <<<"${json}")"
             workflow="$(jq -r '.claim_pattern.job_workflow_ref // ""' <<<"${json}")"
+            privileged="$(jq -c '(.permissions // {}) | with_entries(select(.key == "administration" or .key == "members" or (.key | startswith("organization_"))))' <<<"${json}")"
+            if [[ "${privileged}" != '{}' ]]; then
+              listed=false
+              if [[ "${GITHUB_REPOSITORY:-}" == devantler-tech/.github &&
+                "$(jq -r '.subject // ""' <<<"${json}")" == "${dotgithub_subject}" &&
+                "$(jq 'has("subject_pattern")' <<<"${json}")" == false &&
+                "${workflow}" =~ ${dotgithub_workflow_re} ]]; then
+                listed="$(jq --arg file "${BASH_REMATCH[1]}.yaml" --argjson grants "${privileged_grants}" --argjson asked "${privileged}" \
+                  '($grants[$file] // []) | any(. == $asked)' <<<'null')"
+              fi
+              [[ "${listed}" == true ]] ||
+                fail "${policy}" "grants privileged permissions $(jq -r 'keys | join(", ")' <<<"${privileged}") outside the reviewed allowlist: only devantler-tech/.github's own policies, for a listed workflow on main, with exactly its listed set"
+            fi
             case "${app}" in
               botantler-1)
-                release=false
-                for pattern in "${release_workflow_patterns[@]}"; do
-                  [[ "${workflow}" != "${pattern}" ]] || release=true
-                done
-                [[ "${release}" == true ]] ||
-                  fail "${policy}" 'pins botantler-1, which may create release tags; only the shared release workflow may use it'
+                if [[ "$(jq -r '.permissions.contents // ""' <<<"${json}")" == write || "$(jq -r '.permissions.contents // ""' <<<"${json}")" == admin ]]; then
+                  release=false
+                  for pattern in "${release_workflow_patterns[@]}"; do
+                    [[ "${workflow}" != "${pattern}" ]] || release=true
+                  done
+                  [[ "${release}" == true ]] ||
+                    fail "${policy}" 'pins botantler-1 with contents write, which can create release tags; only the shared release workflow may use it'
+                fi
                 ;;
               botantler-2) ;;
               '')

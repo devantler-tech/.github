@@ -351,9 +351,11 @@ The check reads each `.github/chainguard/*.sts.yaml` and refuses a policy that:
 - names any issuer but GitHub Actions, or uses `issuer_pattern` or `app_pattern`;
 - does not pin its callers to the devantler-tech organization ID (`repository_owner_id`) or a listed
   customer `repository_id`;
-- grants write access without pinning botantler-2, or pins botantler-1 (the one App that can create
-  release tags) outside the shared release workflow;
-- grants administration.
+- grants write access without an App pin, or pins botantler-1 (the one App that can create release
+  tags) with `contents: write` outside the shared release workflow's reviewed revision on `main`;
+- grants a privileged permission (`administration`, `members` or any `organization_*`) unless it is
+  one of this repository's own policies, for a listed workflow on `main`, with exactly that
+  workflow's reviewed set.
 
 The rules live in the workflow on this repository's `main` branch, so the pull request under review
 cannot change them. The broker's own caller gate refuses outside callers at run time; this check keeps
