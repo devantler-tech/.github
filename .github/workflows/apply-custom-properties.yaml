@@ -29,6 +29,7 @@ jobs:
     timeout-minutes: 5
     permissions:
       contents: read
+      id-token: write # proves this workflow's identity to the GitHub token broker
     steps:
       - name: Harden runner
         uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
@@ -48,34 +49,34 @@ jobs:
         env:
           GOTOOLCHAIN: local
         run: go -C scripts/custom-properties run . --root ../.. --check
+      # Both tokens come from the GitHub token broker (devantler-tech/monorepo
+      # ADR 0020), each through its own reviewed policy in .github/chainguard/.
+      # No App key is read, and each action's post step revokes its token.
+      # Both pin botantler-1, the only App with organization custom properties.
+      #
+      # The read-back token is read only: organization property values and
+      # repository metadata across the organization. A token limited to the
+      # catalogue is refused while a declared repository is not created yet,
+      # which stops the schema reaching GitHub (maintainer direction
+      # 2026-11-13). The reconciler fails closed unless the installation covers
+      # all repositories and its listing is complete.
       - name: Get read-only portfolio property token
         id: readback-token
-        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        uses: octo-sts/action@f603d3be9d8dd9871a265776e625a27b00effe05 # v1.1.1
         with:
-          client-id: ${{ vars.APP_CLIENT_ID }}
-          private-key: ${{ secrets.APP_PRIVATE_KEY }}
-          # Read only: organization property values and repository metadata. A
-          # deliberate, scoped exception to zizmor's github-app audit, like the
-          # repository coverage check's: a token limited to the catalogue is
-          # refused while a declared repository is not created yet, which stops
-          # the schema reaching GitHub (maintainer direction 2026-11-13). The
-          # reconciler fails closed unless the installation covers all
-          # repositories and its listing is complete.
-          owner: devantler-tech # zizmor: ignore[github-app]
-          permission-organization-custom-properties: read
-          permission-metadata: read
+          domain: sts.platform.devantler.tech
+          scope: devantler-tech
+          identity: apply-custom-properties-readback
+      # GitHub requires organization administration write even for GET of org
+      # rulesets and Actions policies. Only the guarded disabled legacy Copilot
+      # policy may be retired. Scoped to this repository.
       - name: Get narrowly scoped organization token
         id: token
-        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        uses: octo-sts/action@f603d3be9d8dd9871a265776e625a27b00effe05 # v1.1.1
         with:
-          client-id: ${{ vars.APP_CLIENT_ID }}
-          private-key: ${{ secrets.APP_PRIVATE_KEY }}
-          owner: devantler-tech
-          repositories: .github
-          # GitHub requires write even for GET of org rulesets and Actions policies.
-          # Only the guarded disabled legacy Copilot policy may be retired.
-          permission-organization-administration: write
-          permission-organization-custom-properties: admin
+          domain: sts.platform.devantler.tech
+          scope: devantler-tech
+          identity: apply-custom-properties
       - name: Reconcile schema after complete native consumer checks
         env:
           GH_TOKEN: ${{ steps.token.outputs.token }}

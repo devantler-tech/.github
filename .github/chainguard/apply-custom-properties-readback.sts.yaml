@@ -1,0 +1,19 @@
+---
+# Organization trust policy for the custom property schema reconciler's read-back
+# token (.github/workflows/apply-custom-properties.yaml, step `readback-token`),
+# served by the GitHub token broker (devantler-tech/monorepo ADR 0020, #1001).
+# Only that workflow, on this repository's main branch, may exchange its Actions
+# OIDC token. It gets read only, across the organization: custom property values
+# and repository metadata. The reconciler fails closed unless the installation
+# covers every repository. Custom properties read is privileged, so the broker
+# policy check allows it only as this workflow's reviewed grant. It pins
+# botantler-1, the only App with organization custom properties.
+issuer: https://token.actions.githubusercontent.com
+subject: repo:devantler-tech/.github:ref:refs/heads/main
+claim_pattern:
+  repository_owner_id: "178524219"
+  job_workflow_ref: devantler-tech/\.github/\.github/workflows/apply-custom-properties\.yaml@refs/heads/main
+permissions:
+  metadata: read
+  organization_custom_properties: read
+app: botantler-1
