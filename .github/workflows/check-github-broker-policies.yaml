@@ -47,11 +47,12 @@ jobs:
           readonly org_id=178524219
           readonly customer_repository_ids=()
           # Only the shared release workflow may use botantler-1, the one App
-          # that can create release tags. Its job_workflow_ref pattern must be
-          # exactly one of these reviewed forms, so no regex alternative can
-          # widen it: the workflow pinned to a full commit, or on main.
+          # that can create release tags, and only its reviewed revision on
+          # main. A commit-SHA pattern would admit any revision, including an
+          # unmerged one, so pinned-commit release policies need a check that
+          # the commit is merged (#1001). The pattern is compared as a string,
+          # so no regex alternative can widen it.
           readonly release_workflow_patterns=(
-            'devantler-tech/\.github/\.github/workflows/create-release\.yaml@[0-9a-f]{40}'
             'devantler-tech/\.github/\.github/workflows/create-release\.yaml@refs/heads/main'
           )
           # The broker decodes a policy through JSON with Go's case-insensitive

@@ -79,8 +79,10 @@ expect 1 'name the issuer and App exactly' 'an App pattern' "$(policy "$issuer" 
 expect 1 'grants write access without an App pin' 'write access without an App pin' "$(policy "$issuer" "$owner" "$writes")"
 expect 1 'only the shared release workflow may use it' 'botantler-1 outside the release workflow' \
   "$(policy "$issuer" "$owner" "$writes" 'app: botantler-1')"
-expect 0 '' 'the shared release workflow pinned to a full commit, on botantler-1' \
+expect 1 'only the shared release workflow may use it' 'a release pattern admitting any commit, merged or not' \
   "$(policy "$issuer" "$owner"$'\n''  job_workflow_ref: devantler-tech/\.github/\.github/workflows/create-release\.yaml@[0-9a-f]{40}' "$writes" 'app: botantler-1')"
+expect 1 'only the shared release workflow may use it' 'the release workflow at an unreviewed commit' \
+  "$(policy "$issuer" "$owner"$'\n''  job_workflow_ref: devantler-tech/\.github/\.github/workflows/create-release\.yaml@0123456789abcdef0123456789abcdef01234567' "$writes" 'app: botantler-1')"
 expect 1 'only the shared release workflow may use it' 'a release pattern widened by an alternative' \
   "$(policy "$issuer" "$owner"$'\n''  job_workflow_ref: devantler-tech/\.github/\.github/workflows/create-release\.yaml@.*|.*' "$writes" 'app: botantler-1')"
 expect 1 'only the shared release workflow may use it' 'a release pattern on any ref' \
