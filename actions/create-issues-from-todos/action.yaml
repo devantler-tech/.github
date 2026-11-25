@@ -19,7 +19,7 @@ runs:
     # The project token comes from the GitHub token broker (devantler-tech/monorepo
     # ADR 0020) through devantler-tech/.github's scan-for-todo-comments trust
     # policy: organization projects write only, scoped to the calling repository,
-    # on botantler-2. No App key is read: the calling job grants id-token: write,
+    # from either botantler App. No App key is read: the calling job grants id-token: write,
     # and the action's post step revokes the token. It is consumed only as the
     # to-do-to-issue action's PROJECTS_SECRET (adding issues to an org Project);
     # issue create/close/assign use the workflow's default GITHUB_TOKEN.

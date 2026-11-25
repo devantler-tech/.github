@@ -645,7 +645,7 @@ The organization project token comes from the GitHub token broker
 ([ADR 0020](https://github.com/devantler-tech/monorepo/blob/main/docs/adr/0020-one-github-token-broker.md))
 through [`.github/chainguard/scan-for-todo-comments.sts.yaml`](.github/chainguard/scan-for-todo-comments.sts.yaml):
 any devantler-tech repository's `main`, running this workflow on `main` or at a pinned commit, gets
-organization projects write only, scoped to itself, on botantler-2. No App key is read. The calling
+organization projects write only, scoped to itself, from either botantler App. No App key is read. The calling
 job must grant `id-token: write`, even with `dry-run: true`: GitHub checks a called workflow's
 permission ceiling when it loads the run, including for jobs that do not run.
 

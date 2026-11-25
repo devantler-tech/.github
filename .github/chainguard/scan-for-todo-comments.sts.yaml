@@ -6,7 +6,7 @@
 # running that workflow on main or at a commit it pins. The broker policy check
 # proves every such pin is a commit on this repository's main. The token adds the
 # scanner's issues to the organization board: organization projects write only,
-# scoped to the calling repository, on botantler-2. organization_projects is a
+# scoped to the calling repository, from either botantler App. organization_projects is a
 # privileged permission, so the broker policy check admits it only as this
 # workflow's listed cross-repository grant.
 issuer: https://token.actions.githubusercontent.com
@@ -19,4 +19,3 @@ claim_pattern:
 caller_repository: true
 permissions:
   organization_projects: write
-app: botantler-2

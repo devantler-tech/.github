@@ -1,6 +1,6 @@
 # Create Issues from TODOs
 
-Scan code for TODO comments and automatically create corresponding GitHub issues using the workflow's GitHub token. Project integration uses a separate token from the GitHub token broker ([ADR 0020](https://github.com/devantler-tech/monorepo/blob/main/docs/adr/0020-one-github-token-broker.md)), under devantler-tech/.github's `scan-for-todo-comments` trust policy: organization projects write only, on botantler-2. No App key is passed or read. The calling job needs `contents: read`, `issues: write` and, for project integration, `id-token: write`.
+Scan code for TODO comments and automatically create corresponding GitHub issues using the workflow's GitHub token. Project integration uses a separate token from the GitHub token broker ([ADR 0020](https://github.com/devantler-tech/monorepo/blob/main/docs/adr/0020-one-github-token-broker.md)), under devantler-tech/.github's `scan-for-todo-comments` trust policy: organization projects write only, from either botantler App. No App key is passed or read. The calling job needs `contents: read`, `issues: write` and, for project integration, `id-token: write`.
 
 ## Inputs
 
