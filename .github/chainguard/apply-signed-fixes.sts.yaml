@@ -7,8 +7,7 @@
 # repository's main. Only a same-repository pull_request run of that workflow may
 # exchange its token (fork and Dependabot runs never reach the signing step). It grants
 # contents write, scoped to the calling repository, so the signing commit API can commit
-# the applied fixes as botantler-2. botantler-2 bypasses no ruleset, so the token cannot
-# push to a protected branch or create a release tag.
+# the applied fixes. It names no App, so the broker mints from either botantler App.
 issuer: https://token.actions.githubusercontent.com
 # Both GitHub subject forms are admitted: repo:devantler-tech/<name>, and the immutable
 # repo:devantler-tech@<owner ID>/<name>@<repository ID> form (use_immutable_subject).
@@ -20,4 +19,3 @@ claim_pattern:
 caller_repository: true
 permissions:
   contents: write
-app: botantler-2

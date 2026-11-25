@@ -310,7 +310,7 @@ The signing token comes from the GitHub token broker
 ([ADR 0020](https://github.com/devantler-tech/monorepo/blob/main/docs/adr/0020-one-github-token-broker.md))
 through [`.github/chainguard/apply-signed-fixes.sts.yaml`](.github/chainguard/apply-signed-fixes.sts.yaml):
 a same-repository `pull_request` run of this workflow, on `main` or at a pinned commit, gets
-`contents: write` scoped to its own repository, on botantler-2. There is still no unsigned fallback.
+`contents: write` scoped to its own repository, from either botantler App. There is still no unsigned fallback.
 The `apply-fixes` job asks for `id-token: write`, so every caller must grant it, even one that never
 runs the signing step. Catalogue CI calls the generated
 [broker-free projection](#workflow-applied-fixes-ci).
