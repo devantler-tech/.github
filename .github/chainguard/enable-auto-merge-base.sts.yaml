@@ -9,7 +9,9 @@
 # that repository alone. It grants contents and pull requests write: the fallback when an
 # installation cannot issue a Workflows-scoped token.
 issuer: https://token.actions.githubusercontent.com
-subject_pattern: repo:devantler-tech/[A-Za-z0-9._-]+:(pull_request|ref:refs/heads/main|ref:refs/pull/[0-9]+/merge)
+# Both GitHub subject forms are admitted: repo:devantler-tech/<name>, and the immutable
+# repo:devantler-tech@<owner ID>/<name>@<repository ID> form (use_immutable_subject).
+subject_pattern: repo:devantler-tech(/[A-Za-z0-9._-]+|@178524219/[A-Za-z0-9._-]+@[0-9]+):(pull_request|ref:refs/heads/main|ref:refs/pull/[0-9]+/merge)
 claim_pattern:
   repository_owner_id: "178524219"
   job_workflow_ref: devantler-tech/\.github/\.github/workflows/enable-auto-merge\.yaml@refs/heads/main
