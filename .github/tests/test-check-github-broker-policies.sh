@@ -48,7 +48,7 @@ expect() {
   if [[ -n "$4" ]]; then
     printf '%s\n' "$4" >"$tmp/repo/.github/chainguard/case.sts.yaml"
   fi
-  (cd "$tmp/repo" && bash "$tmp/check.sh") >"$tmp/out" 2>&1 || status=$?
+  (cd "$tmp/repo" && GITHUB_REPOSITORY="${repository:-devantler-tech/platform}" bash "$tmp/check.sh") >"$tmp/out" 2>&1 || status=$?
   [[ "$status" == "$want" ]] || { cat "$tmp/out" >&2; fail "$name: expected exit $want, got $status"; }
   [[ -z "$message" ]] || grep -Fq -- "$message" "$tmp/out" || { cat "$tmp/out" >&2; fail "$name: missing '$message'"; }
   cases=$((cases + 1))
@@ -90,9 +90,9 @@ expect 1 'only the shared release workflow may use it' 'a release pattern on any
 expect 1 'only the shared release workflow may use it' 'botantler-1 for a lookalike workflow' \
   "$(policy "$issuer" "$owner"$'\n''  job_workflow_ref: devantler-tech/\.github/\.github/workflows/create-release-x\.yaml@main' "$writes" 'app: botantler-1')"
 expect 1 'pins unknown App' 'an unknown App' "$(policy "$issuer" "$owner" "$writes" 'app: devantler-tech-engineering')"
-expect 1 'grants administration' 'repository administration' \
+expect 1 'outside the reviewed allowlist' 'repository administration outside devantler-tech/.github' \
   "$(policy "$issuer" "$owner" $'permissions:\n  administration: read' 'app: botantler-2')"
-expect 1 'grants administration' 'organization administration' \
+expect 1 'outside the reviewed allowlist' 'organization administration outside devantler-tech/.github' \
   "$(policy "$issuer" "$owner" $'permissions:\n  organization_administration: write' 'app: botantler-2')"
 expect 1 'holds 2 YAML documents' 'a second document' \
   "$(policy "$issuer" "$owner" "$read_only"; policy 'issuer: https://issuer.example.com' '' "$read_only")"
@@ -117,6 +117,44 @@ expect 1 'uses YAML anchors, aliases, merge keys or duplicate keys' 'an alias' \
 expect 1 'uses YAML anchors, aliases, merge keys or duplicate keys' 'a duplicate key' \
   "$(policy "$issuer" "$owner" "$writes" $'app: botantler-2\napp: botantler-1')"
 expect 1 'is not a mapping' 'a list instead of a policy' $'---\n- issuer: https://token.actions.githubusercontent.com'
+expect 1 'must name at least one permission' 'no permissions at all' "$(policy "$issuer" "$owner" '')"
+expect 1 'must name at least one permission' 'an empty permission set' "$(policy "$issuer" "$owner" 'permissions: {}')"
+expect 1 'must name at least one permission' 'permissions that are not a mapping' "$(policy "$issuer" "$owner" 'permissions: read-all')"
+
+
+# Privileged permissions: only devantler-tech/.github's own policies, for a
+# listed workflow on main, each with exactly its listed set.
+# dotgithub <workflow file stem> <permission lines> [extra lines]
+dotgithub() {
+  printf '%s\n' '---' "$issuer" 'subject: repo:devantler-tech/.github:ref:refs/heads/main' 'claim_pattern:' "$owner" \
+    "  job_workflow_ref: devantler-tech/\\.github/\\.github/workflows/$1\\.yaml@refs/heads/main" 'permissions:' "$2" "${3:-}"
+}
+readonly audit_read=$'  metadata: read\n  administration: read'
+repository=devantler-tech/.github expect 0 '' 'a listed audit with administration read' "$(dotgithub governance-audits "$audit_read")"
+repository=devantler-tech/.github expect 0 '' 'custom properties admin on botantler-1' \
+  "$(dotgithub apply-custom-properties $'  organization_administration: write\n  organization_custom_properties: admin' 'app: botantler-1')"
+repository=devantler-tech/.github expect 0 '' 'the custom properties read-back on botantler-1' \
+  "$(dotgithub apply-custom-properties $'  metadata: read\n  organization_custom_properties: read' 'app: botantler-1')"
+expect 1 'outside the reviewed allowlist' 'a listed grant in another repository' "$(dotgithub governance-audits "$audit_read")"
+repository=devantler-tech/.github expect 1 'outside the reviewed allowlist' 'more than the listed set' \
+  "$(dotgithub governance-audits $'  administration: write' 'app: botantler-2')"
+repository=devantler-tech/.github expect 1 'outside the reviewed allowlist' 'a listed set plus another privileged permission' \
+  "$(dotgithub governance-audits $'  administration: read\n  members: read')"
+repository=devantler-tech/.github expect 1 'outside the reviewed allowlist' 'an unlisted workflow' "$(dotgithub stale-repository-identifier "$audit_read")"
+repository=devantler-tech/.github expect 1 'outside the reviewed allowlist' 'members read for an unlisted grant' \
+  "$(dotgithub governance-audits $'  members: read')"
+repository=devantler-tech/.github expect 1 'outside the reviewed allowlist' 'a listed workflow on another branch' \
+  "$(dotgithub governance-audits "$audit_read" | sed 's|yaml@refs/heads/main|yaml@refs/heads/other|')"
+repository=devantler-tech/.github expect 1 'outside the reviewed allowlist' 'another subject' \
+  "$(dotgithub governance-audits "$audit_read" | sed 's|^subject: repo:devantler-tech/.github:ref:refs/heads/main$|subject: repo:devantler-tech/.github:ref:refs/heads/other|')"
+repository=devantler-tech/.github expect 1 'outside the reviewed allowlist' 'a subject pattern beside the subject' \
+  "$(dotgithub governance-audits "$audit_read" 'subject_pattern: repo:.*')"
+repository=devantler-tech/.github expect 1 'outside the reviewed allowlist' 'a workflow pattern widened by an alternative' \
+  "$(dotgithub governance-audits "$audit_read" | sed 's|yaml@refs/heads/main|yaml@refs/heads/main\|.*|')"
+repository=devantler-tech/.github expect 1 'outside the reviewed allowlist' 'a workflow from another repository' \
+  "$(dotgithub governance-audits "$audit_read" | sed 's|devantler-tech/\\.github/\\.github/workflows|devantler-tech/platform/\\.github/workflows|')"
+# botantler-1 is only refused where it could create release tags.
+expect 0 '' 'botantler-1 read-only outside the release workflow' "$(policy "$issuer" "$owner" "$read_only" 'app: botantler-1')"
 
 # Every policy in a repository is checked, not just the first.
 rm -rf "$tmp/repo"
