@@ -62,7 +62,9 @@ expect 0 '' 'the shared release workflow pinned to botantler-1' \
   "$(policy "$issuer" "$owner"$'\n'"$release_workflow" "$writes" $'app: botantler-1\ncaller_repository: true')"
 # A release caller pins the shared workflow by commit; the pin check proves it merged.
 readonly pinned_release='  job_workflow_ref: devantler-tech/\.github/\.github/workflows/create-release\.yaml@([0-9a-f]{40}|refs/heads/main)'
-readonly any_caller='subject_pattern: repo:devantler-tech/[A-Za-z0-9._-]+:ref:refs/heads/main'
+# Both subject forms a devantler-tech repository can issue: name-only, and the immutable form with
+# the owner and repository IDs.
+readonly any_caller='subject_pattern: repo:devantler-tech(/[A-Za-z0-9._-]+|@178524219/[A-Za-z0-9._-]+@[0-9]+):ref:refs/heads/main'
 # release_policy <subject line> <extra lines>
 release_policy() {
   printf '%s\n' '---' "$issuer" "$1" 'claim_pattern:' "$owner" "$pinned_release" "$writes" 'app: botantler-1' "${2:-}"
@@ -71,6 +73,14 @@ expect 0 '' 'the release workflow at a pinned commit, from any devantler-tech ma
   "$(release_policy "$any_caller" 'caller_repository: true')"
 expect 0 '' 'the release workflow at a pinned commit, for one repository' \
   "$(release_policy 'subject: repo:devantler-tech/ksail:ref:refs/heads/main' 'caller_repository: true')"
+expect 0 '' 'the release workflow at a pinned commit, for one immutable-subject repository' \
+  "$(release_policy 'subject: repo:devantler-tech@178524219/world-at-ruin@1303188705:ref:refs/heads/main' 'caller_repository: true')"
+expect 1 "must admit only a devantler-tech repository's main branch" 'a caller pattern that refuses immutable subjects' \
+  "$(release_policy 'subject_pattern: repo:devantler-tech/[A-Za-z0-9._-]+:ref:refs/heads/main' 'caller_repository: true')"
+expect 1 "must admit only a devantler-tech repository's main branch" 'an immutable subject from another organization' \
+  "$(release_policy 'subject: repo:devantler-tech@1/world-at-ruin@1303188705:ref:refs/heads/main' 'caller_repository: true')"
+expect 1 "must admit only a devantler-tech repository's main branch" 'an immutable subject from pull requests' \
+  "$(release_policy 'subject: repo:devantler-tech@178524219/world-at-ruin@1303188705:pull_request' 'caller_repository: true')"
 expect 1 'must reach only the calling repository' 'a release token for every repository' "$(release_policy "$any_caller")"
 expect 1 'must reach only the calling repository' 'a release token for a named repository list' \
   "$(release_policy "$any_caller" $'caller_repository: true\nrepositories:\n  - platform')"

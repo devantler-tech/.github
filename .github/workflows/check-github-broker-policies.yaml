@@ -48,8 +48,12 @@ jobs:
           readonly customer_repository_ids=()
           # A shared workflow called from another repository runs on that
           # repository's main branch, so its policy admits exactly this subject
-          # pattern: any devantler-tech repository, main only.
-          readonly caller_subject_pattern='repo:devantler-tech/[A-Za-z0-9._-]+:ref:refs/heads/main'
+          # pattern: any devantler-tech repository, main only. A repository
+          # issues one of two subject forms, set by its OIDC subject setting
+          # (use_immutable_subject): repo:devantler-tech/<name> or the immutable
+          # repo:devantler-tech@<owner ID>/<name>@<repository ID>. Both are
+          # admitted, so no caller is refused for its repository's age.
+          readonly caller_subject_pattern='repo:devantler-tech(/[A-Za-z0-9._-]+|@178524219/[A-Za-z0-9._-]+@[0-9]+):ref:refs/heads/main'
           # botantler-1 is the one App that can create release tags, which takes
           # contents: write. So a botantler-1 policy that grants contents write
           # must be the shared release workflow, on main or at the commit its
@@ -200,8 +204,8 @@ jobs:
                     fail "${policy}" 'pins botantler-1 with contents write, so its token must reach only the calling repository: set caller_repository: true, with no repositories or repository_ids'
                   subject="$(jq -r 'if has("subject") and has("subject_pattern") then "" else (.subject // "") end' <<<"${json}")"
                   if [[ "$(jq -r 'if has("subject") then "" else (.subject_pattern // "") end' <<<"${json}")" != "${caller_subject_pattern}" &&
-                    ! "${subject}" =~ ^repo:devantler-tech/[A-Za-z0-9._-]+:ref:refs/heads/main$ ]]; then
-                    fail "${policy}" "pins botantler-1 with contents write, so it must admit only a devantler-tech repository's main branch: subject repo:devantler-tech/<name>:ref:refs/heads/main, or subject_pattern ${caller_subject_pattern}"
+                    ! "${subject}" =~ ^${caller_subject_pattern}$ ]]; then
+                    fail "${policy}" "pins botantler-1 with contents write, so it must admit only a devantler-tech repository's main branch: a subject matching, or the subject_pattern, ${caller_subject_pattern}"
                   fi
                 fi
                 ;;
