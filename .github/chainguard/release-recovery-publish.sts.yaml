@@ -3,8 +3,8 @@
 # .github/workflows/publish-release-recovery.yaml, served by the GitHub token broker
 # (devantler-tech/monorepo ADR 0020, #1001). Only that workflow, dispatched on this repository's main
 # branch, may exchange its Actions OIDC token. It grants contents write and actions read on this
-# repository alone, to publish the release for a tag that was already pushed. It creates no tag, so
-# it pins botantler-2, not the release-tag App.
+# repository alone, to publish the release for a tag that was already pushed. It names no App, so
+# the broker mints from either botantler App.
 issuer: https://token.actions.githubusercontent.com
 subject: repo:devantler-tech/.github:ref:refs/heads/main
 claim_pattern:
@@ -15,4 +15,3 @@ repositories:
 permissions:
   actions: read
   contents: write
-app: botantler-2
