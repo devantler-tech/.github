@@ -8,24 +8,27 @@ on:
 permissions:
   contents: read
   issues: write
+  # Proves this workflow's identity to the GitHub token broker.
+  id-token: write
 
 jobs:
   stale-repository-identifier:
     name: 🧹 Stale repository identifier
     runs-on: ubuntu-latest
     steps:
-      - name: 🔑 Get GitHub App Token
-        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+      # The GitHub token broker (devantler-tech/monorepo ADR 0020) exchanges this
+      # workflow's OIDC token for a read-only organization token, as granted by
+      # .github/chainguard/stale-repository-identifier.sts.yaml. No App key is
+      # read here, and the action's post step revokes the token. stale-repos only
+      # reads repository, pull request and release activity; the report issue is
+      # written with the workflow's own token below.
+      - name: 🔑 Get a read-only organization token from the token broker
+        uses: octo-sts/action@f603d3be9d8dd9871a265776e625a27b00effe05 # v1.1.1
         id: app-token
         with:
-          app-id: ${{ vars.APP_ID }}
-          private-key: ${{ secrets.APP_PRIVATE_KEY }}
-          # Least-privilege scope (zizmor github-app): without these the token
-          # inherits all of the App's installation permissions. stale-repos only
-          # reads repo/PR/release activity and opens a report issue.
-          permission-contents: read
-          permission-pull-requests: read
-          permission-issues: write
+          domain: sts.platform.devantler.tech
+          scope: devantler-tech
+          identity: stale-repository-identifier
 
       - name: 📑 Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
