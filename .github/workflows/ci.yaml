@@ -2640,11 +2640,20 @@ jobs:
             wname="$(basename "$wf")"
             if ! WORKFLOW_LOCAL="./.github/workflows/$wname" WORKFLOW_NATIVE="\$/.github/workflows/$wname" \
               yq -e '.jobs | to_entries | any_c(.value.uses == strenv(WORKFLOW_LOCAL) or .value.uses == strenv(WORKFLOW_NATIVE))' "$ci" >/dev/null; then
-              # TODO smoke calls use the complete read-only projection. Accept
-              # production coverage only after permission, execution and parity
-              # checks pass; a copied or truncated workflow is insufficient.
-              if [[ "$wname" == scan-for-todo-comments.yaml ]]; then
-                if ! bash .github/tests/test-todo-workflow-readonly.sh; then
+              # Some production workflows cannot be called from pull-request CI. TODO
+              # smoke calls use the complete read-only projection, and a workflow that
+              # asks for id-token: write to reach the GitHub token broker is called
+              # through its broker-free projection (test-ci-idtoken-boundary.sh).
+              # Accept production coverage only after that projection's permission,
+              # execution and parity checks pass; a copied or truncated workflow is
+              # insufficient.
+              proof=''
+              case "$wname" in
+                scan-for-todo-comments.yaml) proof=.github/tests/test-todo-workflow-readonly.sh ;;
+                apply-signed-fixes.yaml) proof=.github/tests/test-apply-signed-fixes-ci-projection.sh ;;
+              esac
+              if [[ -n "$proof" ]]; then
+                if ! bash "$proof"; then
                   status=1
                 fi
                 continue
