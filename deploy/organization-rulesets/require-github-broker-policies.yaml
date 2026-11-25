@@ -1,0 +1,41 @@
+# Every repository's GitHub token broker trust policies must admit only reviewed
+# callers and pin the App their access needs (devantler-tech/monorepo ADR 0020,
+# #1001). The required workflow holds the rules; this ruleset makes every pull
+# request to every default branch pass it, with no repository opt-out. The
+# organization admin bypass matches the other required-workflow rules. Net-new,
+# non-deleting.
+apiVersion: enterprise.github.m.upbound.io/v1alpha1
+kind: OrganizationRuleset
+metadata:
+  name: require-github-broker-policies
+spec:
+  managementPolicies:
+    - Observe
+    - Create
+    - Update
+    - LateInitialize
+  forProvider:
+    name: Require workflow - GitHub token broker policies
+    target: branch
+    enforcement: active
+    bypassActors:
+      - actorType: OrganizationAdmin
+        bypassMode: always
+    conditions:
+      - refName:
+          - include: ["~DEFAULT_BRANCH"]
+            exclude: []
+        repositoryName:
+          - include: ["~ALL"]
+            exclude: []
+            protected: false
+    rules:
+      - requiredWorkflows:
+          - doNotEnforceOnCreate: true
+            requiredWorkflow:
+              - repositoryId: 933213756
+                path: .github/workflows/check-github-broker-policies.yaml
+                ref: refs/heads/main
+  providerConfigRef:
+    kind: ProviderConfig
+    name: default

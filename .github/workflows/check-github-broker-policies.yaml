@@ -1,0 +1,117 @@
+name: 🔐 Check GitHub Token Broker Policies
+
+# Every repository's GitHub token broker trust policies (.github/chainguard/
+# <identity>.sts.yaml, devantler-tech/monorepo ADR 0020) must admit only
+# reviewed callers and pin the App their access needs. An organization ruleset
+# requires this workflow on every repository's default branch
+# (deploy/organization-rulesets/require-github-broker-policies.yaml). The rules
+# live in this file, read from this repository's main branch, so the pull
+# request under review cannot change them; its files are only data.
+
+permissions: {}
+
+on:
+  workflow_call:
+  ### Required Workflow Triggers ###
+  pull_request:
+  merge_group:
+  ##################################
+
+jobs:
+  check:
+    name: Check broker trust policies
+    timeout-minutes: 5
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: 🛡️ Harden runner
+        uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
+        with:
+          egress-policy: audit
+
+      - name: 📑 Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: 🔐 Check broker trust policies
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Callers: GitHub Actions tokens from the devantler-tech organization,
+          # matched by its numeric ID, which survives renames and cannot be
+          # re-registered. Named customer repositories join by repository ID,
+          # here and in the broker's caller gate (devantler-tech/platform).
+          readonly actions_issuer=https://token.actions.githubusercontent.com
+          readonly org_id=178524219
+          readonly customer_repository_ids=()
+          # Only the shared release workflow may use botantler-1, the one App
+          # that can create release tags.
+          readonly release_workflow='devantler-tech/\.github/\.github/workflows/create-release\.yaml@'
+          command -v yq >/dev/null || { echo '::error::yq is not installed'; exit 2; }
+          shopt -s nullglob
+          policies=(.github/chainguard/*.sts.yaml)
+          shopt -u nullglob
+          failures=0
+          fail() {
+            echo "::error file=$1::$2"
+            failures=$((failures + 1))
+          }
+          for policy in "${policies[@]}"; do
+            if ! documents="$(yq ea '[.] | length' "${policy}" 2>/dev/null)"; then
+              fail "${policy}" 'is not valid YAML'
+              continue
+            fi
+            if [[ "${documents}" != 1 ]]; then
+              fail "${policy}" "holds ${documents} YAML documents, not one"
+              continue
+            fi
+            if [[ "$(yq 'has("issuer_pattern") or has("app_pattern")' "${policy}")" != false ]]; then
+              fail "${policy}" 'uses issuer_pattern or app_pattern; name the issuer and App exactly'
+            fi
+            if [[ "$(yq '.issuer // ""' "${policy}")" != "${actions_issuer}" ]]; then
+              fail "${policy}" "must accept exactly the GitHub Actions issuer ${actions_issuer}"
+            fi
+            owner="$(yq '.claim_pattern.repository_owner_id // ""' "${policy}")"
+            owner_tag="$(yq '.claim_pattern.repository_owner_id | tag' "${policy}")"
+            repository="$(yq '.claim_pattern.repository_id // ""' "${policy}")"
+            repository_tag="$(yq '.claim_pattern.repository_id | tag' "${policy}")"
+            caller=false
+            if [[ "${owner}" == "${org_id}" && "${owner_tag}" == '!!str' ]]; then
+              caller=true
+            fi
+            for id in ${customer_repository_ids[@]+"${customer_repository_ids[@]}"}; do
+              if [[ "${repository}" == "${id}" && "${repository_tag}" == '!!str' ]]; then
+                caller=true
+              fi
+            done
+            if [[ "${caller}" != true ]]; then
+              fail "${policy}" "must pin claim_pattern.repository_owner_id to the string \"${org_id}\" (devantler-tech), or repository_id to a listed customer repository"
+            fi
+            if [[ "$(yq '.permissions // {} | (has("administration") or has("organization_administration"))' "${policy}")" != false ]]; then
+              fail "${policy}" 'grants administration; only a reviewed platform workload policy may, once one exists'
+            fi
+            writes="$(yq '[.permissions // {} | .[] | select(. == "write" or . == "admin")] | length' "${policy}")"
+            app="$(yq '.app // ""' "${policy}")"
+            workflow="$(yq '.claim_pattern.job_workflow_ref // ""' "${policy}")"
+            case "${app}" in
+              botantler-1)
+                [[ "${workflow}" == "${release_workflow}"* ]] ||
+                  fail "${policy}" 'pins botantler-1, which may create release tags; only the shared release workflow may use it'
+                ;;
+              botantler-2) ;;
+              '')
+                [[ "${writes}" == 0 ]] ||
+                  fail "${policy}" 'grants write access without an App pin; pin botantler-2 (or botantler-1 for the shared release workflow)'
+                ;;
+              *)
+                fail "${policy}" "pins unknown App ${app}; use botantler-1 or botantler-2"
+                ;;
+            esac
+          done
+          if ((failures > 0)); then
+            echo "::error::${failures} problem(s) in ${#policies[@]} broker trust policies"
+            exit 1
+          fi
+          echo "${#policies[@]} broker trust policies admit only reviewed callers and pin their App"

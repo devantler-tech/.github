@@ -171,6 +171,7 @@ was retired after native positive and tampering controls passed under the shared
 | [Dependency review](#workflow-dependency-review) | Shared dependency-security PR gate | [dependency-review.yaml](.github/workflows/dependency-review.yaml) |
 | [Enable auto-merge](#workflow-enable-auto-merge) | Shared trusted-author PR merge policy | [enable-auto-merge.yaml](.github/workflows/enable-auto-merge.yaml) |
 | [Scan workflow vulnerabilities](#workflow-scan-workflows) | Shared workflow-security PR gate | [scan-for-workflow-vulnerabilities.yaml](.github/workflows/scan-for-workflow-vulnerabilities.yaml) |
+| [Check GitHub token broker policies](#workflow-github-broker-policies) | Shared token-broker grant PR gate | [check-github-broker-policies.yaml](.github/workflows/check-github-broker-policies.yaml) |
 | [Validate Go project](#workflow-validate-go) | Shared Go validation, also reused by repository-owned jobs | [validate-go-project.yaml](.github/workflows/validate-go-project.yaml) |
 | [Repository PR admission](#workflow-repository-admission) | Shared read-only runner for each enrolled product's reviewed-base validation | [repository-pr-admission.yaml](.github/workflows/repository-pr-admission.yaml) |
 
@@ -745,6 +746,27 @@ jobs:
       contents: read
       actions: read
       security-events: write
+```
+
+</details>
+
+<a name="workflow-github-broker-policies"></a>
+
+### 🔐 Check GitHub Token Broker Policies
+
+<details>
+<summary>Purpose, interface and usage</summary>
+
+[.github/workflows/check-github-broker-policies.yaml](.github/workflows/check-github-broker-policies.yaml) checks every GitHub token broker trust policy (`.github/chainguard/<identity>.sts.yaml`) in a pull request ([ADR 0020](https://github.com/devantler-tech/monorepo/blob/main/docs/adr/0020-one-github-token-broker.md)). A policy must name the GitHub Actions issuer exactly, pin its callers to the devantler-tech organization ID or a listed customer repository, pin botantler-2 for write access (botantler-1 only for the shared release workflow), and grant no administration. The organization ruleset [`require-github-broker-policies`](deploy/organization-rulesets/require-github-broker-policies.yaml) requires it on every repository's default branch; it takes no inputs or secrets.
+
+#### Usage
+
+```yaml
+jobs:
+  broker-policies:
+    uses: devantler-tech/.github/.github/workflows/check-github-broker-policies.yaml@<full-commit-sha> # vX.Y.Z
+    permissions:
+      contents: read
 ```
 
 </details>

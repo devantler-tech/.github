@@ -49,6 +49,7 @@ verb — e.g. `require-pull-request.yaml`). Repo-scoped rulesets live next door 
 | `require-world-at-ruin-trusted-regressions.yaml` | **Require workflow - World at Ruin trusted regressions** (retired) | Managed (Create), non-deleting — disabled with one inert rule and no workflow association after native shared-admission proof |
 | `require-monorepo-ci-aggregate-contract.yaml` | **Require workflow - Monorepo CI aggregate contract** (retired) | Managed (Create), non-deleting — disabled with one inert rule and no workflow association after native shared-admission proof |
 | `require-repository-pr-admission.yaml` | **Require workflow - Repository PR admission** | Managed (Create) — target monorepo, this catalogue and World at Ruin; trusted shared source runs each product-owned base-revision action, with a repository-bound executed result required for each |
+| `require-github-broker-policies.yaml` | **Require workflow - GitHub token broker policies** (net-new) | Managed (Create) — every repository's default branch must pass `check-github-broker-policies.yaml`: each token broker trust policy pins its callers and the App its access needs; organization admin bypass only, no repository opt-out |
 | `require-dotgithub-deploy-guards.yaml` | **Require workflow - .github deploy guards** (retired) | Managed (Create), non-deleting — disabled with one inert rule and no workflow association after native shared-admission proof |
 | `require-go-template-validation.yaml` | **Require workflow - Go template validation** (retired) | Managed (Create) — disabled after native repository validation proof; retain identity, selectors and non-deleting lifecycle |
 | `require-dotnet-template-tests.yaml` | **Require workflow - .NET template tests** (retired) | Managed (Create) — disabled with one inert rule (no required workflow; the provider requires a rules block) after native repository validation proof; retain identity, selectors and non-deleting lifecycle |
@@ -339,3 +340,22 @@ organization Apps, and App tokens are to come from a hosted token service with i
 
 `tests/release-tag-creation-ruleset.sh` pins both rulesets and the empty bypass list of
 `protect-release-tags.yaml`.
+
+### GitHub token broker policies
+
+[`require-github-broker-policies.yaml`](require-github-broker-policies.yaml) makes every pull
+request to every default branch pass the [broker policy check](../../.github/workflows/check-github-broker-policies.yaml)
+([ADR 0020](https://github.com/devantler-tech/monorepo/blob/main/docs/adr/0020-one-github-token-broker.md), #1001).
+The check reads each `.github/chainguard/*.sts.yaml` and refuses a policy that:
+
+- names any issuer but GitHub Actions, or uses `issuer_pattern` or `app_pattern`;
+- does not pin its callers to the devantler-tech organization ID (`repository_owner_id`) or a listed
+  customer `repository_id`;
+- grants write access without pinning botantler-2, or pins botantler-1 (the one App that can create
+  release tags) outside the shared release workflow;
+- grants administration.
+
+The rules live in the workflow on this repository's `main` branch, so the pull request under review
+cannot change them. The broker's own caller gate refuses outside callers at run time; this check keeps
+each grant inside that boundary least-privileged. `tests/github-broker-policies-ruleset.sh` pins the
+ruleset, and `.github/tests/test-check-github-broker-policies.sh` exercises every rule.
