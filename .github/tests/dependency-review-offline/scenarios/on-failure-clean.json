@@ -1,5 +1,5 @@
 {
-  "description": "A clean review with comments on failure only: nothing failed, so the action never touches the pull request's comments.",
+  "description": "A clean review with comments on failure only: nothing failed, so the action only reads the pull request's comments to look for an earlier summary and never writes one.",
   "inputs": {
     "comment-summary-in-pr": "on-failure",
     "warn-only": "false"
@@ -8,6 +8,12 @@
     {
       "method": "GET",
       "path": "/repos/offline/fixture/dependency-graph/compare/1111111111111111111111111111111111111111...2222222222222222222222222222222222222222",
+      "status": 200,
+      "body": []
+    },
+    {
+      "method": "GET",
+      "path": "/repos/offline/fixture/issues/7/comments",
       "status": 200,
       "body": []
     }
@@ -24,6 +30,11 @@
         "query": {
           "per_page": "5"
         }
+      },
+      {
+        "method": "GET",
+        "path": "/repos/offline/fixture/issues/7/comments",
+        "query": {}
       }
     ]
   }

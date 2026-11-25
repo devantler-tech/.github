@@ -22,7 +22,7 @@
     "annotations": [
       {
         "level": "error",
-        "includes": "Dependency review is not supported on this repository"
+        "includes": "Resource not accessible by integration"
       }
     ],
     "requests": [
