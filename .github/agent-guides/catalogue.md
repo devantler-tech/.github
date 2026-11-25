@@ -221,6 +221,7 @@ pass; the generic budget bound is not permission to omit tests or declare that o
 | Workflow | Ownership |
 |---|---|
 | `apply-workflow-execution-policies.yaml` | This repository |
+| `check-github-broker-policies.yaml` | Shared organization-required check of every repository's token broker trust policies; each repository owns its policies |
 | `apply-custom-properties.yaml` | This repository; organization schema only, repository values reconcile through Crossplane |
 | `cd.yaml` | This repository |
 | `ci.yaml` | This repository |

@@ -2570,6 +2570,12 @@ jobs:
         shell: bash
         run: bash .github/tests/test-required-workflow-no-local-calls.sh
 
+      # The organization-required broker policy check (#1001) refuses every way a trust
+      # policy could admit an outside caller or take the wrong App.
+      - name: 🔐 Check the GitHub token broker policy rules
+        shell: bash
+        run: bash .github/tests/test-check-github-broker-policies.sh
+
       # The guard above pins the reviewed signed-fixes workflow CONTENT, so an unchanged release
       # passes untouched and every unsafe reference still fails for its own reason (#484).
       - name: 🔗 Check the sibling-call guard rejects unsafe signed-fixes references
@@ -4995,6 +5001,9 @@ jobs:
 
       - name: 🧪 Test release tag creation rulesets
         run: bash tests/release-tag-creation-ruleset.sh
+
+      - name: 🧪 Test the GitHub token broker policy ruleset
+        run: bash tests/github-broker-policies-ruleset.sh
 
       - name: 🧪 Test independent Monorepo CI aggregate ruleset
         run: bash tests/ci-aggregate-ruleset.sh
