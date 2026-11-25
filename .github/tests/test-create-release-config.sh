@@ -44,7 +44,7 @@ for identity in create-release create-release-with-hooks; do
     grants='{"contents":"write","issues":"write","pull_requests":"write"}'
   if ! yq -o=json '.' "$policy" | jq -e --argjson grants "$grants" '. == {
       issuer:"https://token.actions.githubusercontent.com",
-      subject_pattern:"repo:devantler-tech/[A-Za-z0-9._-]+:ref:refs/heads/main",
+      subject_pattern:"repo:devantler-tech(/[A-Za-z0-9._-]+|@178524219/[A-Za-z0-9._-]+@[0-9]+):ref:refs/heads/main",
       claim_pattern:{repository_owner_id:"178524219",
         job_workflow_ref:"devantler-tech/\\.github/\\.github/workflows/create-release\\.yaml@([0-9a-f]{40}|refs/heads/main)"},
       caller_repository:true, permissions:$grants, app:"botantler-1"}' >/dev/null; then

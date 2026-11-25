@@ -9,7 +9,9 @@
 # contents, issues and pull requests write, the default, which keeps
 # semantic-release's success and fail notification hooks working.
 issuer: https://token.actions.githubusercontent.com
-subject_pattern: repo:devantler-tech/[A-Za-z0-9._-]+:ref:refs/heads/main
+# Both GitHub subject forms are admitted: repo:devantler-tech/<name>, and the immutable
+# repo:devantler-tech@<owner ID>/<name>@<repository ID> form (use_immutable_subject).
+subject_pattern: repo:devantler-tech(/[A-Za-z0-9._-]+|@178524219/[A-Za-z0-9._-]+@[0-9]+):ref:refs/heads/main
 claim_pattern:
   repository_owner_id: "178524219"
   job_workflow_ref: devantler-tech/\.github/\.github/workflows/create-release\.yaml@([0-9a-f]{40}|refs/heads/main)
