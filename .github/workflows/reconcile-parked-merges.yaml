@@ -34,8 +34,8 @@ jobs:
       # The GitHub token broker (devantler-tech/monorepo ADR 0020) grants this
       # authority through .github/chainguard/reconcile-parked-merges.sts.yaml:
       # every parked pull request in the organization is in scope, so metadata
-      # read and contents and pull request write, organization-wide. The policy
-      # pins botantler-2, which cannot create release tags. No App key is read,
+      # read and contents and pull request write, organization-wide, from either
+      # botantler App. No App key is read,
       # and the action's post step revokes the token.
       - name: Get organization-wide revocation token
         id: app-token

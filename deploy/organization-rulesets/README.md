@@ -316,7 +316,7 @@ Actions integration as a bypass actor in an organization ruleset.
 
 | Who may create a `v*` tag | How each one creates it today |
 |---|---|
-| botantler-1 (App `1025824`) | `create-release.yaml` with the organization's `APP_CLIENT_ID` in every repository (ksail included since ksail-bot was deleted), and agent-plugins' `release-please.yaml` |
+| botantler-1 (App `1025824`) and botantler-2 (App `4126012`) | `create-release.yaml` in every repository (ksail included since ksail-bot was deleted), and agent-plugins' `release-please.yaml`. The two Apps are interchangeable: the GitHub token broker mints from whichever has more rate limit left ([ADR 0020](https://github.com/devantler-tech/monorepo/blob/main/docs/adr/0020-one-github-token-broker.md)) |
 | Organization admins | A release cut by hand |
 
 Other tag names that existing workflows create are not release tags and are not restricted.
@@ -349,14 +349,23 @@ request to every default branch pass the [broker policy check](../../.github/wor
 The check reads each `.github/chainguard/*.sts.yaml` and refuses a policy that:
 
 - names any issuer but GitHub Actions, or uses `issuer_pattern` or `app_pattern`;
-- does not pin its callers to the devantler-tech organization ID (`repository_owner_id`) or a listed
-  customer `repository_id`;
+- does not pin its callers to the devantler-tech organization ID (`repository_owner_id`); no other
+  caller is ever admitted, customers included;
 - names no permissions (GitHub can read an empty set as every permission the App holds);
-- grants write access without an App pin, or pins botantler-1 (the one App that can create release
-  tags) with `contents: write` outside the shared release workflow's reviewed revision on `main`;
+- names an App. The two botantler Apps are interchangeable, so the broker mints from whichever has
+  more rate limit left. Only a listed workflow in this repository may pin the one App that holds a
+  permission it needs: today `apply-custom-properties`, on botantler-1, the only App with custom
+  properties;
 - grants a privileged permission (`administration`, `members` or any `organization_*`) unless it is
-  one of this repository's own policies, for a listed workflow on `main`, with exactly that
-  workflow's reviewed set.
+  one of this repository's own policies, for a listed workflow on `main`, or a listed shared
+  workflow's caller policy (any devantler-tech `main`, scoped to the caller, naming no App), with
+  exactly that workflow's reviewed set.
+
+It also refuses a pull request whose workflows pin a `devantler-tech/.github` shared workflow at a
+commit (`…@<sha>`) that is not on this repository's `main`. Callers pin shared workflows by commit,
+so their policies admit pinned commits, and GitHub would otherwise also resolve an unmerged commit or
+one pushed to a fork (an impostor commit). Calls are read through YAML and matched regardless of
+case, and a commit it cannot look up fails the check. It reads only each repository's own direct calls (`jobs.*.uses`): a third-party reusable workflow that itself calls a `devantler-tech/.github` workflow at an unmerged commit is outside what it can see.
 
 The rules live in the workflow on this repository's `main` branch, so the pull request under review
 cannot change them. The broker's own caller gate refuses outside callers at run time; this check keeps
