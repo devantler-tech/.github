@@ -11,7 +11,7 @@ verify_reporter() {
     if $report.permissions != {contents:"read",issues:"write"}
     then error("reporter must have only source read and issue reporting authority")
     elif ($report.steps | length) != 3 or
-      $report.steps[0].uses != "step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a" or
+      $report.steps[0].uses != "step-security/harden-runner@aebdcf6156ab6691adf63218240e476564a1ed4c" or
       $report.steps[0].if != null or $report.steps[0].env != null or
       $report.steps[0]["continue-on-error"] != null
     then error("reporter must first harden its runner unconditionally")

@@ -258,7 +258,7 @@ a mutable broker action	.jobs.reconcile.steps[2].uses="octo-sts/action@main"
 MUTATIONS
 # The token's authority lives in the broker trust policy: organization-wide
 # metadata read and contents and pull request write, for exactly this workflow
-# on main, pinned to botantler-2, which cannot create release tags.
+# on main, naming no App so the broker mints from either botantler App.
 verify_policy() {
   jq -e '. == {
     issuer:"https://token.actions.githubusercontent.com",
@@ -266,8 +266,7 @@ verify_policy() {
     claim_pattern:{
       repository_owner_id:"178524219",
       job_workflow_ref:"devantler-tech/\\.github/\\.github/workflows/reconcile-parked-merges\\.yaml@refs/heads/main"},
-    permissions:{metadata:"read",contents:"write",pull_requests:"write"},
-    app:"botantler-2"}' "$1" >/dev/null
+    permissions:{metadata:"read",contents:"write",pull_requests:"write"}}' "$1" >/dev/null
 }
 yq -o=json '.' "$root/.github/chainguard/reconcile-parked-merges.sts.yaml" >"$work/policy.json"
 verify_policy "$work/policy.json" || fail 'broker policy changed'
@@ -281,8 +280,8 @@ while IFS=$'\t' read -r name mutation; do
 done <<'MUTATIONS'
 wider token scope	.permissions.workflows="write"
 administration	.permissions.administration="read"
-the release-capable App	.app="botantler-1"
-no App pin	del(.app)
+a botantler-1 pin	.app="botantler-1"
+a botantler-2 pin	.app="botantler-2"
 another branch	.subject="repo:devantler-tech/.github:ref:refs/heads/other"
 another workflow	.claim_pattern.job_workflow_ref="devantler-tech/\\.github/\\.github/workflows/stale-repository-identifier\\.yaml@refs/heads/main"
 no owner pin	del(.claim_pattern.repository_owner_id)
