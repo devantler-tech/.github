@@ -11,7 +11,7 @@ name: 🔐 Check GitHub Token Broker Policies
 permissions: {}
 
 on:
-  workflow_call:
+  # Required by the organization ruleset only; nothing calls it as a reusable workflow.
   ### Required Workflow Triggers ###
   pull_request:
   merge_group:
@@ -47,8 +47,13 @@ jobs:
           readonly org_id=178524219
           readonly customer_repository_ids=()
           # Only the shared release workflow may use botantler-1, the one App
-          # that can create release tags.
-          readonly release_workflow='devantler-tech/\.github/\.github/workflows/create-release\.yaml@'
+          # that can create release tags. Its job_workflow_ref pattern must be
+          # exactly one of these reviewed forms, so no regex alternative can
+          # widen it: the workflow pinned to a full commit, or on main.
+          readonly release_workflow_patterns=(
+            'devantler-tech/\.github/\.github/workflows/create-release\.yaml@[0-9a-f]{40}'
+            'devantler-tech/\.github/\.github/workflows/create-release\.yaml@refs/heads/main'
+          )
           command -v yq >/dev/null || { echo '::error::yq is not installed'; exit 2; }
           shopt -s nullglob
           policies=(.github/chainguard/*.sts.yaml)
@@ -97,7 +102,11 @@ jobs:
             workflow="$(yq '.claim_pattern.job_workflow_ref // ""' "${policy}")"
             case "${app}" in
               botantler-1)
-                [[ "${workflow}" == "${release_workflow}"* ]] ||
+                release=false
+                for pattern in "${release_workflow_patterns[@]}"; do
+                  [[ "${workflow}" != "${pattern}" ]] || release=true
+                done
+                [[ "${release}" == true ]] ||
                   fail "${policy}" 'pins botantler-1, which may create release tags; only the shared release workflow may use it'
                 ;;
               botantler-2) ;;

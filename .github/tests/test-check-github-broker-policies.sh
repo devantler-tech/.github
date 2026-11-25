@@ -16,8 +16,8 @@ fail() {
 }
 
 # --- The workflow's shape -------------------------------------------------------
-[[ "$(yq -o=json -I=0 '.on | keys' "$workflow")" == '["workflow_call","pull_request","merge_group"]' ]] ||
-  fail 'a required workflow must trigger on workflow_call, pull_request and merge_group'
+[[ "$(yq -o=json -I=0 '.on | keys' "$workflow")" == '["pull_request","merge_group"]' ]] ||
+  fail 'a required-only workflow triggers on pull_request and merge_group, and nothing calls it'
 [[ "$(yq -o=json -I=0 '.permissions' "$workflow")" == '{}' ]] || fail 'top-level permissions must be empty'
 [[ "$(yq '.jobs | keys | join(",")' "$workflow")" == check ]] || fail 'expected exactly one job, check'
 [[ "$(yq -o=json -I=0 '.jobs.check.permissions' "$workflow")" == '{"contents":"read"}' ]] ||
@@ -79,6 +79,12 @@ expect 1 'name the issuer and App exactly' 'an App pattern' "$(policy "$issuer" 
 expect 1 'grants write access without an App pin' 'write access without an App pin' "$(policy "$issuer" "$owner" "$writes")"
 expect 1 'only the shared release workflow may use it' 'botantler-1 outside the release workflow' \
   "$(policy "$issuer" "$owner" "$writes" 'app: botantler-1')"
+expect 0 '' 'the shared release workflow pinned to a full commit, on botantler-1' \
+  "$(policy "$issuer" "$owner"$'\n''  job_workflow_ref: devantler-tech/\.github/\.github/workflows/create-release\.yaml@[0-9a-f]{40}' "$writes" 'app: botantler-1')"
+expect 1 'only the shared release workflow may use it' 'a release pattern widened by an alternative' \
+  "$(policy "$issuer" "$owner"$'\n''  job_workflow_ref: devantler-tech/\.github/\.github/workflows/create-release\.yaml@.*|.*' "$writes" 'app: botantler-1')"
+expect 1 'only the shared release workflow may use it' 'a release pattern on any ref' \
+  "$(policy "$issuer" "$owner"$'\n''  job_workflow_ref: devantler-tech/\.github/\.github/workflows/create-release\.yaml@.*' "$writes" 'app: botantler-1')"
 expect 1 'only the shared release workflow may use it' 'botantler-1 for a lookalike workflow' \
   "$(policy "$issuer" "$owner"$'\n''  job_workflow_ref: devantler-tech/\.github/\.github/workflows/create-release-x\.yaml@main' "$writes" 'app: botantler-1')"
 expect 1 'pins unknown App' 'an unknown App' "$(policy "$issuer" "$owner" "$writes" 'app: devantler-tech-engineering')"

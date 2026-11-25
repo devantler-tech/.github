@@ -757,17 +757,7 @@ jobs:
 <details>
 <summary>Purpose, interface and usage</summary>
 
-[.github/workflows/check-github-broker-policies.yaml](.github/workflows/check-github-broker-policies.yaml) checks every GitHub token broker trust policy (`.github/chainguard/<identity>.sts.yaml`) in a pull request ([ADR 0020](https://github.com/devantler-tech/monorepo/blob/main/docs/adr/0020-one-github-token-broker.md)). A policy must name the GitHub Actions issuer exactly, pin its callers to the devantler-tech organization ID or a listed customer repository, pin botantler-2 for write access (botantler-1 only for the shared release workflow), and grant no administration. The organization ruleset [`require-github-broker-policies`](deploy/organization-rulesets/require-github-broker-policies.yaml) requires it on every repository's default branch; it takes no inputs or secrets.
-
-#### Usage
-
-```yaml
-jobs:
-  broker-policies:
-    uses: devantler-tech/.github/.github/workflows/check-github-broker-policies.yaml@<full-commit-sha> # vX.Y.Z
-    permissions:
-      contents: read
-```
+[.github/workflows/check-github-broker-policies.yaml](.github/workflows/check-github-broker-policies.yaml) checks every GitHub token broker trust policy (`.github/chainguard/<identity>.sts.yaml`) in a pull request ([ADR 0020](https://github.com/devantler-tech/monorepo/blob/main/docs/adr/0020-one-github-token-broker.md)). A policy must name the GitHub Actions issuer exactly, pin its callers to the devantler-tech organization ID or a listed customer repository, pin botantler-2 for write access (botantler-1 only for the shared release workflow), and grant no administration. The organization ruleset [`require-github-broker-policies`](deploy/organization-rulesets/require-github-broker-policies.yaml) requires it on every repository's default branch. It is not a reusable workflow: nothing calls it, and it takes no inputs or secrets.
 
 </details>
 
