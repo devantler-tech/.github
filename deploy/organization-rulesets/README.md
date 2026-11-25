@@ -316,7 +316,7 @@ Actions integration as a bypass actor in an organization ruleset.
 
 | Who may create a `v*` tag | How each one creates it today |
 |---|---|
-| botantler-1 (App `1025824`) | `create-release.yaml` with the organization's `APP_CLIENT_ID` in every repository (ksail included since ksail-bot was deleted), and agent-plugins' `release-please.yaml` |
+| botantler-1 (App `1025824`) and botantler-2 (App `4126012`) | `create-release.yaml` in every repository (ksail included since ksail-bot was deleted), and agent-plugins' `release-please.yaml`. The two Apps are interchangeable: the GitHub token broker mints from whichever has more rate limit left ([ADR 0020](https://github.com/devantler-tech/monorepo/blob/main/docs/adr/0020-one-github-token-broker.md)) |
 | Organization admins | A release cut by hand |
 
 Other tag names that existing workflows create are not release tags and are not restricted.
@@ -349,16 +349,15 @@ request to every default branch pass the [broker policy check](../../.github/wor
 The check reads each `.github/chainguard/*.sts.yaml` and refuses a policy that:
 
 - names any issuer but GitHub Actions, or uses `issuer_pattern` or `app_pattern`;
-- does not pin its callers to the devantler-tech organization ID (`repository_owner_id`) or a listed
-  customer `repository_id`;
+- does not pin its callers to the devantler-tech organization ID (`repository_owner_id`); no other
+  caller is ever admitted, customers included;
 - names no permissions (GitHub can read an empty set as every permission the App holds);
-- grants write access without an App pin, or pins botantler-1 (the one App that can create release
-  tags) with `contents: write` for anything but the shared release workflow, on `main` or at the
-  commit its caller pins, admitted only from a devantler-tech repository's `main` and scoped to that
-  caller (`caller_repository: true`);
+- names an App other than botantler-1 or botantler-2. A policy names no App at all: the two are
+  interchangeable, so the broker mints from whichever has more rate limit left. A pin written before
+  they were made equal still passes until its policy drops it;
 - grants a privileged permission (`administration`, `members` or any `organization_*`) unless it is
   one of this repository's own policies, for a listed workflow on `main`, or a listed shared
-  workflow's caller policy (any devantler-tech `main`, scoped to the caller, on botantler-2), with
+  workflow's caller policy (any devantler-tech `main`, scoped to the caller, naming no App), with
   exactly that workflow's reviewed set.
 
 It also refuses a pull request whose workflows pin a `devantler-tech/.github` shared workflow at a

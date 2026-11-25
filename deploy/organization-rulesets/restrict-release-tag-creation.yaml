@@ -19,8 +19,10 @@
 # Bypass actors are the identities that create release tags today (census on #924; the
 # dedicated botantler-marketplace-releases App was retired in #933, and ksail-bot was deleted on
 # 2026-11-24 so ksail releases with botantler-1 like every other repository):
-#   - 1025824 botantler-1: the organization's release App, used by create-release.yaml and by
-#     agent-plugins' release-please.yaml.
+#   - 1025824 botantler-1 and 4126012 botantler-2: the organization's two Apps, interchangeable
+#     (devantler-tech/monorepo ADR 0020): the GitHub token broker mints a release token from
+#     whichever has more rate limit left. create-release.yaml and agent-plugins' release-please.yaml
+#     use them.
 #   - OrganizationAdmin: lets the maintainer cut a release by hand. ID-less, so no actorId.
 #
 # Managed like protect-release-tags.yaml: Create, Update and LateInitialize (so the created
@@ -42,6 +44,9 @@ spec:
     bypassActors:
       - actorType: Integration
         actorId: 1025824 # botantler-1
+        bypassMode: always
+      - actorType: Integration
+        actorId: 4126012 # botantler-2
         bypassMode: always
       - actorType: OrganizationAdmin
         bypassMode: always

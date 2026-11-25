@@ -2,7 +2,7 @@ name: 🔐 Check GitHub Token Broker Policies
 
 # Every repository's GitHub token broker trust policies (.github/chainguard/
 # <identity>.sts.yaml, devantler-tech/monorepo ADR 0020) must admit only
-# reviewed callers and pin the App their access needs. An organization ruleset
+# reviewed callers and leave the App to the broker. An organization ruleset
 # requires this workflow on every repository's default branch
 # (deploy/organization-rulesets/require-github-broker-policies.yaml). The rules
 # live in this file, read from this repository's main branch, so the pull
@@ -41,11 +41,10 @@ jobs:
           set -euo pipefail
           # Callers: GitHub Actions tokens from the devantler-tech organization,
           # matched by its numeric ID, which survives renames and cannot be
-          # re-registered. Named customer repositories join by repository ID,
-          # here and in the broker's caller gate (devantler-tech/platform).
+          # re-registered. No other caller is ever admitted, customers included
+          # (ADR 0020): the brokers serve the maintainer's own systems only.
           readonly actions_issuer=https://token.actions.githubusercontent.com
           readonly org_id=178524219
-          readonly customer_repository_ids=()
           # A shared workflow called from another repository runs on that
           # repository's main branch, so its policy admits exactly this subject
           # pattern: any devantler-tech repository, main only. A repository
@@ -54,18 +53,11 @@ jobs:
           # repo:devantler-tech@<owner ID>/<name>@<repository ID>. Both are
           # admitted, so no caller is refused for its repository's age.
           readonly caller_subject_pattern='repo:devantler-tech(/[A-Za-z0-9._-]+|@178524219/[A-Za-z0-9._-]+@[0-9]+):ref:refs/heads/main'
-          # botantler-1 is the one App that can create release tags, which takes
-          # contents: write. So a botantler-1 policy that grants contents write
-          # must be the shared release workflow, on main or at the commit its
-          # caller pins, and its token must reach the calling repository alone.
-          # A commit pattern alone would also admit a commit that never merged.
-          # The pin check below proves every pin of a devantler-tech/.github
-          # workflow is a commit on its main branch (#1001). The patterns are
-          # compared as strings, so no regex alternative can widen them.
-          readonly release_workflow_patterns=(
-            'devantler-tech/\.github/\.github/workflows/create-release\.yaml@refs/heads/main'
-            'devantler-tech/\.github/\.github/workflows/create-release\.yaml@([0-9a-f]{40}|refs/heads/main)'
-          )
+          # botantler-1 and botantler-2 are interchangeable: they hold the same
+          # permissions and may both create release tags (the organization ruleset
+          # restrict-release-tag-creation), so a policy names no App and the broker
+          # mints from whichever has more rate limit left. Pins written before the
+          # Apps were made equal still pass until each policy drops its own.
           # Privileged permissions (administration, members and any
           # organization_* permission) are granted only to this repository's own
           # workflows, on main, each with exactly a reviewed set. A policy that
@@ -86,7 +78,7 @@ jobs:
           # A shared workflow that needs a privileged permission in every caller
           # is listed here instead. Its policy must live in devantler-tech/.github,
           # admit exactly caller_subject_pattern, name the workflow on main or at
-          # a pinned commit, scope the token to the caller, pin botantler-2, and
+          # a pinned commit, scope the token to the caller, name no App, and
           # request exactly one listed set.
           readonly cross_repository_grants='{
             "scan-for-todo-comments": [{"organization_projects": "write"}]
@@ -143,14 +135,8 @@ jobs:
               continue
             fi
             owner="$(jq -r '.claim_pattern.repository_owner_id // ""' <<<"${json}")"
-            repository="$(jq -r '.claim_pattern.repository_id // ""' <<<"${json}")"
-            caller=false
-            [[ "${owner}" != "${org_id}" ]] || caller=true
-            for id in ${customer_repository_ids[@]+"${customer_repository_ids[@]}"}; do
-              [[ "${repository}" != "${id}" ]] || caller=true
-            done
-            if [[ "${caller}" != true ]]; then
-              fail "${policy}" "must pin claim_pattern.repository_owner_id to the string \"${org_id}\" (devantler-tech), or repository_id to a listed customer repository"
+            if [[ "${owner}" != "${org_id}" ]]; then
+              fail "${policy}" "must pin claim_pattern.repository_owner_id to the string \"${org_id}\" (devantler-tech); no other caller is admitted"
             fi
             # The broker passes the policy's permissions to GitHub as given, and
             # GitHub can read an empty set as every permission the installation
@@ -163,7 +149,6 @@ jobs:
               fail "${policy}" 'permissions must use the canonical lowercase names, each read, write or admin'
               continue
             fi
-            writes="$(jq '[(.permissions // {})[] | select(. == "write" or . == "admin")] | length' <<<"${json}")"
             app="$(jq -r 'if (.app | type) == "string" then .app elif has("app") then "?" else "" end' <<<"${json}")"
             workflow="$(jq -r '.claim_pattern.job_workflow_ref // ""' <<<"${json}")"
             caller_scoped="$(jq '.caller_repository == true and (has("repositories") | not) and (has("repository_ids") | not)' <<<"${json}")"
@@ -180,7 +165,7 @@ jobs:
               if [[ "${listed}" != true && "${GITHUB_REPOSITORY:-}" == devantler-tech/.github &&
                 "$(jq -r '.subject_pattern // ""' <<<"${json}")" == "${caller_subject_pattern}" &&
                 "$(jq 'has("subject")' <<<"${json}")" == false &&
-                "${caller_scoped}" == true && "${app}" == botantler-2 ]]; then
+                "${caller_scoped}" == true && "${app}" == "" ]]; then
                 for name in $(jq -r 'keys[]' <<<"${cross_repository_grants}"); do
                   # The whole permission set must be the listed one, not just its privileged part.
                   [[ "${workflow}" == "devantler-tech/\\.github/\\.github/workflows/${name}\\.yaml@([0-9a-f]{40}|refs/heads/main)" ]] || continue
@@ -192,30 +177,9 @@ jobs:
                 fail "${policy}" "grants privileged permissions $(jq -r 'keys | join(", ")' <<<"${privileged}") outside the reviewed allowlist: only devantler-tech/.github's own policies, for a listed workflow on main or a listed shared workflow's caller policy, with exactly its listed set"
             fi
             case "${app}" in
-              botantler-1)
-                if [[ "$(jq -r '.permissions.contents // ""' <<<"${json}")" == write || "$(jq -r '.permissions.contents // ""' <<<"${json}")" == admin ]]; then
-                  release=false
-                  for pattern in "${release_workflow_patterns[@]}"; do
-                    [[ "${workflow}" != "${pattern}" ]] || release=true
-                  done
-                  [[ "${release}" == true ]] ||
-                    fail "${policy}" 'pins botantler-1 with contents write, which can create release tags; only the shared release workflow may use it'
-                  [[ "${caller_scoped}" == true ]] ||
-                    fail "${policy}" 'pins botantler-1 with contents write, so its token must reach only the calling repository: set caller_repository: true, with no repositories or repository_ids'
-                  subject="$(jq -r 'if has("subject") and has("subject_pattern") then "" else (.subject // "") end' <<<"${json}")"
-                  if [[ "$(jq -r 'if has("subject") then "" else (.subject_pattern // "") end' <<<"${json}")" != "${caller_subject_pattern}" &&
-                    ! "${subject}" =~ ^${caller_subject_pattern}$ ]]; then
-                    fail "${policy}" "pins botantler-1 with contents write, so it must admit only a devantler-tech repository's main branch: a subject matching, or the subject_pattern, ${caller_subject_pattern}"
-                  fi
-                fi
-                ;;
-              botantler-2) ;;
-              '')
-                [[ "${writes}" == 0 ]] ||
-                  fail "${policy}" 'grants write access without an App pin; pin botantler-2 (or botantler-1 for the shared release workflow)'
-                ;;
+              "" | botantler-1 | botantler-2) ;;
               *)
-                fail "${policy}" "pins unknown App ${app}; use botantler-1 or botantler-2"
+                fail "${policy}" "pins unknown App ${app}; name no App, so the broker can mint from botantler-1 or botantler-2"
                 ;;
             esac
           done
@@ -223,7 +187,7 @@ jobs:
             echo "::error::${failures} problem(s) in ${#policies[@]} broker trust policies"
             exit 1
           fi
-          echo "${#policies[@]} broker trust policies admit only reviewed callers and pin their App"
+          echo "${#policies[@]} broker trust policies admit only reviewed callers and leave the App to the broker"
 
       # Callers pin devantler-tech/.github's shared workflows by commit, so their
       # broker policies admit job_workflow_ref …@<commit>. GitHub resolves such a

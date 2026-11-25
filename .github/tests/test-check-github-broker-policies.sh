@@ -57,45 +57,16 @@ expect() {
 expect 0 '0 broker trust policies' 'a repository without policies' ''
 expect 0 '1 broker trust policies admit only reviewed callers' 'a read-only devantler-tech policy without an App pin' \
   "$(policy "$issuer" "$owner" "$read_only")"
-expect 0 '' 'a write policy pinned to botantler-2' "$(policy "$issuer" "$owner" "$writes" 'app: botantler-2')"
-expect 0 '' 'the shared release workflow pinned to botantler-1' \
-  "$(policy "$issuer" "$owner"$'\n'"$release_workflow" "$writes" $'app: botantler-1\ncaller_repository: true')"
-# A release caller pins the shared workflow by commit; the pin check proves it merged.
-readonly pinned_release='  job_workflow_ref: devantler-tech/\.github/\.github/workflows/create-release\.yaml@([0-9a-f]{40}|refs/heads/main)'
+# botantler-1 and botantler-2 are interchangeable, so a policy names no App. A pin to one of
+# them still passes until each policy drops its own; any other App never does.
+expect 0 '' 'a write policy with no App, for either App to mint' "$(policy "$issuer" "$owner" "$writes")"
+expect 0 '' 'the shared release workflow with no App' \
+  "$(policy "$issuer" "$owner"$'\n'"$release_workflow" "$writes" 'caller_repository: true')"
+expect 0 '' 'a write policy still pinned to botantler-2' "$(policy "$issuer" "$owner" "$writes" 'app: botantler-2')"
+expect 0 '' 'a write policy still pinned to botantler-1' "$(policy "$issuer" "$owner" "$writes" 'app: botantler-1')"
 # Both subject forms a devantler-tech repository can issue: name-only, and the immutable form with
 # the owner and repository IDs.
 readonly any_caller='subject_pattern: repo:devantler-tech(/[A-Za-z0-9._-]+|@178524219/[A-Za-z0-9._-]+@[0-9]+):ref:refs/heads/main'
-# release_policy <subject line> <extra lines>
-release_policy() {
-  printf '%s\n' '---' "$issuer" "$1" 'claim_pattern:' "$owner" "$pinned_release" "$writes" 'app: botantler-1' "${2:-}"
-}
-expect 0 '' 'the release workflow at a pinned commit, from any devantler-tech main' \
-  "$(release_policy "$any_caller" 'caller_repository: true')"
-expect 0 '' 'the release workflow at a pinned commit, for one repository' \
-  "$(release_policy 'subject: repo:devantler-tech/ksail:ref:refs/heads/main' 'caller_repository: true')"
-expect 0 '' 'the release workflow at a pinned commit, for one immutable-subject repository' \
-  "$(release_policy 'subject: repo:devantler-tech@178524219/world-at-ruin@1303188705:ref:refs/heads/main' 'caller_repository: true')"
-expect 1 "must admit only a devantler-tech repository's main branch" 'a caller pattern that refuses immutable subjects' \
-  "$(release_policy 'subject_pattern: repo:devantler-tech/[A-Za-z0-9._-]+:ref:refs/heads/main' 'caller_repository: true')"
-expect 1 "must admit only a devantler-tech repository's main branch" 'an immutable subject from another organization' \
-  "$(release_policy 'subject: repo:devantler-tech@1/world-at-ruin@1303188705:ref:refs/heads/main' 'caller_repository: true')"
-expect 1 "must admit only a devantler-tech repository's main branch" 'an immutable subject from pull requests' \
-  "$(release_policy 'subject: repo:devantler-tech@178524219/world-at-ruin@1303188705:pull_request' 'caller_repository: true')"
-expect 1 'must reach only the calling repository' 'a release token for every repository' "$(release_policy "$any_caller")"
-expect 1 'must reach only the calling repository' 'a release token for a named repository list' \
-  "$(release_policy "$any_caller" $'caller_repository: true\nrepositories:\n  - platform')"
-expect 1 'must reach only the calling repository' 'a release token for repository IDs' \
-  "$(release_policy "$any_caller" $'caller_repository: true\nrepository_ids:\n  - 1')"
-expect 1 "must admit only a devantler-tech repository's main branch" 'a release caller on any branch' \
-  "$(release_policy 'subject_pattern: repo:devantler-tech/[A-Za-z0-9._-]+:ref:.*' 'caller_repository: true')"
-expect 1 "must admit only a devantler-tech repository's main branch" 'a release caller from pull requests' \
-  "$(release_policy 'subject: repo:devantler-tech/ksail:pull_request' 'caller_repository: true')"
-expect 1 "must admit only a devantler-tech repository's main branch" 'a release caller from another organization' \
-  "$(release_policy 'subject_pattern: repo:[A-Za-z0-9._-]+/[A-Za-z0-9._-]+:ref:refs/heads/main' 'caller_repository: true')"
-expect 1 "must admit only a devantler-tech repository's main branch" 'a subject beside the subject pattern' \
-  "$(release_policy "$any_caller" $'caller_repository: true\nsubject: repo:devantler-tech/ksail:ref:refs/heads/main')"
-expect 1 "must admit only a devantler-tech repository's main branch" 'no subject at all' \
-  "$(release_policy '' 'caller_repository: true')"
 
 expect 1 'must pin claim_pattern.repository_owner_id' 'no caller pin' "$(policy "$issuer" '  ref: refs/heads/main' "$read_only")"
 expect 1 'must pin claim_pattern.repository_owner_id' 'another organization' \
@@ -112,19 +83,6 @@ expect 1 'name the issuer and App exactly' 'an issuer pattern' \
 expect 1 'must accept exactly the GitHub Actions issuer' 'another issuer' \
   "$(policy 'issuer: https://issuer.example.com' "$owner" "$read_only")"
 expect 1 'name the issuer and App exactly' 'an App pattern' "$(policy "$issuer" "$owner" "$writes" 'app_pattern: botantler-.*')"
-expect 1 'grants write access without an App pin' 'write access without an App pin' "$(policy "$issuer" "$owner" "$writes")"
-expect 1 'only the shared release workflow may use it' 'botantler-1 outside the release workflow' \
-  "$(policy "$issuer" "$owner" "$writes" 'app: botantler-1')"
-expect 1 'only the shared release workflow may use it' 'a release pattern admitting any commit, merged or not' \
-  "$(policy "$issuer" "$owner"$'\n''  job_workflow_ref: devantler-tech/\.github/\.github/workflows/create-release\.yaml@[0-9a-f]{40}' "$writes" 'app: botantler-1')"
-expect 1 'only the shared release workflow may use it' 'the release workflow at an unreviewed commit' \
-  "$(policy "$issuer" "$owner"$'\n''  job_workflow_ref: devantler-tech/\.github/\.github/workflows/create-release\.yaml@0123456789abcdef0123456789abcdef01234567' "$writes" 'app: botantler-1')"
-expect 1 'only the shared release workflow may use it' 'a release pattern widened by an alternative' \
-  "$(policy "$issuer" "$owner"$'\n''  job_workflow_ref: devantler-tech/\.github/\.github/workflows/create-release\.yaml@.*|.*' "$writes" 'app: botantler-1')"
-expect 1 'only the shared release workflow may use it' 'a release pattern on any ref' \
-  "$(policy "$issuer" "$owner"$'\n''  job_workflow_ref: devantler-tech/\.github/\.github/workflows/create-release\.yaml@.*' "$writes" 'app: botantler-1')"
-expect 1 'only the shared release workflow may use it' 'botantler-1 for a lookalike workflow' \
-  "$(policy "$issuer" "$owner"$'\n''  job_workflow_ref: devantler-tech/\.github/\.github/workflows/create-release-x\.yaml@main' "$writes" 'app: botantler-1')"
 expect 1 'pins unknown App' 'an unknown App' "$(policy "$issuer" "$owner" "$writes" 'app: devantler-tech-engineering')"
 expect 1 'outside the reviewed allowlist' 'repository administration outside devantler-tech/.github' \
   "$(policy "$issuer" "$owner" $'permissions:\n  administration: read' 'app: botantler-2')"
@@ -190,13 +148,13 @@ repository=devantler-tech/.github expect 1 'outside the reviewed allowlist' 'a w
 repository=devantler-tech/.github expect 1 'outside the reviewed allowlist' 'a workflow from another repository' \
   "$(dotgithub governance-audits "$audit_read" | sed 's|devantler-tech/\\.github/\\.github/workflows|devantler-tech/platform/\\.github/workflows|')"
 # A listed shared workflow's callers may hold its privileged permission, from
-# this repository only, for any devantler-tech main, scoped to the caller, on botantler-2.
+# this repository only, for any devantler-tech main, scoped to the caller, with no App named.
 # shared <workflow stem> <permission lines> [extra lines]; ref_suffix overrides the ref.
 readonly shared_ref_default='([0-9a-f]{40}|refs/heads/main)'
 shared() {
   printf '%s\n' '---' "$issuer" "$any_caller" 'claim_pattern:' "$owner" \
     "  job_workflow_ref: devantler-tech/\\.github/\\.github/workflows/$1\\.yaml@${ref_suffix:-${shared_ref_default}}" \
-    'permissions:' "$2" "${3-$'caller_repository: true\napp: botantler-2'}"
+    'permissions:' "$2" "${3-caller_repository: true}"
 }
 readonly projects_write='  organization_projects: write'
 repository=devantler-tech/.github expect 0 '' 'the to-do scanner caller policy' "$(shared scan-for-todo-comments "$projects_write")"
@@ -208,24 +166,26 @@ repository=devantler-tech/.github expect 1 'outside the reviewed allowlist' 'mor
   "$(shared scan-for-todo-comments $'  organization_projects: write\n  organization_administration: write')"
 repository=devantler-tech/.github expect 1 'outside the reviewed allowlist' 'the listed set plus a non-privileged write' \
   "$(shared scan-for-todo-comments $'  organization_projects: write\n  contents: write')"
-repository=devantler-tech/.github expect 1 'outside the reviewed allowlist' 'the release App' \
+repository=devantler-tech/.github expect 1 'outside the reviewed allowlist' 'a caller policy pinned to botantler-1' \
   "$(shared scan-for-todo-comments "$projects_write" $'caller_repository: true\napp: botantler-1')"
+repository=devantler-tech/.github expect 1 'outside the reviewed allowlist' 'a caller policy pinned to botantler-2' \
+  "$(shared scan-for-todo-comments "$projects_write" $'caller_repository: true\napp: botantler-2')"
+repository=devantler-tech/.github expect 1 'outside the reviewed allowlist' 'a caller pattern that refuses immutable subjects' \
+  "$(shared scan-for-todo-comments "$projects_write" | sed 's#^subject_pattern: .*$#subject_pattern: repo:devantler-tech/[A-Za-z0-9._-]+:ref:refs/heads/main#')"
 repository=devantler-tech/.github expect 1 'outside the reviewed allowlist' 'a token for every repository' \
-  "$(shared scan-for-todo-comments "$projects_write" 'app: botantler-2')"
+  "$(shared scan-for-todo-comments "$projects_write" '')"
 repository=devantler-tech/.github expect 1 'outside the reviewed allowlist' 'a token for a repository list' \
-  "$(shared scan-for-todo-comments "$projects_write" $'caller_repository: true\nrepositories:\n  - platform\napp: botantler-2')"
+  "$(shared scan-for-todo-comments "$projects_write" $'caller_repository: true\nrepositories:\n  - platform')"
 repository=devantler-tech/.github expect 1 'outside the reviewed allowlist' 'callers on any branch' \
   "$(shared scan-for-todo-comments "$projects_write" | sed 's|:ref:refs/heads/main$|:ref:.*|')"
 repository=devantler-tech/.github expect 1 'outside the reviewed allowlist' 'a subject beside the pattern' \
-  "$(shared scan-for-todo-comments "$projects_write" $'caller_repository: true\napp: botantler-2\nsubject: repo:devantler-tech/ksail:ref:refs/heads/main')"
+  "$(shared scan-for-todo-comments "$projects_write" $'caller_repository: true\nsubject: repo:devantler-tech/ksail:ref:refs/heads/main')"
 repository=devantler-tech/.github expect 1 'outside the reviewed allowlist' 'the workflow at any ref' \
   "$(ref_suffix='.*' shared scan-for-todo-comments "$projects_write")"
 repository=devantler-tech/.github expect 1 'outside the reviewed allowlist' 'the workflow at any commit, merged or not' \
   "$(ref_suffix='[0-9a-f]{40}' shared scan-for-todo-comments "$projects_write")"
 repository=devantler-tech/.github expect 1 'outside the reviewed allowlist' 'the workflow widened by an alternative' \
   "$(ref_suffix='([0-9a-f]{40}|refs/heads/main|.*)' shared scan-for-todo-comments "$projects_write")"
-# botantler-1 is only refused where it could create release tags.
-expect 0 '' 'botantler-1 read-only outside the release workflow' "$(policy "$issuer" "$owner" "$read_only" 'app: botantler-1')"
 
 # Every policy in a repository is checked, not just the first.
 rm -rf "$tmp/repo"
@@ -245,7 +205,7 @@ cases=$((cases + 1))
 # A policy whose identity starts with a dot is still read by the broker, so it is checked.
 rm -rf "$tmp/repo"
 mkdir -p "$tmp/repo/.github/chainguard"
-policy "$issuer" "$owner" "$writes" 'app: botantler-1' >"$tmp/repo/.github/chainguard/.unchecked.sts.yaml"
+policy "$issuer" "$owner" "$writes" 'app: devantler-tech-engineering' >"$tmp/repo/.github/chainguard/.unchecked.sts.yaml"
 status=0
 (cd "$tmp/repo" && bash "$tmp/check.sh") >"$tmp/out" 2>&1 || status=$?
 if [[ "$status" != 1 ]] || ! grep -Fq 'file=.github/chainguard/.unchecked.sts.yaml' "$tmp/out"; then
