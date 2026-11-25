@@ -801,8 +801,10 @@ By default the sync PR is opened with `GITHUB_TOKEN`, so GitHub does not trigger
 prevents content copied from a compromised or malicious template from reaching a
 caller's CI trust boundary before review.
 
-Set `use-app-token: true` and pass `APP_PRIVATE_KEY` only when CI must run before
-the sync PR is reviewed. This opt-in mints a write-scoped App token and permits
+Set `use-app-token: true`, and grant the caller job `id-token: write`, only when CI must run before
+the sync PR is reviewed. This opt-in gets a write-scoped botantler-2 App token from the GitHub token
+broker ([ADR 0020](https://github.com/devantler-tech/monorepo/blob/main/docs/adr/0020-one-github-token-broker.md)),
+scoped to the calling repository, and permits
 workflow-file updates. The workflow replaces the action's Git-created commit
 with an equivalent GitHub API commit made by the App and verifies its signature
 before moving the generated branch. The App-authored update also causes the
@@ -810,7 +812,8 @@ template-controlled PR content to trigger caller CI. Callers that opt in must
 treat the PR as untrusted: do not expose secrets or write-scoped tokens to jobs
 that check out or execute its content, including local actions and scripts.
 
-An opt-in caller must wire both the input and the corresponding secret:
+An opt-in caller must set the input and grant `id-token: write`. A reusable job that asks for more than
+its caller grants fails at startup:
 
 ```yaml
 jobs:
@@ -819,11 +822,10 @@ jobs:
     permissions:
       contents: write
       pull-requests: write
+      id-token: write
     with:
       source-repo-path: devantler-tech/application-template
       use-app-token: true
-    secrets:
-      APP_PRIVATE_KEY: ${{ secrets.APP_PRIVATE_KEY }}
 ```
 
 When the caller has its own `.templatesyncignore`, the sync applies that committed
@@ -838,7 +840,7 @@ list. With `use-app-token: true`, the merge and the sync are signed as one commi
 
 | Key                              | Type            | Default                                          | Required | Description                                                                 |
 |----------------------------------|-----------------|--------------------------------------------------|----------|-----------------------------------------------------------------------------|
-| `APP_PRIVATE_KEY`                | Secret          | -                                                | When `use-app-token` | GitHub App private key (paired with the `APP_CLIENT_ID` variable) |
+| `APP_PRIVATE_KEY`                | Secret          | -                                                | No       | Retired: unused since the token comes from the GitHub token broker; declared so existing callers still parse |
 | `source-repo-path`               | Input (string)  | -                                                | Yes      | `owner/repo` of the upstream template to sync from                          |
 | `upstream-branch`                | Input (string)  | `main`                                           | No       | Branch of the template repository to sync from                              |
 | `pr-title`                       | Input (string)  | `chore: sync changes from the upstream template` | No       | Title of the sync PR (Conventional-Commit by default)                       |
