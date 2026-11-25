@@ -66,7 +66,7 @@ jobs:
           allowed-endpoints: >-
             api.github.com:443 github.com:443 registry.npmjs.org:443 sts.platform.devantler.tech:443
       # The release token comes from the GitHub token broker (devantler-tech/monorepo
-      # ADR 0020) on botantler-1, the one App the release-tag ruleset lets create tags.
+      # ADR 0020), from either botantler App: the release-tag ruleset lets both create tags.
       # Two trust policies in devantler-tech/.github hold its grants, both scoped to
       # the calling repository and admitting only a devantler-tech repository's main
       # branch running this workflow on main or at a pinned commit:

@@ -4,8 +4,8 @@
 # (devantler-tech/monorepo ADR 0020, #1001). Any devantler-tech repository's main
 # branch may use it, but only while running that workflow on main or at a commit it
 # pins. The broker policy check proves every such pin is a commit on this
-# repository's main. It pins botantler-1, the one App the release-tag ruleset lets
-# create tags, and its token reaches the calling repository alone. It grants
+# repository's main. It names no App: the release-tag ruleset lets both botantler Apps
+# create tags, so the broker mints from either. Its token reaches the calling repository alone. It grants
 # contents, issues and pull requests write, the default, which keeps
 # semantic-release's success and fail notification hooks working.
 issuer: https://token.actions.githubusercontent.com
@@ -20,4 +20,3 @@ permissions:
   contents: write
   issues: write
   pull_requests: write
-app: botantler-1

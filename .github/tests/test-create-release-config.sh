@@ -47,7 +47,7 @@ for identity in create-release create-release-with-hooks; do
       subject_pattern:"repo:devantler-tech(/[A-Za-z0-9._-]+|@178524219/[A-Za-z0-9._-]+@[0-9]+):ref:refs/heads/main",
       claim_pattern:{repository_owner_id:"178524219",
         job_workflow_ref:"devantler-tech/\\.github/\\.github/workflows/create-release\\.yaml@([0-9a-f]{40}|refs/heads/main)"},
-      caller_repository:true, permissions:$grants, app:"botantler-1"}' >/dev/null; then
+      caller_repository:true, permissions:$grants}' >/dev/null; then
     echo "the $identity trust policy must grant exactly its reviewed release authority" >&2
     exit 1
   fi
