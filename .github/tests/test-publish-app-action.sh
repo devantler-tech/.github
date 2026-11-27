@@ -505,7 +505,13 @@ run_steps() {
     uses="$(jq -r '.uses' <<<"$step")"
     [[ "$uses" =~ ^([a-z0-9/._-]+)@[0-9a-f]{40}$ ]] || { echo "unpinned action in $name" >>"$log"; return 1; }
     case "${BASH_REMATCH[1]}" in
-      fluxcd/flux2/action | sigstore/cosign-installer) ;;
+      fluxcd/flux2/action)
+        if ! jq -e '.with.version | strings | test("^[0-9]+[.][0-9]+[.][0-9]+$")' <<<"$step" >/dev/null; then
+          echo 'Flux CLI installation must pin a stable version' >>"$log"
+          return 1
+        fi
+        ;;
+      sigstore/cosign-installer) ;;
       docker/login-action)
         [[ "$(substitute "$(jq -r '.with.password' <<<"$step")")" == "$token" &&
           "$(substitute "$(jq -r '.with.username' <<<"$step")")" == bot ]] || { echo 'login lost its credential' >>"$log"; return 1; }
