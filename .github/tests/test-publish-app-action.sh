@@ -433,6 +433,7 @@ run_action() {
 }
 run_steps() {
   local dir="$1" count i step name id cond uses key value status out_file line
+  local flux_ready=false
   local -a env_args step_env
   sim_json="$scratch/action.json"
   yq -o=json '.' "$dir/action.yaml" >"$sim_json"
@@ -510,9 +511,14 @@ run_steps() {
           echo 'Flux CLI installation must pin a stable version' >>"$log"
           return 1
         fi
+        flux_ready=true
         ;;
       sigstore/cosign-installer) ;;
       docker/login-action)
+        if ! "$flux_ready"; then
+          echo 'Registry access requires successful Flux CLI setup' >>"$log"
+          return 1
+        fi
         [[ "$(substitute "$(jq -r '.with.password' <<<"$step")")" == "$token" &&
           "$(substitute "$(jq -r '.with.username' <<<"$step")")" == bot ]] || { echo 'login lost its credential' >>"$log"; return 1; }
         printf 'login %s\n' "$(jq -r '.with.registry' <<<"$step")" >>"$calls"
@@ -1197,6 +1203,10 @@ must_catch 'non-semver tags admitted' admit.sh 's/\[\[ "\$tag" =~ \$semver \]\] 
   case_ref refs/tags/v1.2.3garbage 'complete semantic version'
 must_catch 'unreadable version numbers admitted' admit.sh 's/ || "\$numbers" =~ \$too_long//' \
   case_ref refs/tags/v9007199254740992.0.0 'numbers of at most 15 digits'
+must_catch 'floating Flux version admitted' action.yaml 's/^        version: .*/        version: latest/' \
+  case_deployment
+must_catch 'Flux setup removed' action.yaml '/^    - name: .* Setup Flux CLI$/,/^        version: /d' \
+  case_deployment
 must_catch 'a foreign signer identity admitted' admit.sh 's/^check_signer_identity$/:/' \
   case_identity "devantler-tech/app/.github/workflows/release.yaml@refs/heads/main" "$belong"
 must_catch 'the reusable-workflow check removed' admit.sh 's/^check_not_called$/:/' \
