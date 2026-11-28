@@ -1,0 +1,39 @@
+# Server-side signed-commit enforcement, rolled out in stages (#929). Stage 1 covers only the
+# agent branch namespaces in monorepo; nothing squash-merges into those branches, so GitHub's
+# author-only squash restriction for signed branches does not apply. Default branches stay out
+# of scope until bot and contributor merge paths are proven compatible (#132).
+# Keep the existing identity and every field. Never create or delete it. See ./README.md.
+apiVersion: enterprise.github.m.upbound.io/v1alpha1
+kind: OrganizationRuleset
+metadata:
+  name: require-signed-commits
+  annotations:
+    crossplane.io/external-name: "5397812" # numeric ruleset id
+spec:
+  managementPolicies: ["Observe", "Update"]
+  forProvider:
+    name: Require signed commits
+    target: branch
+    enforcement: active
+    bypassActors: []
+    conditions:
+      - refName:
+          - include:
+              - refs/heads/claude/**
+              - refs/heads/codex/**
+              - refs/heads/kagent/**
+            exclude: []
+        repositoryName:
+          - include: ["monorepo"]
+            exclude: []
+            protected: false
+    rules:
+      - creation: false
+        deletion: false
+        nonFastForward: false
+        requiredLinearHistory: false
+        requiredSignatures: true
+        update: false
+  providerConfigRef:
+    kind: ProviderConfig
+    name: default

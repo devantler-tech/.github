@@ -1,0 +1,454 @@
+// Select catalogue self-tests only from a complete immutable Git diff and a
+// reviewed job inventory. Unclassified paths retain full coverage.
+package main
+
+import (
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"reflect"
+	"regexp"
+	"sort"
+	"strings"
+)
+
+const scheduling = "github.event_name != 'merge_group' && !startsWith(github.event.head_commit.message, 'chore(main): release ')"
+
+const dotnetFixtureAction = ".github/actions/test-dotnet-fixture/action.yaml"
+const goCacheObserver = "test-go-cache-native-observer"
+const goCacheFixture = "test-validate-go-postgresql-fixture"
+const goWorkflowGuards = "test-go-workflow-guards"
+
+// Root documents admitted only as ordinary regular-file modifications.
+const rootReadme = "README.md"
+const rootAgents = "AGENTS.md"
+
+var ordinarySelectiveFiles = map[string]bool{
+	dotnetFixtureAction: true,
+	rootReadme:          true,
+	rootAgents:          true,
+}
+
+// Every gated job whose executed tests read the root README. The tracked-reader
+// guard (.github/tests/ci-selection-document-readers.sh) derives this set from
+// the workflow and its scripts; the inventory must own README.md for exactly
+// these jobs. Always-on and preserved jobs read it without needing selection.
+var readmeReaders = map[string]bool{
+	"test-enable-auto-merge-author-gate": true,
+	"test-enable-auto-merge-pentad-gate": true,
+	"test-lint-gate-lockstep":            true,
+	"test-validate-go-gate-lockstep":     true,
+}
+
+// Native fixture jobs and their hosted/credential controls share this local action.
+var dotnetOwners = map[string]bool{
+	"test-run-dotnet-tests-gate-lockstep":          true,
+	"test-run-dotnet-tests-mtp":                    true,
+	"test-run-dotnet-tests-workflow":               true,
+	"test-run-dotnet-tests-workflow-authenticated": true,
+}
+
+type inventory struct {
+	Always            []string            `json:"always"`
+	Jobs              map[string][]string `json:"jobs"`
+	Preserved         map[string]job      `json:"preserved"`
+	CatalogueOptional []string            `json:"catalogue_optional"`
+}
+type job struct {
+	If    string `json:"if"`
+	Needs any    `json:"needs"`
+	Uses  string `json:"uses"`
+}
+type workflow struct {
+	Jobs map[string]job `json:"jobs"`
+}
+
+func selectionGuard(id string) string {
+	return "${{ " + scheduling + " && contains(fromJSON(needs.select-ci-tests.outputs.selected), '" + id + "') }}"
+}
+
+func validateInventory(i inventory, w workflow) ([]string, error) {
+	if err := validateDotnetOwners(i, w); err != nil {
+		return nil, err
+	}
+	if err := validateGoCacheOwners(i, w); err != nil {
+		return nil, err
+	}
+	if err := validateGoWorkflowGuards(i, w); err != nil {
+		return nil, err
+	}
+	if err := validateReadmeReaders(i, w); err != nil {
+		return nil, err
+	}
+	seen := map[string]bool{"select-ci-tests": true, "ci-required-checks": true}
+	for _, id := range i.Always {
+		if seen[id] {
+			return nil, fmt.Errorf("duplicate always-on job %s", id)
+		}
+		j, ok := w.Jobs[id]
+		if !ok {
+			return nil, fmt.Errorf("missing always-on job %s", id)
+		}
+		if (j.If != "" && j.If != "${{ "+scheduling+" }}") || j.Needs != nil {
+			return nil, fmt.Errorf("conditional shared gate %s", id)
+		}
+		seen[id] = true
+	}
+	gated := []string{}
+	for id, paths := range i.Jobs {
+		j, ok := w.Jobs[id]
+		if !ok || seen[id] || !regexp.MustCompile(`^test-[a-z0-9-]+$`).MatchString(id) {
+			return nil, fmt.Errorf("missing or invalid inventory job %s", id)
+		}
+		seen[id] = true
+		for _, p := range paths {
+			if !regexp.MustCompile(`^actions/[a-z0-9-]+/$`).MatchString(p) &&
+				(p != dotnetFixtureAction || !hasDotnetOwner(id)) &&
+				(p != rootReadme || !readmeReaders[id]) {
+				return nil, fmt.Errorf("invalid selective owner %q", p)
+			}
+		}
+		if original, ok := i.Preserved[id]; ok {
+			if j.If != original.If || !reflect.DeepEqual(j.Needs, original.Needs) {
+				return nil, fmt.Errorf("changed event-specific scheduling for %s", id)
+			}
+		} else {
+			needs, ok := j.Needs.([]any)
+			expectedNeeds := []any{"select-ci-tests"}
+			if id == goCacheObserver {
+				expectedNeeds = append(expectedNeeds, goCacheFixture)
+			}
+			if j.If != selectionGuard(id) || !ok || !reflect.DeepEqual(needs, expectedNeeds) {
+				return nil, fmt.Errorf("invalid selector contract for %s", id)
+			}
+			gated = append(gated, id)
+		}
+	}
+	for id := range i.Preserved {
+		if _, ok := i.Jobs[id]; !ok {
+			return nil, fmt.Errorf("unknown preserved job %s", id)
+		}
+	}
+	optional := map[string]bool{}
+	for _, id := range i.CatalogueOptional {
+		if optional[id] || !seen[id] || i.Jobs[id] == nil {
+			return nil, fmt.Errorf("missing or duplicate optional smoke job %s", id)
+		}
+		if _, preserved := i.Preserved[id]; preserved {
+			return nil, fmt.Errorf("optional smoke job %s has preserved scheduling", id)
+		}
+		optional[id] = true
+	}
+	if len(seen) != len(w.Jobs) {
+		return nil, fmt.Errorf("CI job inventory is incomplete")
+	}
+	for id := range seen {
+		if _, ok := w.Jobs[id]; !ok {
+			return nil, fmt.Errorf("missing CI job %s", id)
+		}
+	}
+	sort.Strings(gated)
+	return gated, nil
+}
+
+func validateGoWorkflowGuards(i inventory, w workflow) error {
+	j, exists := w.Jobs[goWorkflowGuards]
+	if !exists || j.Uses != "" || !reflect.DeepEqual(i.Jobs[goWorkflowGuards], []string{"actions/upload-coverage/"}) {
+		return fmt.Errorf("incomplete grouped Go workflow guards")
+	}
+	if _, preserved := i.Preserved[goWorkflowGuards]; preserved {
+		return fmt.Errorf("grouped Go workflow guards have bypass scheduling")
+	}
+	for _, optional := range i.CatalogueOptional {
+		if optional == goWorkflowGuards {
+			return fmt.Errorf("grouped Go workflow guards must remain required")
+		}
+	}
+	return nil
+}
+
+func validateGoCacheOwners(i inventory, w workflow) error {
+	for _, id := range []string{goCacheObserver, goCacheFixture} {
+		j, exists := w.Jobs[id]
+		if !exists || !reflect.DeepEqual(i.Jobs[id], []string{"actions/upload-coverage/"}) {
+			return fmt.Errorf("incomplete native Go cache owner %s", id)
+		}
+		if _, preserved := i.Preserved[id]; preserved {
+			return fmt.Errorf("native Go cache owner has bypass scheduling: %s", id)
+		}
+		for _, optional := range i.CatalogueOptional {
+			if optional == id {
+				return fmt.Errorf("native Go cache owner must remain required: %s", id)
+			}
+		}
+		if id == goCacheFixture && j.Uses != "$/.github/workflows/validate-go-project-readonly.yaml" || id == goCacheObserver && j.Uses != "" {
+			return fmt.Errorf("unbound native Go cache owner %s", id)
+		}
+	}
+	return nil
+}
+
+// Each README reader must own the file exactly once and stay selection-gated, so
+// a README change cannot pass without the tests that read it.
+func validateReadmeReaders(i inventory, w workflow) error {
+	for id := range readmeReaders {
+		count := 0
+		for _, p := range i.Jobs[id] {
+			if p == rootReadme {
+				count++
+			}
+		}
+		_, preserved := i.Preserved[id]
+		if _, ok := w.Jobs[id]; !ok || count != 1 || preserved {
+			return fmt.Errorf("incomplete or unbound README reader %s", id)
+		}
+	}
+	return nil
+}
+
+func hasDotnetOwner(id string) bool {
+	_, ok := dotnetOwners[id]
+	return ok
+}
+
+func validateDotnetOwners(i inventory, w workflow) error {
+	for id, j := range w.Jobs {
+		if j.Uses == "./"+dotnetFixtureAction || j.Uses == "./.github/workflows/run-dotnet-tests.yaml" {
+			return fmt.Errorf("retired or non-native .NET workflow caller %s", id)
+		}
+	}
+	for id := range dotnetOwners {
+		j, ok := w.Jobs[id]
+		count := 0
+		for _, p := range i.Jobs[id] {
+			if p == dotnetFixtureAction {
+				count++
+			}
+		}
+		if !ok || count != 1 || j.Uses != "" {
+			return fmt.Errorf("incomplete or unbound .NET workflow owner %s", id)
+		}
+	}
+	return nil
+}
+
+func selectJobs(i inventory, event string, paths []string) []string {
+	all := []string{}
+	for id := range i.Jobs {
+		all = append(all, id)
+	}
+	sort.Strings(all)
+	if event != "pull_request" || len(paths) == 0 {
+		return all
+	}
+	selected := map[string]bool{}
+	// Root AGENTS.md has no gated reader. It may only accompany a recognized
+	// non-documentation change; alone or with other documents it stays full.
+	companion, source := false, false
+	for _, path := range paths {
+		if path == rootAgents {
+			companion = true
+			continue
+		}
+		known := false
+		for id, owners := range i.Jobs {
+			for _, owner := range owners {
+				if path == owner || strings.HasSuffix(owner, "/") && strings.HasPrefix(path, owner) {
+					selected[id], known = true, true
+				}
+			}
+		}
+		if !known {
+			return all
+		}
+		source = source || !isDocumentation(path)
+	}
+	if companion && !source {
+		return all
+	}
+	result := []string{}
+	for id := range selected {
+		result = append(result, id)
+	}
+	sort.Strings(result)
+	return result
+}
+
+func isDocumentation(path string) bool {
+	ext := strings.ToLower(filepath.Ext(path))
+	return ext == ".md" || ext == ".markdown" || ext == ".mdx"
+}
+
+func changedPaths(root, base, head string) ([]string, error) {
+	sha := regexp.MustCompile(`^[a-f0-9]{40}$`)
+	if !sha.MatchString(base) || !sha.MatchString(head) {
+		return nil, fmt.Errorf("base and head must be immutable full commit IDs")
+	}
+	git := func(args ...string) ([]byte, error) {
+		cmd := exec.Command("git", args...)
+		cmd.Dir = root
+		out, err := cmd.Output()
+		if err != nil {
+			return nil, fmt.Errorf("incomplete Git evidence: %w", err)
+		}
+		return out, nil
+	}
+	for _, ref := range []string{base, head} {
+		out, err := git("rev-parse", "--verify", ref+"^{commit}")
+		if err != nil || strings.TrimSpace(string(out)) != ref {
+			return nil, fmt.Errorf("unresolved commit %s", ref)
+		}
+	}
+	ancestor, err := git("merge-base", "--all", base, head)
+	if err != nil {
+		return nil, err
+	}
+	mergeBase := strings.TrimSpace(string(ancestor))
+	if !sha.MatchString(mergeBase) {
+		return nil, fmt.Errorf("ambiguous merge base")
+	}
+	// Disabling rename detection deliberately yields both old and new paths.
+	// NUL boundaries preserve spaces/newlines without API pagination or truncation.
+	out, err := git("diff", "--name-only", "--no-renames", "-z", mergeBase, head, "--")
+	if err != nil {
+		return nil, err
+	}
+	if len(out) == 0 {
+		return nil, nil
+	}
+	if out[len(out)-1] != 0 {
+		return nil, fmt.Errorf("incomplete path boundaries")
+	}
+	paths := strings.Split(string(out[:len(out)-1]), "\x00")
+	for _, p := range paths {
+		if !ordinarySelectiveFiles[p] {
+			continue
+		}
+		// New/deleted files and type changes are not ordinary modifications of an
+		// exact selective owner. Keep full coverage instead of trusting name-only
+		// evidence. Disable renames and require both complete regular-file blobs.
+		raw, err := git("diff", "--raw", "--no-abbrev", "--no-renames", "-z", mergeBase, head, "--", p)
+		if err != nil {
+			return nil, err
+		}
+		record := strings.Split(string(raw), "\x00")
+		valid := len(record) == 3 && record[1] == p && record[2] == ""
+		if valid {
+			fields := strings.Fields(record[0])
+			valid = len(fields) == 5 && fields[0] == ":100644" && fields[1] == "100644" &&
+				sha.MatchString(fields[2]) && sha.MatchString(fields[3]) && fields[4] == "M"
+		}
+		if !valid {
+			// An unclassified marker deliberately invokes the existing full fallback.
+			paths = append(paths, ".ci-selection-unproven-workflow-change")
+			break
+		}
+	}
+	return paths, nil
+}
+
+func load(path string, value any) error {
+	f, err := os.Open(path)
+	if err != nil {
+		return err
+	}
+	d := json.NewDecoder(f)
+	d.DisallowUnknownFields()
+	return errors.Join(d.Decode(value), f.Close())
+}
+
+func writeSelectionOutput(output io.WriteCloser, encoded []byte) error {
+	n, writeErr := fmt.Fprintf(output, "selected=%s\n", encoded)
+	if writeErr == nil && n != len(encoded)+len("selected=\n") {
+		writeErr = io.ErrShortWrite
+	}
+	return errors.Join(writeErr, output.Close())
+}
+
+func run() error {
+	if len(os.Args) != 4 {
+		return fmt.Errorf("usage: ci-selection ROOT INVENTORY WORKFLOW_JSON")
+	}
+	root, err := filepath.Abs(os.Args[1])
+	if err != nil {
+		return err
+	}
+	var i inventory
+	if err := load(os.Args[2], &i); err != nil {
+		return err
+	}
+	// Workflow jobs have many unrelated fields; admit them as data, never commands.
+	data, err := os.ReadFile(os.Args[3])
+	if err != nil {
+		return err
+	}
+	var w workflow
+	if err := json.Unmarshal(data, &w); err != nil {
+		return err
+	}
+	gated, err := validateInventory(i, w)
+	if err != nil {
+		return err
+	}
+	var paths []string
+	event := os.Getenv("EVENT_NAME")
+	if event == "pull_request" {
+		paths, err = changedPaths(root, os.Getenv("BASE_SHA"), os.Getenv("HEAD_SHA"))
+		if err != nil {
+			return err
+		}
+	}
+	eligible := os.Getenv("RUN_CATALOGUE")
+	if eligible != "true" && eligible != "false" {
+		return fmt.Errorf("unknown catalogue scheduling eligibility")
+	}
+	scope := os.Getenv("CATALOGUE_SCOPE")
+	if eligible == "true" && (scope != "true" && scope != "false" || scope == "false" && event != "pull_request") {
+		return fmt.Errorf("unknown or inapplicable trusted catalogue scope")
+	}
+	selected := selectJobs(i, event, paths)
+	chosen := map[string]bool{}
+	for _, id := range selected {
+		chosen[id] = true
+	}
+	if eligible == "true" && scope == "false" {
+		for _, id := range i.CatalogueOptional {
+			delete(chosen, id)
+		}
+	}
+	result := []string{}
+	gatedCount := 0
+	if eligible == "true" {
+		for _, id := range gated {
+			if chosen[id] {
+				result = append(result, id)
+				gatedCount++
+			}
+		}
+	}
+	sort.Strings(result)
+	encoded, err := json.Marshal(result)
+	if err != nil {
+		return err
+	}
+	f, err := os.OpenFile(os.Getenv("GITHUB_OUTPUT"), os.O_APPEND|os.O_WRONLY, 0600)
+	if err != nil {
+		return err
+	}
+	if err := writeSelectionOutput(f, encoded); err != nil {
+		return err
+	}
+	fmt.Printf("Selected %d of %d gated catalogue jobs; existing admission is unchanged.\n", gatedCount, len(gated))
+	return nil
+}
+
+func main() {
+	if err := run(); err != nil {
+		fmt.Fprintln(os.Stderr, "CI selection:", err)
+		os.Exit(1)
+	}
+}

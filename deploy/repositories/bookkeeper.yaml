@@ -1,0 +1,24 @@
+apiVersion: repo.github.m.upbound.io/v1alpha1
+kind: Repository
+metadata:
+  name: bookkeeper
+  annotations:
+    crossplane.io/external-name: bookkeeper
+spec:
+  managementPolicies: ["Observe", "Create", "Update"]
+  initProvider:
+    # Start from the Go starter template; the implementation lands by PR.
+    template:
+      - owner: devantler-tech
+        repository: go-template
+        includeAllBranches: false
+  forProvider:
+    name: bookkeeper
+    visibility: public
+    archived: false
+    description: "Deterministic bookkeeping automation for Numina, packaged with a Helm chart"
+    hasIssues: true
+    topics: ["bookkeeping", "numina", "jmap", "helm-chart", "go"]
+  providerConfigRef:
+    kind: ProviderConfig
+    name: default
