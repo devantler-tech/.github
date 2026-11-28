@@ -66,17 +66,17 @@ jq -e '
     [.jobs.apply.steps | to_entries[] | select(.value.id? == "readback-token") | .key][0])
 ' "$work/workflow.json" >/dev/null
 # The write token: organization administration write and custom properties admin,
-# scoped to this repository, to exactly this workflow on main, on botantler-1.
+# scoped to this repository, to exactly this workflow on main, naming no App.
 # The read-back token: custom property values and metadata read, organization-wide.
 policy_claims='{repository_owner_id:"178524219", job_workflow_ref:"devantler-tech/\\.github/\\.github/workflows/apply-custom-properties\\.yaml@refs/heads/main"}'
 yq -o=json '.' "$root/.github/chainguard/apply-custom-properties.sts.yaml" | jq -e "
   . == {issuer:\"https://token.actions.githubusercontent.com\", subject:\"repo:devantler-tech/.github:ref:refs/heads/main\",
     claim_pattern:${policy_claims}, repositories:[\".github\"],
-    permissions:{organization_administration:\"write\", organization_custom_properties:\"admin\"}, app:\"botantler-1\"}
+    permissions:{organization_administration:\"write\", organization_custom_properties:\"admin\"}}
 " >/dev/null || { echo 'FAIL: the property write policy must grant only its reviewed authority' >&2; exit 1; }
 yq -o=json '.' "$root/.github/chainguard/apply-custom-properties-readback.sts.yaml" | jq -e "
   . == {issuer:\"https://token.actions.githubusercontent.com\", subject:\"repo:devantler-tech/.github:ref:refs/heads/main\",
     claim_pattern:${policy_claims},
-    permissions:{metadata:\"read\", organization_custom_properties:\"read\"}, app:\"botantler-1\"}
+    permissions:{metadata:\"read\", organization_custom_properties:\"read\"}}
 " >/dev/null || { echo 'FAIL: the property read-back policy must grant only read authority' >&2; exit 1; }
 echo 'PASS: rendered property coverage, native generator and schema refusal controls'

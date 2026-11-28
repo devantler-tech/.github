@@ -660,24 +660,30 @@ jobs:
     permissions:
       contents: read
       issues: write
+      id-token: write # the project token comes from the GitHub token broker
     with:
       ignore: "^third_party/"
-    secrets:
-      APP_PRIVATE_KEY: ${{ secrets.APP_PRIVATE_KEY }}
 ```
 
 #### Secrets and Inputs
 
 | Key               | Type            | Default | Required | Description                                                |
 |-------------------|-----------------|---------|----------|------------------------------------------------------------|
-| `APP_CLIENT_ID`   | Variable        | -       | No       | Required for production project integration; unused in dry-run |
-| `APP_PRIVATE_KEY` | Secret          | -       | No       | Required for production project integration; unused in dry-run |
+| `APP_PRIVATE_KEY` | Secret          | -       | No       | Retired and unused; still declared so callers that pass it keep working |
 | `dry-run`         | Input (boolean) | `false` | No       | Exercise the action wrapper offline without creating issues |
 | `ignore`          | Input (string)  | `""`    | No       | Regular expression matching repository-relative paths to ignore |
 | `optional-project-auth` | Input (boolean) | `false` | No | Opt in to project integration being optional |
 | `project` | Input (string) | `organization/devantler-tech/5` | No | Project selection; explicitly empty omits integration when opted in |
 
-With `dry-run: true`, omit the App secret: an executed job uses only a contents-read token and a
+The organization project token comes from the GitHub token broker
+([ADR 0020](https://github.com/devantler-tech/monorepo/blob/main/docs/adr/0020-one-github-token-broker.md))
+through [`.github/chainguard/scan-for-todo-comments.sts.yaml`](.github/chainguard/scan-for-todo-comments.sts.yaml):
+any devantler-tech repository's `main`, running this workflow on `main` or at a pinned commit, gets
+organization projects write only, scoped to itself, from either botantler App. No App key is read. The calling
+job must grant `id-token: write`, even with `dry-run: true`: GitHub checks a called workflow's
+permission ceiling when it loads the run, including for jobs that do not run.
+
+With `dry-run: true`, an executed job uses only a contents-read token and a
 fail-closed Docker fixture to verify exactly one wrapper invocation and input forwarding. This
 does not scan source comments; catalogue CI separately exercises the real scanner image.
 The [scanner fixtures](.github/tests/todo-scanner/README.md) verify complete requests and results
@@ -686,7 +692,7 @@ project operations fail the action and stop later writes. The scanner runs once;
 and initial unauthenticated language-rule reads can retry before mutation.
 The calling job still needs the static `issues: write` ceiling because GitHub validates the
 production job even when it is skipped. Production uses the workflow token for issues and the
-App token for the organization project.
+broker token for the organization project.
 
 Production callers can pass `optional-project-auth: true` and `project: ""` to omit
 project integration. Existing callers retain the current project selection and
@@ -725,7 +731,9 @@ an empty project and every source path excluded. All three grant only
 | `project` | Input (string) | `organization/devantler-tech/5` | No | Preserved project selection; the no-project evaluation sets it empty |
 
 Generate it with `bash .github/scripts/generate-todo-readonly.sh`. The complete production
-workflow is preserved, with only its display name changed and its issue permission removed.
+workflow is preserved, with only its display name changed and its issue and `id-token`
+permissions removed. Without `id-token`, its callers need no OIDC grant, and it can never reach the
+token broker.
 Required CI checks compare it independently with production and reject restored caller/callee
 write permissions, secrets, input drift or weakened execution. Production consumers continue
 using `scan-for-todo-comments.yaml` with their existing authorization. Live project behavior
@@ -791,7 +799,7 @@ jobs:
 <details>
 <summary>Purpose, interface and usage</summary>
 
-[.github/workflows/check-github-broker-policies.yaml](.github/workflows/check-github-broker-policies.yaml) checks every GitHub token broker trust policy (`.github/chainguard/<identity>.sts.yaml`) in a pull request ([ADR 0020](https://github.com/devantler-tech/monorepo/blob/main/docs/adr/0020-one-github-token-broker.md)). A policy must name the GitHub Actions issuer exactly, pin its callers to the devantler-tech organization ID (no other caller, customers included, is ever admitted), name its permissions explicitly, name no App, because botantler-1 and botantler-2 are interchangeable and the broker mints from whichever has more rate limit left (only a listed workflow here may pin the one App that holds a permission it needs: today custom properties, on botantler-1), and grant privileged permissions (`administration`, `members`, `organization_*`) only in this repository's policies, for a listed workflow on `main` or a listed shared workflow's callers, with exactly its reviewed set. It also checks that every direct pinned call of a `devantler-tech/.github` shared workflow (`…@<commit>`) in the repository's own workflows names a commit on this repository's `main`, so those calls cannot use a pin-admitting policy from an unmerged or impostor commit. It reads only the repository's own `jobs.*.uses`, so a third-party workflow that itself calls such a commit is not covered. The organization ruleset [`require-github-broker-policies`](deploy/organization-rulesets/require-github-broker-policies.yaml) requires it on every repository's default branch. It is not a reusable workflow: nothing calls it, and it takes no inputs or secrets.
+[.github/workflows/check-github-broker-policies.yaml](.github/workflows/check-github-broker-policies.yaml) checks every GitHub token broker trust policy (`.github/chainguard/<identity>.sts.yaml`) in a pull request ([ADR 0020](https://github.com/devantler-tech/monorepo/blob/main/docs/adr/0020-one-github-token-broker.md)). A policy must name the GitHub Actions issuer exactly, pin its callers to the devantler-tech organization ID (no other caller, customers included, is ever admitted), name its permissions explicitly, name no App, because botantler-1 and botantler-2 are interchangeable and the broker mints from whichever has more rate limit left (only a workflow listed in the check may pin one App, for a permission just that App can serve; none is listed), and grant privileged permissions (`administration`, `members`, `organization_*`) only in this repository's policies, for a listed workflow on `main` or a listed shared workflow's callers, with exactly its reviewed set. It also checks that every direct pinned call of a `devantler-tech/.github` shared workflow (`…@<commit>`) in the repository's own workflows names a commit on this repository's `main`, so those calls cannot use a pin-admitting policy from an unmerged or impostor commit. It reads only the repository's own `jobs.*.uses`, so a third-party workflow that itself calls such a commit is not covered. The organization ruleset [`require-github-broker-policies`](deploy/organization-rulesets/require-github-broker-policies.yaml) requires it on every repository's default branch. It is not a reusable workflow: nothing calls it, and it takes no inputs or secrets.
 
 </details>
 

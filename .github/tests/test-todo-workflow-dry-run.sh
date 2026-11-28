@@ -35,10 +35,9 @@ guard() {
       $wf.on.workflow_call.secrets.APP_PRIVATE_KEY.required != false
     then error("dry-run stays default-off and its unused secret must be optional")
     elif $wf.permissions != {} or $wf.jobs.todos.if != "${{ !inputs.dry-run }}" or
-      $wf.jobs.todos.permissions != {contents:"read",issues:"write"} or
+      $wf.jobs.todos.permissions != {contents:"read",issues:"write","id-token":"write"} or
       ([$wf.jobs.todos.steps[] | select(.uses == "$/actions/create-issues-from-todos") | .with] !=
-        [{"client-id":"${{ vars.APP_CLIENT_ID }}","app-private-key":"${{ secrets.APP_PRIVATE_KEY }}",
-          project:"${{ inputs.project }}",ignore:"${{ inputs.ignore }}",
+        [{project:"${{ inputs.project }}",ignore:"${{ inputs.ignore }}",
           "optional-project-auth":"${{ inputs.optional-project-auth }}"}])
     then error("production gate, permissions and project authentication must remain intact")
     elif $job == null or $job.if != "${{ inputs.dry-run }}" or
@@ -122,7 +121,8 @@ production project forwarding constant	.workflow.jobs.todos.steps |= map(if .wit
 default live activation	.workflow.on.workflow_call.inputs["dry-run"].default=true	default-off
 production gate bypass	.workflow.jobs.todos.if=null	production gate
 production write scope lost	.workflow.jobs.todos.permissions.issues="read"	production gate
-production App binding lost	.workflow.jobs.todos.steps |= map(if .with.project then del(.with["app-private-key"]) else . end)	production gate
+production broker grant lost	.workflow.jobs.todos.permissions |= del(.["id-token"])	production gate
+production App key restored	.workflow.jobs.todos.steps |= map(if .with.project then .with["app-private-key"]="${{ secrets.APP_PRIVATE_KEY }}" else . end)	production gate
 missing dry-run	.workflow.jobs |= del(.["dry-run"])	execute independently
 skipped dry-run	.workflow.jobs["dry-run"].if="false"	execute independently
 ignored job failure	.workflow.jobs["dry-run"]["continue-on-error"]=true	execute independently

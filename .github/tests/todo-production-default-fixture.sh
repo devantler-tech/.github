@@ -14,8 +14,12 @@ case "${1:-}" in
   app-token)
     [[ "${OPTIONAL_PROJECT_AUTH:-}" == false && "${PROJECT:-}" == organization/devantler-tech/5 ]] ||
       fail 'production defaults did not reach the selected App-token step'
-    [[ -z "${APP_PRIVATE_KEY:-}" ]] || fail 'offline replay received a real credential'
-    [[ "${PROJECT_PERMISSION:-}" == write ]] || fail 'App-token dependency inputs changed'
+    # The production step gets its project token from the GitHub token broker,
+    # under the to-do scanner's trust policy, and passes nothing else: no App key.
+    [[ "${BROKER_ACTION:-}" =~ ^octo-sts/action@[0-9a-f]{40}$ ]] || fail 'the project token no longer comes from the broker action'
+    [[ "${BROKER_DOMAIN:-}" == sts.platform.devantler.tech && "${BROKER_SCOPE:-}" == devantler-tech &&
+      "${BROKER_IDENTITY:-}" == scan-for-todo-comments ]] || fail 'App-token dependency inputs changed'
+    [[ "${BROKER_INPUTS:-}" == domain,identity,scope ]] || fail 'the broker step takes inputs beyond domain, scope and identity'
     [[ ! -e "$fixture/app-token.json" ]] || fail 'App-token dependency ran more than once'
     jq -n --arg flag "$OPTIONAL_PROJECT_AUTH" --arg project "$PROJECT" \
       '{flag:$flag,project:$project,token:"offline-project-token"}' >"$fixture/app-token.json"
