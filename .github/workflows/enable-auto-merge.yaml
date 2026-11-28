@@ -5,7 +5,7 @@ on:
     secrets:
       APP_PRIVATE_KEY:
         required: false
-        description: "The private key for the GitHub App; required for live mutations, omitted for dry-run"
+        description: "Retired and unused: every token comes from the GitHub token broker. Still declared so callers that pass it keep working."
     inputs:
       dry-run:
         type: boolean
@@ -456,9 +456,15 @@ jobs:
     # validation for existing workflow_call consumers even with enforcement
     # off. The enforced path's extra read scopes come from a separate App
     # token minted only on enforced runs (see 🔑 gate-lookup token below).
+    # id-token: write proves this job's identity to the GitHub token broker
+    # (devantler-tech/monorepo ADR 0020), which mints every App token below. As
+    # an organization-required workflow this job runs from devantler-tech/.github
+    # main; a workflow_call consumer must grant it too, or the run fails at
+    # startup.
     permissions:
       pull-requests: write
       contents: write
+      id-token: write
     # Every mutation shares the disarm job's caller/PR lane. Review/comment
     # runs re-evaluate complete live state; pull-request runs also retain the
     # earlier workflow-level state lease and durable lifecycle bindings.
@@ -478,27 +484,25 @@ jobs:
       # Primary mint requests Workflows: write so a PR that modifies
       # .github/workflows/ can be armed — GitHub treats
       # enablePullRequestAutoMerge as updating the workflow and refuses it
-      # without that scope (actions#559). The devantler-tech installation
-      # grants Workflows org-wide. An installation WITHOUT the grant CANNOT
-      # mint a Workflows-scoped token: actions/create-github-app-token 422s
-      # rather than intersecting the scope away (documented in
-      # template-sync.yaml). So this mint is non-fatal (continue-on-error) and
-      # falls back to the base-scoped token below — otherwise EVERY PR there
-      # (workflow-touching or not) would hit a red required check before the
-      # arming step's graceful-degrade could ever run.
+      # without that scope (actions#559). Every token here comes from the GitHub
+      # token broker (devantler-tech/monorepo ADR 0020), from either botantler App, scoped to
+      # the pull request's repository, through devantler-tech/.github trust
+      # policies that admit only this workflow on main. No App key is read, and
+      # each action's post step revokes its token. This one is
+      # enable-auto-merge: contents, pull requests and workflows write, for
+      # approving and enabling auto-merge. An installation without Workflows
+      # cannot issue a Workflows-scoped token, so this exchange is non-fatal
+      # (continue-on-error) and falls back to the base-scoped token below.
+      # Otherwise every PR there (workflow-touching or not) would hit a red
+      # required check before the arming step's graceful-degrade could run.
       - name: 🔑 Generate GitHub App Token (Workflows-scoped)
-        uses: actions/create-github-app-token@f418cff399f7aef4c2f0ad47e25ca7a6abbdd6fc # v3.4.0
+        uses: octo-sts/action@f603d3be9d8dd9871a265776e625a27b00effe05 # v1.1.1
         id: app-token
         continue-on-error: true
         with:
-          client-id: ${{ vars.APP_CLIENT_ID }}
-          private-key: ${{ secrets.APP_PRIVATE_KEY }}
-          # Least-privilege token scope: approving and enabling auto-merge on
-          # PRs. The gate's read-only lookups use GITHUB_TOKEN instead (see
-          # the job's permissions block).
-          permission-contents: write
-          permission-pull-requests: write
-          permission-workflows: write
+          domain: sts.platform.devantler.tech
+          scope: devantler-tech
+          identity: enable-auto-merge
 
       # Base-scoped fallback (no Workflows) for installations that have not
       # granted the App Workflows: write — reached only when the primary mint
@@ -507,14 +511,13 @@ jobs:
       # the arming step. A genuine auth error (bad key) fails BOTH mints, and
       # this one has no continue-on-error, so the job still fails closed.
       - name: 🔑 Generate GitHub App Token (base scope fallback)
-        uses: actions/create-github-app-token@f418cff399f7aef4c2f0ad47e25ca7a6abbdd6fc # v3.4.0
+        uses: octo-sts/action@f603d3be9d8dd9871a265776e625a27b00effe05 # v1.1.1
         id: app-token-base
         if: steps.app-token.outcome == 'failure'
         with:
-          client-id: ${{ vars.APP_CLIENT_ID }}
-          private-key: ${{ secrets.APP_PRIVATE_KEY }}
-          permission-contents: write
-          permission-pull-requests: write
+          domain: sts.platform.devantler.tech
+          scope: devantler-tech
+          identity: enable-auto-merge-base
 
       # Self-reference: check out THIS workflow's own repo at the exact commit
       # it is running from (job.workflow_repository / job.workflow_sha) — never
@@ -612,31 +615,25 @@ jobs:
             echo "::notice::PR #${PR_NUMBER} is draft or not open; skipping the auto-merge gate."
           fi
 
-      # Enforced-path-only read scopes, minted as a SEPARATE App token so the
-      # default-off path — and therefore every legacy workflow_call consumer's
-      # permissions block — never needs them. If a consumer's App installation
-      # lacks Checks/Actions read, create-github-app-token does NOT intersect
-      # the ungranted scope away — it 422s and FAILS this step (same behavior
-      # the arming mint's continue-on-error + base-scope fallback handles, see
-      # #559/#626), so `steps.gates` never runs. That is deliberately loud: an
-      # enforced run whose gates cannot be read is a misconfigured installation,
-      # not an ordinary case to swallow. It still fails CLOSED — the "Disarm
+      # Enforced-path-only read scopes, minted as a SEPARATE broker token (the
+      # enable-auto-merge-gates policy: actions, contents and pull requests read)
+      # so the default-off path never needs them. If the exchange fails, this
+      # step FAILS, so `steps.gates` never runs. That is deliberately loud: an
+      # enforced run whose gates cannot be read is misconfigured, not an
+      # ordinary case to swallow. It still fails CLOSED — the "Disarm
       # auto-merge on failed gates" step below matches
       # `steps.gate-token.outcome == 'failure'`, so nothing is ever armed on
       # unverified gates and an already-armed PR is actively revoked.
       - name: 🔑 Generate gate-lookup token (enforced runs only)
-        uses: actions/create-github-app-token@f418cff399f7aef4c2f0ad47e25ca7a6abbdd6fc # v3.4.0
+        uses: octo-sts/action@f603d3be9d8dd9871a265776e625a27b00effe05 # v1.1.1
         id: gate-token
         if: >-
           steps.pr.outputs.eligible == 'true' &&
           (inputs.enforce-review-gates || vars.ENFORCE_MERGE_GATES == 'true')
         with:
-          client-id: ${{ vars.APP_CLIENT_ID }}
-          private-key: ${{ secrets.APP_PRIVATE_KEY }}
-          permission-checks: read
-          permission-actions: read
-          permission-contents: read
-          permission-pull-requests: read
+          domain: sts.platform.devantler.tech
+          scope: devantler-tech
+          identity: enable-auto-merge-gates
 
       # Fail-closed pentad gate (actions#548): approval is only allowed once a
       # CURRENT-HEAD green review (CodeRabbit APPROVED or Codex clean pass) AND
