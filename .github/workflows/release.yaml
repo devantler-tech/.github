@@ -10,9 +10,14 @@ permissions: {}
 jobs:
   release:
     # The catalogue's own release workflow, from this commit (#235).
+    # id-token: write lets the shared release workflow prove its identity to the
+    # GitHub token broker (devantler-tech/monorepo ADR 0020) for its release
+    # token; no App key is passed. A reusable job that asks for more than its
+    # caller grants fails at startup, and this caller runs the workflow from the
+    # same commit, so the grant changes with it.
+    permissions:
+      id-token: write
     uses: $/.github/workflows/create-release.yaml
     with:
       disable-issue-side-effects: true
       warn-missing-breaking-bang: true
-    secrets:
-      APP_PRIVATE_KEY: ${{ secrets.APP_PRIVATE_KEY }}

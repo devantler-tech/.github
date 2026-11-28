@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Execute the actual credential validation, helper preservation and Docker run blocks offline.
+# Execute the actual helper preservation and Docker run blocks offline, with the project token from the broker step.
 set -euo pipefail
 root="$(cd "$(dirname "$0")/../.." && pwd)"
 action="${1:-$root/actions/create-issues-from-todos/action.yaml}"
@@ -9,17 +9,17 @@ yq -o=json '.' "$action" >"$work/action.json"
 # Stop the fixture with a focused diagnostic when an observed result differs.
 fail() { echo "FAIL: $*" >&2; exit 1; }
 condition="\${{ inputs.optional-project-auth != 'true' || inputs.project != '' }}"
-validation_condition="\${{ inputs.optional-project-auth == 'true' }}"
-jq -e --arg condition "$condition" --arg validation "$validation_condition" '
-  .inputs["app-private-key"].required == false and
+# The project token comes from the GitHub token broker under the to-do scanner's
+# trust policy (devantler-tech/monorepo ADR 0020), so the action takes no App
+# credential at all and nothing validates one.
+jq -e --arg condition "$condition" '
+  (.inputs | has("app-private-key") or has("client-id") or has("app-id") | not) and
   .inputs["optional-project-auth"].default == "false" and
   ([.runs.steps[] | select(.id == "app-token")] | length == 1 and
-    all(.if == $condition and .with["permission-organization-projects"] == "write" and
-      .with["client-id"] == "${{ inputs.client-id }}" and
-      .with["app-id"] == "${{ inputs.app-id }}" and
-      .with["private-key"] == "${{ inputs.app-private-key }}")) and
-  .runs.steps[0].name == "Validate project authentication" and
-  .runs.steps[0].if == $validation and
+    all(.if == $condition and (.uses | test("^octo-sts/action@[0-9a-f]{40}$")) and
+      .with == {domain:"sts.platform.devantler.tech", scope:"devantler-tech", identity:"scan-for-todo-comments"})) and
+  ([.runs.steps[] | select(.uses // "" | test("create-github-app-token"))] | length == 0) and
+  ([.. | strings | select(test("private-key|APP_PRIVATE_KEY|app-private-key"))] | length == 0) and
   ([.runs.steps[] | select(.name == "📝 Create issues from TODOs")] | all(
     .env.INPUT_TOKEN == "${{ github.token }}" and
     .env.INPUT_PROJECT == "${{ inputs.project }}" and
@@ -28,7 +28,7 @@ jq -e --arg condition "$condition" --arg validation "$validation_condition" '
     (.env.TODO_TO_ISSUE_IMAGE |
       (capture("^ghcr.io/alstr/todo-to-issue-action:v(?<major>[0-9]+)[.](?<minor>[0-9]+)[.](?<patch>[0-9]+)@sha256:[0-9a-f]{64}$") // error("invalid scanner image pin")) |
       [.major,.minor,.patch] | map(tonumber) >= [5,1,15])))' \
-  "$work/action.json" >/dev/null || fail 'project authentication must be optional, conditional and validated first'
+  "$work/action.json" >/dev/null || fail 'the project token must come from the broker step alone, conditionally'
 jq -e '
   (.inputs | has("exclude-vendored") | not) and
   ([.runs.steps[] | select(.id == "vendored-ignore")] | length == 1 and
@@ -36,7 +36,7 @@ jq -e '
       .shell == "bash"))
 ' "$work/action.json" >/dev/null || fail 'vendor filtering must be permanent and guarded by an empty ignore'
 
-for step in 'Validate project authentication' '🧰 Preserve retry helper' '📝 Create issues from TODOs'; do
+for step in '🧰 Preserve retry helper' '📝 Create issues from TODOs'; do
   jq -er --arg step "$step" '.runs.steps[] | select(.name == $step) | .run | select(length > 0)' \
     "$work/action.json" >"$work/$step.sh"
 done
@@ -101,16 +101,6 @@ run_case() (
      "${{ github.event.pull_request.diff_url }}":$diff,
      "${{ steps.app-token.outputs.token }}":$app_token}' \
     >"$work/context.json"
-  if [[ "$opt_in" == true ]]; then
-    project_env 'Validate project authentication'
-    bash "$work/Validate project authentication.sh" >"$work/validation.log" 2>&1 || status=$?
-  fi
-  if [[ "$expected" == invalid ]]; then
-    [[ "$status" == 1 ]] || fail "$label: invalid project credentials were accepted"
-    echo "PASS: $label rejected before checkout or Docker"
-    return
-  fi
-  [[ "$status" == 0 ]] || fail "$label: valid project credential state rejected"
   bash "$root/.github/tests/todo-action-smoke.sh" prepare
   export PATH="$RUNNER_TEMP/todo-action-smoke/bin:$PATH"
   bash "$work/🧰 Preserve retry helper.sh"
@@ -128,20 +118,14 @@ run_case() (
 )
 
 run_case no-project '' '' '' '' 0 1 0 false ''
-run_case unused-project-credentials '' offline-key offline-client '' 0 1 0 false
-run_case project-client organization/offline/1 offline-key offline-client '' 0 1 0 false
-run_case project-legacy-app organization/offline/1 offline-key '' 12345 0 1 0 false
-run_case project-missing-key organization/offline/1 '' offline-client '' 0 0 invalid false
-run_case project-missing-identity organization/offline/1 offline-key '' '' 0 0 invalid false
-run_case project-conflicting-identities organization/offline/1 offline-key offline-client 12345 0 0 invalid false
+run_case project organization/offline/1 '' '' '' 0 1 0 false
 run_case transient-recovery '' '' '' '' 2 3 0 false
 run_case terminal-failure '' '' '' '' -1 3 73 false
 run_case preserved-helper-after-checkout '' '' '' '' 2 3 0 true
-run_case default-auth-client '' offline-key offline-client '' 0 1 0 false '' default
-run_case default-auth-legacy-app '' offline-key '' 12345 0 1 0 false '' default
-run_case default-auth-project organization/offline/1 offline-key offline-client '' 0 1 0 false '' false
+run_case default-auth '' '' '' '' 0 1 0 false '' default
+run_case default-auth-project organization/offline/1 '' '' '' 0 1 0 false '' false
 run_case vendor-filter-default '' '' '' '' 0 1 0 false '' true '^(vendor|third_party)/'
 run_case vendor-filter-explicit-none '' '' '' '' 0 1 0 false '^$' true '^$'
 run_case vendor-filter-custom '' '' '' '' 0 1 0 false '^generated/' true '^generated/'
 TODO_RUN_FAILURES=1 run_case scanner-fails-once '' '' '' '' 0 1 73 false ''
-echo 'PASS: 17 offline to-do wrapper scenarios preserve flag states, overrides, credentials and failures'
+echo 'PASS: 11 offline to-do wrapper scenarios preserve flag states, overrides, broker token forwarding and failures'

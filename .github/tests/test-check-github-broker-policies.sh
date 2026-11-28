@@ -125,7 +125,9 @@ dotgithub() {
 }
 readonly audit_read=$'  metadata: read\n  administration: read\n  organization_administration: read'
 repository=devantler-tech/.github expect 0 '' 'a listed audit with administration read' "$(dotgithub governance-audits "$audit_read")"
-repository=devantler-tech/.github expect 0 '' 'custom properties admin on botantler-1' \
+repository=devantler-tech/.github expect 0 '' 'custom properties admin with no App' \
+  "$(dotgithub apply-custom-properties $'  organization_administration: write\n  organization_custom_properties: admin')"
+repository=devantler-tech/.github expect 1 'pins App botantler-1' 'custom properties admin on botantler-1' \
   "$(dotgithub apply-custom-properties $'  organization_administration: write\n  organization_custom_properties: admin' 'app: botantler-1')"
 repository=devantler-tech/.github expect 1 'pins App botantler-2' 'custom properties admin on botantler-2' \
   "$(dotgithub apply-custom-properties $'  organization_administration: write\n  organization_custom_properties: admin' 'app: botantler-2')"
@@ -135,8 +137,20 @@ repository=devantler-tech/.github expect 1 'pins App botantler-1' 'a botantler-1
   "$(dotgithub governance-audits "$audit_read" 'app: botantler-1')"
 repository=devantler-tech/.github expect 0 '' 'the coverage check with organization administration read' \
   "$(dotgithub repository-coverage-check $'  metadata: read\n  organization_administration: read')"
-repository=devantler-tech/.github expect 0 '' 'the custom properties read-back on botantler-1' \
-  "$(dotgithub apply-custom-properties $'  metadata: read\n  organization_custom_properties: read' 'app: botantler-1')"
+repository=devantler-tech/.github expect 0 '' 'the custom properties read-back with no App' \
+  "$(dotgithub apply-custom-properties $'  metadata: read\n  organization_custom_properties: read')"
+# Nothing is listed today, so exercise the pin rule with one fixture entry in a copy of the check.
+cp "$tmp/check.sh" "$tmp/check.real.sh"
+sed 's|readonly app_pins='"'"'{}'"'"'|readonly app_pins='"'"'{"apply-custom-properties.yaml": {"app": "botantler-1", "permission": "organization_custom_properties"}}'"'"'|' \
+  "$tmp/check.real.sh" >"$tmp/check.sh"
+! cmp -s "$tmp/check.sh" "$tmp/check.real.sh" || fail 'could not list a fixture pin'
+repository=devantler-tech/.github expect 0 '' 'a listed pin that requests its listed permission' \
+  "$(dotgithub apply-custom-properties $'  organization_administration: write\n  organization_custom_properties: admin' 'app: botantler-1')"
+repository=devantler-tech/.github expect 1 'pins App botantler-1' 'a listed pin without its listed permission' \
+  "$(dotgithub apply-custom-properties '  contents: read' 'app: botantler-1')"
+repository=devantler-tech/.github expect 1 'pins App botantler-2' 'the other App on a listed workflow' \
+  "$(dotgithub apply-custom-properties $'  organization_administration: write\n  organization_custom_properties: admin' 'app: botantler-2')"
+cp "$tmp/check.real.sh" "$tmp/check.sh"
 expect 1 'outside the reviewed allowlist' 'a listed grant in another repository' "$(dotgithub governance-audits "$audit_read")"
 repository=devantler-tech/.github expect 1 'outside the reviewed allowlist' 'more than the listed set' \
   "$(dotgithub governance-audits $'  administration: write' 'app: botantler-2')"

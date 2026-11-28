@@ -43,7 +43,10 @@ guard() {
       ($j["continue-on-error"] // false) != false
     then error("offline-test must execute independently")
     elif $w.permissions != {} or $j.permissions != {} or
-      any($w.jobs[]; .permissions != null and .permissions != {}) or
+      # Only the release job, which catalogue CI never calls (it calls the broker-free
+      # create-release-offline.yaml projection), may ask for exactly its broker grant.
+      any($w.jobs | to_entries[]; .key != "release" and .value.permissions != null and .value.permissions != {}) or
+      (($w.jobs.release.permissions // {}) | . != {} and . != {"id-token":"write"}) or
       ([$j,$w.env // {}] | tostring | test("\\bsecrets\\b|create-github-app-token|github[.]token|GH_TOKEN|GITHUB_TOKEN|PRIVATE_KEY";"i"))
     then error("offline-test must request no permissions and no credentials")
     elif [$j.steps[] | select(.uses != null)] | length != 2
@@ -68,7 +71,7 @@ guard() {
           and .env.WARN_MISSING_BREAKING_BANG == "${{ inputs.warn-missing-breaking-bang }}")] | length) != 1
     then error("offline release decisions must execute with the caller hook setting")
     elif (["test-create-release","test-create-release-no-issue-side-effects"] | all(. as $name |
-      $c.jobs[$name].uses == "$/.github/workflows/create-release.yaml" and
+      $c.jobs[$name].uses == "$/.github/workflows/create-release-offline.yaml" and
       $c.jobs[$name].with["offline-test"] == true and $c.jobs[$name].with["dry-run"] == true and
       $c.jobs[$name].secrets == null and $c.jobs[$name].permissions == {} and
       $c.jobs[$name].if == $condition and $c.jobs[$name].needs == null and
