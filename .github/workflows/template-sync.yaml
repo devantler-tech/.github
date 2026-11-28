@@ -6,11 +6,9 @@ on:
       source-repo-path:
         description: >-
           The `owner/repo` path of the upstream template repository to sync from
-          (passed to `actions-template-sync` as `source_repo_path`). When
-          `use-app-token` is set, the App token is auto-scoped to read this repo
-          as well, so a PRIVATE template under the same owner works out of the
-          box; a cross-owner private template needs a custom token with read
-          access to it.
+          (passed to `actions-template-sync` as `source_repo_path`). The template
+          must be public: the sync token is scoped to the calling repository only,
+          and reads a public template like anyone can.
         required: true
         type: string
       upstream-branch:
@@ -66,8 +64,8 @@ on:
         type: boolean
       use-app-token:
         description: >-
-          When `true`, open the sync PR with a GitHub App token
-          (minted from the `APP_CLIENT_ID` variable and the `APP_PRIVATE_KEY` secret)
+          When `true`, open the sync PR with a botantler App token from the
+          GitHub token broker (every caller job grants `id-token: write`)
           instead of the default `GITHUB_TOKEN`. A PR opened with `GITHUB_TOKEN`
           does NOT trigger the caller's `on: pull_request`/`push` CI runs. Only
           opt in after ensuring CI treats template-sync PR content as untrusted.
@@ -77,10 +75,9 @@ on:
     secrets:
       APP_PRIVATE_KEY:
         description: >-
-          GitHub App private key, required when `use-app-token` is `true` (the
-          non-default opt-in). Paired with the `APP_CLIENT_ID`
-          repository/organization variable to mint an App token for opening the
-          sync PR.
+          Retired: the App token now comes from the GitHub token broker
+          (devantler-tech/monorepo ADR 0020), so this key is unused. Declared
+          so existing callers that still pass it keep parsing.
         required: false
 
 permissions: {}
@@ -94,48 +91,35 @@ jobs:
     permissions:
       contents: write
       pull-requests: write
+      # Proves the caller's identity to the GitHub token broker. Callers must grant
+      # it too: a reusable job that asks for more than its caller grants fails at
+      # startup.
+      id-token: write
     steps:
       - name: 🛡️ Harden runner
         uses: step-security/harden-runner@aebdcf6156ab6691adf63218240e476564a1ed4c # v2.23.0
         with:
           egress-policy: audit
 
-      - name: 🧮 Resolve template repo name
-        id: template
-        if: ${{ inputs.use-app-token }}
-        shell: bash
-        env:
-          SOURCE_REPO_PATH: ${{ inputs.source-repo-path }}
-        run: echo "name=${SOURCE_REPO_PATH##*/}" >> "$GITHUB_OUTPUT"
-
-      - name: 🔑 Generate GitHub App token
+      # The GitHub token broker (devantler-tech/monorepo ADR 0020) grants this token
+      # through the organization policy .github/chainguard/template-sync.sts.yaml:
+      # contents, pull request and workflow write, scoped to the calling repository
+      # only (caller_repository), from either botantler App. No App key is read, and the
+      # action's post step revokes the token.
+      #
+      # `workflows: write` is what lets the sync push a template change under
+      # `.github/workflows/**`: the `use-app-token: false` fallback (`GITHUB_TOKEN`)
+      # can never push workflow files, so a template carrying workflow changes
+      # needs `use-app-token: true`. The template itself is read without this
+      # token: templates are public.
+      - name: 🔑 Get a sync token from the token broker
         id: app-token
         if: ${{ inputs.use-app-token }}
-        uses: actions/create-github-app-token@f418cff399f7aef4c2f0ad47e25ca7a6abbdd6fc # v3.4.0
+        uses: octo-sts/action@f603d3be9d8dd9871a265776e625a27b00effe05 # v1.1.1
         with:
-          client-id: ${{ vars.APP_CLIENT_ID }}
-          private-key: ${{ secrets.APP_PRIVATE_KEY }}
-          owner: ${{ github.repository_owner }}
-          # Scope the token to exactly the caller repo (push the sync branch +
-          # open the PR) AND the upstream template repo (clone it — required when
-          # the template is PRIVATE, harmless when it is public). Assumes both
-          # live under the same owner; a cross-owner private template needs its
-          # own read-scoped token instead.
-          repositories: ${{ github.event.repository.name }},${{ steps.template.outputs.name }}
-          permission-contents: write
-          permission-pull-requests: write
-          # The template ships `.github/workflows/**`; pushing a sync commit that
-          # creates/updates a workflow file requires the `workflows` scope, else
-          # GitHub rejects the push ("refusing to allow a GitHub App to create or
-          # update workflow … without `workflows` permission"). This is the ONLY
-          # token path that can sync workflow changes — the `use-app-token: false`
-          # fallback (`GITHUB_TOKEN`) can never push workflow files regardless of
-          # job permissions (a GitHub safety restriction), so a template carrying
-          # workflow changes requires explicitly opting in with
-          # `use-app-token: true`.
-          # NOTE: the App must have the **Workflows** repository permission granted
-          # for this scope to mint; without it `create-github-app-token` 422s.
-          permission-workflows: write
+          domain: sts.platform.devantler.tech
+          scope: devantler-tech
+          identity: template-sync
 
       - name: 📑 Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

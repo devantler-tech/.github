@@ -1,0 +1,21 @@
+---
+# Organization trust policy for the shared template sync
+# (.github/workflows/template-sync.yaml), served by the GitHub token broker
+# (devantler-tech/monorepo ADR 0020, #1001). A devantler-tech repository's
+# main-branch run of that workflow, at a pinned commit or on this repository's
+# main, may exchange its Actions OIDC token. The token is scoped to the calling
+# repository only (caller_repository), with what the sync needs: push the sync
+# branch, including workflow files, and open its pull request. It names no App,
+# so the broker mints from botantler-1 or botantler-2.
+issuer: https://token.actions.githubusercontent.com
+# Both GitHub subject forms are admitted: repo:devantler-tech/<name>, and the immutable
+# repo:devantler-tech@<owner ID>/<name>@<repository ID> form (use_immutable_subject).
+subject_pattern: repo:devantler-tech(/[A-Za-z0-9._-]+|@178524219/[A-Za-z0-9._-]+@[0-9]+):ref:refs/heads/main
+claim_pattern:
+  repository_owner_id: "178524219"
+  job_workflow_ref: devantler-tech/\.github/\.github/workflows/template-sync\.yaml@([0-9a-f]{40}|refs/heads/main)
+caller_repository: true
+permissions:
+  contents: write
+  pull_requests: write
+  workflows: write
