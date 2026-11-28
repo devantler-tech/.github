@@ -1,0 +1,16 @@
+---
+# Organization trust policy for .github/workflows/repository-coverage-check.yaml, served by the GitHub token broker
+# (devantler-tech/monorepo ADR 0020, #1001). Only that workflow, on this repository's main branch,
+# may exchange its Actions OIDC token. It is read-only and deliberately UNSCOPED (no repositories):
+# the census proves it saw every repository from the token's own installation/repositories listing,
+# which a narrowed token would undercount. organization_administration read lets it confirm, from
+# the organization's installation list, that both botantler installations cover all repositories.
+# The boundary tests pin this policy exactly, so that proof cannot be weakened unnoticed.
+issuer: https://token.actions.githubusercontent.com
+subject: repo:devantler-tech/.github:ref:refs/heads/main
+claim_pattern:
+  repository_owner_id: "178524219"
+  job_workflow_ref: devantler-tech/\.github/\.github/workflows/repository-coverage-check\.yaml@refs/heads/main
+permissions:
+  metadata: read
+  organization_administration: read

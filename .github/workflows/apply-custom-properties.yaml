@@ -52,7 +52,7 @@ jobs:
       # Both tokens come from the GitHub token broker (devantler-tech/monorepo
       # ADR 0020), each through its own reviewed policy in .github/chainguard/.
       # No App key is read, and each action's post step revokes its token.
-      # Both pin botantler-1, the only App with organization custom properties.
+      # Neither names an App, so the broker mints each from either botantler App.
       #
       # The read-back token is read only: organization property values and
       # repository metadata across the organization. A token limited to the

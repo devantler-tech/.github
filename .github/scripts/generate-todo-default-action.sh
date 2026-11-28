@@ -18,8 +18,8 @@ jq '
       .run |= (split("${GITHUB_ACTION_PATH}/../../") | join("${GITHUB_ACTION_PATH}/../../../"))
     else . end |
     if .id == "app-token" then
-      .env = {CLIENT_ID:.with["client-id"], APP_ID:.with["app-id"],
-        APP_PRIVATE_KEY:.with["private-key"], PROJECT_PERMISSION:.with["permission-organization-projects"],
+      .env = {BROKER_ACTION:.uses, BROKER_DOMAIN:.with.domain, BROKER_SCOPE:.with.scope,
+        BROKER_IDENTITY:.with.identity, BROKER_INPUTS:(.with | keys | join(",")),
         OPTIONAL_PROJECT_AUTH:"${{ inputs.optional-project-auth }}", PROJECT:"${{ inputs.project }}",
         ACTION_SCRIPT:"${{ github.action_path }}/../../../.github/tests/todo-production-default-fixture.sh"} |
       .if = ("${{ (" + (.if | ltrimstr("${{ ") | rtrimstr(" }}")) +

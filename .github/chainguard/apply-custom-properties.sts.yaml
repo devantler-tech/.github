@@ -6,9 +6,9 @@
 # token. It gets organization administration write, which GitHub requires even
 # to read organization rulesets and Actions policies, and custom properties
 # admin, scoped to this repository. Both are privileged, so the broker policy
-# check allows them only as this workflow's reviewed grant. It pins botantler-1,
-# the only App with organization custom properties; it grants no contents write,
-# so it cannot create release tags.
+# check allows them only as this workflow's reviewed grant. It names no App, so
+# the broker mints from either botantler App; it grants no contents write, so it
+# cannot create release tags.
 issuer: https://token.actions.githubusercontent.com
 subject: repo:devantler-tech/.github:ref:refs/heads/main
 claim_pattern:
@@ -19,4 +19,3 @@ repositories:
 permissions:
   organization_administration: write
   organization_custom_properties: admin
-app: botantler-1

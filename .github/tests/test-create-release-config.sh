@@ -22,25 +22,36 @@ if [[ "$release_run" != "$expected_run" ]]; then
   exit 1
 fi
 
-contents_permission="$(
-  yq -r '.jobs.release.steps[] | select(.id == "app-token") | .with."permission-contents"' "$workflow"
-)"
-if [[ "$contents_permission" != "write" ]]; then
-  echo "create-release must retain contents:write for tags and releases" >&2
+# The release token comes from the GitHub token broker (devantler-tech/monorepo ADR 0020). Its
+# grants live in two trust policies: create-release-with-hooks (contents, issues and pull requests
+# write) by default, and create-release (contents write only) when the hooks are opted out.
+token_step="$(yq -o=json -I=0 '[.jobs.release.steps[] | select(.id == "app-token")]' "$workflow")"
+expected_identity="\${{ inputs.disable-issue-side-effects && 'create-release' || 'create-release-with-hooks' }}"
+if ! jq -e --arg identity "$expected_identity" '
+  length == 1 and (.[0].uses | test("^octo-sts/action@[0-9a-f]{40}$")) and
+  .[0].with == {domain:"sts.platform.devantler.tech", scope:"devantler-tech", identity:$identity}
+' <<<"$token_step" >/dev/null; then
+  echo "create-release must mint its token from the broker, dropping issue and pull-request write only when opted in" >&2
   exit 1
 fi
-
-issues_permission="$(
-  yq -r '.jobs.release.steps[] | select(.id == "app-token") | .with."permission-issues"' "$workflow"
-)"
-prs_permission="$(
-  yq -r '.jobs.release.steps[] | select(.id == "app-token") | .with."permission-pull-requests"' "$workflow"
-)"
-expected_issues="\${{ !inputs.disable-issue-side-effects && 'write' || '' }}"
-if [[ "$issues_permission" != "$expected_issues" || "$prs_permission" != "$expected_issues" ]]; then
-  echo "create-release must drop issue and pull-request write access only when opted in" >&2
+if [[ "$(yq -o=json -I=0 '.jobs.release.permissions' "$workflow")" != '{"id-token":"write"}' ]]; then
+  echo "create-release's release job must ask for id-token: write and nothing else" >&2
   exit 1
 fi
+for identity in create-release create-release-with-hooks; do
+  policy="$repo_root/.github/chainguard/$identity.sts.yaml"
+  [[ "$identity" == create-release ]] && grants='{"contents":"write"}' ||
+    grants='{"contents":"write","issues":"write","pull_requests":"write"}'
+  if ! yq -o=json '.' "$policy" | jq -e --argjson grants "$grants" '. == {
+      issuer:"https://token.actions.githubusercontent.com",
+      subject_pattern:"repo:devantler-tech(/[A-Za-z0-9._-]+|@178524219/[A-Za-z0-9._-]+@[0-9]+):ref:refs/heads/main",
+      claim_pattern:{repository_owner_id:"178524219",
+        job_workflow_ref:"devantler-tech/\\.github/\\.github/workflows/create-release\\.yaml@([0-9a-f]{40}|refs/heads/main)"},
+      caller_repository:true, permissions:$grants}' >/dev/null; then
+    echo "the $identity trust policy must grant exactly its reviewed release authority" >&2
+    exit 1
+  fi
+done
 
 off_state="$(yq -r '.jobs."test-create-release".with."disable-issue-side-effects" // "unset"' "$ci")"
 on_state="$(yq -r '.jobs."test-create-release-no-issue-side-effects".with."disable-issue-side-effects"' "$ci")"
@@ -434,7 +445,7 @@ fi
 check_block_egress() {
   local wf="$1" ci_file="$2" policy endpoints probe_run refusal
   local expected_policy="\${{ inputs.block-egress && 'block' || 'audit' }}"
-  local expected_endpoints='api.github.com:443 github.com:443 registry.npmjs.org:443'
+  local expected_endpoints='api.github.com:443 github.com:443 registry.npmjs.org:443 sts.platform.devantler.tech:443'
   [[ "$(yq -r '.on.workflow_call.inputs."block-egress" | [.type, .default] | join(" ")' "$wf")" == "boolean false" ]] ||
     return 1
   policy="$(yq -r '.jobs.release.steps[0].with."egress-policy" // ""' "$wf")"
@@ -444,7 +455,9 @@ check_block_egress() {
   # The fixture-mode probe executes both states: the release job's exact hardening step, a fatal
   # check of every listed host, a refused connection to an unlisted one in block mode and the same
   # host reached in audit mode, so the refusal is attributable to the policy, and no credentials.
+  # Every listed host is probed except the GitHub token broker, which only the release job contacts.
   local hardening='.steps[0] | {"uses": .uses, "with": .with}' hosts="${expected_endpoints//:443/}"
+  hosts="${hosts% sts.platform.devantler.tech}"
   [[ "$(yq -o=json -I=0 ".jobs.\"egress-probe\" | $hardening" "$wf")" == \
     "$(yq -o=json -I=0 ".jobs.release | $hardening" "$wf")" ]] || return 1
   [[ "$(yq -r '.jobs."egress-probe".if // ""' "$wf")" == "inputs.offline-test" ]] || return 1

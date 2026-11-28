@@ -18,8 +18,8 @@ jq -e '
 yq -o=json '.' "$projection" >"$work/projection.json"
 yq -o=json '.' "$production" >"$work/production.json"
 # Deliberately normalize independently of the generator, which also earns parity.
-jq -S 'del(.name, .jobs.todos.permissions.issues)' "$work/production.json" >"$work/expected.json"
-jq -S 'del(.name, .jobs.todos.permissions.issues)' "$work/projection.json" >"$work/actual.json"
+jq -S 'del(.name, .jobs.todos.permissions.issues, .jobs.todos.permissions["id-token"])' "$work/production.json" >"$work/expected.json"
+jq -S 'del(.name, .jobs.todos.permissions.issues, .jobs.todos.permissions["id-token"])' "$work/projection.json" >"$work/actual.json"
 cmp -s "$work/expected.json" "$work/actual.json" || {
   echo 'FAIL: TODO projection changed production behavior; regenerate it' >&2
   exit 1
@@ -84,7 +84,7 @@ done
 
 # Reuse the existing independent execution/gate controls for both entrypoints.
 bash "$root/.github/tests/test-todo-workflow-dry-run.sh" "$production" "$ci" --guard-only
-jq '.jobs.todos.permissions.issues="write"' "$work/projection.json" >"$work/writable.json"
+jq '.jobs.todos.permissions.issues="write" | .jobs.todos.permissions["id-token"]="write"' "$work/projection.json" >"$work/writable.json"
 bash "$root/.github/tests/test-todo-workflow-dry-run.sh" "$work/writable.json" "$ci" --guard-only
 bash "$root/.github/scripts/generate-todo-readonly.sh" "$production" "$work/generated.yaml"
 yq -o=json '.' "$work/generated.yaml" | jq -S '.' >"$work/generated.json"

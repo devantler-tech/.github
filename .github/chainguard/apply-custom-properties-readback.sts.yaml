@@ -6,8 +6,8 @@
 # OIDC token. It gets read only, across the organization: custom property values
 # and repository metadata. The reconciler fails closed unless the installation
 # covers every repository. Custom properties read is privileged, so the broker
-# policy check allows it only as this workflow's reviewed grant. It pins
-# botantler-1, the only App with organization custom properties.
+# policy check allows it only as this workflow's reviewed grant. It names no
+# App, so the broker mints from either botantler App.
 issuer: https://token.actions.githubusercontent.com
 subject: repo:devantler-tech/.github:ref:refs/heads/main
 claim_pattern:
@@ -16,4 +16,3 @@ claim_pattern:
 permissions:
   metadata: read
   organization_custom_properties: read
-app: botantler-1

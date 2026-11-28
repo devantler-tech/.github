@@ -551,15 +551,12 @@ jobs:
           if [[ "$eligible" != "true" && "$superseded" != "true" ]]; then
             echo "::notice::PR #${PR_NUMBER} is draft or not open; skipping the auto-merge gate."
           fi
-      # Enforced-path-only read scopes, minted as a SEPARATE App token so the
-      # default-off path — and therefore every legacy workflow_call consumer's
-      # permissions block — never needs them. If a consumer's App installation
-      # lacks Checks/Actions read, create-github-app-token does NOT intersect
-      # the ungranted scope away — it 422s and FAILS this step (same behavior
-      # the arming mint's continue-on-error + base-scope fallback handles, see
-      # #559/#626), so `steps.gates` never runs. That is deliberately loud: an
-      # enforced run whose gates cannot be read is a misconfigured installation,
-      # not an ordinary case to swallow. It still fails CLOSED — the "Disarm
+      # Enforced-path-only read scopes, minted as a SEPARATE broker token (the
+      # enable-auto-merge-gates policy: actions, contents and pull requests read)
+      # so the default-off path never needs them. If the exchange fails, this
+      # step FAILS, so `steps.gates` never runs. That is deliberately loud: an
+      # enforced run whose gates cannot be read is misconfigured, not an
+      # ordinary case to swallow. It still fails CLOSED — the "Disarm
       # auto-merge on failed gates" step below matches
       # `steps.gate-token.outcome == 'failure'`, so nothing is ever armed on
       # unverified gates and an already-armed PR is actively revoked.

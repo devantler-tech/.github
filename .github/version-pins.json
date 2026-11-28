@@ -144,6 +144,7 @@
       "pin": "node-version: 22",
       "files": [
         ".github/workflows/ci.yaml",
+        ".github/workflows/create-release-offline.yaml",
         ".github/workflows/create-release.yaml"
       ],
       "refresh": "A major line: setup-node resolves its latest patch. Move to the next Node LTS major when semantic-release requires it."
@@ -153,9 +154,18 @@
       "pin": "semantic-release@25.0.9",
       "files": [
         ".github/workflows/ci.yaml",
+        ".github/workflows/create-release-offline.yaml",
         ".github/workflows/create-release.yaml"
       ],
       "refresh": "Compare with semantic-release's latest release and its security advisories. Move the release workflow and its CI fixture together."
+    },
+    {
+      "kind": "tool",
+      "pin": "version: 2.10.1",
+      "files": [
+        "actions/publish-app/action.yaml"
+      ],
+      "refresh": "Dependabot does not track the Flux CLI version input. Check the upstream release archive and checksum before updating the publisher and this entry together."
     },
     {
       "kind": "tool",
