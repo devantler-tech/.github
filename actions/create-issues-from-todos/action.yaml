@@ -2,17 +2,8 @@ name: Create Issues from TODOs
 description: Create GitHub issues from TODO comments in code
 author: devantler-tech
 inputs:
-  client-id:
-    description: GitHub App Client ID (preferred over the deprecated app-id)
-    required: false
-  app-id:
-    description: 'GitHub App ID. Deprecated: use client-id instead.'
-    required: false
-  app-private-key:
-    description: GitHub App Private Key (required unless optional-project-auth is true and project is empty)
-    required: false
   optional-project-auth:
-    description: Opt in to generating an App token only for configured project integration
+    description: Opt in to getting a project token only for configured project integration
     required: false
     default: 'false'
   project:
@@ -25,36 +16,21 @@ inputs:
 runs:
   using: composite
   steps:
-    - name: Validate project authentication
-      if: ${{ inputs.optional-project-auth == 'true' }}
-      shell: bash
-      env:
-        PROJECT: ${{ inputs.project }}
-        APP_PRIVATE_KEY: ${{ inputs.app-private-key }}
-        CLIENT_ID: ${{ inputs.client-id }}
-        APP_ID: ${{ inputs.app-id }}
-      run: |
-        if [[ -n "$PROJECT" ]]; then
-          if [[ -z "$APP_PRIVATE_KEY" || ( -z "$CLIENT_ID" && -z "$APP_ID" ) ||
-                ( -n "$CLIENT_ID" && -n "$APP_ID" ) ]]; then
-            echo "::error::Project integration requires app-private-key and exactly one of client-id or app-id."
-            exit 1
-          fi
-        fi
-    - name: 🔑 Generate GitHub App Token
+    # The project token comes from the GitHub token broker (devantler-tech/monorepo
+    # ADR 0020) through devantler-tech/.github's scan-for-todo-comments trust
+    # policy: organization projects write only, scoped to the calling repository,
+    # from either botantler App. No App key is read: the calling job grants id-token: write,
+    # and the action's post step revokes the token. It is consumed only as the
+    # to-do-to-issue action's PROJECTS_SECRET (adding issues to an org Project);
+    # issue create/close/assign use the workflow's default GITHUB_TOKEN.
+    - name: 🔑 Get the project token from the GitHub token broker
       if: ${{ inputs.optional-project-auth != 'true' || inputs.project != '' }}
-      uses: actions/create-github-app-token@f418cff399f7aef4c2f0ad47e25ca7a6abbdd6fc # v3.4.0
+      uses: octo-sts/action@f603d3be9d8dd9871a265776e625a27b00effe05 # v1.1.1
       id: app-token
       with:
-        client-id: ${{ inputs.client-id }}
-        app-id: ${{ inputs.app-id }}
-        private-key: ${{ inputs.app-private-key }}
-        # Least-privilege: this token is consumed only as the todo-to-issue
-        # action's PROJECTS_SECRET (adding issues to an org Project); issue
-        # create/close/assign use the workflow's default GITHUB_TOKEN. Scope it
-        # to organization projects instead of inheriting the App installation's
-        # blanket permissions (zizmor github-app).
-        permission-organization-projects: write
+        domain: sts.platform.devantler.tech
+        scope: devantler-tech
+        identity: scan-for-todo-comments
     - name: Setup TODO supervisor compiler
       uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
       with:
