@@ -212,7 +212,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          readonly source=devantler-tech/.github
+          # The repositories whose shared workflows a broker policy may admit at a pinned
+          # commit. Each pin must be a commit on its own repository's main.
           for tool in yq gh; do
             command -v "${tool}" >/dev/null || { echo "::error::${tool} is not installed"; exit 2; }
           done
@@ -228,8 +229,8 @@ jobs:
             fi
             while IFS= read -r call; do
               shopt -s nocasematch
-              if [[ "${call}" =~ ^devantler-tech/\.github/\.github/workflows/[^@]+@([0-9a-f]{40})$ ]]; then
-                pins+=("${workflow}|$(tr '[:upper:]' '[:lower:]' <<<"${BASH_REMATCH[1]}")")
+              if [[ "${call}" =~ ^devantler-tech/(\.github|update-agent-skills-action)/\.github/workflows/[^@]+@([0-9a-f]{40})$ ]]; then
+                pins+=("${workflow}|$(tr '[:upper:]' '[:lower:]' <<<"${BASH_REMATCH[1]}")|$(tr '[:upper:]' '[:lower:]' <<<"${BASH_REMATCH[2]}")")
               fi
               shopt -u nocasematch
             done <<<"${calls}"
@@ -239,8 +240,11 @@ jobs:
           unknown=0
           for entry in ${pins[@]+"${pins[@]}"}; do
             workflow="${entry%%|*}"
-            commit="${entry#*|}"
-            if [[ -z "${verdict[${commit}]:-}" ]]; then
+            rest="${entry#*|}"
+            source="devantler-tech/${rest%%|*}"
+            commit="${rest#*|}"
+            key="${source}@${commit}"
+            if [[ -z "${verdict[${key}]:-}" ]]; then
               status=unknown
               for attempt in 1 2 3; do
                 # main...<commit> is "behind" or "identical" exactly when the commit
@@ -255,25 +259,25 @@ jobs:
                 fi
                 sleep $((attempt * 5))
               done
-              verdict[${commit}]="${status}"
+              verdict[${key}]="${status}"
             fi
-            case "${verdict[${commit}]}" in
+            case "${verdict[${key}]}" in
               behind | identical) ;;
               unknown)
                 echo "::error file=${workflow}::could not check whether ${commit} is on ${source} main"
                 unknown=$((unknown + 1))
                 ;;
               *)
-                echo "::error file=${workflow}::pins ${source} at ${commit}, which is not a commit on its main branch (${verdict[${commit}]})"
+                echo "::error file=${workflow}::pins ${source} at ${commit}, which is not a commit on its main branch (${verdict[${key}]})"
                 failures=$((failures + 1))
                 ;;
             esac
           done
           if ((failures > 0)); then
-            echo "::error::${failures} shared workflow pin(s) name a commit that is not on ${source} main"
+            echo "::error::${failures} shared workflow pin(s) name a commit that is not on its repository's main"
             exit 1
           fi
           if ((unknown > 0)); then
             exit 2
           fi
-          echo "${#pins[@]} pinned shared workflow call(s) name commits on ${source} main"
+          echo "${#pins[@]} pinned shared workflow call(s) name commits on their repository's main"

@@ -246,7 +246,7 @@ mkdir -p "$tmp/bin"
 cat >"$tmp/bin/gh" <<'STUB'
 #!/usr/bin/env bash
 printf '%s\n' "$*" >>"$GH_CALLS"
-[[ "$1" == api && "$2" == repos/devantler-tech/.github/compare/main...* && "$3" == --jq && "$4" == .status ]] || { echo "unexpected gh call: $*" >&2; exit 9; }
+[[ "$1" == api && "$2" =~ ^repos/devantler-tech/(\.github|update-agent-skills-action)/compare/main\.\.\. && "$3" == --jq && "$4" == .status ]] || { echo "unexpected gh call: $*" >&2; exit 9; }
 case "${2##*...}" in
   a*) echo behind ;;
   e*) echo identical ;;
@@ -300,5 +300,18 @@ pins_expect 2 'is not valid YAML' 'a workflow that cannot be read' 'broken.yaml=
 pins_expect 0 '2 pinned shared workflow call(s)' 'the same commit pinned twice' \
   "a.yaml=$(caller "$shared_ref@$(sha a)")" "b.yaml=$(caller "$shared_ref@$(sha a)")"
 [[ "$(wc -l <"$tmp/gh-calls")" -eq 1 ]] || fail 'pins: one commit is looked up once'
+# The skill updater's shared workflow is admitted at a pinned commit too, so its pins are proven
+# against its own repository's main.
+readonly skills_ref='devantler-tech/update-agent-skills-action/.github/workflows/update-agent-skills.yaml'
+pins_expect 0 '1 pinned shared workflow call(s)' 'a merged skill updater pin' "skills.yaml=$(caller "$skills_ref@$(sha a)")"
+grep -qF 'repos/devantler-tech/update-agent-skills-action/compare/main...' "$tmp/gh-calls" ||
+  fail 'pins: a skill updater pin is looked up in its own repository'
+pins_expect 1 'pins devantler-tech/update-agent-skills-action at' 'an unmerged skill updater pin' \
+  "skills.yaml=$(caller "$skills_ref@$(sha b)")"
+pins_expect 0 '2 pinned shared workflow call(s)' 'one commit pinned in two repositories' \
+  "a.yaml=$(caller "$shared_ref@$(sha a)")" "b.yaml=$(caller "$skills_ref@$(sha a)")"
+[[ "$(wc -l <"$tmp/gh-calls")" -eq 2 ]] || fail 'pins: the same commit in two repositories is looked up in each'
+pins_expect 1 'pins devantler-tech/.github at' 'the release diagnostic names its repository' \
+  "release.yaml=$(caller "$shared_ref@$(sha b)")"
 
 printf 'test-check-github-broker-policies: %d cases passed\n' "$cases"

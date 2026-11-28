@@ -360,8 +360,9 @@ The check reads each `.github/chainguard/*.sts.yaml` and refuses a policy that:
   workflow's caller policy (any devantler-tech `main`, scoped to the caller, naming no App), with
   exactly that workflow's reviewed set.
 
-It also refuses a pull request whose workflows pin a `devantler-tech/.github` shared workflow at a
-commit (`…@<sha>`) that is not on this repository's `main`. Callers pin shared workflows by commit,
+It also refuses a pull request whose workflows pin a `devantler-tech/.github` or
+`devantler-tech/update-agent-skills-action` shared workflow at a commit (`…@<sha>`) that is not on
+that repository's `main`. Callers pin shared workflows by commit,
 so their policies admit pinned commits, and GitHub would otherwise also resolve an unmerged commit or
 one pushed to a fork (an impostor commit). Calls are read through YAML and matched regardless of
 case, and a commit it cannot look up fails the check. It reads only each repository's own direct calls (`jobs.*.uses`): a third-party reusable workflow that itself calls a `devantler-tech/.github` workflow at an unmerged commit is outside what it can see.
