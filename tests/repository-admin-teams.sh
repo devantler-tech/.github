@@ -6,44 +6,11 @@ guard="${1:-$root/scripts/check-repository-admin-teams.sh}"
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
 mkdir -p "$work/bin" "$work/fixtures/teams"
-openssl genrsa -out "$work/test-key.pem" 2048 2>/dev/null
-openssl rsa -in "$work/test-key.pem" -pubout -out "$work/test-public.pem" 2>/dev/null
-GH_APP_PRIVATE_KEY="$(cat "$work/test-key.pem")"
-export GH_APP_PRIVATE_KEY GH_APP_CLIENT_ID=Iv1.fixture GH_INSTALLATION_ID=77
 export GH_TOKEN=fixture_installation_token
 export GITHUB_ACTIONS=true GITHUB_EVENT_NAME=workflow_dispatch GITHUB_REPOSITORY=devantler-tech/.github GITHUB_REF=refs/heads/main
 export GITHUB_WORKFLOW_REF=devantler-tech/.github/.github/workflows/repository-admin-team-audit.yaml@refs/heads/main
-cat >"$work/bin/curl" <<'STUB'
-#!/usr/bin/env bash
-set -euo pipefail
-[[ $# == 16 && "$1" == --disable && "$2" == --silent && "$3" == --show-error && "$4" == --fail &&
-  "$5" == --request && "$6" == GET && "$7" == --max-time && "$8" == 30 && "$9" == --proto &&
-  "${10}" == '=https' && "${11}" == --config && "${13}" == --url &&
-  "${14}" == https://api.github.com/app/installations/77 && "${15}" == --output ]] || exit 85
-[[ -z "${GH_APP_PRIVATE_KEY:-}" ]] || exit 86
-jwt=$(sed -n 's/^header = "Authorization: Bearer \(.*\)"$/\1/p' "${12}")
-[[ "$jwt" =~ ^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$ ]] || exit 87
-decode() {
-  local part=$1
-  while (( ${#part} % 4 != 0 )); do part="${part}="; done
-  printf '%s' "$part" | tr '_-' '/+' | openssl base64 -d -A
-}
-decode "${jwt##*.}" >"$AUDIT_FIXTURES/signature"
-printf '%s' "${jwt%.*}" >"$AUDIT_FIXTURES/signing-input"
-openssl dgst -sha256 -verify "$AUDIT_TEST_PUBLIC" -signature "$AUDIT_FIXTURES/signature" \
-  "$AUDIT_FIXTURES/signing-input" >/dev/null 2>&1 || exit 88
-payload=${jwt#*.}; payload=${payload%.*}
-decode "${jwt%%.*}" | jq -e '.alg == "RS256" and .typ == "JWT"' >/dev/null || exit 89
-decode "$payload" | jq -e '.iss == "Iv1.fixture" and (.iat | type == "number") and
-  (.exp | type == "number") and .exp - .iat == 600 and .iat <= now and .exp > now' >/dev/null || exit 89
-printf 'installation-proof\n' >>"$AUDIT_REQUESTS"
-file="$AUDIT_FIXTURES/installation.json"
-if [[ "${AUDIT_SELECTION_CHANGED:-false}" == true && "$(grep -cFx installation-proof "$AUDIT_REQUESTS")" == 2 ]]; then
-  file="$AUDIT_FIXTURES/installation-after.json"
-fi
-cp "$file" "${16}"
-[[ "${AUDIT_PROOF_FAILURE:-false}" != true ]] || exit 22
-STUB
+# The App-JWT installation lookup is retired: any curl call fails the case.
+printf '#!/usr/bin/env bash\nexit 85\n' >"$work/bin/curl"
 chmod +x "$work/bin/curl"
 cat >"$work/bin/gh" <<'STUB'
 #!/usr/bin/env bash
@@ -51,6 +18,16 @@ set -euo pipefail
 [[ $# == 6 && "$1" == api && "$2" == --method && "$3" == GET && "$4" == --paginate && "$5" == --slurp ]] || exit 81
 endpoint="$6"
 printf '%s\n' "$endpoint" >>"$AUDIT_REQUESTS"
+if [[ "$endpoint" == 'orgs/devantler-tech/installations?per_page=100' ]]; then
+  printf 'installation-proof\n' >>"$AUDIT_REQUESTS"
+  file="$AUDIT_FIXTURES/installations.json"
+  if [[ "${AUDIT_SELECTION_CHANGED:-false}" == true && "$(grep -cFx installation-proof "$AUDIT_REQUESTS")" == 2 ]]; then
+    file="$AUDIT_FIXTURES/installations-after.json"
+  fi
+  cat "$file"
+  [[ "${AUDIT_PROOF_FAILURE:-false}" != true ]] || exit 22
+  exit 0
+fi
 if [[ "$endpoint" == 'orgs/devantler-tech' ]]; then
   file="$AUDIT_FIXTURES/org.json"
 elif [[ "$endpoint" == 'user/memberships/orgs/devantler-tech' ]]; then
@@ -93,7 +70,12 @@ reset_case() {
 {"id":3,"name":"actions","full_name":"devantler-tech/actions","owner":{"id":99,"login":"devantler-tech"},"private":false,"archived":false},
 {"id":4,"name":"fixture_archived","full_name":"devantler-tech/fixture_archived","owner":{"id":99,"login":"devantler-tech"},"private":true,"archived":true}]}]
 JSON
-  printf '%s\n' '{"id":77,"app_id":88,"target_id":99,"target_type":"Organization","account":{"id":99,"login":"devantler-tech","type":"Organization"},"repository_selection":"all","suspended_at":null,"suspended_by":null}' >"$work/fixtures/installation.json"
+  jq -n '[{total_count:2,installations:[
+    {id:77,app_id:88,app_slug:"botantler-1",target_id:99,target_type:"Organization",
+      account:{id:99,login:"devantler-tech",type:"Organization"},repository_selection:"all",suspended_at:null},
+    {id:78,app_id:89,app_slug:"botantler-2",target_id:99,target_type:"Organization",
+      account:{id:99,login:"devantler-tech",type:"Organization"},repository_selection:"all",suspended_at:null}]}]' \
+    >"$work/fixtures/installations.json"
   for repo in fixture_public fixture_private_sentinel actions; do
     printf '%s\n' '[[{"id":11,"slug":"admins","privacy":"secret","permission":"admin","permissions":{"admin":true}},{"id":12,"slug":"maintainers","privacy":"closed","permission":"custom","role_name":"custom","permissions":{"admin":false}}],[]]' >"$work/fixtures/teams/$repo.json"
   done
@@ -106,10 +88,10 @@ mutate() {
 check() {
   local expected="$1" label="$2" code=0
   if [[ -n "$audit_arg" ]]; then
-    PATH="$work/bin:$PATH" AUDIT_FIXTURES="$work/fixtures" AUDIT_REQUESTS="$work/requests" AUDIT_TEST_PUBLIC="$work/test-public.pem" \
+    PATH="$work/bin:$PATH" AUDIT_FIXTURES="$work/fixtures" AUDIT_REQUESTS="$work/requests" \
       bash "$guard" "$audit_arg" >"$work/result" 2>&1 || code=$?
   else
-    PATH="$work/bin:$PATH" AUDIT_FIXTURES="$work/fixtures" AUDIT_REQUESTS="$work/requests" AUDIT_TEST_PUBLIC="$work/test-public.pem" \
+    PATH="$work/bin:$PATH" AUDIT_FIXTURES="$work/fixtures" AUDIT_REQUESTS="$work/requests" \
       bash "$guard" >"$work/result" 2>&1 || code=$?
   fi
   if grep -Eq 'fixture_(public|private|archived)|maintainers|repos/|18573307' "$work/result"; then
@@ -154,7 +136,7 @@ reset_case; mutate "$work/fixtures/teams/fixture_public.json" '.[0][0].slug="oth
 reset_case; mutate "$work/fixtures/teams/fixture_public.json" '.[0][0].permission="pull" | .[0][0].permissions.admin=false'; check 1 'no effective admin team'
 reset_case; printf '%s\n' '[[]]' >"$work/fixtures/teams/fixture_public.json"; check 1 'empty team membership'
 reset_case; mutate "$work/fixtures/teams/fixture_public.json" '.[0][0].role_name="custom" | .[0][0].permission="custom-admin"'; check 0 'custom role retains effective admin semantics'
-reset_case; mutate "$work/fixtures/installation.json" '.repository_selection="selected"'; check 2 'selected installation cannot prove a census'
+reset_case; mutate "$work/fixtures/installations.json" '.[0].installations[0].repository_selection="selected"'; check 2 'selected installation cannot prove a census'
 reset_case; mutate "$work/fixtures/repositories.json" '.[1].total_count=5'; check 2 'unstable repository total'
 reset_case; mutate "$work/fixtures/repositories.json" '.[1].repositories=[]'; check 2 'truncated repository enumeration'
 reset_case; mutate "$work/fixtures/repositories.json" '.[1].repositories[0].id=1'; check 2 'duplicate repository identity'
@@ -218,21 +200,21 @@ reset_case
 jq 'map(reverse) | reverse' "$work/fixtures/teams/fixture_public.json" >"$work/fixtures/team-after.json"
 export AUDIT_TEAM_CHANGED=true
 check 0 'pagination and team order changes preserve a stable canonical join'
-reset_case; mutate "$work/fixtures/installation.json" 'del(.suspended_at)'; check 2 'missing installation suspension evidence'
-reset_case; mutate "$work/fixtures/installation.json" '.suspended_at="2026-10-01T00:00:00Z"'; check 2 'suspended installation cannot prove coverage'
-reset_case; mutate "$work/fixtures/installation.json" '.id=78'; check 2 'token mint and installation identity must match'
-reset_case; mutate "$work/fixtures/installation.json" '.target_id=100'; check 2 'installation target and account identity must match'
-reset_case; mutate "$work/fixtures/installation.json" '.account.id=100 | .target_id=100'; check 2 'repository census must match authenticated installation owner'
+reset_case; mutate "$work/fixtures/installations.json" 'del(.[0].installations[1].suspended_at)'; check 2 'missing installation suspension evidence'
+reset_case; mutate "$work/fixtures/installations.json" '.[0].installations[1].suspended_at="2026-10-01T00:00:00Z"'; check 2 'suspended installation cannot prove coverage'
+reset_case; mutate "$work/fixtures/installations.json" '.[0].installations |= map(select(.app_slug != "botantler-2"))'; check 2 'both broker Apps must be installed'
+reset_case; mutate "$work/fixtures/installations.json" '.[0].installations[0].target_id=100'; check 2 'installation target and account identity must match'
+reset_case; mutate "$work/fixtures/installations.json" '.[0].installations |= map(.account.id=100 | .target_id=100)'; check 2 'repository census must match authenticated installation owner'
 reset_case; export AUDIT_PROOF_FAILURE=true; check 2 'partial installation proof followed by HTTP failure'
 reset_case
-jq '.repository_selection="selected"' "$work/fixtures/installation.json" >"$work/fixtures/installation-after.json"
+jq '.[0].installations[1].repository_selection="selected"' "$work/fixtures/installations.json" >"$work/fixtures/installations-after.json"
 export AUDIT_SELECTION_CHANGED=true
 check 2 'installation selection change invalidates the join'
 reset_case; GITHUB_REF=refs/heads/fixture check 2 'installation mode requires reviewed main context'
 reset_case; GITHUB_EVENT_NAME=pull_request check 2 'installation mode rejects a PR context'
-reset_case; GH_APP_PRIVATE_KEY='' check 2 'missing App key cannot prove selection'
-reset_case; GH_INSTALLATION_ID='77?redirect=1' check 2 'installation identity cannot redirect the credential request'
-reset_case; mutate "$work/fixtures/installation.json" 'del(.suspended_by)'; check 2 'missing installation suspension actor evidence'
+reset_case; GH_TOKEN='' check 2 'missing broker token cannot prove selection'
+reset_case; mutate "$work/fixtures/installations.json" '.[0].installations |= map(.app_slug = "other-app")'; check 2 'an unrelated App cannot prove selection'
+reset_case; mutate "$work/fixtures/installations.json" '.[0].installations += [.[0].installations[0]]'; check 2 'duplicate botantler installation'
 reset_case; GITHUB_WORKFLOW_REF=devantler-tech/.github/.github/workflows/governance-audits.yaml@refs/heads/main GITHUB_EVENT_NAME=workflow_dispatch check 0 'combined manual governance workflow is admitted'
 reset_case; GITHUB_WORKFLOW_REF=devantler-tech/.github/.github/workflows/governance-audits.yaml@refs/heads/main GITHUB_EVENT_NAME=schedule check 0 'combined scheduled governance workflow is admitted'
 reset_case; GITHUB_EVENT_NAME=schedule check 2 'manual-only audit cannot gain a scheduled execution path'

@@ -38,6 +38,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read # checkout
+      id-token: write # proves this job to the GitHub token broker (devantler-tech/monorepo ADR 0020)
     steps:
       - name: 📑 Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -46,29 +47,16 @@ jobs:
           persist-credentials: false
 
       - name: 🔑 Get GitHub App Token
-        uses: actions/create-github-app-token@f418cff399f7aef4c2f0ad47e25ca7a6abbdd6fc # v3.4.0
+        uses: octo-sts/action@f603d3be9d8dd9871a265776e625a27b00effe05 # v1.1.1
         id: app-token
         with:
-          client-id: ${{ vars.APP_CLIENT_ID }}
-          private-key: ${{ secrets.APP_PRIVATE_KEY }}
-          # Least privilege: metadata read only. This is a deliberate, scoped
-          # exception to zizmor's github-app audit, which asks for a
-          # `repositories:` list. The question here is which repositories exist,
-          # so any list would have to come from deploy/ — and a token scoped to
-          # the declared repositories cannot see the undeclared private
-          # repository this check exists to find. The workflow's own
-          # GITHUB_TOKEN sees public repositories only. The check fails closed if
-          # the installation is limited to selected repositories, or if the
-          # listing misses any declared repository.
-          owner: devantler-tech # zizmor: ignore[github-app]
-          permission-metadata: read
+          domain: sts.platform.devantler.tech
+          scope: devantler-tech
+          identity: repository-coverage-check
 
       - name: 🧭 Compare live repositories with deploy/
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
-          GH_INSTALLATION_ID: ${{ steps.app-token.outputs.installation-id }}
-          GH_APP_CLIENT_ID: ${{ vars.APP_CLIENT_ID }}
-          GH_APP_PRIVATE_KEY: ${{ secrets.APP_PRIVATE_KEY }}
         run: bash scripts/check-repository-coverage.sh
 
   # Nothing else reads a scheduled result, so a red run would stay invisible.

@@ -20,8 +20,8 @@
 #                               repository. Authenticated App metadata proves the
 #                               selection, and repeated repository pages prove the
 #                               complete census. Used by tests to stay hermetic.
-#   GH_APP_CLIENT_ID, GH_APP_PRIVATE_KEY, GH_INSTALLATION_ID
-#                               reviewed main App proof for a live installation read
+#   GH_TOKEN (GitHub token broker, unscoped read-only policy)
+#                               reviewed main token; both botantler installations must cover all repositories
 #
 # Exit codes:
 #   0  every live, non-archived repository is declared (or deliberately exempt)

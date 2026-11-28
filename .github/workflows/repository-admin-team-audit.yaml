@@ -19,6 +19,7 @@ jobs:
     timeout-minutes: 12
     permissions:
       contents: read
+      id-token: write # proves this job to the GitHub token broker (devantler-tech/monorepo ADR 0020)
     steps:
       - name: Harden runner
         uses: step-security/harden-runner@aebdcf6156ab6691adf63218240e476564a1ed4c # v2.23.0
@@ -31,19 +32,12 @@ jobs:
           persist-credentials: false
       - name: Get read-only audit token
         id: audit-token
-        uses: actions/create-github-app-token@f418cff399f7aef4c2f0ad47e25ca7a6abbdd6fc # v3.4.0
+        uses: octo-sts/action@f603d3be9d8dd9871a265776e625a27b00effe05 # v1.1.1
         with:
-          client-id: ${{ vars.APP_CLIENT_ID }}
-          private-key: ${{ secrets.APP_PRIVATE_KEY }}
-          # Every repository is necessary to detect undeclared private repositories.
-          # The auditor rejects selected installations and incomplete enumeration.
-          owner: devantler-tech # zizmor: ignore[github-app]
-          permission-metadata: read
-          permission-administration: read
+          domain: sts.platform.devantler.tech
+          scope: devantler-tech
+          identity: repository-admin-team-audit
       - name: Audit effective team permissions
         env:
           GH_TOKEN: ${{ steps.audit-token.outputs.token }}
-          GH_INSTALLATION_ID: ${{ steps.audit-token.outputs.installation-id }}
-          GH_APP_CLIENT_ID: ${{ vars.APP_CLIENT_ID }}
-          GH_APP_PRIVATE_KEY: ${{ secrets.APP_PRIVATE_KEY }}
         run: bash scripts/check-repository-admin-teams.sh
