@@ -4,20 +4,8 @@
   "description": "Generated offline dependencies for the complete TODO default-path replay",
   "author": "devantler-tech",
   "inputs": {
-    "client-id": {
-      "description": "GitHub App Client ID (preferred over the deprecated app-id)",
-      "required": false
-    },
-    "app-id": {
-      "description": "GitHub App ID. Deprecated: use client-id instead.",
-      "required": false
-    },
-    "app-private-key": {
-      "description": "GitHub App Private Key (required unless optional-project-auth is true and project is empty)",
-      "required": false
-    },
     "optional-project-auth": {
-      "description": "Opt in to generating an App token only for configured project integration",
+      "description": "Opt in to getting a project token only for configured project integration",
       "required": false,
       "default": "false"
     },
@@ -40,26 +28,15 @@
     "using": "composite",
     "steps": [
       {
-        "name": "Validate project authentication",
-        "if": "${{ inputs.optional-project-auth == 'true' }}",
-        "shell": "bash",
-        "env": {
-          "PROJECT": "${{ inputs.project }}",
-          "APP_PRIVATE_KEY": "${{ inputs.app-private-key }}",
-          "CLIENT_ID": "${{ inputs.client-id }}",
-          "APP_ID": "${{ inputs.app-id }}"
-        },
-        "run": "if [[ -n \"$PROJECT\" ]]; then\n  if [[ -z \"$APP_PRIVATE_KEY\" || ( -z \"$CLIENT_ID\" && -z \"$APP_ID\" ) ||\n        ( -n \"$CLIENT_ID\" && -n \"$APP_ID\" ) ]]; then\n    echo \"::error::Project integration requires app-private-key and exactly one of client-id or app-id.\"\n    exit 1\n  fi\nfi\n"
-      },
-      {
-        "name": "🔑 Generate GitHub App Token",
+        "name": "🔑 Get the project token from the GitHub token broker",
         "if": "${{ (inputs.optional-project-auth != 'true' || inputs.project != '') && inputs.fixture-skip-app-token != 'true' }}",
         "id": "app-token",
         "env": {
-          "CLIENT_ID": "${{ inputs.client-id }}",
-          "APP_ID": "${{ inputs.app-id }}",
-          "APP_PRIVATE_KEY": "${{ inputs.app-private-key }}",
-          "PROJECT_PERMISSION": "write",
+          "BROKER_ACTION": "octo-sts/action@f603d3be9d8dd9871a265776e625a27b00effe05",
+          "BROKER_DOMAIN": "sts.platform.devantler.tech",
+          "BROKER_SCOPE": "devantler-tech",
+          "BROKER_IDENTITY": "scan-for-todo-comments",
+          "BROKER_INPUTS": "domain,identity,scope",
           "OPTIONAL_PROJECT_AUTH": "${{ inputs.optional-project-auth }}",
           "PROJECT": "${{ inputs.project }}",
           "ACTION_SCRIPT": "${{ github.action_path }}/../../../.github/tests/todo-production-default-fixture.sh"

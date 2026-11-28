@@ -23,8 +23,9 @@ guard() {
       $f.runs.steps[$t].shell == "bash" and
       $f.runs.steps[$t].run == "bash \"$ACTION_SCRIPT\" app-token" and
       $f.runs.steps[$t].env == {
-        CLIENT_ID:"${{ inputs.client-id }}", APP_ID:"${{ inputs.app-id }}",
-        APP_PRIVATE_KEY:"${{ inputs.app-private-key }}", PROJECT_PERMISSION:"write",
+        BROKER_ACTION:$p.runs.steps[$t].uses, BROKER_DOMAIN:"sts.platform.devantler.tech",
+        BROKER_SCOPE:"devantler-tech", BROKER_IDENTITY:"scan-for-todo-comments",
+        BROKER_INPUTS:"domain,identity,scope",
         OPTIONAL_PROJECT_AUTH:"${{ inputs.optional-project-auth }}", PROJECT:"${{ inputs.project }}",
         ACTION_SCRIPT:"${{ github.action_path }}/../../../.github/tests/todo-production-default-fixture.sh"} and
       $f.runs.steps[$t].if == ("${{ (" +
@@ -52,13 +53,14 @@ while IFS=$'\t' read -r label mutation; do
   if guard "$work/bad.json"; then fail "accepted $label"; fi
   echo "PASS: rejects $label"
 done <<'CASES'
-real token action	.runs.steps[1].uses="actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510"
-missing skip refusal	.runs.steps[1].if="true"
-wrong project forwarding	.runs.steps[1].env.PROJECT=""
-unexpected token input	.inputs["app-private-key"].default="fictional-fixture-value"
-real checkout	.runs.steps[4]={uses:"actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1"}
-different compiler	.runs.steps[2].with["go-version"]="1.1.0"
-wrong source depth	.runs.steps[3].run |= (split("${GITHUB_ACTION_PATH}/../../../")|join("${GITHUB_ACTION_PATH}/../../"))
+real token action	.runs.steps[0].uses="octo-sts/action@f603d3be9d8dd9871a265776e625a27b00effe05"
+missing skip refusal	.runs.steps[0].if="true"
+wrong project forwarding	.runs.steps[0].env.PROJECT=""
+another broker identity	.runs.steps[0].env.BROKER_IDENTITY="template-sync"
+unexpected token input	.inputs["app-private-key"]={required:false,default:"fictional-fixture-value"}
+real checkout	.runs.steps[3]={uses:"actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1"}
+different compiler	.runs.steps[1].with["go-version"]="1.1.0"
+wrong source depth	.runs.steps[2].run |= (split("${GITHUB_ACTION_PATH}/../../../")|join("${GITHUB_ACTION_PATH}/../../"))
 extra execution	.runs.steps += [{shell:"bash",run:"echo unexpected"}]
 CASES
 bash "$root/.github/scripts/generate-todo-default-action.sh" "$production" "$work/generated.yaml"
@@ -77,8 +79,10 @@ cmp "$root/.scripts/retry.sh" "$work/compiler-runtime/devantler-actions-retry.sh
 # Run the wrapper's actual dependency body; never fabricate its execution receipt.
 jq -er '.runs.steps[] | select(.id=="app-token") | .run' "$work/fixture.json" >"$work/token.sh"
 export RUNNER_TEMP="$work/runtime" GITHUB_OUTPUT="$work/outputs"
-export OPTIONAL_PROJECT_AUTH=false PROJECT=organization/devantler-tech/5 PROJECT_PERMISSION=write
-export CLIENT_ID='' APP_ID='' APP_PRIVATE_KEY=''
+export OPTIONAL_PROJECT_AUTH=false PROJECT=organization/devantler-tech/5
+BROKER_ACTION="$(jq -er '.runs.steps[] | select(.id=="app-token") | .env.BROKER_ACTION' "$work/fixture.json")"
+export BROKER_ACTION BROKER_DOMAIN=sts.platform.devantler.tech BROKER_SCOPE=devantler-tech
+export BROKER_IDENTITY=scan-for-todo-comments BROKER_INPUTS=domain,identity,scope
 export ACTION_SCRIPT="$root/.github/tests/todo-production-default-fixture.sh"
 mkdir -p "$RUNNER_TEMP/todo-action-smoke"
 bash "$work/token.sh"
@@ -86,7 +90,7 @@ grep -Fxq 'token=offline-project-token' "$GITHUB_OUTPUT"
 jq -e '. == {flag:"false",project:"organization/devantler-tech/5",token:"offline-project-token"}' \
   "$RUNNER_TEMP/todo-action-smoke/app-token.json" >/dev/null
 if bash "$work/token.sh" >"$work/repeated.log" 2>&1; then fail 'duplicate token execution was accepted'; fi
-for field in PROJECT OPTIONAL_PROJECT_AUTH PROJECT_PERMISSION APP_PRIVATE_KEY; do
+for field in PROJECT OPTIONAL_PROJECT_AUTH BROKER_ACTION BROKER_DOMAIN BROKER_SCOPE BROKER_IDENTITY BROKER_INPUTS; do
   rm -f "$RUNNER_TEMP/todo-action-smoke/app-token.json"
   : >"$GITHUB_OUTPUT"
   if env "$field=fictional-invalid-value" bash "$work/token.sh" >"$work/refusal.log" 2>&1; then
@@ -95,4 +99,4 @@ for field in PROJECT OPTIONAL_PROJECT_AUTH PROJECT_PERMISSION APP_PRIVATE_KEY; d
   [[ ! -e "$RUNNER_TEMP/todo-action-smoke/app-token.json" && ! -s "$GITHUB_OUTPUT" ]] ||
     fail 'invalid dependency inputs emitted a token receipt'
 done
-echo 'PASS: immutable source parity, eight source mutations and actual token execution/refusal controls'
+echo 'PASS: immutable source parity, nine source mutations and actual token execution/refusal controls'
