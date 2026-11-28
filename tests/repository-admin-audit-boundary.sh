@@ -12,23 +12,15 @@ verify() {
     (.jobs | keys == ["audit"]) and
     (.jobs.audit.if | gsub("\\s+";" ") | sub(" $";"")) ==
       "github.event_name == '\''workflow_dispatch'\'' && github.repository == '\''devantler-tech/.github'\'' && github.ref == '\''refs/heads/main'\''" and
-    .jobs.audit.permissions == {contents:"read"} and
+    .jobs.audit.permissions == {contents:"read","id-token":"write"} and
     (.jobs.audit.steps | length == 4) and
     (.jobs.audit.steps[0].uses | startswith("step-security/harden-runner@")) and
     .jobs.audit.steps[1].with.ref == "${{ github.workflow_sha }}" and
     .jobs.audit.steps[1].with["persist-credentials"] == false and
-    .jobs.audit.steps[2].with == {
-      "client-id":"${{ vars.APP_CLIENT_ID }}",
-      "private-key":"${{ secrets.APP_PRIVATE_KEY }}",
-      owner:"devantler-tech",
-      "permission-metadata":"read",
-      "permission-administration":"read"} and
+    (.jobs.audit.steps[2].uses | test("^octo-sts/action@[0-9a-f]{40}$")) and
+    .jobs.audit.steps[2].with == {domain:"sts.platform.devantler.tech",scope:"devantler-tech",identity:"repository-admin-team-audit"} and
     .jobs.audit.steps[3].run == "bash scripts/check-repository-admin-teams.sh" and
-    .jobs.audit.steps[3].env == {
-      GH_TOKEN:"${{ steps.audit-token.outputs.token }}",
-      GH_INSTALLATION_ID:"${{ steps.audit-token.outputs.installation-id }}",
-      GH_APP_CLIENT_ID:"${{ vars.APP_CLIENT_ID }}",
-      GH_APP_PRIVATE_KEY:"${{ secrets.APP_PRIVATE_KEY }}"}
+    .jobs.audit.steps[3].env == {GH_TOKEN:"${{ steps.audit-token.outputs.token }}"}
   ' "$1" >/dev/null 2>&1
 }
 verify "$work/source.json" || { echo 'FAIL: live audit must retain its main-only read-only boundary' >&2; exit 1; }
@@ -49,4 +41,15 @@ mutable source checkout	.jobs.audit.steps[1].with.ref="main"
 persisted credentials	.jobs.audit.steps[1].with["persist-credentials"]=true
 implicit human fallback	.jobs.audit.steps[3].run+=" --organization-admin"
 CASES
+# The census proves completeness only because this token is unscoped: a policy that lists
+# repositories would make the installation listing undercount. So the trust policy is pinned exactly.
+root_dir="$(cd "$(dirname "$0")/.." && pwd)"
+yq -o=json '.' "$root_dir/.github/chainguard/repository-admin-team-audit.sts.yaml" | jq -e '. == {
+  issuer:"https://token.actions.githubusercontent.com", subject:"repo:devantler-tech/.github:ref:refs/heads/main",
+  claim_pattern:{repository_owner_id:"178524219",
+    job_workflow_ref:"devantler-tech/\\.github/\\.github/workflows/repository-admin-team-audit\\.yaml@refs/heads/main"},
+  permissions:{administration:"read",metadata:"read",organization_administration:"read"}}' >/dev/null || {
+  echo 'FAIL: the repository-admin-team-audit trust policy must stay exactly the reviewed unscoped read-only grant' >&2
+  exit 1
+}
 echo 'PASS: live admin audit preserves activation, source and credential boundaries'
