@@ -51,7 +51,8 @@ jobs:
       group: create-release-${{ github.repository }}-${{ github.ref }}
       cancel-in-progress: false
       queue: max
-    permissions: {}
+    permissions:
+      id-token: write # proves this job to the GitHub token broker (devantler-tech/monorepo ADR 0020)
     steps:
       - name: 🛡️ Harden runner
         uses: step-security/harden-runner@aebdcf6156ab6691adf63218240e476564a1ed4c # v2.23.0
@@ -122,14 +123,11 @@ jobs:
           go -C .devantler-tech-recovery/.github/scripts/inspect-release-recovery build -trimpath -o "$RUNNER_TEMP/publish-release-recovery" ./cmd/publish-release-recovery
       - name: 🔑 Obtain repository-scoped read-only token
         id: read-token
-        uses: actions/create-github-app-token@f418cff399f7aef4c2f0ad47e25ca7a6abbdd6fc # v3.4.0
+        uses: octo-sts/action@f603d3be9d8dd9871a265776e625a27b00effe05 # v1.1.1
         with:
-          client-id: ${{ vars.APP_CLIENT_ID }}
-          private-key: ${{ secrets.APP_PRIVATE_KEY }}
-          owner: devantler-tech
-          repositories: ${{ steps.admit.outputs.name }}
-          permission-contents: read
-          permission-actions: read
+          domain: sts.platform.devantler.tech
+          scope: devantler-tech
+          identity: release-recovery-read
       - name: 🔎 Admit the incident without write authority
         id: read-admission
         shell: bash
@@ -164,14 +162,11 @@ jobs:
       - name: 🔑 Obtain repository-scoped publication token
         id: write-token
         if: steps.read-admission.outputs.missing == 'true'
-        uses: actions/create-github-app-token@f418cff399f7aef4c2f0ad47e25ca7a6abbdd6fc # v3.4.0
+        uses: octo-sts/action@f603d3be9d8dd9871a265776e625a27b00effe05 # v1.1.1
         with:
-          client-id: ${{ vars.APP_CLIENT_ID }}
-          private-key: ${{ secrets.APP_PRIVATE_KEY }}
-          owner: devantler-tech
-          repositories: ${{ steps.admit.outputs.name }}
-          permission-contents: write
-          permission-actions: read
+          domain: sts.platform.devantler.tech
+          scope: devantler-tech
+          identity: release-recovery-publish
       - name: 🩹 Publish the missing release once
         id: publish
         if: steps.read-admission.outputs.missing == 'true'

@@ -42,7 +42,8 @@ jobs:
     name: Inspect without publishing
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    permissions: {}
+    permissions:
+      id-token: write # proves this job to the GitHub token broker (devantler-tech/monorepo ADR 0020)
     outputs:
       diagnosis: ${{ steps.diagnosis.outputs.diagnosis }}
     steps:
@@ -108,14 +109,11 @@ jobs:
         run: go -C .devantler-tech-inspector/.github/scripts/inspect-release-recovery build -trimpath -o "$RUNNER_TEMP/inspect-release-recovery" .
       - name: 🔑 Obtain repository-scoped read-only token
         id: read-token
-        uses: actions/create-github-app-token@f418cff399f7aef4c2f0ad47e25ca7a6abbdd6fc # v3.4.0
+        uses: octo-sts/action@f603d3be9d8dd9871a265776e625a27b00effe05 # v1.1.1
         with:
-          client-id: ${{ vars.APP_CLIENT_ID }}
-          private-key: ${{ secrets.APP_PRIVATE_KEY }}
-          owner: devantler-tech
-          repositories: ${{ steps.admit.outputs.name }}
-          permission-contents: read
-          permission-actions: read
+          domain: sts.platform.devantler.tech
+          scope: devantler-tech
+          identity: release-recovery-inspect
       - name: 🔎 Inspect original release evidence
         id: diagnosis
         shell: bash
