@@ -34,9 +34,10 @@ on:
         type: boolean
     secrets:
       RELEASE_APP_PRIVATE_KEY:
-        description: "Retired (#933): unused. Declared so existing callers still parse; pass APP_PRIVATE_KEY."
+        description: "Retired (#933): unused. Declared so existing callers still parse."
         required: false
       APP_PRIVATE_KEY:
+        description: "Retired: unused. The release token comes from the GitHub token broker. Declared so existing callers still parse."
         required: false
 
 permissions: {}
@@ -47,6 +48,12 @@ jobs:
     name: Release
     timeout-minutes: 15
     runs-on: ubuntu-latest
+    # The release token comes from the GitHub token broker, so the job proves its
+    # identity with an OIDC token. Callers must grant id-token: write too: a reusable
+    # job that asks for more than its caller grants fails at startup. Nothing here
+    # uses the workflow's own token, so it needs no other scope.
+    permissions:
+      id-token: write
     # One release at a time per repository and ref, so overlapping merges cannot compute the same
     # version and fail on each other's tag. Queued runs are kept in order rather than cancelled or
     # replaced, because a dropped run is a lost release. Callers inherit this and need no block of
@@ -60,25 +67,32 @@ jobs:
         uses: step-security/harden-runner@aebdcf6156ab6691adf63218240e476564a1ed4c # v2.23.0
         with:
           # Opt-in block mode (#912) refuses every host not listed here. The list is this job's
-          # measured egress (#628): checkout and tags, the App token and release API, and npm for
-          # semantic-release. Audit mode records traffic and ignores the list.
+          # measured egress (#628): checkout and tags, the release API, npm for semantic-release, and the
+          # GitHub token broker for the release token. Audit mode records traffic and ignores the list.
           egress-policy: ${{ inputs.block-egress && 'block' || 'audit' }}
           allowed-endpoints: >-
             api.github.com:443
             github.com:443
             registry.npmjs.org:443
+            sts.platform.devantler.tech:443
 
+      # The release token comes from the GitHub token broker (devantler-tech/monorepo
+      # ADR 0020), from either botantler App: the release-tag ruleset lets both create tags.
+      # Two trust policies in devantler-tech/.github hold its grants, both scoped to
+      # the calling repository and admitting only a devantler-tech repository's main
+      # branch running this workflow on main or at a pinned commit:
+      #   create-release             contents write, for callers that disable the
+      #                              issue and pull-request notification hooks;
+      #   create-release-with-hooks  contents, issues and pull requests write, the
+      #                              default, which keeps those hooks working.
+      # No App key is read, and the action's post step revokes the token.
       - name: 🔑 Get GitHub App Token
-        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        uses: octo-sts/action@f603d3be9d8dd9871a265776e625a27b00effe05 # v1.1.1
         id: app-token
         with:
-          client-id: ${{ vars.APP_CLIENT_ID }}
-          private-key: ${{ secrets.APP_PRIVATE_KEY }}
-          # Keep existing notification-hook permissions by default for compatibility.
-          # Opted-in callers omit them alongside the disabled hooks below.
-          permission-contents: write
-          permission-issues: ${{ !inputs.disable-issue-side-effects && 'write' || '' }}
-          permission-pull-requests: ${{ !inputs.disable-issue-side-effects && 'write' || '' }}
+          domain: sts.platform.devantler.tech
+          scope: devantler-tech
+          identity: ${{ inputs.disable-issue-side-effects && 'create-release' || 'create-release-with-hooks' }}
 
       - name: 📑 Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -458,6 +472,7 @@ jobs:
             api.github.com:443
             github.com:443
             registry.npmjs.org:443
+            sts.platform.devantler.tech:443
 
       - name: 🧪 Reach listed hosts and check an unlisted one
         shell: bash
@@ -468,6 +483,8 @@ jobs:
             env -i PATH="$PATH" curl --disable --silent --show-error --output /dev/null \
               --proto '=https' --connect-timeout 10 --max-time 20 "https://$1/"
           }
+          # The GitHub token broker is listed but never probed here: only the release job
+          # contacts it, and probing it would make pull-request CI depend on the platform.
           for host in api.github.com github.com registry.npmjs.org; do
             probe "$host" || {
               echo "::error::the egress policy refused listed host $host" >&2
