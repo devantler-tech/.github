@@ -9,7 +9,7 @@ trap 'rm -rf "$work"' EXIT
 yq -o=json '.' "$source" >"$work/source.json"
 jq '
   .name = "📝 Scan for TODO Comments (Default Fixture)" |
-  del(.jobs["dry-run"], .jobs.todos.permissions.issues) |
+  del(.jobs["dry-run"], .jobs.todos.permissions.issues, .jobs.todos.permissions["id-token"]) |
   .on.workflow_call.inputs["fixture-skip-app-token"] = {
     description:"Deliberately skip the offline dependency for the negative control",
     required:false, default:false, type:"boolean"} |

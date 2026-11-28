@@ -626,24 +626,30 @@ jobs:
     permissions:
       contents: read
       issues: write
+      id-token: write # the project token comes from the GitHub token broker
     with:
       ignore: "^third_party/"
-    secrets:
-      APP_PRIVATE_KEY: ${{ secrets.APP_PRIVATE_KEY }}
 ```
 
 #### Secrets and Inputs
 
 | Key               | Type            | Default | Required | Description                                                |
 |-------------------|-----------------|---------|----------|------------------------------------------------------------|
-| `APP_CLIENT_ID`   | Variable        | -       | No       | Required for production project integration; unused in dry-run |
-| `APP_PRIVATE_KEY` | Secret          | -       | No       | Required for production project integration; unused in dry-run |
+| `APP_PRIVATE_KEY` | Secret          | -       | No       | Retired and unused; still declared so callers that pass it keep working |
 | `dry-run`         | Input (boolean) | `false` | No       | Exercise the action wrapper offline without creating issues |
 | `ignore`          | Input (string)  | `""`    | No       | Regular expression matching repository-relative paths to ignore |
 | `optional-project-auth` | Input (boolean) | `false` | No | Opt in to project integration being optional |
 | `project` | Input (string) | `organization/devantler-tech/5` | No | Project selection; explicitly empty omits integration when opted in |
 
-With `dry-run: true`, omit the App secret: an executed job uses only a contents-read token and a
+The organization project token comes from the GitHub token broker
+([ADR 0020](https://github.com/devantler-tech/monorepo/blob/main/docs/adr/0020-one-github-token-broker.md))
+through [`.github/chainguard/scan-for-todo-comments.sts.yaml`](.github/chainguard/scan-for-todo-comments.sts.yaml):
+any devantler-tech repository's `main`, running this workflow on `main` or at a pinned commit, gets
+organization projects write only, scoped to itself, from either botantler App. No App key is read. The calling
+job must grant `id-token: write`, even with `dry-run: true`: GitHub checks a called workflow's
+permission ceiling when it loads the run, including for jobs that do not run.
+
+With `dry-run: true`, an executed job uses only a contents-read token and a
 fail-closed Docker fixture to verify exactly one wrapper invocation and input forwarding. This
 does not scan source comments; catalogue CI separately exercises the real scanner image.
 The [scanner fixtures](.github/tests/todo-scanner/README.md) verify complete requests and results
@@ -652,7 +658,7 @@ project operations fail the action and stop later writes. The scanner runs once;
 and initial unauthenticated language-rule reads can retry before mutation.
 The calling job still needs the static `issues: write` ceiling because GitHub validates the
 production job even when it is skipped. Production uses the workflow token for issues and the
-App token for the organization project.
+broker token for the organization project.
 
 Production callers can pass `optional-project-auth: true` and `project: ""` to omit
 project integration. Existing callers retain the current project selection and
@@ -691,7 +697,9 @@ an empty project and every source path excluded. All three grant only
 | `project` | Input (string) | `organization/devantler-tech/5` | No | Preserved project selection; the no-project evaluation sets it empty |
 
 Generate it with `bash .github/scripts/generate-todo-readonly.sh`. The complete production
-workflow is preserved, with only its display name changed and its issue permission removed.
+workflow is preserved, with only its display name changed and its issue and `id-token`
+permissions removed. Without `id-token`, its callers need no OIDC grant, and it can never reach the
+token broker.
 Required CI checks compare it independently with production and reject restored caller/callee
 write permissions, secrets, input drift or weakened execution. Production consumers continue
 using `scan-for-todo-comments.yaml` with their existing authorization. Live project behavior
