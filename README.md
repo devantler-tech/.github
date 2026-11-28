@@ -1150,7 +1150,7 @@ An unknown outcome fails; dispatch again to reconcile through fresh reads.
 2. Open this repository's **Actions → Publish Release Recovery → Run workflow**, selecting `main`.
    Enter those original incident values, not the current main SHA or a replacement tag.
 3. Leave `offline-test` false. Enable `confirm-publication` only when you intend to publish.
-   The existing repository App secret is read by the workflow; never paste it into inputs.
+   The workflow gets both tokens from the GitHub token broker; never paste a credential into inputs.
 4. Verify the run's publication readback. A retry uses the same original values; a matching published
    release is a verified no-op, not a second publication.
 
