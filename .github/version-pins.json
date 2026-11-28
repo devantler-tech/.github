@@ -161,6 +161,14 @@
     },
     {
       "kind": "tool",
+      "pin": "version: 2.10.1",
+      "files": [
+        "actions/publish-app/action.yaml"
+      ],
+      "refresh": "Dependabot does not track the Flux CLI version input. Check the upstream release archive and checksum before updating the publisher and this entry together."
+    },
+    {
+      "kind": "tool",
       "pin": "version: v2.14.0",
       "files": [
         ".github/workflows/ci.yaml",
