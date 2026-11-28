@@ -82,16 +82,12 @@ verify() {
     .jobs.admit.steps[2].env == null and
     .jobs.audit.needs == ["admit"] and
     (.jobs.audit.if | normalized) == "needs.admit.outputs.enabled == '\''true'\''" and
-    .jobs.audit.permissions == {contents:"read"} and
+    .jobs.audit.permissions == {contents:"read","id-token":"write"} and
     .jobs.audit.steps[1].with.ref == "${{ github.workflow_sha }}" and
     .jobs.audit.steps[1].with["persist-credentials"] == false and
-    .jobs.audit.steps[2].with == {
-      "client-id":"${{ vars.APP_CLIENT_ID }}","private-key":"${{ secrets.APP_PRIVATE_KEY }}",
-      owner:"devantler-tech","permission-metadata":"read","permission-administration":"read"} and
-    .jobs.audit.steps[3].env == {
-      GH_TOKEN:"${{ steps.audit-token.outputs.token }}",
-      GH_INSTALLATION_ID:"${{ steps.audit-token.outputs.installation-id }}",
-      GH_APP_CLIENT_ID:"${{ vars.APP_CLIENT_ID }}",GH_APP_PRIVATE_KEY:"${{ secrets.APP_PRIVATE_KEY }}"} and
+    (.jobs.audit.steps[2].uses | test("^octo-sts/action@[0-9a-f]{40}$")) and
+    .jobs.audit.steps[2].with == {domain:"sts.platform.devantler.tech",scope:"devantler-tech",identity:"governance-audits"} and
+    .jobs.audit.steps[3].env == {GH_TOKEN:"${{ steps.audit-token.outputs.token }}"} and
     .jobs.audit.steps[3].run == "bash scripts/run-governance-audits.sh" and
     .jobs.report.needs == ["admit","audit"] and
     (.jobs.report.if | normalized) ==
@@ -150,4 +146,15 @@ skipped audit shell	.jobs.audit.steps[3].shell="true {0}"
 ignored workflow shell	.defaults.run.shell="true {0}"
 reporter App token	.jobs.report.steps[1].with["github-token"]="${{ secrets.APP_PRIVATE_KEY }}"
 CASES
+# The census proves completeness only because this token is unscoped: a policy that lists
+# repositories would make the installation listing undercount. So the trust policy is pinned exactly.
+root_dir="$(cd "$(dirname "$0")/.." && pwd)"
+yq -o=json '.' "$root_dir/.github/chainguard/governance-audits.sts.yaml" | jq -e '. == {
+  issuer:"https://token.actions.githubusercontent.com", subject:"repo:devantler-tech/.github:ref:refs/heads/main",
+  claim_pattern:{repository_owner_id:"178524219",
+    job_workflow_ref:"devantler-tech/\\.github/\\.github/workflows/governance-audits\\.yaml@refs/heads/main"},
+  permissions:{administration:"read",metadata:"read",organization_administration:"read"}}' >/dev/null || {
+  echo 'FAIL: the governance-audits trust policy must stay exactly the reviewed unscoped read-only grant' >&2
+  exit 1
+}
 echo 'PASS: routine governance admission, read authority and report transitions are protected'
