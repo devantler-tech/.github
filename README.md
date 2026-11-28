@@ -1168,7 +1168,7 @@ Any future extraction requires real repeated production use and protected rollou
 | `run-id` | Input (string) | — | Yes | Original failed release run ID |
 | `run-attempt` | Input (string) | — | Yes | Original failed run attempt |
 | `producer-ref` | Input (string) | — | Yes | Original catalogue workflow path at its full commit SHA |
-| `id-token: write` | Job permission | — | When enabled | Proves the job to the GitHub token broker for its two tokens, both scoped to this repository: [`release-recovery-read`](.github/chainguard/release-recovery-read.sts.yaml) (read) and [`release-recovery-publish`](.github/chainguard/release-recovery-publish.sts.yaml) (contents write, on botantler-2); no App key is read |
+| `id-token: write` | Job permission | — | When enabled | Proves the job to the GitHub token broker for its two tokens, both scoped to this repository: [`release-recovery-read`](.github/chainguard/release-recovery-read.sts.yaml) (read) and [`release-recovery-publish`](.github/chainguard/release-recovery-publish.sts.yaml) (contents write, from either botantler App); no App key is read |
 
 Run `bash .github/tests/test-publish-release-recovery.sh` after changing the workflow. It checks the
 consent, scope, immutable-source and read-before-write boundaries with negative controls, verifies
