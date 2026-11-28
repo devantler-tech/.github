@@ -46,7 +46,7 @@ on:
         description: "Whether the caller's fixer produced a patch on THIS run. False means the fixer ran clean, so no artifact exists: the signing steps are skipped and only the branch-tip signature check runs."
     secrets:
       APP_PRIVATE_KEY:
-        description: "GitHub App private key. Required: the signing commit API needs an App token, and there is no unsigned fallback."
+        description: "Retired and unused: the signing token comes from the GitHub token broker. Still declared so callers that pass it keep parsing."
         required: false
 
 permissions: {}
@@ -63,6 +63,10 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+      # Proves the caller's identity to the GitHub token broker for the signing token.
+      # Callers must grant it too: a reusable job that asks for more than its caller
+      # grants fails at startup.
+      id-token: write
     # This job checks out the pull request's head branch while holding an App token scoped
     # `contents: write`. That is only safe because NO step below executes code from the
     # checked-out tree: every `uses:` is a SHA-pinned third-party action, and the three `run:`
@@ -139,12 +143,12 @@ jobs:
       # an unexpected type skips the signing rather than performing it unasked.
       - name: 🔑 Generate GitHub App Token
         if: ${{ inputs.fixes-created == true }}
-        uses: actions/create-github-app-token@f418cff399f7aef4c2f0ad47e25ca7a6abbdd6fc # v3.4.0
+        uses: octo-sts/action@f603d3be9d8dd9871a265776e625a27b00effe05 # v1.1.1
         id: generate-token
         with:
-          client-id: ${{ vars.APP_CLIENT_ID }}
-          private-key: ${{ secrets.APP_PRIVATE_KEY }}
-          permission-contents: write
+          domain: sts.platform.devantler.tech
+          scope: devantler-tech
+          identity: apply-signed-fixes
 
       # Check out the PULL REQUEST BRANCH, not the default merge ref. Two things depend on
       # it: the patch must apply to the tree the commit will be based on, and

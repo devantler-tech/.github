@@ -196,6 +196,7 @@ do not establish a product need for a shared workflow.
 |---|---|---|
 | [Applied-fix signing](#workflow-applied-fixes) | Isolated, shared signer for eligible fixer artifacts | [apply-signed-fixes.yaml](.github/workflows/apply-signed-fixes.yaml) |
 | [Release offline CI](#workflow-create-release-offline) | Generated broker-free projection for the release self-tests | [create-release-offline.yaml](.github/workflows/create-release-offline.yaml) |
+| [Applied-fix signing CI](#workflow-applied-fixes-ci) | Generated broker-free projection for the signer self-tests | [apply-signed-fixes-ci.yaml](.github/workflows/apply-signed-fixes-ci.yaml) |
 | [TODO read-only smoke](#workflow-todos-readonly) | Generated projection for credential-free scanner tests | [scan-for-todo-comments-readonly.yaml](.github/workflows/scan-for-todo-comments-readonly.yaml) |
 | [TODO default fixture](#workflow-todos-fixture) | Offline dependencies for testing the production defaults | [scan-for-todo-comments-default-fixture.yaml](.github/workflows/scan-for-todo-comments-default-fixture.yaml) |
 | [Release-recovery offline fixture](#workflow-recovery-fixture) | Generated complete offline build/refusal job, with no publisher or secret interface | [release-recovery-offline-fixture.yaml](.github/workflows/release-recovery-offline-fixture.yaml) |
@@ -305,7 +306,43 @@ Consumer rollout and flag removal are tracked in [#275](https://github.com/devan
 | `commit-message` | Input (string) | `chore: Apply megalinter fixes` | No | Commit message for the applied patch |
 | `pr-owner` | Input (string) | `""` | No | Pull request author login used to suppress commits to dependency-bot branches |
 | `fixes-created` | Input (boolean) | `true` | No | Whether a patch exists; false skips signing and retains the branch-tip signature check |
-| `APP_PRIVATE_KEY` | Secret | - | For signing | GitHub App private key; paired with the `APP_CLIENT_ID` variable. No unsigned fallback |
+| `APP_PRIVATE_KEY` | Secret | - | No | Retired and unused: the signing token comes from the GitHub token broker. Still declared so callers that pass it keep parsing |
+
+The signing token comes from the GitHub token broker
+([ADR 0020](https://github.com/devantler-tech/monorepo/blob/main/docs/adr/0020-one-github-token-broker.md))
+through [`.github/chainguard/apply-signed-fixes.sts.yaml`](.github/chainguard/apply-signed-fixes.sts.yaml):
+a same-repository `pull_request` run of this workflow, on `main` or at a pinned commit, gets
+`contents: write` scoped to its own repository, from either botantler App. There is still no unsigned fallback.
+The `apply-fixes` job asks for `id-token: write`, so every caller must grant it, even one that never
+runs the signing step. Catalogue CI calls the generated
+[broker-free projection](#workflow-applied-fixes-ci).
+
+</details>
+
+<a name="workflow-applied-fixes-ci"></a>
+
+### 📤 Apply Signed Fixes (Broker-free CI)
+
+<details>
+<summary>Purpose, interface and usage</summary>
+
+[.github/workflows/apply-signed-fixes-ci.yaml](.github/workflows/apply-signed-fixes-ci.yaml) is the
+internal catalogue CI entrypoint for the signed-fix self-tests. Generate it with
+`bash .github/scripts/generate-apply-signed-fixes-ci.sh`. It is the complete production workflow
+with its display name changed and the `apply-fixes` job's `id-token` grant removed. Pull-request CI
+may not grant an OIDC token (`test-ci-idtoken-boundary.sh`), so the two CI self-tests call it. They
+never reach the signing step. `test-apply-signed-fixes-ci-projection.sh` compares it with
+production independently. Consumers use `apply-signed-fixes.yaml`.
+
+#### Secrets and Inputs
+
+| Key | Type | Default | Required | Description |
+|-----|------|---------|----------|-------------|
+| `artifact-name` | Input (string) | `megalinter-fixes` | No | Preserved production input |
+| `commit-message` | Input (string) | `chore: Apply megalinter fixes` | No | Preserved production input; CI callers pass a sentinel |
+| `pr-owner` | Input (string) | `""` | No | Preserved production input; one CI caller passes a dependency bot |
+| `fixes-created` | Input (boolean) | `true` | No | Preserved production input; one CI caller sets it false |
+| `APP_PRIVATE_KEY` | Secret | - | No | Preserved production interface; retired and unused |
 
 </details>
 

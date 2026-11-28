@@ -2651,6 +2651,7 @@ jobs:
               case "$wname" in
                 scan-for-todo-comments.yaml) proof=.github/tests/test-todo-workflow-readonly.sh ;;
                 create-release.yaml) proof=.github/tests/test-create-release-offline-projection.sh ;;
+                apply-signed-fixes.yaml) proof=.github/tests/test-apply-signed-fixes-ci-projection.sh ;;
               esac
               if [[ -n "$proof" ]]; then
                 if ! bash "$proof"; then
@@ -4745,6 +4746,10 @@ jobs:
         shell: bash
         run: bash .github/tests/test-apply-signed-fixes-behavior.sh
 
+      - name: 🧪 Verify the signer CI projection holds no broker grant
+        shell: bash
+        run: bash .github/tests/test-apply-signed-fixes-ci-projection.sh
+
       - name: 🔏 Prove signing behavior tests reject lost controls
         shell: bash
         run: bash .github/tests/test-apply-signed-fixes-behavior-ablation.sh
@@ -4834,7 +4839,7 @@ jobs:
     name: "[Test] Apply Signed Fixes - Refuses A Dependency-Bot Branch"
     permissions:
       contents: read
-    uses: $/.github/workflows/apply-signed-fixes.yaml
+    uses: $/.github/workflows/apply-signed-fixes-ci.yaml
     with:
       pr-owner: "dependabot[bot]"
       commit-message: "chore: apply-signed-fixes self-test sentinel, never commit this"
@@ -4858,7 +4863,7 @@ jobs:
     name: "[Test] Apply Signed Fixes - Verifies The Tip With No Patch"
     permissions:
       contents: read
-    uses: $/.github/workflows/apply-signed-fixes.yaml
+    uses: $/.github/workflows/apply-signed-fixes-ci.yaml
     with:
       fixes-created: false
       commit-message: "chore: apply-signed-fixes fixes-created=false sentinel, never commit this"
